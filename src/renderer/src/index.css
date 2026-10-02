@@ -24,7 +24,12 @@
 html,
 body {
   margin: 0;
+  height: 100%;
   background: transparent;
+}
+
+#root {
+  height: 100%;
 }
 
 body {
@@ -46,7 +51,8 @@ code {
  */
 .shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: linear-gradient(165deg, rgba(30, 34, 42, 0.42), rgba(10, 12, 15, 0.55));
 }
 
@@ -55,6 +61,8 @@ code {
 .sidebar {
   width: 300px;
   flex-shrink: 0;
+  height: 100vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 0 20px 20px 24px;
@@ -146,7 +154,9 @@ code {
 .content {
   flex: 1;
   min-width: 0;
-  padding: 18px 28px 36px;
+  height: 100vh;
+  overflow: hidden;
+  padding: 18px 28px 0;
   display: flex;
   flex-direction: column;
 }
@@ -155,6 +165,7 @@ code {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-shrink: 0;
   -webkit-app-region: drag;
 }
 
@@ -186,6 +197,10 @@ code {
 
 .view {
   margin-top: 18px;
+  padding-bottom: 36px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ---------- shared: cards, buttons, inputs ---------- */
