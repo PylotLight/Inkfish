@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { GlassState, SysInfo, VibrancyName } from '../main/index'
+import type { GlassState, SysInfo, VibrancyName } from '../shared/types'
 
 export interface Versions {
   node: () => string
@@ -7,6 +7,11 @@ export interface Versions {
   electron: () => string
 }
 
+/**
+ * The full renderer → main surface. Sections mirror `src/main/ipc.ts`.
+ * Add a tool there first, then expose it here — `window.api` is typed
+ * end-to-end, so the renderer sees the new call immediately.
+ */
 const api = {
   ping: (): Promise<string> => ipcRenderer.invoke('ping'),
   versions: {

@@ -1,5 +1,6 @@
 import { Tray, Menu, Notification, nativeImage, type NativeImage } from 'electron'
 import { join } from 'node:path'
+import { APP_NAME, TRAY_TOOLTIP } from '../shared/config'
 
 export interface TrayCallbacks {
   onShow(): void
@@ -29,7 +30,7 @@ function resolveIcon(): NativeImage {
 export function createAppTray(cb: TrayCallbacks): void {
   if (tray) return
   tray = new Tray(resolveIcon())
-  tray.setToolTip('bun-electron-app kitchen')
+  tray.setToolTip(TRAY_TOOLTIP)
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Show window', click: cb.onShow },
@@ -39,7 +40,7 @@ export function createAppTray(cb: TrayCallbacks): void {
         label: 'Send test notification',
         click: () => {
           if (Notification.isSupported()) {
-            new Notification({ title: 'bun-electron-app', body: 'Hello from the tray!' }).show()
+            new Notification({ title: APP_NAME, body: 'Hello from the tray!' }).show()
           }
         }
       },

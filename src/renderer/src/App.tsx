@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { GlassState, SysInfo } from '../../main/index'
+import { APP_NAME, APP_TAGLINE } from '../../shared/config'
+import type { GlassState, SysInfo } from '../../shared/types'
 import Kitchen from './views/Kitchen'
 import TrayDemo from './views/TrayDemo'
 import Glass from './views/Glass'
@@ -32,8 +33,8 @@ export default function App(): React.JSX.Element {
       <aside className="sidebar">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand">
-          <h1>Kitchen</h1>
-          <p>pure bun · electron · glass</p>
+          <h1>{APP_NAME}</h1>
+          <p>{APP_TAGLINE}</p>
         </div>
         <nav className="nav" role="tablist" aria-label="Demo sections">
           {TABS.map((t) => (

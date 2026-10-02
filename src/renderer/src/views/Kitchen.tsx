@@ -104,7 +104,7 @@ export default function Kitchen(): React.JSX.Element {
         </div>
         {confirming && (
           <div className="modal-backdrop">
-            <div className="modal glass">
+            <div className="modal glass strong">
               <h3>Are you sure?</h3>
               <p className="muted">This is a renderer-side confirm dialog.</p>
               <div className="row end">

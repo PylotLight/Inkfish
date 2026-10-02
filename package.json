@@ -1,7 +1,7 @@
 {
   "name": "bun-electron-app",
   "version": "0.1.0",
-  "description": "Pure Bun + Electron + React + Vite + TypeScript",
+  "description": "Bun + Electron + React + Vite + TypeScript starter template",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -9,7 +9,9 @@
     "dev": "bun scripts/dev.ts",
     "dev:bare": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview && electron ./out/main/index.js",
+    "start": "electron ./out/main/index.js",
+    "preview": "electron-vite preview",
+    "clean": "rm -rf out",
     "typecheck": "tsc --noEmit",
     "assets": "bun scripts/make-tray-icon.ts",
     "postinstall": "install-electron"

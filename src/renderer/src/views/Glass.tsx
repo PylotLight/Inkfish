@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GlassState, VibrancyName } from '../../../main/index'
+import type { GlassState, VibrancyName } from '../../../shared/types'
 
 interface Props {
   platform?: NodeJS.Platform

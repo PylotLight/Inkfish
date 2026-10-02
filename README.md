@@ -1,111 +1,90 @@
-# bun-electron-app
+# Electron Starter (Bun)
 
-Pure [Bun](https://bun.com) + [Electron](https://www.electronjs.org/) + React + Vite + TypeScript —
-kitchen-sink demo and starter template.
+[Bun](https://bun.com) + [Electron](https://www.electronjs.org/) + React + Vite + TypeScript —
+a foundational desktop-app template with tray, native macOS glass, and an agent-mode example.
+Bun is the only CLI: package manager, script runner, runtime for tooling. (Electron's
+main/preload processes still run on its embedded Node; Bun manages deps and tooling.)
 
-Created with `bun init` (bun v1.3.14). Bun is the only CLI used — package manager, runtime for
-scripts, and test runner. Note: Electron itself still embeds Node for its main/preload processes;
-Bun manages deps and tooling, it does not replace Electron's Node runtime.
-
-## Features
-
-- **Kitchen sink tab** — IPC ping, versions, form controls, modal dialog patterns
-- **Tray** — `src/main/tray.ts` owns a system tray with Show/Hide/test-notification/Quit menu.
-  Left-click pops the menu — it never auto-shows the window. Icons in `assets/` generated
-  dependency-free via `bun run assets`
-- **macOS glass** — `vibrancy: fullscreen-ui` + transparent window + hidden-inset traffic lights
-  on darwin, CSS `backdrop-filter` fallback everywhere else (Glass tab). The renderer shell must
-  stay translucent — any opaque full-window background covers the native blur. The Glass tab also
-  lets you switch the vibrancy material live via `win.setVibrancy()`
-- **App & dock hiding** — `Hide` uses real `app.hide()` (⌘H behavior); the Tray tab adds
-  `app.dock.hide()` tray-only mode. Restoring always re-shows the app (`app.show()`) so the
-  window can't get stuck hidden
-- **Agent mode tab** — starter pattern for agentic UI: goal → visible plan → real tool calls
-  through the preload bridge (`sys.info`, `notify.send`) → streaming log, with cancel and
-  hide-to-tray while running
-- **Starter bones** — single-instance lock, `contextBridge` preload API with types,
-  `out/` builds, `postinstall` guaranteeing the Electron binary under Bun, typecheck, MIT
-  license, minimal CI (`bun install` → typecheck → build)
-
-## Setup (bun only)
+## Quickstart
 
 ```bash
-bun install
-```
-
-## Dev
-
-```bash
-bun run dev
-```
-
-## Typecheck
-
-```bash
+bun install   # also guarantees the Electron binary via postinstall
+bun run dev   # dev server + app (wrapped: cleans terminal state on exit)
 bun run typecheck
+bun run build     # → out/{main,preload,renderer}/
+bun run start     # launch the built app
 ```
 
-## Build (renderer + main + preload → `out/`)
+Other scripts: `dev:bare` (raw `electron-vite dev`), `preview` (serve built renderer),
+`clean` (remove `out/`), `assets` (regenerate tray icons).
 
-```bash
-bun run build
-```
+## Make it yours
 
-## Start built app
+When cloning for a real app, touch these and nothing else:
 
-```bash
-bun run start
-```
+1. `package.json` — `name`, `version`, `description`
+2. `src/shared/config.ts` — `APP_NAME`, `APP_TAGLINE`, `APP_ID`, window size
+3. `src/renderer/index.html` — `<title>`
+4. `assets/` — replace tray icons (`bun run assets` regenerates from code, or drop in your own
+   PNGs: `trayTemplate.png` for macOS, `tray.png` elsewhere)
+5. `LICENSE` — copyright holder
+6. `.github/workflows/ci.yml` — keep as-is (install → typecheck → build)
+
+## Structure
+
+- `src/shared/config.ts` — app identity + window defaults (imported by all processes)
+- `src/shared/types.ts` — IPC contracts (`SysInfo`, `GlassState`, `VibrancyName`)
+- `src/main/index.ts` — app lifecycle only (single instance, ready/quit wiring)
+- `src/main/window.ts` — window creation, show/hide, vibrancy state
+- `src/main/tray.ts` — system tray + context menu (left-click pops the menu, never auto-shows)
+- `src/main/ipc.ts` — all renderer→main handlers
+- `src/preload/index.ts` — typed `window.api` bridge (mirrors `ipc.ts`)
+- `src/renderer/src/App.tsx` — sidebar shell + top bar
+- `src/renderer/src/views/` — example sections: `Kitchen` (controls/IPC), `TrayDemo`
+  (tray/dock/notifications), `Glass` (vibrancy + mock dashboard), `Agent` (agentic UI pattern)
+- `scripts/dev.ts` — dev runner (drains terminal reply bytes on exit, see below)
+- `scripts/make-tray-icon.ts` — dependency-free tray PNG generator
+
+## Extending
+
+**New section:** add a view in `src/renderer/src/views/`, register it in the `TABS` array in
+`App.tsx`. Done — nav, layout, and glass styling come free.
+
+**New IPC tool:** add `ipcMain.handle('domain:action', …)` in `src/main/ipc.ts`, expose it in
+`src/preload/index.ts`, call it via `window.api`. Shared payload types go in
+`src/shared/types.ts`. Never import main-process modules from the renderer — type-only imports
+from `src/shared/` only.
+
+**Tray:** edit the menu template in `src/main/tray.ts`. Window helpers live in
+`src/main/window.ts` (`showWindow`, `hideWindow`).
+
+**Agent tools:** the Agent view calls real bridge tools (`sys.info`, `notify.send`). Add yours
+the same way (IPC + preload), then list them in the plan steps.
+
+**Vibrancy rule:** the renderer shell must stay translucent — any opaque full-window background
+covers the native `NSVisualEffectView` blur. `backgroundColor: '#00000000'` + `transparent` +
+`vibrancy` in `window.ts`, translucent CSS in `index.css`. Non-mac platforms get the CSS
+`backdrop-filter` fallback automatically.
 
 ## Troubleshooting
 
 ### Garbage characters (`^[[?62;22c`, `^[[9;1R`, `^[[11;rgb:...`) after exiting dev
 
-On startup Electron/Chromium probes terminal capabilities (device attributes, cursor position,
-background color). The terminal answers by injecting reply bytes into stdin; they sit in the pty
-queue, and after `^C` your shell reads them as keystrokes. This affects many Electron apps, not
-just this one.
-
-`bun run dev` runs through `scripts/dev.ts`, which owns shutdown: on child exit it drains those
-leftover stdin bytes and restores the cursor before returning your prompt. If you still see them
-(e.g. after killing the process from another terminal), run `reset`. `bun run dev:bare` skips the
-wrapper if you ever need the raw `electron-vite dev` behavior.
+On startup Electron probes terminal capabilities; the terminal answers by injecting reply bytes
+into stdin, and after `^C` your shell reads them as keystrokes. `bun run dev` runs through
+`scripts/dev.ts`, which drains those bytes on exit. If you kill the process from another
+terminal, run `reset`. `bun run dev:bare` skips the wrapper.
 
 ### `bun run dev` fails with `Error: spawn ENOEXEC`
 
-This comes from `electron-vite` spawning the Electron binary at
-`node_modules/electron/dist/...`. `ENOEXEC` means that file isn't a runnable program —
-almost always because the Electron binary download is missing or incomplete. The `electron`
-npm package does not contain the binary; it is downloaded by its install script, which Bun
-does not run automatically.
-
-Recovery (bun only):
+The `electron` npm package ships without its binary; it is downloaded by an install script that
+Bun does not run. Recovery:
 
 ```bash
 rm -rf node_modules/electron/dist
-bun install   # runs the root `postinstall` → `install-electron`, checksum-verified
+bun install   # root postinstall → checksum-verified install-electron
 ```
 
-Then sanity-check the binary before running dev:
-
-```bash
-# macOS (Apple Silicon): a valid Mach-O arm64 executable with +x
-file "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-ls -l "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-cat node_modules/electron/dist/version   # must match package.json (e.g. 44.5.1)
-```
-
-If the version mismatches or the file isn't a Mach-O executable, repeat the recovery steps
-above. Corporate proxies/AV quarantining `Electron.app` can also cause this — re-download and
-allow-list the project directory if it recurs.
-
-## Structure
-
-- `electron.vite.config.ts` — electron-vite build config
-- `assets/` — tray icons (`bun run assets` regenerates via `scripts/make-tray-icon.ts`)
-- `scripts/make-tray-icon.ts` — dependency-free PNG generator (bun only)
-- `src/main/index.ts` — Electron main process (window, vibrancy, single instance, IPC)
-- `src/main/tray.ts` — system tray + context menu
-- `src/preload/index.ts` — contextBridge API (`window.api`) with types
-- `src/renderer/` — React + Vite renderer (`index.html` entry, tabbed views in `src/`)
-- `.github/workflows/ci.yml` — install → typecheck → build
+Then verify: `cat node_modules/electron/dist/version` matches `package.json`, and on macOS
+`file node_modules/electron/dist/Electron.app/Contents/MacOS/Electron` reports a Mach-O
+executable.

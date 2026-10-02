@@ -227,10 +227,6 @@ code {
   color: var(--muted);
 }
 
-.small {
-  font-size: 12.5px;
-}
-
 .row {
   display: flex;
   align-items: center;

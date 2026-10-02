@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { APP_NAME } from '../../../shared/config'
 
 interface Props {
   platform?: NodeJS.Platform
@@ -86,7 +87,7 @@ export default function TrayDemo({ platform }: Props): React.JSX.Element {
           className="btn"
           onClick={() =>
             window.api
-              .notify('bun-electron-app', 'Hello from the tray demo!')
+              .notify(APP_NAME, 'Hello from the tray demo!')
               .then((ok) => say(ok ? 'Notification sent.' : 'Notifications not supported here.'))
           }
         >
