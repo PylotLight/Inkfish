@@ -1,10 +1,25 @@
 # bun-electron-app
 
-Pure [Bun](https://bun.com) + [Electron](https://www.electronjs.org/) + React + Vite + TypeScript.
+Pure [Bun](https://bun.com) + [Electron](https://www.electronjs.org/) + React + Vite + TypeScript —
+kitchen-sink demo and starter template.
 
 Created with `bun init` (bun v1.3.14). Bun is the only CLI used — package manager, runtime for
 scripts, and test runner. Note: Electron itself still embeds Node for its main/preload processes;
 Bun manages deps and tooling, it does not replace Electron's Node runtime.
+
+## Features
+
+- **Kitchen sink tab** — IPC ping, versions, form controls, modal dialog patterns
+- **Tray** — `src/main/tray.ts` owns a system tray with Show/Hide/test-notification/Quit menu
+  plus click-to-toggle; icons in `assets/` generated dependency-free via `bun run assets`
+- **macOS glass** — `vibrancy: fullscreen-ui` + transparent window + hidden-inset traffic lights
+  on darwin, CSS `backdrop-filter` fallback everywhere else (Glass tab)
+- **Agent mode tab** — starter pattern for agentic UI: goal → visible plan → real tool calls
+  through the preload bridge (`sys.info`, `notify.send`) → streaming log, with cancel and
+  hide-to-tray while running
+- **Starter bones** — single-instance lock, `contextBridge` preload API with types,
+  `out/` builds, `postinstall` guaranteeing the Electron binary under Bun, typecheck, MIT
+  license, minimal CI (`bun install` → typecheck → build)
 
 ## Setup (bun only)
 
@@ -69,6 +84,10 @@ allow-list the project directory if it recurs.
 ## Structure
 
 - `electron.vite.config.ts` — electron-vite build config
-- `src/main/index.ts` — Electron main process
-- `src/preload/index.ts` — contextBridge API (`window.api`)
-- `src/renderer/` — React + Vite renderer (`index.html` entry)
+- `assets/` — tray icons (`bun run assets` regenerates via `scripts/make-tray-icon.ts`)
+- `scripts/make-tray-icon.ts` — dependency-free PNG generator (bun only)
+- `src/main/index.ts` — Electron main process (window, vibrancy, single instance, IPC)
+- `src/main/tray.ts` — system tray + context menu
+- `src/preload/index.ts` — contextBridge API (`window.api`) with types
+- `src/renderer/` — React + Vite renderer (`index.html` entry, tabbed views in `src/`)
+- `.github/workflows/ci.yml` — install → typecheck → build

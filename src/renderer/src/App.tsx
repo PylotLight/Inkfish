@@ -1,39 +1,57 @@
 import { useEffect, useState } from 'react'
+import type { SysInfo } from '../../main/index'
+import Kitchen from './views/Kitchen'
+import TrayDemo from './views/TrayDemo'
+import Glass from './views/Glass'
+import Agent from './views/Agent'
+
+type Tab = 'kitchen' | 'tray' | 'glass' | 'agent'
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'kitchen', label: 'Kitchen sink' },
+  { id: 'tray', label: 'Tray' },
+  { id: 'glass', label: 'Glass' },
+  { id: 'agent', label: 'Agent mode' }
+]
 
 export default function App(): React.JSX.Element {
-  const [pong, setPong] = useState<string>('—')
+  const [tab, setTab] = useState<Tab>('kitchen')
+  const [sys, setSys] = useState<SysInfo | null>(null)
 
   useEffect(() => {
-    window.api
-      ?.ping()
-      .then(setPong)
-      .catch((err: unknown) => setPong(`error: ${String(err)}`))
+    window.api.sys.info().then(setSys).catch(console.error)
   }, [])
 
-  const versions = typeof window.api !== 'undefined' ? window.api.versions : null
-
   return (
-    <main className="page">
-      <h1>bun-electron-app</h1>
-      <p>
-        Pure <code>bun</code> + Electron <code>{versions?.electron() ?? '…'}</code> + React + Vite +
-        TypeScript.
-      </p>
-      <ul>
-        <li>
-          Node: <code>{versions?.node() ?? '…'}</code>
-        </li>
-        <li>
-          Chrome: <code>{versions?.chrome() ?? '…'}</code>
-        </li>
-        <li>
-          IPC <code>ping()</code>: <code>{pong}</code>
-        </li>
-      </ul>
-      <p className="hint">
-        Dev: <code>bun run dev</code> · Build: <code>bun run build</code> · Start:{' '}
-        <code>bun run start</code>
-      </p>
-    </main>
+    <div className="app" data-platform={sys?.platform ?? 'unknown'}>
+      <header className="titlebar">
+        <span className="traffic-spacer" aria-hidden />
+        <h1>bun-electron-app</h1>
+        <span className="titlebar-sub">
+          {sys ? `${sys.platform}/${sys.arch}` : '…'} · e{window.api.versions.electron()}
+        </span>
+      </header>
+
+      <nav className="tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={tab === t.id ? 'active' : ''}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="view">
+        {tab === 'kitchen' && <Kitchen />}
+        {tab === 'tray' && <TrayDemo platform={sys?.platform} />}
+        {tab === 'glass' && <Glass platform={sys?.platform} />}
+        {tab === 'agent' && <Agent />}
+      </main>
+    </div>
   )
 }

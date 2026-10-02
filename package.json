@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview && electron ./out/main/index.js",
     "typecheck": "tsc --noEmit",
+    "assets": "bun scripts/make-tray-icon.ts",
     "postinstall": "install-electron"
   },
   "devDependencies": {
