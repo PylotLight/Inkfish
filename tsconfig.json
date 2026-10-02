@@ -29,5 +29,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["electron.vite.config.ts", "src/**/*"]
+  "include": ["electron.vite.config.ts", "src/**/*", "scripts/**/*"]
 }

@@ -6,7 +6,8 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "bun scripts/dev.ts",
+    "dev:bare": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview && electron ./out/main/index.js",
     "typecheck": "tsc --noEmit",

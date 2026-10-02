@@ -59,6 +59,18 @@ bun run start
 
 ## Troubleshooting
 
+### Garbage characters (`^[[?62;22c`, `^[[9;1R`, `^[[11;rgb:...`) after exiting dev
+
+On startup Electron/Chromium probes terminal capabilities (device attributes, cursor position,
+background color). The terminal answers by injecting reply bytes into stdin; they sit in the pty
+queue, and after `^C` your shell reads them as keystrokes. This affects many Electron apps, not
+just this one.
+
+`bun run dev` runs through `scripts/dev.ts`, which owns shutdown: on child exit it drains those
+leftover stdin bytes and restores the cursor before returning your prompt. If you still see them
+(e.g. after killing the process from another terminal), run `reset`. `bun run dev:bare` skips the
+wrapper if you ever need the raw `electron-vite dev` behavior.
+
 ### `bun run dev` fails with `Error: spawn ENOEXEC`
 
 This comes from `electron-vite` spawning the Electron binary at

@@ -23,7 +23,7 @@ const crcTable: Uint32Array = (() => {
 
 function crc32(buf: Uint8Array): number {
   let crc = 0xffffffff
-  for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]) & 0xff]! ^ (crc >>> 8)
+  for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]!) & 0xff]! ^ (crc >>> 8)
   return (crc ^ 0xffffffff) >>> 0
 }
 
