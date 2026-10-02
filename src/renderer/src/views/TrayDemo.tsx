@@ -19,13 +19,14 @@ export default function TrayDemo({ platform }: Props): React.JSX.Element {
       <div className="card span2">
         <h2>System tray</h2>
         <p className="muted">
-          The main process owns a <code>Tray</code> (<code>src/main/tray.ts</code>) with a context
-          menu (Show / Hide / test notification / Quit) and click-to-toggle. Icons live in{' '}
-          <code>assets/</code> — regenerate with <code>bun run assets</code>.
+          The main process owns a <code>Tray</code> (<code>src/main/tray.ts</code>). Left-clicking
+          the icon pops the context menu — it never auto-shows the window. Showing happens only
+          via the “Show window” menu item. Icons live in <code>assets/</code> (regenerate with{' '}
+          <code>bun run assets</code>).
         </p>
         <div className="row wrap">
           <button className="btn" onClick={() => void window.api.win.hide()}>
-            Hide to tray
+            Hide window
           </button>
           <button className="btn ghost" onClick={() => void window.api.win.show()}>
             Show window
@@ -43,6 +44,37 @@ export default function TrayDemo({ platform }: Props): React.JSX.Element {
             }
           >
             Flash window
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>App &amp; dock {isMac ? '' : '(macOS only)'}</h2>
+        <p className="muted">
+          <code>app.hide()</code> hides the app (⌘H behavior). <code>app.dock.hide()</code> goes
+          further — tray-only mode with no dock icon. Restore via the tray menu or below.
+        </p>
+        <div className="row wrap">
+          <button
+            className="btn"
+            disabled={!isMac}
+            onClick={() => void window.api.app.hide().then(() => say('App hidden.'))}
+          >
+            Hide app
+          </button>
+          <button
+            className="btn ghost"
+            disabled={!isMac}
+            onClick={() => void window.api.dock.hide().then(() => say('Dock icon hidden — tray only.'))}
+          >
+            Hide dock icon
+          </button>
+          <button
+            className="btn ghost"
+            disabled={!isMac}
+            onClick={() => void window.api.dock.show().then(() => say('Dock icon restored.'))}
+          >
+            Show dock icon
           </button>
         </div>
       </div>
@@ -77,9 +109,7 @@ export default function TrayDemo({ platform }: Props): React.JSX.Element {
           <button
             className="btn"
             disabled={!isMac}
-            onClick={() =>
-              window.api.dock.setBadge(badge).then(() => say(`Badge → ${badge}.`))
-            }
+            onClick={() => window.api.dock.setBadge(badge).then(() => say(`Badge → ${badge}.`))}
           >
             Set
           </button>
@@ -106,16 +136,13 @@ export default function TrayDemo({ platform }: Props): React.JSX.Element {
           >
             electronjs.org
           </button>
-          <button
-            className="btn ghost"
-            onClick={() => void window.api.shell.open('https://bun.com/')}
-          >
+          <button className="btn ghost" onClick={() => void window.api.shell.open('https://bun.com/')}>
             bun.com
           </button>
         </div>
       </div>
 
-      {note && <div className="toast glass">{note}</div>}
+      {note && <div className="toast glass"> {note}</div>}
     </section>
   )
 }

@@ -15,6 +15,22 @@ import { createAppTray, destroyTray } from './tray'
 const isMac = process.platform === 'darwin'
 let mainWindow: BrowserWindow | null = null
 
+export type VibrancyName = NonNullable<Parameters<BrowserWindow['setVibrancy']>[0]>
+
+const VIBRANCY_OPTIONS: readonly VibrancyName[] = [
+  'fullscreen-ui',
+  'under-window',
+  'sidebar',
+  'hud',
+  'content',
+  'popover',
+  'menu',
+  'titlebar'
+]
+
+const DEFAULT_VIBRANCY: VibrancyName = 'fullscreen-ui'
+let currentVibrancy: VibrancyName | null = isMac ? DEFAULT_VIBRANCY : null
+
 // Single instance: second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -29,18 +45,18 @@ function resolvePreload(): string {
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1240,
+    height: 820,
+    minWidth: 980,
+    minHeight: 640,
     show: false,
     autoHideMenuBar: true,
-    // macOS glass: vibrancy + transparent window + inset traffic lights.
-    // Everywhere else the renderer falls back to CSS-only glass (see index.css).
+    // macOS glass: native vibrancy + transparent window + inset traffic lights.
+    // The renderer MUST stay translucent (see index.css) or the blur is covered up.
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    trafficLightPosition: isMac ? { x: 14, y: 14 } : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     transparent: isMac,
-    vibrancy: isMac ? 'fullscreen-ui' : undefined,
+    vibrancy: currentVibrancy ?? undefined,
     visualEffectState: isMac ? 'active' : undefined,
     backgroundColor: isMac ? '#00000000' : '#101418',
     webPreferences: {
@@ -72,6 +88,8 @@ function createWindow(): BrowserWindow {
 }
 
 function showWindow(): void {
+  // app.hide()/dock.hide() on macOS also require re-showing the app itself.
+  if (isMac) app.show()
   if (!mainWindow) {
     createWindow()
     return
@@ -81,10 +99,34 @@ function showWindow(): void {
   mainWindow.focus()
 }
 
-function toggleWindow(): void {
-  if (!mainWindow || !mainWindow.isVisible()) showWindow()
-  else mainWindow.hide()
-}
+app.whenReady().then(() => {
+  electronApp.setAppUserModelId('com.example.bun-electron-app')
+
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
+  })
+
+  registerIpc()
+  createWindow()
+  createAppTray({
+    onShow: showWindow,
+    onHide: () => mainWindow?.hide(),
+    onQuit: () => app.quit()
+  })
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('second-instance', () => showWindow())
+
+// On macOS the app stays alive in the tray after the window closes.
+app.on('window-all-closed', () => {
+  if (!isMac) app.quit()
+})
+
+app.on('will-quit', () => destroyTray())
 
 export interface SysInfo {
   platform: NodeJS.Platform
@@ -94,6 +136,12 @@ export interface SysInfo {
   cpus: number
   totalMem: number
   freeMem: number
+}
+
+export interface GlassState {
+  platform: NodeJS.Platform
+  vibrancy: VibrancyName | null
+  transparent: boolean
 }
 
 function registerIpc(): void {
@@ -130,6 +178,37 @@ function registerIpc(): void {
   ipcMain.handle('win:minimize', () => mainWindow?.minimize())
   ipcMain.handle('win:flash', () => mainWindow?.flashFrame(true))
 
+  // Hide the whole app (macOS: Cmd+H behavior — window + dock indicator go away).
+  ipcMain.handle('app:hide', (): boolean => {
+    if (isMac) app.hide()
+    else mainWindow?.hide()
+    return true
+  })
+
+  // Tray-only mode: remove the dock icon entirely (macOS). Restore with dock:show.
+  ipcMain.handle('dock:hide', (): boolean => {
+    if (isMac) app.dock?.hide()
+    return isMac
+  })
+  ipcMain.handle('dock:show', (): boolean => {
+    if (isMac) app.dock?.show()
+    return isMac
+  })
+
+  ipcMain.handle('glass:get', (): GlassState => {
+    return { platform: process.platform, vibrancy: currentVibrancy, transparent: isMac }
+  })
+  ipcMain.handle(
+    'glass:set',
+    (_event: IpcMainInvokeEvent, name: VibrancyName | null): GlassState => {
+      const next = name === null || VIBRANCY_OPTIONS.includes(name) ? name : currentVibrancy
+      currentVibrancy = isMac ? next : null
+      mainWindow?.setVibrancy(currentVibrancy)
+      return { platform: process.platform, vibrancy: currentVibrancy, transparent: isMac }
+    }
+  )
+  ipcMain.handle('glass:options', (): readonly VibrancyName[] => VIBRANCY_OPTIONS)
+
   ipcMain.handle('shell:open', (_event: IpcMainInvokeEvent, url: string): boolean => {
     if (!url.startsWith('https://')) return false
     void shell.openExternal(url)
@@ -138,33 +217,3 @@ function registerIpc(): void {
 
   ipcMain.handle('app:quit', () => app.quit())
 }
-
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.example.bun-electron-app')
-
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  registerIpc()
-  createWindow()
-  createAppTray({
-    onShow: showWindow,
-    onHide: () => mainWindow?.hide(),
-    onToggleWindow: toggleWindow,
-    onQuit: () => app.quit()
-  })
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-app.on('second-instance', () => showWindow())
-
-// On macOS the app stays alive in the tray after the window closes.
-app.on('window-all-closed', () => {
-  if (!isMac) app.quit()
-})
-
-app.on('will-quit', () => destroyTray())

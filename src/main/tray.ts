@@ -4,7 +4,6 @@ import { join } from 'node:path'
 export interface TrayCallbacks {
   onShow(): void
   onHide(): void
-  onToggleWindow(): void
   onQuit(): void
 }
 
@@ -48,7 +47,9 @@ export function createAppTray(cb: TrayCallbacks): void {
       { label: 'Quit', click: cb.onQuit }
     ])
   )
-  tray.on('click', cb.onToggleWindow)
+  // Left-click pops the menu — it must NOT auto-show the window.
+  // Showing happens only via the "Show window" menu item.
+  tray.on('click', () => tray?.popUpContextMenu())
 }
 
 export function destroyTray(): void {

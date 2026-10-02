@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { SysInfo } from '../main/index'
+import type { GlassState, SysInfo, VibrancyName } from '../main/index'
 
 export interface Versions {
   node: () => string
@@ -20,7 +20,14 @@ const api = {
   notify: (title: string, body: string): Promise<boolean> =>
     ipcRenderer.invoke('notify:send', { title, body }),
   dock: {
-    setBadge: (count: number): Promise<boolean> => ipcRenderer.invoke('dock:set-badge', count)
+    setBadge: (count: number): Promise<boolean> => ipcRenderer.invoke('dock:set-badge', count),
+    hide: (): Promise<boolean> => ipcRenderer.invoke('dock:hide'),
+    show: (): Promise<boolean> => ipcRenderer.invoke('dock:show')
+  },
+  glass: {
+    get: (): Promise<GlassState> => ipcRenderer.invoke('glass:get'),
+    set: (name: VibrancyName | null): Promise<GlassState> => ipcRenderer.invoke('glass:set', name),
+    options: (): Promise<VibrancyName[]> => ipcRenderer.invoke('glass:options')
   },
   win: {
     hide: (): Promise<void> => ipcRenderer.invoke('win:hide'),
@@ -32,6 +39,7 @@ const api = {
     open: (url: string): Promise<boolean> => ipcRenderer.invoke('shell:open', url)
   },
   app: {
+    hide: (): Promise<boolean> => ipcRenderer.invoke('app:hide'),
     quit: (): Promise<void> => ipcRenderer.invoke('app:quit')
   }
 }

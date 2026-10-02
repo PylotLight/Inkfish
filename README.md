@@ -10,10 +10,16 @@ Bun manages deps and tooling, it does not replace Electron's Node runtime.
 ## Features
 
 - **Kitchen sink tab** — IPC ping, versions, form controls, modal dialog patterns
-- **Tray** — `src/main/tray.ts` owns a system tray with Show/Hide/test-notification/Quit menu
-  plus click-to-toggle; icons in `assets/` generated dependency-free via `bun run assets`
+- **Tray** — `src/main/tray.ts` owns a system tray with Show/Hide/test-notification/Quit menu.
+  Left-click pops the menu — it never auto-shows the window. Icons in `assets/` generated
+  dependency-free via `bun run assets`
 - **macOS glass** — `vibrancy: fullscreen-ui` + transparent window + hidden-inset traffic lights
-  on darwin, CSS `backdrop-filter` fallback everywhere else (Glass tab)
+  on darwin, CSS `backdrop-filter` fallback everywhere else (Glass tab). The renderer shell must
+  stay translucent — any opaque full-window background covers the native blur. The Glass tab also
+  lets you switch the vibrancy material live via `win.setVibrancy()`
+- **App & dock hiding** — `Hide` uses real `app.hide()` (⌘H behavior); the Tray tab adds
+  `app.dock.hide()` tray-only mode. Restoring always re-shows the app (`app.show()`) so the
+  window can't get stuck hidden
 - **Agent mode tab** — starter pattern for agentic UI: goal → visible plan → real tool calls
   through the preload bridge (`sys.info`, `notify.send`) → streaming log, with cancel and
   hide-to-tray while running
