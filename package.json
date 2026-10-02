@@ -9,7 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview && electron ./out/main/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "install-electron"
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
