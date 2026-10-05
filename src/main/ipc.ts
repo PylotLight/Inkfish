@@ -1,5 +1,5 @@
 import { app, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
@@ -22,16 +22,21 @@ import type {
   VibrancyName
 } from '../shared/types'
 import {
+  createNoteFile,
   createProject,
+  createDir,
   ensureSeedProjects,
   ensureVault,
   envManaged,
   listInbox,
   listProjects,
   loadTitles,
+  migrateTitles,
   meetingToMarkdown,
   parseVtt,
+  purgeTrash,
   readInboxItem,
+  renamePath,
   requireNotes,
   resolveAsset,
   routeToProject,
@@ -39,6 +44,7 @@ import {
   setInboxStatus,
   setTitleOverride,
   storeRoot,
+  trashPath,
   undoRoute,
   vaultConfigured,
   vaultPaths,
@@ -128,7 +134,7 @@ async function processInboxItem(id: string): Promise<{ note: NoteEntry; classify
         id: routed.noteId, path: routed.vaultRel, title: result.title, kind: item.kind,
         status: 'ready' as NoteStatus, projectId: result.projectId, inboxId: id,
         tags: result.tags, snippet: result.markdown.slice(0, 220),
-        createdAt: Date.now(), updatedAt: Date.now()
+        createdAt: Date.now(), updatedAt: Date.now(), size: result.markdown.length
       },
       classify: result
     }
@@ -378,6 +384,38 @@ export function registerIpc(): void {
     (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> =>
       setTitleOverride(id, title)
   )
+
+  // --- file management (tree CRUD; fs op then renderer reindexes) ------------------
+  ipcMain.handle('files:create', (_e: IpcMainInvokeEvent, dirRel: string): string => {
+    const paths = requireNotes()
+    const rel = createNoteFile(dirRel, paths)
+    indexFile(join(paths.root, rel), rel)
+    return rel
+  })
+  ipcMain.handle('files:mkdir', (_e: IpcMainInvokeEvent, parentRel: string, name: string): string =>
+    createDir(parentRel, name, requireNotes())
+  )
+  ipcMain.handle('files:rename', (_e: IpcMainInvokeEvent, rel: string, newName: string): string => {
+    const paths = requireNotes()
+    const next = renamePath(rel, newName, paths)
+    // Ids are paths — carry title overrides across (whole subtree for dirs).
+    migrateTitles(rel, next)
+    reindexVault(paths.root)
+    return next
+  })
+  ipcMain.handle('files:trash', (_e: IpcMainInvokeEvent, rel: string) => {
+    const paths = requireNotes()
+    const entry = trashPath(rel, paths)
+    reindexVault(paths.root)
+    return entry
+  })
+  ipcMain.handle('files:purge-trash', (): number => purgeTrash())
+  ipcMain.handle('files:reveal', (_e: IpcMainInvokeEvent, rel: string): boolean => {
+    const abs = join(requireNotes().root, rel)
+    if (!existsSync(abs)) return false
+    void shell.showItemInFolder(abs)
+    return true
+  })
 
   // --- assets (image paste / drop → assets/) ----------------------------------------
   ipcMain.handle(

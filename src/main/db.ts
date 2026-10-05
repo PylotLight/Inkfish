@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, type Dirent } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import type { NoteDoc, NoteEntry, NoteKind, NoteStatus, SearchResult } from '../shared/types'
@@ -30,6 +30,8 @@ export interface NoteRow {
   body: string
   createdAt: number
   updatedAt: number
+  /** File bytes (from fs stat at index time). */
+  size: number
   embedding: string | null
 }
 
@@ -61,7 +63,8 @@ function rowToEntry(r: NoteRow): NoteEntry {
     tags: r.tags ? JSON.parse(r.tags) : [],
     snippet: body.slice(0, 220),
     createdAt: r.createdAt,
-    updatedAt: r.updatedAt
+    updatedAt: r.updatedAt,
+    size: r.size ?? 0
   }
 }
 
@@ -86,6 +89,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
         body TEXT NOT NULL DEFAULT '',
         createdAt INTEGER NOT NULL DEFAULT 0,
         updatedAt INTEGER NOT NULL DEFAULT 0,
+        size INTEGER NOT NULL DEFAULT 0,
         embedding TEXT
       );
       CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
@@ -111,13 +115,23 @@ function createSqliteBackend(dbPath: string): Backend | null {
         dims INTEGER NOT NULL DEFAULT 0
       );
     `)
+    // Migrate older DBs that predate the `size` column.
+    try {
+      const cols = db.prepare(`PRAGMA table_info(notes)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'size')) {
+        db.exec(`ALTER TABLE notes ADD COLUMN size INTEGER NOT NULL DEFAULT 0`)
+      }
+    } catch {
+      // fresh table already has it
+    }
     const upsertStmt = db.prepare(`
-      INSERT INTO notes (id, path, title, kind, status, projectId, inboxId, tags, body, createdAt, updatedAt, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO notes (id, path, title, kind, status, projectId, inboxId, tags, body, createdAt, updatedAt, size, embedding)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         path=excluded.path, title=excluded.title, kind=excluded.kind, status=excluded.status,
         projectId=excluded.projectId, inboxId=excluded.inboxId, tags=excluded.tags,
-        body=excluded.body, updatedAt=excluded.updatedAt, embedding=excluded.embedding
+        body=excluded.body, createdAt=excluded.createdAt, updatedAt=excluded.updatedAt,
+        size=excluded.size, embedding=excluded.embedding
     `)
     const getStmt = db.prepare('SELECT * FROM notes WHERE id = ?')
     const listStmt = db.prepare('SELECT * FROM notes ORDER BY updatedAt DESC LIMIT ?')
@@ -134,7 +148,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
       upsert: (r) =>
         upsertStmt.run(
           r.id, r.path, r.title, r.kind, r.status, r.projectId, r.inboxId,
-          r.tags, r.body, r.createdAt, r.updatedAt, r.embedding
+          r.tags, r.body, r.createdAt, r.updatedAt, r.size, r.embedding
         ),
       remove: (id) => void delStmt.run(id),
       get: (id) => rows<NoteRow | undefined>(getStmt.get(id)) ?? null,
@@ -274,11 +288,23 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   const inboxId = str(fm['inbox'])
   const tags = Array.isArray(fm['tags']) ? fm['tags'].join(',') : ''
   let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN
-  if (!Number.isFinite(createdAt)) createdAt = Date.now()
+  // Real filesystem times — imports keep their true age instead of "now".
+  let size = 0
+  let mtime = Date.now()
+  try {
+    const st = statSync(absPath)
+    size = st.size
+    mtime = st.mtimeMs
+    if (!Number.isFinite(createdAt)) {
+      createdAt = st.birthtimeMs > 0 ? st.birthtimeMs : mtime
+    }
+  } catch {
+    if (!Number.isFinite(createdAt)) createdAt = Date.now()
+  }
   const row: NoteRow = {
     id, path: vaultRel, title: titleFromBody(body), kind, status,
     projectId, inboxId, tags: tags ? JSON.stringify(tags.split(',')) : '[]',
-    body, createdAt, updatedAt: Date.now(), embedding: null
+    body, createdAt, updatedAt: mtime, size, embedding: null
   }
   must().upsert(row)
   return rowToEntry(row)

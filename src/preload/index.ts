@@ -96,6 +96,17 @@ const api = {
     setStatus: (id: string, status: NoteStatus): Promise<boolean> =>
       ipcRenderer.invoke('inbox:set-status', id, status)
   },
+  files: {
+    create: (dirRel: string): Promise<string> => ipcRenderer.invoke('files:create', dirRel),
+    mkdir: (parentRel: string, name: string): Promise<string> =>
+      ipcRenderer.invoke('files:mkdir', parentRel, name),
+    rename: (rel: string, newName: string): Promise<string> =>
+      ipcRenderer.invoke('files:rename', rel, newName),
+    trash: (rel: string): Promise<{ id: string; originalRel: string; name: string }> =>
+      ipcRenderer.invoke('files:trash', rel),
+    purgeTrash: (): Promise<number> => ipcRenderer.invoke('files:purge-trash'),
+    reveal: (rel: string): Promise<boolean> => ipcRenderer.invoke('files:reveal', rel)
+  },
   notes: {
     list: (projectId?: string | null): Promise<NoteEntry[]> =>
       ipcRenderer.invoke('notes:list', projectId),

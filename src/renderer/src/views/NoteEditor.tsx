@@ -5,8 +5,8 @@ import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import type { EditMode } from '../theme'
-import { dropDupH1, fmtChars } from '../text'
-import { renderMarkdown } from '../md'
+import { dropDupH1, fmtBytes, fmtChars, timeAgo } from '../text'
+import { assetUrl, renderMarkdown } from '../md'
 
 interface Props {
   doc: NoteDoc | null
@@ -14,9 +14,12 @@ interface Props {
   title: string
   dirty: boolean
   defaultMode: EditMode
+  /** One-shot mode for freshly created notes (open straight into Edit). */
+  openMode: EditMode | null
   onDirty: (dirty: boolean) => void
   onSave: (id: string, markdown: string) => void
   onRename: (title: string) => void
+  onMore: (x: number, y: number) => void
 }
 
 const MODES: EditMode[] = ['read', 'edit', 'split']
@@ -28,7 +31,7 @@ const MODES: EditMode[] = ['read', 'edit', 'split']
  * (sidebar, lists, queue). The preview follows on a short debounce and is
  * memoized, so keystrokes stay at editor speed.
  */
-function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, dirty, defaultMode, openMode, onDirty, onSave, onRename, onMore }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -150,6 +153,12 @@ function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename 
     setMode(defaultMode)
   }, [defaultMode])
 
+  // Freshly created notes open straight into Edit.
+  useEffect(() => {
+    if (openMode && doc && openMode === 'edit') setMode('edit')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openMode, docId])
+
   // CodeMirror can't measure inside `display: none` — remeasure on reveal.
   useEffect(() => {
     if (mode === 'read') return
@@ -183,7 +192,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename 
   let html = ''
   let failed = false
   try {
-    html = renderMarkdown(previewSrc)
+    html = renderMarkdown(previewSrc, { resolveAsset: assetUrl })
   } catch (err) {
     console.error('[editor] preview failed:', err)
     failed = true
@@ -229,8 +238,13 @@ function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename 
               </button>
             </>
           )}
-          <p className="muted small">
-            {doc.path} · {fmtChars(doc.markdown.length)} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+          <p
+            className="muted small"
+            title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
+          >
+            {doc.path} · {doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
+            edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+            {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
           </p>
         </div>
         <div className="row ed-actions">
@@ -243,6 +257,17 @@ function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename 
           </div>
           <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
             Reveal
+          </button>
+          <button
+            className="btn ghost sm icon"
+            title="Note actions (reveal, rename, delete)"
+            aria-label="Note actions"
+            onClick={(e) => {
+              const r = (e.target as HTMLElement).getBoundingClientRect()
+              onMore(r.left, r.bottom + 6)
+            }}
+          >
+            ⋯
           </button>
           <button className="btn mint sm" onClick={() => onSave(doc.id, textRef.current)}>
             Save ⌘S
@@ -284,19 +309,30 @@ const Preview = memo(function Preview({ html }: { html: string }): React.JSX.Ele
   const [invisible, setInvisible] = useState(false)
 
   // Rendered-but-invisible is the worst failure (silent blank box) — measure
-  // and say so loudly instead of leaving a mystery.
+  // and say so loudly instead of leaving a mystery. Double-rAF + delayed
+  // recheck: a single rAF fires before grid layout settles (false positive).
   useEffect(() => {
     const el = ref.current
     if (!el || html.trim() === '') {
       setInvisible(false)
       return
     }
-    const t = requestAnimationFrame(() => {
-      const blank = el.scrollHeight < 24
+    let dead = false
+    const check = (): void => {
+      if (dead || !ref.current) return
+      const blank = ref.current.scrollHeight < 24
       setInvisible(blank)
       if (blank) console.warn(`[editor] preview rendered ${html.length} chars but measures 0px — CSS issue?`)
+    }
+    const r1 = requestAnimationFrame(() => {
+      void requestAnimationFrame(check)
     })
-    return () => cancelAnimationFrame(t)
+    const t = window.setTimeout(check, 350)
+    return () => {
+      dead = true
+      cancelAnimationFrame(r1)
+      window.clearTimeout(t)
+    }
   }, [html])
 
   return (

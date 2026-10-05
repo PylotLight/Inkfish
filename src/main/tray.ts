@@ -5,6 +5,7 @@ import { APP_NAME, TRAY_TOOLTIP } from '../shared/config'
 export interface TrayCallbacks {
   onShow(): void
   onCapture(): void
+  onCaptureAt(x?: number, y?: number, w?: number, h?: number): void
   onQuit(): void
 }
 
@@ -48,8 +49,13 @@ export function createAppTray(cb: TrayCallbacks): void {
       { label: 'Quit', click: cb.onQuit }
     ])
   )
-  // Left-click pops the menu — it must NOT auto-show the window.
-  tray.on('click', () => tray?.popUpContextMenu())
+  // Left-click pops the capture window (same as Opt-Space); right-click keeps
+  // the advanced menu (Show / test notification / Quit).
+  tray.on('click', () => {
+    const b = tray?.getBounds()
+    cb.onCaptureAt(b?.x, b?.y, b?.width, b?.height)
+  })
+  tray.on('right-click', () => tray?.popUpContextMenu())
 }
 
 export function destroyTray(): void {

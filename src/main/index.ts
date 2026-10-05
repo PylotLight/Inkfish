@@ -1,12 +1,18 @@
-import { app, BrowserWindow, globalShortcut } from 'electron'
+import { app, BrowserWindow, globalShortcut, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { createAppTray, destroyTray } from './tray'
 import { createWindow, showWindow } from './window'
-import { createPopover, togglePopover } from './popover'
+import { createPopover, togglePopover, togglePopoverAtTray } from './popover'
+import { registerAssetProtocol } from './assets-protocol'
 import { openDb, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
+
+// Custom protocols must be privileged before the app is ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+])
 
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
@@ -41,11 +47,13 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  registerAssetProtocol()
   createWindow()
   createPopover()
   createAppTray({
     onShow: showWindow,
     onCapture: togglePopover,
+    onCaptureAt: (x, y, w) => togglePopoverAtTray(x, y, w),
     onQuit: () => app.quit()
   })
 

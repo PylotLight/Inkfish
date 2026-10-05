@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
-import { applyPrefs, loadPrefs, type Prefs } from './theme'
+import { applyPrefs, loadPrefs, type EditMode, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
 import Capture from './views/Capture'
-import FolderTree from './views/FolderTree'
+import FolderTree, { type KindFilter, type TreeTarget } from './views/FolderTree'
 import Home from './views/Home'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
 import MeetingImport from './views/MeetingImport'
 import SettingsView from './views/Settings'
+import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -19,7 +20,6 @@ export function isCaptureWindow(): boolean {
 
 type Selection = { id: string; origin: 'inbox' | 'note' } | null
 type Scope = 'home' | 'notes' | 'inbox'
-type KindFilter = 'all' | NoteKind
 
 const KINDS: Array<{ id: KindFilter; name: string }> = [
   { id: 'all', name: 'All' },
@@ -28,6 +28,12 @@ const KINDS: Array<{ id: KindFilter; name: string }> = [
   { id: 'image', name: 'Image' },
   { id: 'meeting', name: 'Meeting' }
 ]
+
+interface MenuState {
+  x: number
+  y: number
+  target: TreeTarget | { kind: 'open-note' }
+}
 
 export default function App(): React.JSX.Element {
   if (isCaptureWindow()) {
@@ -48,24 +54,29 @@ function Main(): React.JSX.Element {
   const [scope, setScope] = useState<Scope>('home')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsReturn, setSettingsReturn] = useState<Scope>('home')
-  /** null = all folders; '' = top-level files; else dir prefix. */
-  const [folder, setFolder] = useState<string | null>(null)
   const [kind, setKind] = useState<KindFilter>('all')
+  /** Dir new files/folders land in ('' = vault root). Set by clicking a folder. */
+  const [targetDir, setTargetDir] = useState('')
+  const [revealDir, setRevealDir] = useState<string | null>(null)
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [openMode, setOpenMode] = useState<{ id: string; mode: EditMode } | null>(null)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NoteEntry[] | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [ostep, setOstep] = useState(0)
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
-  const [newProject, setNewProject] = useState('')
+  const [newFolder, setNewFolder] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [backend, setBackend] = useState('…')
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
   /** Custom display titles (app config) — filename otherwise. */
   const [titles, setTitles] = useState<Record<string, string>>({})
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
+  const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
 
   useEffect(() => {
     applyPrefs(prefs)
@@ -91,8 +102,7 @@ function Main(): React.JSX.Element {
     window.api.projects.list().then(setProjects).catch(console.error)
   }, [])
 
-  // One fetch for every note — filtering is client-side so navigating
-  // folders/search never round-trips through IPC.
+  // One fetch for every note — navigation is client-side, no IPC per click.
   const refreshNotes = useCallback(() => {
     window.api.notes.list(null).then(setAllNotes).catch(console.error)
   }, [])
@@ -120,6 +130,14 @@ function Main(): React.JSX.Element {
         refreshInbox()
         refreshProjects()
         refreshNotes()
+        window.api.notes.titles().then(setTitles).catch(console.error)
+        // 7-day trash sweep on launch (hook point for the future scheduler).
+        window.api.files
+          .purgeTrash()
+          .then((n) => {
+            if (n > 0) notify(`Trash swept — ${n} item${n === 1 ? '' : 's'} older than 7 days deleted`)
+          })
+          .catch(console.error)
         // Restore blur preference (main resets to default on launch).
         if (!loadPrefs().blur) window.api.glass.set(null).catch(() => undefined)
         if (!localStorage.getItem('inkfish.onboarded')) {
@@ -128,9 +146,9 @@ function Main(): React.JSX.Element {
         }
       })
       .catch(console.error)
-  }, [refreshInbox, refreshNotes, refreshProjects])
+  }, [refreshInbox, refreshNotes, refreshProjects, notify])
 
-  // Search-as-you-type lives in the sidebar; results replace the notes list.
+  // Search-as-you-type lives in the sidebar; results replace the tree.
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults(null)
@@ -156,7 +174,7 @@ function Main(): React.JSX.Element {
                 id: item.id, path: `inbox/${item.id}.md`, title: plain(item.raw).slice(0, 80) || item.id,
                 kind: item.kind, status: item.status, projectId: null, inboxId: item.id,
                 tags: [], snippet: item.raw.slice(0, 220), createdAt: item.createdAt,
-                updatedAt: item.createdAt, markdown: item.raw
+                updatedAt: item.createdAt, size: item.raw.length, markdown: item.raw
               }
             : null
         )
@@ -195,8 +213,9 @@ function Main(): React.JSX.Element {
   const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
 
   const selectNote = useCallback(
-    (id: string) => {
+    (id: string, mode?: EditMode) => {
       setScope('notes')
+      if (mode) setOpenMode({ id, mode })
       openEntry(id, 'note')
     },
     [openEntry]
@@ -220,31 +239,193 @@ function Main(): React.JSX.Element {
     [titles]
   )
 
-  // --- derived: filtered list ----------------------------------------------------
+  // --- file CRUD ---------------------------------------------------------------
+  const guardDirty = (): boolean => {
+    if (dirty) {
+      notify('Unsaved changes — save first')
+      return true
+    }
+    return false
+  }
+
+  const doCreateFile = useCallback(
+    (dirRel: string) => {
+      window.api.files
+        .create(dirRel)
+        .then((rel) => {
+          notify(`Created ${rel.split('/').pop()}`)
+          window.api.notes
+            .list(null)
+            .then((all) => {
+              setAllNotes(all)
+              const found = all.find((n) => n.path === rel)
+              if (found) selectNote(found.id, 'edit')
+            })
+            .catch(console.error)
+          refreshInbox()
+          refreshProjects()
+        })
+        .catch((err: unknown) => notify(`Create failed: ${err instanceof Error ? err.message : String(err)}`))
+    },
+    [notify, refreshInbox, refreshProjects, selectNote]
+  )
+
+  const doCreateFolder = useCallback(() => {
+    const name = newFolder.trim()
+    if (!name) return
+    window.api.files
+      .mkdir(targetDir, name)
+      .then((rel) => {
+        setNewFolder('')
+        setRevealDir(rel)
+        notify(`Folder ${name} ✓`)
+        refreshNotes()
+      })
+      .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
+  }, [newFolder, targetDir, notify, refreshNotes])
+
+  const doRename = useCallback(
+    (rel: string, isDir: boolean) => {
+      if (guardDirty()) return
+      const current = rel.split('/').pop() ?? rel
+      // Path of the open note before the rename (to follow it across).
+      const openPath = sel?.origin === 'note'
+        ? (doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null)
+        : null
+      setPrompt({
+        title: isDir ? 'Rename folder' : 'Rename file',
+        initial: isDir ? current : current.replace(/\.md$/, ''),
+        confirm: 'Rename',
+        onSubmit: (v) => {
+          window.api.files
+            .rename(rel, v)
+            .then((newRel) => {
+              notify(`Renamed → ${newRel.split('/').pop()}`)
+              window.api.notes
+                .list(null)
+                .then((all) => {
+                  setAllNotes(all)
+                  window.api.notes.titles().then(setTitles).catch(console.error)
+                  if (openPath && (openPath === rel || openPath.startsWith(`${rel}/`))) {
+                    const movedPath = newRel + openPath.slice(rel.length)
+                    const found = all.find((n) => n.path === movedPath)
+                    if (found) {
+                      setSel({ id: found.id, origin: 'note' })
+                      window.api.notes.get(found.id).then(setDoc).catch(console.error)
+                    } else {
+                      setSel(null)
+                      setDoc(null)
+                    }
+                  }
+                })
+                .catch(console.error)
+              refreshInbox()
+              refreshProjects()
+            })
+            .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
+        }
+      })
+    },
+    [sel, doc, allNotes, notify, refreshInbox, refreshProjects]
+  )
+
+  const doTrash = useCallback(
+    (rel: string, name: string) => {
+      if (guardDirty()) return
+      setConfirm({
+        title: `Delete ${name}?`,
+        body: 'It moves to the app Trash and is permanently deleted after 7 days. This removes it from your notes folder now.',
+        confirm: 'Move to Trash',
+        onConfirm: () => {
+          window.api.files
+            .trash(rel)
+            .then(() => {
+              notify(`Trashed ${name}`)
+              // Clear the center if the open note is gone.
+              if (sel?.origin === 'note') {
+                window.api.notes
+                  .list(null)
+                  .then((all) => {
+                    setAllNotes(all)
+                    if (!all.some((n) => n.id === sel.id)) {
+                      setSel(null)
+                      setDoc(null)
+                      setDirty(false)
+                    }
+                  })
+                  .catch(console.error)
+              } else {
+                refreshNotes()
+              }
+              refreshInbox()
+              refreshProjects()
+              window.api.notes.titles().then(setTitles).catch(console.error)
+            })
+            .catch((err: unknown) => notify(`Delete failed: ${err instanceof Error ? err.message : String(err)}`))
+        }
+      })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sel, notify, refreshNotes, refreshInbox, refreshProjects]
+  )
+
+  /** Context menu items for a tree target (or the open note). */
+  const menuItems = useCallback(
+    (target: TreeTarget | { kind: 'open-note' }): MenuItem[] => {
+      if (target.kind === 'open-note') {
+        if (!doc || sel?.origin !== 'note') return []
+        const rel = doc.path
+        const name = titleOf(doc)
+        return [
+          { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
+          { label: 'Rename…', action: () => doRename(rel, false) },
+          { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(rel, name) }
+        ]
+      }
+      if (target.kind === 'dir') {
+        const name = target.name
+        return [
+          { label: 'New file here', action: () => doCreateFile(target.rel) },
+          {
+            label: 'New subfolder…',
+            action: () =>
+              setPrompt({
+                title: `New folder in ${name}`,
+                initial: '',
+                confirm: 'Create',
+                onSubmit: (v) => {
+                  window.api.files
+                    .mkdir(target.rel, v)
+                    .then((rel) => {
+                      setRevealDir(rel)
+                      notify(`Folder ${v} ✓`)
+                      refreshNotes()
+                    })
+                    .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
+                }
+              })
+          },
+          { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
+          { label: 'Rename…', action: () => doRename(target.rel, true) },
+          { label: `Delete “${name}”…`, danger: true, action: () => doTrash(target.rel, name) }
+        ]
+      }
+      const name = target.name
+      return [
+        { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
+        { label: 'Rename…', action: () => doRename(target.rel, false) },
+        { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(target.rel, name) }
+      ]
+    },
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes]
+  )
+
+  // --- derived -------------------------------------------------------------------
   const kindCounts = useMemo(() => {
     const m = new Map<NoteKind, number>()
     for (const n of allNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
     return m
   }, [allNotes])
-
-  const filtered = useMemo(() => {
-    let base = results ?? allNotes
-    if (!results && folder !== null) {
-      base = folder === ''
-        ? base.filter((n) => !n.path.includes('/'))
-        : base.filter((n) => n.path === folder || n.path.startsWith(`${folder}/`))
-    }
-    if (kind !== 'all') base = base.filter((n) => n.kind === kind)
-    return base
-  }, [results, allNotes, folder, kind])
-
-  const listTitle = results
-    ? `Results (${results.length})`
-    : folder === null
-      ? `All notes (${filtered.length})`
-      : folder === ''
-        ? `Top level (${filtered.length})`
-        : `${folder} (${filtered.length})`
 
   const pickScope = (s: Scope): void => {
     setScope(s)
@@ -255,9 +436,9 @@ function Main(): React.JSX.Element {
     }
   }
 
-  const pickFolder = (rel: string | null): void => {
-    setFolder(rel)
-    setScope('notes')
+  const pickDir = (rel: string): void => {
+    setTargetDir(rel)
+    setRevealDir(rel)
   }
 
   const openSettings = (): void => {
@@ -265,25 +446,13 @@ function Main(): React.JSX.Element {
     setSettingsOpen(true)
   }
 
-  const createProject = (): void => {
-    const name = newProject.trim()
-    if (!name) return
-    window.api.projects
-      .create(name)
-      .then(() => {
-        setNewProject('')
-        refreshProjects()
-        notify(`Folder ${name} ✓`)
-      })
-      .catch((err: unknown) => notify(`Failed: ${String(err)}`))
-  }
-
   const pendingCount = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length
   const activeItem = scope === 'inbox' ? inbox.find((i) => i.id === sel?.id) ?? null : null
+  const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
 
   return (
     <div className="shell" data-platform={sys?.platform ?? 'unknown'}>
-      {/* Core sidebar: search, scopes, folder tree, kind filters, notes list, inbox. */}
+      {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
@@ -331,7 +500,18 @@ function Main(): React.JSX.Element {
           </div>
         ) : (
           <div className="side-scroll">
-            <FolderTree notes={allNotes} selected={folder} onSelect={pickFolder} />
+            <FolderTree
+              notes={allNotes}
+              kind={kind}
+              titleOf={titleOf}
+              selectedId={sel?.origin === 'note' ? sel.id : null}
+              selectedPath={openPath}
+              results={results}
+              revealDir={revealDir}
+              onOpenFile={selectNote}
+              onPickDir={pickDir}
+              onMenu={(target, x, y) => setMenu({ x, y, target })}
+            />
             <div className="chips kinds" aria-label="Filter by kind">
               {KINDS.map((k) => (
                 <button
@@ -350,33 +530,21 @@ function Main(): React.JSX.Element {
             </div>
             <div className="add-row mini">
               <input
-                value={newProject}
-                onChange={(e) => setNewProject(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && createProject()}
-                placeholder="New folder…"
+                value={newFolder}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && doCreateFolder()}
+                placeholder={`New folder in ${targetDir || '/'}…`}
                 aria-label="New folder name"
               />
-              <button className="btn mint sm" onClick={createProject} disabled={!newProject.trim()} aria-label="Create folder">
+              <button className="btn mint sm" onClick={doCreateFolder} disabled={!newFolder.trim()} aria-label="Create folder">
                 +
               </button>
             </div>
-            <div className="pane-head">
-              <h2>{listTitle}</h2>
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn ghost sm" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`}>
+                + New note{targetDir ? ` in ${targetDir.split('/').pop()}` : ''}
+              </button>
             </div>
-            {filtered.length === 0 && <p className="muted small pad">Nothing here yet — ⌥Space to capture.</p>}
-            <ul className="nlist">
-              {filtered.map((n) => (
-                <li key={n.id}>
-                  <button
-                    className={sel?.id === n.id && sel.origin === 'note' ? 'sel' : ''}
-                    onClick={() => selectNote(n.id)}
-                  >
-                    <span className="ntitle">{titleOf(n).slice(0, 90)}</span>
-                    <span className="muted small">{plain(n.snippet).slice(0, 110)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
@@ -454,7 +622,13 @@ function Main(): React.JSX.Element {
                   titleOf={titleOf}
                   onOpenNote={selectNote}
                   onOpenInbox={() => pickScope('inbox')}
-                  onOpenFolder={pickFolder}
+                  onOpenFolder={(rel) => {
+                    if (rel) {
+                      setTargetDir(rel)
+                      setRevealDir(rel)
+                    }
+                    setScope('notes')
+                  }}
                   onCaptureHint={() => notify('Hit ⌥Space anywhere to capture')}
                   onMeeting={() => setShowMeeting(true)}
                 />
@@ -477,11 +651,13 @@ function Main(): React.JSX.Element {
                   title={doc ? titleOf(doc) : ''}
                   dirty={dirty}
                   defaultMode={prefs.mode}
+                  openMode={openMode && doc && openMode.id === doc.id ? openMode.mode : null}
                   onDirty={setDirty}
                   onSave={saveDoc}
                   onRename={(t) => {
                     if (doc) renameNote(doc.id, t)
                   }}
+                  onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                 />
               </main>
             )}
@@ -489,6 +665,33 @@ function Main(): React.JSX.Element {
         )}
       </div>
 
+      {menu && (
+        <CtxMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.target)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {prompt && (
+        <PromptModal
+          title={prompt.title}
+          initial={prompt.initial}
+          placeholder={prompt.title}
+          confirmLabel={prompt.confirm}
+          onSubmit={prompt.onSubmit}
+          onClose={() => setPrompt(null)}
+        />
+      )}
+      {confirm && (
+        <ConfirmModal
+          title={confirm.title}
+          body={confirm.body}
+          confirmLabel={confirm.confirm}
+          onConfirm={confirm.onConfirm}
+          onClose={() => setConfirm(null)}
+        />
+      )}
       {showOnboarding && (
         <Onboarding
           step={ostep}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { baseName, displayTitle, dropDupH1, fmtChars, plain } from './text'
+import { baseName, displayTitle, dropDupH1, fmtBytes, fmtChars, plain } from './text'
 
 describe('display titles', () => {
   test('filename wins over indexed first line', () => {
@@ -26,9 +26,19 @@ describe('display titles', () => {
     expect(dropDupH1('## Cake\nyummy', 'Cake')).toBe('## Cake\nyummy')
   })
 
-  test('fmtChars + plain sanity', () => {
+  test('fmtChars + fmtBytes + plain sanity', () => {
     expect(fmtChars(42)).toBe('42 chars')
     expect(fmtChars(2048)).toBe('2.0k chars')
+    expect(fmtBytes(512)).toBe('512 B')
+    expect(fmtBytes(2048)).toBe('2.0 KB')
     expect(plain('Yes, **Monaco** [x](y)')).toBe('Yes, Monaco x')
+  })
+
+  test('assetUrl maps vault-relative images to asset:// only', async () => {
+    const { assetUrl } = await import('./md')
+    expect(assetUrl('assets/2026/10/x.png')).toBe('asset://assets/2026/10/x.png')
+    expect(assetUrl('https://a/b.png')).toBe('https://a/b.png')
+    expect(assetUrl('data:image/png;base64,xx')).toBe('data:image/png;base64,xx')
+    expect(assetUrl('a b/c.png')).toBe('asset://a%20b/c.png')
   })
 })

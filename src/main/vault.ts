@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
@@ -98,9 +98,160 @@ export function setTitleOverride(id: string, title: string): Record<string, stri
   return all
 }
 
-/** True when INKFISH_VAULT is set (dev/tests manage the location). */
+/** Move overrides for a renamed path (file or whole dir subtree). */
+export function migrateTitles(oldRel: string, newRel: string): Record<string, string> {
+  const p = titlesPath()
+  const titles = loadTitles()
+  const moved: Record<string, string> = {}
+  for (const [id, t] of Object.entries(titles)) {
+    if (id === oldRel || id.startsWith(`${oldRel}/`)) moved[newRel + id.slice(oldRel.length)] = t
+    else moved[id] = t
+  }
+  if (p) {
+    try {
+      writeFileSync(p, JSON.stringify(moved, null, 2))
+    } catch {
+      // ignore
+    }
+  }
+  return moved
+}
 export function envManaged(): boolean {
   return !!process.env['INKFISH_VAULT']?.trim()
+}
+
+// --- file management (Obsidian-style tree CRUD) ---------------------------------
+// All rels are vault-relative (`a/b.md`, `a/b`). Throws on missing/outside-root.
+
+function assertInside(root: string, abs: string, what: string): void {
+  const rel = relative(root, abs)
+  if (rel === '' || rel.startsWith('..')) throw new Error(`${what} is outside the notes home`)
+}
+
+function uniqueFile(dir: string, base: string, ext: string): string {
+  let name = `${base}${ext}`
+  let i = 1
+  while (existsSync(join(dir, name))) {
+    i++
+    name = `${base} ${i}${ext}`
+  }
+  return name
+}
+
+/** New `Untitled.md` (numbered) in dirRel ('' = vault root). Returns vaultRel. */
+export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths()): string {
+  const dir = join(paths.root, dirRel)
+  assertInside(paths.root, join(paths.root, `${dirRel}/x`), `folder ${dirRel || '/'}`)
+  mkdirSync(dir, { recursive: true })
+  const name = uniqueFile(dir, 'Untitled', '.md')
+  const abs = join(dir, name)
+  writeFileSync(abs, '', 'utf8')
+  return relative(paths.root, abs)
+}
+
+/** New subfolder. Returns vaultRel. */
+export function createDir(parentRel: string, name: string, paths: VaultPaths = vaultPaths()): string {
+  const clean = name.trim().replace(/[/\\]+/g, '-').slice(0, 80)
+  if (!clean) throw new Error('folder name is empty')
+  const abs = join(paths.root, parentRel, clean)
+  assertInside(paths.root, abs, `folder ${clean}`)
+  mkdirSync(abs, { recursive: true })
+  return relative(paths.root, abs)
+}
+
+/** Rename a file (keeps ext unless newName has one) or dir. Returns new vaultRel. */
+export function renamePath(rel: string, newName: string, paths: VaultPaths = vaultPaths()): string {
+  const clean = newName.trim().replace(/[/\\]+/g, '-').slice(0, 120)
+  if (!clean) throw new Error('name is empty')
+  const abs = join(paths.root, rel)
+  assertInside(paths.root, abs, rel)
+  const st = statSync(abs)
+  const target = st.isDirectory()
+    ? clean
+    : extname(clean) ? clean : `${clean}.md`
+  const dest = join(dirname(abs), target)
+  assertInside(paths.root, dest, target)
+  if (existsSync(dest)) throw new Error(`${target} already exists`)
+  renameSync(abs, dest)
+  return relative(paths.root, dest)
+}
+
+// --- app trash (7-day sweep; hook for the future scheduler) -----------------------
+export interface TrashEntry {
+  id: string
+  originalRel: string
+  name: string
+  isDir: boolean
+  deletedAt: number
+}
+
+const TRASH_RETENTION_MS = 7 * 24 * 3600 * 1000
+
+function trashDir(): string | null {
+  const data = appDataDir()
+  if (!data) return null
+  return join(data, 'trash')
+}
+
+function trashManifest(dir: string): TrashEntry[] {
+  try {
+    const f = join(dir, 'manifest.json')
+    if (!existsSync(f)) return []
+    const data = JSON.parse(readFileSync(f, 'utf8')) as unknown
+    return Array.isArray(data) ? (data as TrashEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writeManifest(dir: string, entries: TrashEntry[]): void {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(entries, null, 2))
+}
+
+/** Move a file/dir to app trash (recoverable until the sweep). Returns entry. */
+export function trashPath(rel: string, paths: VaultPaths = vaultPaths()): TrashEntry {
+  const dir = trashDir()
+  if (!dir) throw new Error('app data dir unavailable')
+  const abs = join(paths.root, rel)
+  assertInside(paths.root, abs, rel)
+  const st = statSync(abs)
+  mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const dest = join(dir, `${stamp}-${basename(abs)}`)
+  try {
+    renameSync(abs, dest)
+  } catch {
+    // Cross-volume: copy + remove.
+    cpSync(abs, dest, { recursive: true })
+    rmSync(abs, { recursive: true, force: true })
+  }
+  const entry: TrashEntry = {
+    id: basename(dest),
+    originalRel: rel,
+    name: basename(abs),
+    isDir: st.isDirectory(),
+    deletedAt: Date.now()
+  }
+  writeManifest(dir, [...trashManifest(dir), entry])
+  return entry
+}
+
+/** Permanently delete trash entries older than 7d. Returns purged count. */
+export function purgeTrash(): number {
+  const dir = trashDir()
+  if (!dir || !existsSync(dir)) return 0
+  const cutoff = Date.now() - TRASH_RETENTION_MS
+  const keep: TrashEntry[] = []
+  let purged = 0
+  for (const e of trashManifest(dir)) {
+    if (e.deletedAt < cutoff) {
+      rmSync(join(dir, e.id), { recursive: true, force: true })
+      purged++
+    } else keep.push(e)
+  }
+  writeManifest(dir, keep)
+  return purged
 }
 
 export function resolveVaultRoot(): string {

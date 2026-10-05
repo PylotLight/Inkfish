@@ -108,6 +108,8 @@ export interface NoteEntry {
   snippet: string
   createdAt: number
   updatedAt: number
+  /** File bytes (fs stat at index time). */
+  size: number
 }
 
 export interface NoteDoc extends NoteEntry {

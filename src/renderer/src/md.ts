@@ -5,9 +5,12 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-function inline(s: string): string {
+function inline(s: string, resolveAsset?: (src: string) => string): string {
   let out = esc(s)
-  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
+  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt: string, src: string) => {
+    const safe = resolveAsset ? resolveAsset(src) : src
+    return `<img alt="${alt}" src="${safe}" />`
+  })
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
   out = out.replace(/(`[^`]+`)/g, (m) => `<code>${m.slice(1, -1)}</code>`)
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -16,7 +19,20 @@ function inline(s: string): string {
   return out
 }
 
-export function renderMarkdown(md: string): string {
+export interface RenderOptions {
+  /** Map a vault-relative image src (e.g. `assets/2026/10/x.png`) to a loadable URL. */
+  resolveAsset?: (src: string) => string
+}
+
+/** Vault-relative image refs can't load raw — map them to `asset://` URLs. */
+export function assetUrl(src: string): string {
+  const s = src.trim()
+  if (/^(https?:|data:|blob:|file:|asset:)/i.test(s) || s.startsWith('#')) return src
+  const rel = s.replace(/^\.\//, '').replace(/^[/\\]+/, '')
+  return `asset://${rel.split('/').map(encodeURIComponent).join('/')}`
+}
+
+export function renderMarkdown(md: string, opts?: RenderOptions): string {
   const lines = md.split('\n')
   const html: string[] = []
   let inCode = false
@@ -33,7 +49,7 @@ export function renderMarkdown(md: string): string {
   }
   const closeQuote = (): void => {
     if (quoteBuf) {
-      html.push(`<blockquote>${quoteBuf.map(inline).join('<br />')}</blockquote>`)
+      html.push(`<blockquote>${quoteBuf.map((q) => inline(q, opts?.resolveAsset)).join('<br />')}</blockquote>`)
       quoteBuf = null
     }
   }
@@ -62,7 +78,7 @@ export function renderMarkdown(md: string): string {
       closeList()
       closeQuote()
       const level = h[1]?.length ?? 1
-      html.push(`<h${level}>${inline(h[2] ?? '')}</h${level}>`)
+      html.push(`<h${level}>${inline(h[2] ?? '', opts?.resolveAsset)}</h${level}>`)
       continue
     }
     const q = /^>\s?(.*)$/.exec(line)
@@ -80,7 +96,7 @@ export function renderMarkdown(md: string): string {
         listOpen = true
       }
       const checked = task[1]?.toLowerCase() === 'x' ? ' checked' : ''
-      html.push(`<li class="task"><input type="checkbox" disabled${checked} /> ${inline(task[2] ?? '')}</li>`)
+      html.push(`<li class="task"><input type="checkbox" disabled${checked} /> ${inline(task[2] ?? '', opts?.resolveAsset)}</li>`)
       continue
     }
     const li = /^\s*[-*]\s+(.*)$/.exec(line)
@@ -89,19 +105,19 @@ export function renderMarkdown(md: string): string {
         html.push('<ul>')
         listOpen = true
       }
-      html.push(`<li>${inline(li[1] ?? '')}</li>`)
+      html.push(`<li>${inline(li[1] ?? '', opts?.resolveAsset)}</li>`)
       continue
     }
     const ol = /^\s*\d+\.\s+(.*)$/.exec(line)
     if (ol) {
       closeList()
-      html.push(`<ol><li>${inline(ol[1] ?? '')}</li></ol>`)
+      html.push(`<ol><li>${inline(ol[1] ?? '', opts?.resolveAsset)}</li></ol>`)
       continue
     }
     closeList()
     if (/^\s*$/.test(line)) continue
     if (/^\|.*\|\s*$/.test(line) && /---/.test(line)) continue
-    html.push(`<p>${inline(line)}</p>`)
+    html.push(`<p>${inline(line, opts?.resolveAsset)}</p>`)
   }
   closeList()
   closeQuote()

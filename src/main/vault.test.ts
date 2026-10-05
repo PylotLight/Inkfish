@@ -225,3 +225,74 @@ describe('vault home', () => {
     }
   })
 })
+
+describe('file ops', () => {
+  test('create/rename/trash round-trip with unique names', async () => {
+    const v = await vault()
+    const { writeFileSync, existsSync, mkdirSync } = await import('node:fs')
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-fs-'))
+    try {
+      v.setConfigDir(cfg)
+      const a = v.createNoteFile('')
+      const b = v.createNoteFile('')
+      expect(a).not.toBe(b)
+      expect(a.endsWith('Untitled.md')).toBe(true)
+      expect(existsSync(join(dir, a))).toBe(true)
+
+      const renamed = v.renamePath(a, 'Hello World')
+      expect(renamed).toBe('Hello World.md')
+      expect(existsSync(join(dir, renamed))).toBe(true)
+
+      mkdirSync(join(dir, 'sub', 'deep'), { recursive: true })
+      writeFileSync(join(dir, 'sub', 'deep', 'x.md'), '# X\n')
+      const mv = v.renamePath('sub', 'sub2')
+      expect(mv).toBe('sub2')
+      expect(existsSync(join(dir, 'sub2', 'deep', 'x.md'))).toBe(true)
+
+      const entry = v.trashPath('sub2')
+      expect(entry.isDir).toBe(true)
+      expect(existsSync(join(dir, 'sub2'))).toBe(false)
+      expect(v.purgeTrash()).toBe(0)
+
+      // Backdate the manifest → sweep purges it.
+      const { readFileSync } = await import('node:fs')
+      const man = join(cfg, 'trash', 'manifest.json')
+      const entries = JSON.parse(readFileSync(man, 'utf8')) as Array<Record<string, unknown>>
+      entries[0]!['deletedAt'] = 0
+      writeFileSync(man, JSON.stringify(entries))
+      expect(v.purgeTrash()).toBe(1)
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('migrateTitles follows file and dir renames', async () => {
+    const v = await vault()
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-mig-'))
+    try {
+      v.setConfigDir(cfg)
+      v.setTitleOverride('sub/old.md', 'Old')
+      v.setTitleOverride('other.md', 'Other')
+      const moved = v.migrateTitles('sub', 'sub2')
+      expect(moved['sub2/old.md']).toBe('Old')
+      expect(moved['other.md']).toBe('Other')
+      expect('sub/old.md' in moved).toBe(false)
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('metadata: size + mtime indexed from fs', async () => {
+    const v = await vault()
+    const db = await import('./db')
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync(join(dir, 'sized.md'), '# Sized\n' + 'x'.repeat(3000))
+    const before = Date.now()
+    const n = db.reindexVault(dir)
+    expect(n).toBeGreaterThan(0)
+    const found = db.listNotes(null).find((e) => e.path === 'sized.md')
+    expect(found?.size).toBeGreaterThan(3000)
+    expect(found?.updatedAt).toBeLessThanOrEqual(before + 1000)
+    expect(found?.createdAt).toBeLessThanOrEqual(found?.updatedAt ?? 0)
+  })
+})

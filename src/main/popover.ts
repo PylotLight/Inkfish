@@ -73,6 +73,32 @@ export function getPopover(): BrowserWindow | null {
   return popover
 }
 
+/** Toggle near the tray icon (left-click): just under the menu bar. */
+export function togglePopoverAtTray(x?: number, y?: number, w?: number): void {
+  const win = popover ?? createPopover()
+  if (win.isVisible()) {
+    win.hide()
+    return
+  }
+  if (x !== undefined && y !== undefined) {
+    try {
+      const display = screen.getDisplayNearestPoint({ x, y })
+      const { width } = win.getBounds()
+      const px = Math.round(
+        Math.min(
+          Math.max(x + (w ?? 0) / 2 - width / 2, display.bounds.x),
+          display.bounds.x + display.bounds.width - width
+        )
+      )
+      win.setPosition(px, Math.round(y + 8))
+    } catch {
+      // fall through to default position
+    }
+  }
+  win.show()
+  win.focus()
+}
+
 /** Toggle near the cursor (Opt-Space): show centered on the active display. */
 export function togglePopover(): void {
   const win = popover ?? createPopover()
