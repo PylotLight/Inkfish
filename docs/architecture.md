@@ -27,7 +27,7 @@ renderer (React, browser) ──invoke───────┘
 - `src/preload/index.ts` — typed `window.api`. Nothing here but forwarding.
 - `src/shared/config.ts` — runtime values safe to import anywhere (app name, id, geometry).
 - `src/shared/types.ts` — type-only contracts (domain + IPC payloads).
-- `src/renderer/` — React shell: `App.tsx` (3-pane main window, `#capture`
+- `src/renderer/` — React shell: `App.tsx` (sidebar + note stage, `#capture`
   hash → popover capture) and views in `views/` (`Capture`, `InboxQueue`,
   `NoteEditor`, `Onboarding`, `MeetingImport`).
 

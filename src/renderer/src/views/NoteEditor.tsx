@@ -4,14 +4,18 @@ import { EditorView, keymap } from '@codemirror/view'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
+import type { EditMode } from '../theme'
 import { renderMarkdown } from '../md'
 
 interface Props {
   doc: NoteDoc | null
   dirty: boolean
+  defaultMode: EditMode
   onDirty: (dirty: boolean) => void
   onSave: (id: string, markdown: string) => void
 }
+
+const MODES: EditMode[] = ['read', 'edit', 'split']
 
 /**
  * Center editor: CodeMirror 6 GFM source + rendered preview, image paste → assets/.
@@ -20,11 +24,12 @@ interface Props {
  * (sidebar, lists, queue). The preview follows on a short debounce and is
  * memoized, so keystrokes stay at editor speed.
  */
-function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
+function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
   const [preview, setPreview] = useState('')
+  const [mode, setMode] = useState<EditMode>(defaultMode)
   const textRef = useRef(text)
   textRef.current = text
   const saveRef = useRef({ doc, onSave })
@@ -61,7 +66,7 @@ function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
           }),
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
-            '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '13.5px' },
+            '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 'var(--ed-fs, 13.5px)' },
             '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
           })
         ]
@@ -110,6 +115,18 @@ function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId])
 
+  // Follow the settings default when it changes there.
+  useEffect(() => {
+    setMode(defaultMode)
+  }, [defaultMode])
+
+  // CodeMirror can't measure inside `display: none` — remeasure on reveal.
+  useEffect(() => {
+    if (mode === 'read') return
+    const t = requestAnimationFrame(() => viewRef.current?.requestMeasure())
+    return () => cancelAnimationFrame(t)
+  }, [mode, docId])
+
   // Debounced preview — the expensive renderMarkdown stays off the keystroke path.
   useEffect(() => {
     const t = window.setTimeout(() => setPreview(text), 180)
@@ -119,7 +136,10 @@ function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
   if (!doc) {
     return (
       <div className="editor-empty">
-        <p className="muted">Select a note — everything lives in your notes folder as plain files.</p>
+        <div>
+          <p className="empty-icon" aria-hidden>✒</p>
+          <p className="muted">Nothing open — pick a note on the left,<br />or hit ⌥Space to capture one.</p>
+        </div>
       </div>
     )
   }
@@ -133,7 +153,14 @@ function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
             {doc.path} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
           </p>
         </div>
-        <div className="row">
+        <div className="row ed-actions">
+          <div className="seg sm" role="group" aria-label="View mode">
+            {MODES.map((m) => (
+              <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+                {m === 'read' ? 'Read' : m === 'edit' ? 'Edit' : 'Split'}
+              </button>
+            ))}
+          </div>
           <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
             Reveal
           </button>
@@ -142,9 +169,14 @@ function NoteEditor({ doc, dirty, onDirty, onSave }: Props): React.JSX.Element {
           </button>
         </div>
       </div>
-      <div className="ed-cols">
-        <div className="ed-src" ref={mountRef} aria-label="Markdown source" />
-        <Preview html={renderMarkdown(preview)} />
+      <div className={`ed-cols ${mode}`}>
+        <div
+          className="ed-src"
+          ref={mountRef}
+          aria-label="Markdown source"
+          hidden={mode === 'read'}
+        />
+        {(mode === 'read' || mode === 'split') && <Preview html={renderMarkdown(mode === 'read' ? text : preview)} />}
       </div>
     </div>
   )

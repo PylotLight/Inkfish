@@ -35,7 +35,7 @@ P0 (MVP, local only, free):
 - [x] Voice: record in popover → local wav → STT sidecar → inbox text (see §4)
 - [x] Meeting: manual transcript paste + import .wav/.mp3 (STT) / .vtt, Teams export .vtt accepted (live mic+system capture via ScreenCaptureKit = later)
 - [x] SQLite index: FTS5 + metadata, plain .md stays source of truth (node:sqlite + memory fallback)
-- [x] Glass UI: vibrancy popover + main 3-pane (sidebar / editor / inbox queue)
+- [x] Glass UI: vibrancy popover + sidebar / note-stage layout (core sidebar, center editor)
 
 P1:
 - [ ] Auto-router v1: Apple Intelligence (where available) → rules fallback
@@ -53,7 +53,7 @@ Later:
   (see `docs/vibrancy-and-tray.md`). Keep: no opaque full-window backgrounds.
 - Capture popover 380×~500: autofocus input, `Cmd-Enter` save, combined
   composer (type + image drop + dictate), project picker, subtle save animation.
-- Main: sidebar (Projects + Inbox count), center editor, right rail inbox queue
+- Main: core sidebar (search, folder chips, notes list, inbox tab) + center note stage with Read/Edit/Split; settings (⚙) hold themes, accents, vault moves
   with status pills. Dark-first, Liquid Glass materials.
 - Onboarding: 3 steps — vault location, Mic/ScreenRecording permission test,
   shortcut confirm. Empty state: "drop a .md folder here".
