@@ -208,4 +208,20 @@ describe('vault home', () => {
       rmSync(notes, { recursive: true, force: true })
     }
   })
+
+  test('title overrides round-trip in app data (empty clears)', async () => {
+    const v = await vault()
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-titles-'))
+    try {
+      v.setConfigDir(cfg)
+      expect(v.loadTitles()).toEqual({})
+      v.setTitleOverride('a/b.md', '  Custom Title  ')
+      expect(v.loadTitles()).toEqual({ 'a/b.md': 'Custom Title' })
+      // Empty clears back to filename.
+      v.setTitleOverride('a/b.md', '   ')
+      expect(v.loadTitles()).toEqual({})
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
 })

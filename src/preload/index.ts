@@ -104,7 +104,10 @@ const api = {
     related: (id: string): Promise<NoteEntry[]> => ipcRenderer.invoke('notes:related', id),
     save: (id: string, markdown: string): Promise<NoteDoc | null> =>
       ipcRenderer.invoke('notes:save', id, markdown),
-    reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id)
+    reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id),
+    titles: (): Promise<Record<string, string>> => ipcRenderer.invoke('notes:titles'),
+    setTitle: (id: string, title: string): Promise<Record<string, string>> =>
+      ipcRenderer.invoke('notes:set-title', id, title)
   },
   assets: {
     save: (fileName: string, dataUrl: string): Promise<string> =>

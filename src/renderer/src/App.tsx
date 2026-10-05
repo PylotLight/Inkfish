@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
 import { applyPrefs, loadPrefs, type Prefs } from './theme'
-import { plain } from './text'
+import { displayTitle, plain } from './text'
 import Capture from './views/Capture'
 import FolderTree from './views/FolderTree'
 import Home from './views/Home'
@@ -64,6 +64,8 @@ function Main(): React.JSX.Element {
   const [toast, setToast] = useState<string | null>(null)
   const [backend, setBackend] = useState('…')
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
+  /** Custom display titles (app config) — filename otherwise. */
+  const [titles, setTitles] = useState<Record<string, string>>({})
 
   useEffect(() => {
     applyPrefs(prefs)
@@ -99,6 +101,7 @@ function Main(): React.JSX.Element {
     refreshInbox()
     refreshNotes()
     refreshProjects()
+    window.api.notes.titles().then(setTitles).catch(console.error)
   }, [refreshInbox, refreshNotes, refreshProjects])
 
   useEffect(() => {
@@ -197,6 +200,24 @@ function Main(): React.JSX.Element {
       openEntry(id, 'note')
     },
     [openEntry]
+  )
+
+  const renameNote = useCallback(
+    (id: string, title: string) => {
+      window.api.notes
+        .setTitle(id, title)
+        .then((all) => {
+          setTitles(all)
+          notify(title.trim() ? 'Title saved ✓' : 'Title reset to filename')
+        })
+        .catch((err: unknown) => notify(`Rename failed: ${String(err)}`))
+    },
+    [notify]
+  )
+
+  const titleOf = useCallback(
+    (e: { id: string; path: string; title: string }) => displayTitle(e, titles),
+    [titles]
   )
 
   // --- derived: filtered list ----------------------------------------------------
@@ -350,7 +371,7 @@ function Main(): React.JSX.Element {
                     className={sel?.id === n.id && sel.origin === 'note' ? 'sel' : ''}
                     onClick={() => selectNote(n.id)}
                   >
-                    <span className="ntitle">{plain(n.title).slice(0, 90) || 'Untitled'}</span>
+                    <span className="ntitle">{titleOf(n).slice(0, 90)}</span>
                     <span className="muted small">{plain(n.snippet).slice(0, 110)}</span>
                   </button>
                 </li>
@@ -430,6 +451,7 @@ function Main(): React.JSX.Element {
                 <Home
                   notes={allNotes}
                   inbox={inbox}
+                  titleOf={titleOf}
                   onOpenNote={selectNote}
                   onOpenInbox={() => pickScope('inbox')}
                   onOpenFolder={pickFolder}
@@ -452,10 +474,14 @@ function Main(): React.JSX.Element {
                 )}
                 <NoteEditor
                   doc={doc}
+                  title={doc ? titleOf(doc) : ''}
                   dirty={dirty}
                   defaultMode={prefs.mode}
                   onDirty={setDirty}
                   onSave={saveDoc}
+                  onRename={(t) => {
+                    if (doc) renameNote(doc.id, t)
+                  }}
                 />
               </main>
             )}

@@ -64,6 +64,40 @@ export function storeRoot(root: string): void {
   writeFileSync(p, JSON.stringify({ vaultRoot: root }, null, 2))
 }
 
+/** Custom display titles (id → title), kept in app data — never in the notes. */
+export function titlesPath(): string | null {
+  if (!configDir) return null
+  return join(configDir, 'titles.json')
+}
+
+export function loadTitles(): Record<string, string> {
+  try {
+    const p = titlesPath()
+    if (!p || !existsSync(p)) return {}
+    const data = JSON.parse(readFileSync(p, 'utf8')) as unknown
+    if (typeof data !== 'object' || data === null) return {}
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 200)
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+export function setTitleOverride(id: string, title: string): Record<string, string> {
+  const p = titlesPath()
+  const all = loadTitles()
+  if (title.trim()) all[id] = title.trim().slice(0, 200)
+  else delete all[id]
+  if (p) {
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(p, JSON.stringify(all, null, 2))
+  }
+  return all
+}
+
 /** True when INKFISH_VAULT is set (dev/tests manage the location). */
 export function envManaged(): boolean {
   return !!process.env['INKFISH_VAULT']?.trim()

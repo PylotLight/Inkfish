@@ -5,15 +5,18 @@ import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import type { EditMode } from '../theme'
-import { plain } from '../text'
+import { dropDupH1, fmtChars } from '../text'
 import { renderMarkdown } from '../md'
 
 interface Props {
   doc: NoteDoc | null
+  /** Obsidian-style display title (filename or override). */
+  title: string
   dirty: boolean
   defaultMode: EditMode
   onDirty: (dirty: boolean) => void
   onSave: (id: string, markdown: string) => void
+  onRename: (title: string) => void
 }
 
 const MODES: EditMode[] = ['read', 'edit', 'split']
@@ -25,12 +28,15 @@ const MODES: EditMode[] = ['read', 'edit', 'split']
  * (sidebar, lists, queue). The preview follows on a short debounce and is
  * memoized, so keystrokes stay at editor speed.
  */
-function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, dirty, defaultMode, onDirty, onSave, onRename }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
   const [preview, setPreview] = useState('')
   const [mode, setMode] = useState<EditMode>(defaultMode)
+  const [cmFailed, setCmFailed] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
   const textRef = useRef(text)
   textRef.current = text
   /** True once the user has typed — guards the doc.markdown fallback below. */
@@ -40,12 +46,15 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
   const dirtyRef = useRef(onDirty)
   dirtyRef.current = onDirty
 
-  // Create once.
+  // Created when the source pane mounts (edit/split). Re-created with the
+  // current text if the pane remounts (mode switch). Textarea fallback above.
   useEffect(() => {
-    if (!mountRef.current || viewRef.current) return
-    const view = new EditorView({
+    if (cmFailed || !mountRef.current || viewRef.current) return
+    let view: EditorView | null = null
+    try {
+      view = new EditorView({
       state: EditorState.create({
-        doc: '',
+        doc: textRef.current,
         extensions: [
           markdown(),
           history(),
@@ -76,7 +85,12 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
         ]
       }),
       parent: mountRef.current
-    })
+      })
+    } catch (err) {
+      console.error('[editor] CodeMirror mount failed, using textarea fallback:', err)
+      setCmFailed(true)
+      return
+    }
     viewRef.current = view
 
     const onPaste = async (e: ClipboardEvent): Promise<void> => {
@@ -102,16 +116,27 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
       viewRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mode, cmFailed])
 
-  // Swap document content when selection changes.
+  // Swap document content when selection changes. Verifies the insert took
+  // (logs sizes so a blank editor is diagnosable, not silent). Works for the
+  // textarea fallback too (no CodeMirror view there).
   const docId = doc?.id ?? null
   useEffect(() => {
-    const v = viewRef.current
-    if (!v || !doc) return
+    if (!doc) return
     const next = doc.markdown
     if (textRef.current !== next) {
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
+      const v = viewRef.current
+      if (v) {
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
+        if (v.state.doc.toString() !== next) {
+          v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
+        }
+        const have = v.state.doc.length
+        if (have !== next.length) {
+          console.error(`[editor] content mismatch for ${doc.id}: want ${next.length} chars, have ${have}`)
+        }
+      }
       setText(next)
       setPreview(next)
       editedRef.current = false
@@ -151,24 +176,61 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
 
   // First paint can beat the editor sync — fall back to the saved markdown
   // until the user types. Never render a silent blank box: surface the error.
+  // A leading H1 duplicating the filename title is dropped (double header).
   const src = text || (!editedRef.current ? doc.markdown : '')
+  const deduped = dropDupH1(src, title)
+  const previewSrc = mode === 'read' ? deduped : dropDupH1(preview || (!editedRef.current ? doc.markdown : ''), title)
   let html = ''
   let failed = false
   try {
-    html = renderMarkdown(mode === 'read' ? src : preview)
+    html = renderMarkdown(previewSrc)
   } catch (err) {
     console.error('[editor] preview failed:', err)
     failed = true
   }
   const showFallback = (failed || (src.trim() !== '' && html.trim() === '')) && mode !== 'edit'
 
+  const commitRename = (): void => {
+    setRenaming(false)
+    onRename(nameDraft.trim())
+  }
+
   return (
     <div className="editor">
       <div className="ed-head">
-        <div>
-          <h2>{plain(doc.title).slice(0, 120) || 'Untitled'}</h2>
+        <div className="ed-title">
+          {renaming ? (
+            <input
+              className="rename-input"
+              value={nameDraft}
+              autoFocus
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename()
+                if (e.key === 'Escape') setRenaming(false)
+              }}
+              onBlur={commitRename}
+              aria-label="Note title (empty restores filename)"
+              placeholder="Custom title — empty restores filename"
+            />
+          ) : (
+            <>
+              <h2>{title || 'Untitled'}</h2>
+              <button
+                className="btn ghost sm icon"
+                title="Rename (stored in app config, file untouched)"
+                aria-label="Rename note"
+                onClick={() => {
+                  setNameDraft(title)
+                  setRenaming(true)
+                }}
+              >
+                ✎
+              </button>
+            </>
+          )}
           <p className="muted small">
-            {doc.path} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+            {doc.path} · {fmtChars(doc.markdown.length)} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
           </p>
         </div>
         <div className="row ed-actions">
@@ -188,12 +250,21 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
         </div>
       </div>
       <div className={`ed-cols ${mode}`}>
-        <div
-          className="ed-src"
-          ref={mountRef}
-          aria-label="Markdown source"
-          hidden={mode === 'read'}
-        />
+        {(mode === 'edit' || mode === 'split') &&
+          (cmFailed ? (
+            <textarea
+              className="ed-fallback"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value)
+                editedRef.current = true
+                dirtyRef.current(true)
+              }}
+              aria-label="Markdown source (fallback editor)"
+            />
+          ) : (
+            <div className="ed-src" ref={mountRef} aria-label="Markdown source" />
+          ))}
         {(mode === 'read' || mode === 'split') &&
           (showFallback ? (
             <div className="ed-preview md">
@@ -209,12 +280,30 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
 
 /** Memoized so parent (dirty flag) re-renders don't redo the preview DOM. */
 const Preview = memo(function Preview({ html }: { html: string }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+  const [invisible, setInvisible] = useState(false)
+
+  // Rendered-but-invisible is the worst failure (silent blank box) — measure
+  // and say so loudly instead of leaving a mystery.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || html.trim() === '') {
+      setInvisible(false)
+      return
+    }
+    const t = requestAnimationFrame(() => {
+      const blank = el.scrollHeight < 24
+      setInvisible(blank)
+      if (blank) console.warn(`[editor] preview rendered ${html.length} chars but measures 0px — CSS issue?`)
+    })
+    return () => cancelAnimationFrame(t)
+  }, [html])
+
   return (
-    <div
-      className="ed-preview md"
-      aria-label="Rendered preview"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div className="ed-preview md" aria-label="Rendered preview">
+      <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+      {invisible && <p className="preview-warn">Rendered content is invisible — open devtools console and report this.</p>}
+    </div>
   )
 })
 

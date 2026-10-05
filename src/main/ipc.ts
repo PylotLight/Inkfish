@@ -28,6 +28,7 @@ import {
   envManaged,
   listInbox,
   listProjects,
+  loadTitles,
   meetingToMarkdown,
   parseVtt,
   readInboxItem,
@@ -36,6 +37,7 @@ import {
   routeToProject,
   saveAsset,
   setInboxStatus,
+  setTitleOverride,
   storeRoot,
   undoRoute,
   vaultConfigured,
@@ -369,6 +371,13 @@ export function registerIpc(): void {
     void shell.showItemInFolder(join(paths.root, doc.path))
     return true
   })
+  // --- custom display titles (app-data `titles.json`, never in the notes) -------
+  ipcMain.handle('notes:titles', (): Record<string, string> => loadTitles())
+  ipcMain.handle(
+    'notes:set-title',
+    (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> =>
+      setTitleOverride(id, title)
+  )
 
   // --- assets (image paste / drop → assets/) ----------------------------------------
   ipcMain.handle(

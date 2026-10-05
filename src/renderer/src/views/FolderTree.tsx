@@ -10,9 +10,9 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
-const EXPAND_KEY = 'inkfish.tree.v1'
+const EXPAND_KEY = 'inkfish.tree.collapsed.v1'
 
-function loadExpanded(): Set<string> {
+function loadCollapsed(): Set<string> {
   try {
     const raw = localStorage.getItem(EXPAND_KEY)
     if (!raw) return new Set()
@@ -75,23 +75,41 @@ interface Props {
   onSelect: (rel: string | null) => void
 }
 
-/** Collapsible directory tree — navigation mirrors the actual vault folders. */
+/** Collapsible directory tree — every level (incl. top) collapses. */
 function FolderTree({ notes, selected, onSelect }: Props): React.JSX.Element {
-  const [expanded, setExpanded] = useState<Set<string>>(loadExpanded)
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const { roots, rootFiles } = useMemo(() => buildTree(notes), [notes])
 
+  const persist = (next: Set<string>): void => {
+    try {
+      localStorage.setItem(EXPAND_KEY, JSON.stringify([...next]))
+    } catch {
+      // ignore
+    }
+  }
+
   const toggle = (rel: string): void => {
-    setExpanded((prev) => {
+    setCollapsed((prev) => {
       const next = new Set(prev)
       if (next.has(rel)) next.delete(rel)
       else next.add(rel)
-      try {
-        localStorage.setItem(EXPAND_KEY, JSON.stringify([...next]))
-      } catch {
-        // ignore
-      }
+      persist(next)
       return next
     })
+  }
+
+  const choose = (rel: string | null): void => {
+    // Selecting a folder reveals its children.
+    if (rel && rel !== '') {
+      setCollapsed((prev) => {
+        if (!prev.has(rel)) return prev
+        const next = new Set(prev)
+        next.delete(rel)
+        persist(next)
+        return next
+      })
+    }
+    onSelect(rel)
   }
 
   const total = notes.length
@@ -100,7 +118,7 @@ function FolderTree({ notes, selected, onSelect }: Props): React.JSX.Element {
     <div className="ftree" aria-label="Folders">
       <button
         className={`frow all${selected === null ? ' on' : ''}`}
-        onClick={() => onSelect(null)}
+        onClick={() => choose(null)}
       >
         <span className="ficon" aria-hidden>✦</span>
         <span className="fname">All notes</span>
@@ -112,15 +130,15 @@ function FolderTree({ notes, selected, onSelect }: Props): React.JSX.Element {
           node={n}
           depth={0}
           selected={selected}
-          expanded={expanded}
+          collapsed={collapsed}
           onToggle={toggle}
-          onSelect={onSelect}
+          onSelect={choose}
         />
       ))}
       {rootFiles > 0 && (
         <button
           className={`frow${selected === '' ? ' on' : ''}`}
-          onClick={() => onSelect('')}
+          onClick={() => choose('')}
         >
           <span className="ficon" aria-hidden>○</span>
           <span className="fname">Top level</span>
@@ -132,16 +150,16 @@ function FolderTree({ notes, selected, onSelect }: Props): React.JSX.Element {
 }
 
 function Node({
-  node, depth, selected, expanded, onToggle, onSelect
+  node, depth, selected, collapsed, onToggle, onSelect
 }: {
   node: TreeNode
   depth: number
   selected: string | null
-  expanded: Set<string>
+  collapsed: Set<string>
   onToggle: (rel: string) => void
   onSelect: (rel: string | null) => void
 }): React.JSX.Element {
-  const open = expanded.has(node.rel) || depth === 0
+  const open = !collapsed.has(node.rel)
   const hasKids = node.children.length > 0
   return (
     <div className="fnode">
@@ -168,7 +186,7 @@ function Node({
               node={c}
               depth={depth + 1}
               selected={selected}
-              expanded={expanded}
+              collapsed={collapsed}
               onToggle={onToggle}
               onSelect={onSelect}
             />

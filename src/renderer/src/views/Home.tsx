@@ -5,6 +5,7 @@ import { plain } from '../text'
 interface Props {
   notes: NoteEntry[]
   inbox: InboxItem[]
+  titleOf: (n: NoteEntry) => string
   onOpenNote: (id: string) => void
   onOpenInbox: () => void
   onOpenFolder: (rel: string | null) => void
@@ -26,7 +27,7 @@ function timeAgo(ts: number): string {
 
 /** Launch default: stats, latest notes, inbox attention, top folders. */
 export default function Home({
-  notes, inbox, onOpenNote, onOpenInbox, onOpenFolder, onCaptureHint, onMeeting
+  notes, inbox, titleOf, onOpenNote, onOpenInbox, onOpenFolder, onCaptureHint, onMeeting
 }: Props): React.JSX.Element {
   const latest = useMemo(
     () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 7),
@@ -83,7 +84,7 @@ export default function Home({
             {latest.map((n) => (
               <li key={n.id}>
                 <button onClick={() => onOpenNote(n.id)}>
-                  <span className="ntitle">{plain(n.title).slice(0, 90) || 'Untitled'}</span>
+                  <span className="ntitle">{titleOf(n).slice(0, 90)}</span>
                   <span className="muted small">{n.path} · {timeAgo(n.updatedAt)}</span>
                 </button>
               </li>
