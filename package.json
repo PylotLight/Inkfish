@@ -1,10 +1,24 @@
 {
-  "name": "bun-electron-app",
+  "name": "inkfish",
   "version": "0.1.0",
-  "description": "Bun + Electron + React + Vite + TypeScript starter template",
-  "private": true,
+  "description": "Inkfish — menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
+  "license": "MIT",
+  "author": "PylotLight <lochois@gmail.com>",
   "type": "module",
   "main": "./out/main/index.js",
+  "bin": {
+    "inkfish": "./bin/inkfish.mjs"
+  },
+  "files": [
+    "out/**/*",
+    "bin/**/*",
+    "build/icon.png",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "dev:bare": "electron-vite dev",
@@ -14,7 +28,59 @@
     "clean": "rm -rf out",
     "typecheck": "tsc --noEmit",
     "assets": "bun scripts/make-tray-icon.ts",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:ci": "electron-builder --publish never",
+    "release": "bun scripts/release.ts",
     "postinstall": "install-electron"
+  },
+  "build": {
+    "appId": "com.pylotlight.inkfish",
+    "productName": "Inkfish",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "out/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
@@ -23,7 +89,10 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "codemirror": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
     "electron": "^44.5.1",
+    "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "typescript": "~5.9.2",
     "vite": "^8.3.2"

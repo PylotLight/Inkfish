@@ -4,7 +4,7 @@ import { APP_NAME, TRAY_TOOLTIP } from '../shared/config'
 
 export interface TrayCallbacks {
   onShow(): void
-  onHide(): void
+  onCapture(): void
   onQuit(): void
 }
 
@@ -33,8 +33,8 @@ export function createAppTray(cb: TrayCallbacks): void {
   tray.setToolTip(TRAY_TOOLTIP)
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Show window', click: cb.onShow },
-      { label: 'Hide to tray', click: cb.onHide },
+      { label: 'New note  (⌥Space)', click: cb.onCapture },
+      { label: 'Show Inkfish', click: cb.onShow },
       { type: 'separator' },
       {
         label: 'Send test notification',
@@ -49,7 +49,6 @@ export function createAppTray(cb: TrayCallbacks): void {
     ])
   )
   // Left-click pops the menu — it must NOT auto-show the window.
-  // Showing happens only via the "Show window" menu item.
   tray.on('click', () => tray?.popUpContextMenu())
 }
 

@@ -1,5 +1,21 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { GlassState, SysInfo, VibrancyName } from '../shared/types'
+import type {
+  ClassifyResult,
+  GlassState,
+  InboxAddInput,
+  InboxItem,
+  MeetingImportInput,
+  NoteDoc,
+  NoteEntry,
+  NoteKind,
+  NoteStatus,
+  Project,
+  SearchResult,
+  SttResult,
+  SysInfo,
+  VaultInfo,
+  VibrancyName
+} from '../shared/types'
 
 export interface Versions {
   node: () => string
@@ -46,6 +62,70 @@ const api = {
   app: {
     hide: (): Promise<boolean> => ipcRenderer.invoke('app:hide'),
     quit: (): Promise<void> => ipcRenderer.invoke('app:quit')
+  },
+  popover: {
+    hide: (): Promise<void> => ipcRenderer.invoke('popover:hide')
+  },
+  // --- inkfish ---
+  vault: {
+    info: (): Promise<VaultInfo> => ipcRenderer.invoke('vault:info'),
+    reveal: (): Promise<boolean> => ipcRenderer.invoke('vault:reveal'),
+    reindex: (): Promise<{ indexed: number; backend: string }> =>
+      ipcRenderer.invoke('vault:reindex'),
+    backend: (): Promise<string> => ipcRenderer.invoke('vault:backend')
+  },
+  projects: {
+    list: (): Promise<Project[]> => ipcRenderer.invoke('projects:list'),
+    create: (name: string): Promise<Project> => ipcRenderer.invoke('projects:create', name)
+  },
+  inbox: {
+    add: (input: InboxAddInput): Promise<InboxItem> => ipcRenderer.invoke('inbox:add', input),
+    list: (): Promise<InboxItem[]> => ipcRenderer.invoke('inbox:list'),
+    count: (): Promise<number> => ipcRenderer.invoke('inbox:count'),
+    process: (id: string): Promise<{ note: NoteEntry } | { error: string }> =>
+      ipcRenderer.invoke('inbox:process', id),
+    reassign: (id: string, projectName: string): Promise<{ note: string; path: string } | { error: string }> =>
+      ipcRenderer.invoke('inbox:reassign', id, projectName),
+    undo: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:undo', id),
+    setStatus: (id: string, status: NoteStatus): Promise<boolean> =>
+      ipcRenderer.invoke('inbox:set-status', id, status)
+  },
+  notes: {
+    list: (projectId?: string | null): Promise<NoteEntry[]> =>
+      ipcRenderer.invoke('notes:list', projectId),
+    get: (id: string): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:get', id),
+    search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('notes:search', query),
+    related: (id: string): Promise<NoteEntry[]> => ipcRenderer.invoke('notes:related', id),
+    save: (id: string, markdown: string): Promise<NoteDoc | null> =>
+      ipcRenderer.invoke('notes:save', id, markdown),
+    reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id)
+  },
+  assets: {
+    save: (fileName: string, dataUrl: string): Promise<string> =>
+      ipcRenderer.invoke('assets:save', fileName, dataUrl),
+    path: (vaultRel: string): Promise<string> => ipcRenderer.invoke('assets:path', vaultRel)
+  },
+  ai: {
+    providers: (): Promise<Array<{ id: string; available: boolean; detail: string }>> =>
+      ipcRenderer.invoke('ai:providers'),
+    classify: (raw: string, kind: NoteKind): Promise<ClassifyResult> =>
+      ipcRenderer.invoke('ai:classify', raw, kind),
+    summarize: (text: string): Promise<{ text: string; provider: string }> =>
+      ipcRenderer.invoke('ai:summarize', text),
+    speak: (text: string): Promise<boolean> => ipcRenderer.invoke('ai:speak', text),
+    stopSpeak: (): Promise<boolean> => ipcRenderer.invoke('ai:stop-speak')
+  },
+  stt: {
+    transcribe: (wavPath: string): Promise<SttResult> =>
+      ipcRenderer.invoke('stt:transcribe', wavPath),
+    pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>
+      ipcRenderer.invoke('stt:pick-audio')
+  },
+  meeting: {
+    import: (input: MeetingImportInput): Promise<InboxItem> =>
+      ipcRenderer.invoke('meeting:import', input),
+    pickFile: (): Promise<{ text: string; format: 'vtt' | 'text' } | { error: string }> =>
+      ipcRenderer.invoke('meeting:pick-file')
   }
 }
 

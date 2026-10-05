@@ -1,11 +1,43 @@
-# Electron Starter (Bun)
+# Inkfish
 
-Bun + Electron + React + Vite + TypeScript — a foundational desktop-app template with tray,
-native macOS glass, and an agent-mode example. **This repo is a GitHub template:** start a
-new app with **Use this template**, then follow `docs/getting-started.md`.
+Menu-bar quick capture with AI auto-sort. Squirt ink fast — AI sorts it later.
+Bun + Electron + React + Vite + TypeScript.
 
-Bun is the only CLI: package manager, script runner, runtime for tooling. (Electron's
-main/preload processes still run on its embedded Node; Bun manages deps and tooling.)
+> Status: P0 MVP (local only, free) — tray popover → `inbox/` → auto-routed
+> `projects/<name>/` notes. See [docs/inkfish-mvp.md](docs/inkfish-mvp.md).
+
+## Install
+
+**Homebrew (macOS):**
+
+```bash
+brew tap pylotlight/inkfish https://github.com/PylotLight/Inkfish.git
+brew install --cask inkfish
+```
+
+Or download binaries (macOS dmg/zip, Apple Silicon + Intel) from
+[Releases](https://github.com/PylotLight/Inkfish/releases). Builds are unsigned
+for now — macOS Gatekeeper (stricter on macOS 26/Tahoe) may report
+““Inkfish” is damaged and can’t be opened”. That means unsigned + quarantined,
+not a bad build. Click Cancel (don't trash it), then clear the quarantine flag:
+
+```bash
+xattr -cr /Applications/Inkfish.app
+```
+
+and open again (right-click → Open on first launch).
+
+**npm / Bun (convenience):**
+
+```bash
+bunx inkfish
+npx inkfish
+```
+
+This downloads the npm package and launches the built app. On first run the
+launcher fetches a pinned Electron via your own runner (`bunx`/`npx`, ~100 MB,
+cached afterwards) — no separate install step. For the signed install prefer
+Homebrew or a GitHub release asset above.
 
 ## Quickstart
 
@@ -17,22 +49,19 @@ bun run build      # → out/{main,preload,renderer}/
 bun run start      # launch the built app
 ```
 
-## Included
-
-- **Kitchen sink tab** — IPC ping, versions, form controls, dialog patterns
-- **Tray** — menu on click (never auto-shows), Show/Hide/test-notification/Quit,
-  dependency-free generated icons
-- **macOS glass** — native `fullscreen-ui` vibrancy + transparent window, CSS fallback
-  elsewhere, live material switcher
-- **App & dock hiding** — real `app.hide()` and `app.dock.hide()` tray-only mode
-- **Agent mode tab** — goal → visible plan → real bridge tools → streaming log
-- **Starter bones** — single-instance lock, typed `contextBridge` bridge, shared
-  config/types across processes, dev wrapper that cleans terminal state on exit,
-  MIT license, CI
+Press **Opt-Space** anywhere to pop the capture window, type, `Cmd-Enter` to
+squirt it into the inbox. The background worker formats + routes it to
+`projects/<name>/`. Your vault lives at `~/Inkfish/` (`inbox/`,
+`projects/<name>/`, `assets/`); plain `.md` files stay the source of truth.
 
 ## Docs
 
-- `docs/getting-started.md` — setup, scripts, make-it-yours checklist
+- `docs/inkfish-mvp.md` — the MVP spec: flow, P0/P1, glass UI, AI, DB, build order
+- `docs/getting-started.md` — setup, scripts, checklist
 - `docs/architecture.md` — processes, bridge rules, how to add views/IPC/tray items
 - `docs/vibrancy-and-tray.md` — translucency rules, tray behavior, hiding semantics
+- `docs/releasing.md` — cutting a release (`bun run release`), Homebrew tap, signing
 - `docs/troubleshooting.md` — terminal garbage, `spawn ENOEXEC`, opaque window, stale preload
+
+Cutting a release: `bun run release` — see
+[docs/releasing.md](docs/releasing.md).

@@ -1,7 +1,55 @@
-import { app, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
-import type { GlassState, SysInfo, VibrancyName } from '../shared/types'
+import { hidePopover } from './popover'
+import type {
+  ClassifyResult,
+  GlassState,
+  InboxAddInput,
+  InboxItem,
+  MeetingImportInput,
+  NoteDoc,
+  NoteEntry,
+  NoteKind,
+  NoteStatus,
+  Project,
+  SearchResult,
+  SttResult,
+  SysInfo,
+  VaultInfo,
+  VibrancyName
+} from '../shared/types'
+import {
+  createProject,
+  ensureSeedProjects,
+  ensureVault,
+  listInbox,
+  listProjects,
+  meetingToMarkdown,
+  parseVtt,
+  readInboxItem,
+  resolveAsset,
+  routeToProject,
+  saveAsset,
+  setInboxStatus,
+  undoRoute,
+  vaultPaths,
+  writeInboxItem
+} from './vault'
+import {
+  countInbox,
+  dbKind,
+  getNote,
+  indexFile,
+  listNotes,
+  reindexVault,
+  relatedNotes,
+  removeNote,
+  searchNotes
+} from './db'
+import { classify, providerStatus, speak, stopSpeak, summarize, transcribe } from './ai'
 
 const isMac = process.platform === 'darwin'
 
@@ -21,6 +69,51 @@ function notify(title: string, body: string): boolean {
   if (!Notification.isSupported()) return false
   new Notification({ title, body }).show()
   return true
+}
+
+function info(): VaultInfo {
+  const p = vaultPaths()
+  return { root: p.root, inboxDir: p.inboxDir, projectsDir: p.projectsDir, assetsDir: p.assetsDir, dbPath: p.dbPath }
+}
+
+/** Background worker: classify + route one inbox item, never deleting raw. */
+async function processInboxItem(id: string): Promise<{ note: NoteEntry; classify: ClassifyResult } | { error: string }> {
+  const paths = vaultPaths()
+  const item = readInboxItem(id, paths)
+  if (!item) return { error: `inbox item ${id} not found` }
+  setInboxStatus(id, 'processing', paths)
+  indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
+  try {
+    const projects = listProjects(paths)
+    const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: item.projectHint })
+    const projectName = result.projectName || 'general'
+    const routed = routeToProject(
+      {
+        inboxId: id,
+        projectName,
+        title: result.title,
+        tags: result.tags,
+        markdown: result.markdown,
+        kind: item.kind
+      },
+      paths
+    )
+    setInboxStatus(id, 'ready', paths)
+    indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
+    const entry = indexFile(routed.path, routed.vaultRel)
+    return {
+      note: entry ?? {
+        id: routed.noteId, path: routed.vaultRel, title: result.title, kind: item.kind,
+        status: 'ready' as NoteStatus, projectId: result.projectId, inboxId: id,
+        tags: result.tags, snippet: result.markdown.slice(0, 220),
+        createdAt: Date.now(), updatedAt: Date.now()
+      },
+      classify: result
+    }
+  } catch (err) {
+    setInboxStatus(id, 'inbox', paths)
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 /**
@@ -94,4 +187,213 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('app:quit', () => app.quit())
+  ipcMain.handle('popover:hide', () => hidePopover())
+
+  // --- vault ------------------------------------------------------------------
+  ipcMain.handle('vault:info', (): VaultInfo => info())
+  ipcMain.handle('vault:reveal', (): boolean => {
+    const paths = ensureVault()
+    void shell.openPath(paths.root)
+    return true
+  })
+  ipcMain.handle('vault:reindex', (): { indexed: number; backend: string } => {
+    const paths = ensureVault()
+    return { indexed: reindexVault(paths.root), backend: dbKind() }
+  })
+  ipcMain.handle('vault:backend', (): string => dbKind())
+
+  // --- projects ----------------------------------------------------------------
+  ipcMain.handle('projects:list', (): Project[] => listProjects(ensureVault()))
+  ipcMain.handle('projects:ensure-seeds', (): Project[] => ensureSeedProjects(ensureVault()))
+  ipcMain.handle('projects:create', (_e: IpcMainInvokeEvent, name: string): Project =>
+    createProject(name, ensureVault())
+  )
+
+  // --- inbox --------------------------------------------------------------------
+  ipcMain.handle('inbox:add', (_e: IpcMainInvokeEvent, input: InboxAddInput): InboxItem => {
+    const paths = ensureVault()
+    const { item, path } = writeInboxItem(
+      {
+        kind: input.kind,
+        raw: input.raw,
+        projectHint: input.projectHint ?? 'auto',
+        source: input.source ?? 'tray',
+        assets: input.assets ?? []
+      },
+      paths
+    )
+    indexFile(path, `inbox/${item.id}.md`)
+    // Non-blocking auto-route: inbox shows `processing` → `ready`.
+    void processInboxItem(item.id).catch((err) => console.error('[inbox] auto-route failed:', err))
+    return item
+  })
+
+  ipcMain.handle('inbox:list', (): InboxItem[] => listInbox(ensureVault()))
+  ipcMain.handle('inbox:count', (): number => countInbox())
+
+  ipcMain.handle(
+    'inbox:process',
+    (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
+      processInboxItem(id)
+  )
+
+  ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
+    undoRoute(id, ensureVault())
+    const item = readInboxItem(id, ensureVault())
+    if (!item) return { error: `inbox item ${id} not found` }
+    // Force the router to this project by passing an explicit hint.
+    setInboxStatus(id, 'inbox', ensureVault())
+    const paths = ensureVault()
+    const projects = listProjects(paths)
+    const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: projectName })
+    const routed = routeToProject(
+      { inboxId: id, projectName: result.projectName, title: result.title, tags: result.tags, markdown: result.markdown, kind: item.kind },
+      paths
+    )
+    setInboxStatus(id, 'ready', paths)
+    indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
+    indexFile(routed.path, routed.vaultRel)
+    return { note: routed.noteId, path: routed.vaultRel }
+  })
+
+  ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => {
+    const paths = ensureVault()
+    const ok = undoRoute(id, paths)
+    // Drop undone notes from the index (files are `.undone`, re-scan is cheap).
+    void reindexVault(paths.root)
+    return ok
+  })
+
+  ipcMain.handle('inbox:set-status', (_e: IpcMainInvokeEvent, id: string, status: NoteStatus): boolean =>
+    setInboxStatus(id, status, ensureVault())
+  )
+
+  // --- notes ---------------------------------------------------------------------
+  ipcMain.handle('notes:list', (_e: IpcMainInvokeEvent, projectId?: string | null): NoteEntry[] =>
+    listNotes(projectId)
+  )
+  ipcMain.handle('notes:get', (_e: IpcMainInvokeEvent, id: string): NoteDoc | null =>
+    getNote(id, ensureVault().root)
+  )
+  ipcMain.handle('notes:search', (_e: IpcMainInvokeEvent, query: string): SearchResult[] =>
+    searchNotes(query)
+  )
+  ipcMain.handle('notes:related', (_e: IpcMainInvokeEvent, id: string): NoteEntry[] =>
+    relatedNotes(id)
+  )
+  ipcMain.handle(
+    'notes:save',
+    (_e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null => {
+      const paths = ensureVault()
+      const doc = getNote(id, paths.root)
+      if (!doc) return null
+      const abs = join(paths.root, doc.path)
+      if (!existsSync(abs)) return null
+      writeFileSync(abs, markdown, 'utf8')
+      removeNote(id)
+      indexFile(abs, doc.path)
+      return getNote(id, paths.root)
+    }
+  )
+  ipcMain.handle('notes:reveal', (_e: IpcMainInvokeEvent, id: string): boolean => {
+    const paths = ensureVault()
+    const doc = getNote(id, paths.root)
+    if (!doc) return false
+    void shell.showItemInFolder(join(paths.root, doc.path))
+    return true
+  })
+
+  // --- assets (image paste / drop → assets/) ----------------------------------------
+  ipcMain.handle(
+    'assets:save',
+    (_e: IpcMainInvokeEvent, fileName: string, dataUrl: string): string => {
+      const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
+      if (!m) throw new Error('assets:save needs a data: URL')
+      const buf = Buffer.from(m[2] ?? '', 'base64')
+      return saveAsset(fileName, buf, ensureVault())
+    }
+  )
+  ipcMain.handle('assets:path', (_e: IpcMainInvokeEvent, vaultRel: string): string =>
+    resolveAsset(vaultRel, ensureVault())
+  )
+
+  // --- AI --------------------------------------------------------------------------
+  ipcMain.handle('ai:providers', () => providerStatus())
+  ipcMain.handle(
+    'ai:classify',
+    (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind): Promise<ClassifyResult> =>
+      classify({ raw, kind, projects: listProjects(ensureVault()) })
+  )
+  ipcMain.handle(
+    'ai:summarize',
+    (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> => summarize(text)
+  )
+  ipcMain.handle('ai:speak', (_e: IpcMainInvokeEvent, text: string): Promise<boolean> => speak(text))
+  ipcMain.handle('ai:stop-speak', (): boolean => {
+    stopSpeak()
+    return true
+  })
+
+  // --- voice / STT -------------------------------------------------------------------
+  ipcMain.handle('stt:transcribe', (_e: IpcMainInvokeEvent, wavPath: string): Promise<SttResult> =>
+    transcribe(wavPath)
+  )
+  ipcMain.handle(
+    'stt:pick-audio',
+    async (): Promise<{ path: string; transcript: SttResult } | { error: string }> => {
+      const win = getMainWindow()
+      const opts = {
+        title: 'Import audio for transcription',
+        properties: ['openFile'] as Array<'openFile'>,
+        filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }]
+      }
+      const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
+      const wav = picked.filePaths[0] as string
+      try {
+        return { path: wav, transcript: await transcribe(wav) }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
+  // --- meeting import (manual recording + Teams .vtt) ----------------------------------
+  ipcMain.handle(
+    'meeting:import',
+    (_e: IpcMainInvokeEvent, input: MeetingImportInput): InboxItem => {
+      const paths = ensureVault()
+      const cues = input.format === 'vtt' ? parseVtt(input.text) : null
+      const raw =
+        input.format === 'vtt' && cues
+          ? meetingToMarkdown(cues, input.title ?? 'Meeting notes')
+          : input.text.trim()
+      const { item, path } = writeInboxItem(
+        { kind: 'meeting', raw, projectHint: 'auto', source: input.source ?? 'meeting' },
+        paths
+      )
+      indexFile(path, `inbox/${item.id}.md`)
+      void processInboxItem(item.id).catch((err) => console.error('[meeting] route failed:', err))
+      return item
+    }
+  )
+  ipcMain.handle(
+    'meeting:pick-file',
+    async (): Promise<{ text: string; format: 'vtt' | 'text' } | { error: string }> => {
+      const win = getMainWindow()
+      const opts = {
+        title: 'Import meeting transcript',
+        properties: ['openFile'] as Array<'openFile'>,
+        filters: [
+          { name: 'Transcripts', extensions: ['vtt', 'txt', 'md'] },
+          { name: 'All files', extensions: ['*'] }
+        ]
+      }
+      const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
+      const file = picked.filePaths[0] as string
+      const text = readFileSync(file, 'utf8')
+      return { text, format: file.toLowerCase().endsWith('.vtt') ? 'vtt' : 'text' }
+    }
+  )
 }

@@ -1,7 +1,7 @@
 # Getting started
 
-Template repo: create your app with **Use this template** on GitHub (or clone and
-re-point the remote). Everything below uses Bun only.
+Inkfish repo: menu-bar quick capture with AI inbox-to-project flow.
+Everything below uses Bun only.
 
 ## Run it
 
@@ -9,6 +9,10 @@ re-point the remote). Everything below uses Bun only.
 bun install   # also guarantees the Electron binary via postinstall
 bun run dev   # dev server + app (wrapped: cleans terminal state on exit)
 ```
+
+Press **Opt-Space** anywhere for the capture popover, type, `Cmd-Enter` to
+squirt into the inbox. First launch shows 3-step onboarding (vault location,
+mic test, shortcut confirm).
 
 ## Verify it
 
@@ -18,18 +22,10 @@ bun run build     # → out/{main,preload,renderer}/
 bun run start     # launch the built app
 ```
 
-## Make it yours
+## Vault
 
-When starting a real app from this template, touch these and nothing else:
-
-| # | File | Change |
-|---|------|--------|
-| 1 | `package.json` | `name`, `version`, `description` |
-| 2 | `src/shared/config.ts` | `APP_NAME`, `APP_TAGLINE`, `APP_ID`, window size |
-| 3 | `src/renderer/index.html` | `<title>` |
-| 4 | `assets/` | Replace tray icons, or regenerate: `bun run assets` (`trayTemplate.png` for macOS, `tray.png` elsewhere) |
-| 5 | `LICENSE` | Copyright holder |
-| 6 | `.github/workflows/ci.yml` | Keep as-is (install → typecheck → build) |
+Defaults to `~/Inkfish/` (`inbox/`, `projects/<name>/`, `assets/`,
+`inkfish.db`). Override for testing: `INKFISH_VAULT=/tmp/vault bun run dev`.
 
 ## Scripts
 
@@ -43,4 +39,12 @@ When starting a real app from this template, touch these and nothing else:
 | `clean` | Remove `out/` |
 | `typecheck` | `tsc --noEmit` over `src/`, `scripts/`, and config |
 | `assets` | Regenerate tray PNGs, zero dependencies |
+| `dist` / `dist:mac` / `dist:linux` / `dist:ci` | Package via electron-builder → `release/` |
+| `release` | `bun scripts/release.ts` — cut a release, tag it (see `docs/releasing.md`) |
 | `postinstall` | Runs automatically: downloads the Electron binary Bun skips |
+
+## Install paths (for users, not devs)
+
+- Homebrew: `brew tap pylotlight/inkfish https://github.com/PylotLight/Inkfish.git && brew install --cask inkfish`
+- npm/Bun: `bunx inkfish` / `npx inkfish`
+- Cutting a release: `bun run release` — see `docs/releasing.md`.

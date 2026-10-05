@@ -1,0 +1,142 @@
+name: release
+
+# Triggered by pushing a version tag (v*), e.g. `bun run release --push`.
+# Builds the artifacts, publishes a GitHub release with generated notes,
+# then updates the Homebrew cask in this repo (it doubles as the tap).
+# See docs/releasing.md.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS only for now. To bring Linux back, re-add a matrix entry:
+          #   - name: linux
+          #     os: ubuntu-latest
+          #     target: --linux
+          # (plus a libfuse apt step for AppImage — see git history).
+          - name: macos
+            os: macos-14
+            target: --mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      # Unsigned on macOS unless CSC_* secrets are configured — see
+      # docs/releasing.md ("Code signing"). Brew casks work either way.
+      - name: package
+        run: bun run dist:ci -- ${{ matrix.target }}
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.name }}
+          path: |
+            release/*.zip
+            release/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git-cliff needs full history and tags
+
+      - name: install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: generate release notes
+        run: git-cliff --latest --strip all --output RELEASE_NOTES.md
+
+      - name: download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+
+  # This repo doubles as the Homebrew tap (brew taps any repo with a Casks/
+  # dir via `brew tap pylotlight/inkfish <url>`). The job updates
+  # Casks/inkfish.rb on main with the built-in GITHUB_TOKEN — no extra
+  # secrets. Token pushes don't re-trigger workflows, so no loop.
+  homebrew:
+    name: homebrew cask
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: download macos artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-macos
+          path: dist
+
+      - name: resolve version and checksums
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "version=$version"
+            echo "sha256_arm=$(shasum -a 256 "dist/Inkfish-${version}-mac-arm64.zip" | cut -d ' ' -f 1)"
+            echo "sha256_intel=$(shasum -a 256 "dist/Inkfish-${version}-mac-x64.zip" | cut -d ' ' -f 1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: render cask
+        run: |
+          bun scripts/render-cask.ts \
+            --version "${{ steps.meta.outputs.version }}" \
+            --sha256-arm "${{ steps.meta.outputs.sha256_arm }}" \
+            --sha256-intel "${{ steps.meta.outputs.sha256_intel }}" \
+            --out Casks/inkfish.rb
+
+      - name: commit and push cask update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/inkfish.rb
+          if git diff --cached --quiet; then
+            echo "cask already up to date"
+          else
+            git commit -m "chore(tap): inkfish ${{ steps.meta.outputs.version }}"
+            git push
+          fi
