@@ -1,7 +1,39 @@
+/**
+ * Inkfish prefs — mirrors the Blobfish settings shape (single validated JSON
+ * blob, preset + custom accents, density, motion) plus Inkfish-only reading /
+ * editor / vault-ui prefs. Applied to <html> dataset + inline accent vars.
+ */
+
 export type ThemeId = 'deep' | 'abyss' | 'forest' | 'plum' | 'paper'
-export type AccentId = 'mint' | 'sky' | 'violet' | 'amber' | 'coral'
+export type AccentId = 'mint' | 'sky' | 'violet' | 'amber' | 'coral' | 'custom'
+export type DensityId = 'comfortable' | 'compact'
+export type MotionId = 'full' | 'reduced'
 export type FontId = 'compact' | 'default' | 'large'
 export type EditMode = 'read' | 'edit' | 'split'
+
+export interface Prefs {
+  theme: ThemeId
+  accent: AccentId
+  /** Custom accent hex (`#rrggbb`) used when `accent === 'custom'`. */
+  customAccent: string
+  density: DensityId
+  motion: MotionId
+  font: FontId
+  mode: EditMode
+  /** macOS vibrancy blur. */
+  blur: boolean
+}
+
+export const DEFAULT_PREFS: Prefs = {
+  theme: 'deep',
+  accent: 'mint',
+  customAccent: '#7ee2a8',
+  density: 'comfortable',
+  motion: 'full',
+  font: 'default',
+  mode: 'read',
+  blur: true
+}
 
 export interface ThemeDef {
   id: ThemeId
@@ -11,90 +43,132 @@ export interface ThemeDef {
 }
 
 export const THEMES: ThemeDef[] = [
-  { id: 'deep', name: 'Deep', blurb: 'Default dark slate', swatch: '#1c222b' },
-  { id: 'abyss', name: 'Abyss', blurb: 'Near-black blue', swatch: '#06090f' },
-  { id: 'forest', name: 'Forest', blurb: 'Dark green tint', swatch: '#0e1a14' },
-  { id: 'plum', name: 'Plum', blurb: 'Dark purple tint', swatch: '#171222' },
-  { id: 'paper', name: 'Paper', blurb: 'Light reading theme', swatch: '#f2efe8' }
+  { id: 'deep', name: 'Deep', blurb: 'Default dark slate.', swatch: '#1c222b' },
+  { id: 'abyss', name: 'Abyss', blurb: 'Deeper black, low-glare.', swatch: '#06090f' },
+  { id: 'forest', name: 'Forest', blurb: 'Dark green tint.', swatch: '#0e1a14' },
+  { id: 'plum', name: 'Plum', blurb: 'Dark purple tint.', swatch: '#171222' },
+  { id: 'paper', name: 'Paper', blurb: 'Light reading theme.', swatch: '#f2efe8' }
 ]
 
 export interface AccentDef {
-  id: AccentId
+  id: Exclude<AccentId, 'custom'>
   name: string
+  desc: string
   hex: string
   ink: string
 }
 
 export const ACCENTS: AccentDef[] = [
-  { id: 'mint', name: 'Mint', hex: '#7ee2a8', ink: '#0d2317' },
-  { id: 'sky', name: 'Sky', hex: '#6ea8fe', ink: '#0b1526' },
-  { id: 'violet', name: 'Violet', hex: '#b79bff', ink: '#1c1033' },
-  { id: 'amber', name: 'Amber', hex: '#f2c069', ink: '#2a1c07' },
-  { id: 'coral', name: 'Coral', hex: '#f28b8b', ink: '#2b0e0e' }
+  { id: 'mint', name: 'Mint', desc: 'Default green.', hex: '#7ee2a8', ink: '#0d2317' },
+  { id: 'sky', name: 'Sky', desc: 'Cool blue.', hex: '#6ea8fe', ink: '#0b1526' },
+  { id: 'violet', name: 'Violet', desc: 'Soft purple.', hex: '#b79bff', ink: '#1c1033' },
+  { id: 'amber', name: 'Amber', desc: 'Warm gold.', hex: '#f2c069', ink: '#2a1c07' },
+  { id: 'coral', name: 'Coral', desc: 'Warm red-orange.', hex: '#f28b8b', ink: '#2b0e0e' }
 ]
 
-const K = {
-  theme: 'inkfish.theme',
-  accent: 'inkfish.accent',
-  font: 'inkfish.font',
-  mode: 'inkfish.editmode',
-  motion: 'inkfish.motion',
-  blur: 'inkfish.blur'
-} as const
+const KEY = 'inkfish.prefs.v1'
 
-function read<T extends string>(key: string, fallback: T): T {
+function isTheme(v: unknown): v is ThemeId {
+  return typeof v === 'string' && (THEMES as ThemeDef[]).some((t) => t.id === v)
+}
+
+function isAccent(v: unknown): v is AccentId {
+  return typeof v === 'string' && ['mint', 'sky', 'violet', 'amber', 'coral', 'custom'].includes(v)
+}
+
+function isHex(v: unknown): v is string {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+}
+
+/** Relative luminance → readable button text for any chosen color. */
+export function inkFor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  return lum > 0.45 ? '#10141a' : '#f2f4f6'
+}
+
+/** Accent → CSS variable overrides applied inline on <html>. */
+export function accentVars(prefs: Prefs): Record<string, string> {
+  if (prefs.accent === 'custom') {
+    if (!isHex(prefs.customAccent)) return {}
+    const hex = prefs.customAccent
+    const ink = inkFor(hex)
+    return { '--accent': hex, '--accent-ink': ink, '--mint': hex, '--mint-ink': ink }
+  }
+  const a = ACCENTS.find((x) => x.id === prefs.accent) ?? ACCENTS[0]
+  if (!a) return {}
+  return { '--accent': a.hex, '--accent-ink': a.ink, '--mint': a.hex, '--mint-ink': a.ink }
+}
+
+function loadBlob(): Partial<Prefs> {
   try {
-    const v = localStorage.getItem(key)
-    return (v as T) ?? fallback
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Partial<Prefs>
   } catch {
-    return fallback
+    return {}
   }
 }
 
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // private mode — styling just won't persist
+/** One-shot migration from the old per-key settings. */
+function legacy(): Partial<Prefs> {
+  const get = (k: string): string | null => {
+    try {
+      return localStorage.getItem(k)
+    } catch {
+      return null
+    }
   }
+  const out: Partial<Prefs> = {}
+  const theme = get('inkfish.theme')
+  if (isTheme(theme)) out.theme = theme
+  const accent = get('inkfish.accent')
+  if (isAccent(accent)) out.accent = accent
+  const font = get('inkfish.font')
+  if (font === 'compact' || font === 'default' || font === 'large') out.font = font
+  const mode = get('inkfish.editmode')
+  if (mode === 'read' || mode === 'edit' || mode === 'split') out.mode = mode
+  const motion = get('inkfish.motion')
+  if (motion === 'on') out.motion = 'full'
+  else if (motion === 'off') out.motion = 'reduced'
+  const blur = get('inkfish.blur')
+  if (blur === 'on') out.blur = true
+  else if (blur === 'off') out.blur = false
+  return out
 }
 
-export interface ThemeState {
-  theme: ThemeId
-  accent: AccentId
-  font: FontId
-  mode: EditMode
-  motion: boolean
-  blur: boolean
-}
-
-export function loadTheme(): ThemeState {
+export function loadPrefs(): Prefs {
+  const base = { ...legacy(), ...loadBlob() }
   return {
-    theme: read<ThemeId>(K.theme, 'deep'),
-    accent: read<AccentId>(K.accent, 'mint'),
-    font: read<FontId>(K.font, 'default'),
-    mode: read<EditMode>(K.mode, 'read'),
-    motion: read<string>(K.motion, 'on') !== 'off',
-    blur: read<string>(K.blur, 'on') !== 'off'
+    theme: isTheme(base.theme) ? base.theme : DEFAULT_PREFS.theme,
+    accent: isAccent(base.accent) ? base.accent : DEFAULT_PREFS.accent,
+    customAccent: isHex(base.customAccent) ? base.customAccent : DEFAULT_PREFS.customAccent,
+    density: base.density === 'compact' ? 'compact' : 'comfortable',
+    motion: base.motion === 'reduced' ? 'reduced' : 'full',
+    font: base.font === 'compact' || base.font === 'large' ? base.font : 'default',
+    mode: base.mode === 'edit' || base.mode === 'split' ? base.mode : 'read',
+    blur: base.blur !== false
   }
 }
 
-/** Apply theme state to <html>: dataset hooks for CSS + accent vars. */
-export function applyTheme(s: ThemeState): void {
-  const el = document.documentElement
-  el.dataset['theme'] = s.theme
-  el.dataset['font'] = s.font
-  if (s.motion) delete el.dataset['motion']
-  else el.dataset['motion'] = 'off'
-  const accent = ACCENTS.find((a) => a.id === s.accent) ?? ACCENTS[0]
-  if (accent) {
-    el.style.setProperty('--mint', accent.hex)
-    el.style.setProperty('--mint-ink', accent.ink)
+export function savePrefs(prefs: Prefs): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(prefs))
+  } catch {
+    // Private mode etc. — prefs just won't persist.
   }
-  write(K.theme, s.theme)
-  write(K.accent, s.accent)
-  write(K.font, s.font)
-  write(K.mode, s.mode)
-  write(K.motion, s.motion ? 'on' : 'off')
-  write(K.blur, s.blur ? 'on' : 'off')
+}
+
+/** Apply prefs to <html>: dataset hooks for CSS + accent vars. */
+export function applyPrefs(p: Prefs): void {
+  const el = document.documentElement
+  el.dataset['theme'] = p.theme
+  el.dataset['density'] = p.density
+  el.dataset['motion'] = p.motion
+  el.dataset['font'] = p.font
+  const vars = accentVars(p)
+  for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
+  savePrefs(p)
 }

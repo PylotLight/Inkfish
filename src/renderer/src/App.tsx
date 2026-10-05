@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
-import type { InboxItem, NoteDoc, NoteEntry, Project, SysInfo, VaultInfo } from '../../shared/types'
-import { applyTheme, loadTheme, type ThemeState } from './theme'
+import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
+import { applyPrefs, loadPrefs, type Prefs } from './theme'
+import { plain } from './text'
 import Capture from './views/Capture'
+import FolderTree from './views/FolderTree'
+import Home from './views/Home'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
 import MeetingImport from './views/MeetingImport'
-import Settings from './views/Settings'
+import SettingsView from './views/Settings'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -15,18 +18,16 @@ export function isCaptureWindow(): boolean {
 }
 
 type Selection = { id: string; origin: 'inbox' | 'note' } | null
-type Scope = 'notes' | 'inbox'
+type Scope = 'home' | 'notes' | 'inbox'
+type KindFilter = 'all' | NoteKind
 
-/** Strip markdown chrome for list rows (titles/snippets stay readable). */
-function plain(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[#>*_~`|]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+const KINDS: Array<{ id: KindFilter; name: string }> = [
+  { id: 'all', name: 'All' },
+  { id: 'text', name: 'Text' },
+  { id: 'voice', name: 'Voice' },
+  { id: 'image', name: 'Image' },
+  { id: 'meeting', name: 'Meeting' }
+]
 
 export default function App(): React.JSX.Element {
   if (isCaptureWindow()) {
@@ -44,8 +45,12 @@ function Main(): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([])
   const [allNotes, setAllNotes] = useState<NoteEntry[]>([])
   const [inbox, setInbox] = useState<InboxItem[]>([])
-  const [scope, setScope] = useState<Scope>('notes')
-  const [activeProject, setActiveProject] = useState<string | null>(null)
+  const [scope, setScope] = useState<Scope>('home')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsReturn, setSettingsReturn] = useState<Scope>('home')
+  /** null = all folders; '' = top-level files; else dir prefix. */
+  const [folder, setFolder] = useState<string | null>(null)
+  const [kind, setKind] = useState<KindFilter>('all')
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -55,14 +60,13 @@ function Main(): React.JSX.Element {
   const [ostep, setOstep] = useState(0)
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [newProject, setNewProject] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [backend, setBackend] = useState('…')
-  const [prefs, setPrefs] = useState<ThemeState>(() => loadTheme())
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
 
   useEffect(() => {
-    applyTheme(prefs)
+    applyPrefs(prefs)
   }, [prefs])
 
   const notify = useCallback((msg: string) => {
@@ -85,7 +89,7 @@ function Main(): React.JSX.Element {
     window.api.projects.list().then(setProjects).catch(console.error)
   }, [])
 
-  // One fetch for every note — filtering is client-side so switching
+  // One fetch for every note — filtering is client-side so navigating
   // folders/search never round-trips through IPC.
   const refreshNotes = useCallback(() => {
     window.api.notes.list(null).then(setAllNotes).catch(console.error)
@@ -114,8 +118,7 @@ function Main(): React.JSX.Element {
         refreshProjects()
         refreshNotes()
         // Restore blur preference (main resets to default on launch).
-        const blur = loadTheme().blur
-        if (!blur) window.api.glass.set(null).catch(() => undefined)
+        if (!loadPrefs().blur) window.api.glass.set(null).catch(() => undefined)
         if (!localStorage.getItem('inkfish.onboarded')) {
           setOstep(0)
           setShowOnboarding(true)
@@ -187,60 +190,58 @@ function Main(): React.JSX.Element {
   )
 
   const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
-  const selectNote = useCallback((id: string) => openEntry(id, 'note'), [openEntry])
 
-  // --- derived: counts, filtered list -------------------------------------------
-  const counts = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const n of allNotes) {
-      if (n.projectId) m.set(n.projectId, (m.get(n.projectId) ?? 0) + 1)
-    }
+  const selectNote = useCallback(
+    (id: string) => {
+      setScope('notes')
+      openEntry(id, 'note')
+    },
+    [openEntry]
+  )
+
+  // --- derived: filtered list ----------------------------------------------------
+  const kindCounts = useMemo(() => {
+    const m = new Map<NoteKind, number>()
+    for (const n of allNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
     return m
   }, [allNotes])
 
   const filtered = useMemo(() => {
-    const base = results ?? allNotes
-    if (results) return base
-    if (!activeProject) return base
-    return base.filter((n) => n.projectId === activeProject)
-  }, [results, allNotes, activeProject])
-
-  // Keep something open in the center: first row wins whenever the current
-  // selection isn't in view (project/scope switch, first load).
-  useEffect(() => {
-    if (!vaultInfo?.configured) return
-    if (scope === 'notes') {
-      if (filtered.length === 0) return
-      if (!sel || sel.origin !== 'note' || !filtered.some((n) => n.id === sel.id)) {
-        openEntry(filtered[0]?.id ?? '', 'note')
-      }
-    } else {
-      if (inbox.length === 0) {
-        setSel(null)
-        setDoc(null)
-        return
-      }
-      if (!sel || sel.origin !== 'inbox' || !inbox.some((i) => i.id === sel.id)) {
-        openEntry(inbox[0]?.id ?? '', 'inbox')
-      }
+    let base = results ?? allNotes
+    if (!results && folder !== null) {
+      base = folder === ''
+        ? base.filter((n) => !n.path.includes('/'))
+        : base.filter((n) => n.path === folder || n.path.startsWith(`${folder}/`))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, filtered, inbox, vaultInfo?.configured])
+    if (kind !== 'all') base = base.filter((n) => n.kind === kind)
+    return base
+  }, [results, allNotes, folder, kind])
+
+  const listTitle = results
+    ? `Results (${results.length})`
+    : folder === null
+      ? `All notes (${filtered.length})`
+      : folder === ''
+        ? `Top level (${filtered.length})`
+        : `${folder} (${filtered.length})`
 
   const pickScope = (s: Scope): void => {
     setScope(s)
-    setSel(null)
-    setDoc(null)
-    setDirty(false)
+    if (s === 'home') {
+      setSel(null)
+      setDoc(null)
+      setDirty(false)
+    }
   }
 
-  const pickProject = (id: string | null): void => {
-    setActiveProject(id)
-    setResults(null)
-    if (scope !== 'notes') setScope('notes')
-    setSel(null)
-    setDoc(null)
-    setDirty(false)
+  const pickFolder = (rel: string | null): void => {
+    setFolder(rel)
+    setScope('notes')
+  }
+
+  const openSettings = (): void => {
+    setSettingsReturn(scope)
+    setSettingsOpen(true)
   }
 
   const createProject = (): void => {
@@ -251,7 +252,7 @@ function Main(): React.JSX.Element {
       .then(() => {
         setNewProject('')
         refreshProjects()
-        notify(`Project ${name} ✓`)
+        notify(`Folder ${name} ✓`)
       })
       .catch((err: unknown) => notify(`Failed: ${String(err)}`))
   }
@@ -261,21 +262,13 @@ function Main(): React.JSX.Element {
 
   return (
     <div className="shell" data-platform={sys?.platform ?? 'unknown'}>
-      {/* Core sidebar: search, folders, notes list, inbox. Center is the note. */}
+      {/* Core sidebar: search, scopes, folder tree, kind filters, notes list, inbox. */}
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
           <div className="brand">
             <h1>{APP_NAME}</h1>
           </div>
-          <button
-            className="btn ghost sm icon"
-            title="Settings — themes, accents, vault"
-            onClick={() => setShowSettings(true)}
-            aria-label="Open settings"
-          >
-            ⚙
-          </button>
         </div>
 
         <input
@@ -290,40 +283,47 @@ function Main(): React.JSX.Element {
         />
 
         <div className="scope-tabs" role="tablist" aria-label="Sidebar scope">
-          <button
-            role="tab"
-            aria-selected={scope === 'notes'}
-            className={scope === 'notes' ? 'on' : ''}
-            onClick={() => pickScope('notes')}
-          >
-            Notes
-          </button>
-          <button
-            role="tab"
-            aria-selected={scope === 'inbox'}
-            className={scope === 'inbox' ? 'on' : ''}
-            onClick={() => pickScope('inbox')}
-          >
-            Inbox {pendingCount > 0 && <span className="badge">{pendingCount}</span>}
-          </button>
+          {(['home', 'notes', 'inbox'] as Scope[]).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={scope === s}
+              className={scope === s ? 'on' : ''}
+              onClick={() => pickScope(s)}
+            >
+              {s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
+              {s === 'inbox' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
+            </button>
+          ))}
         </div>
 
-        {scope === 'notes' ? (
+        {scope === 'inbox' ? (
           <div className="side-scroll">
-            <div className="chips" aria-label="Filter by folder">
-              <button className={activeProject === null ? 'on' : ''} onClick={() => pickProject(null)}>
-                All
-              </button>
-              {projects.map((p) => (
+            <InboxQueue
+              items={inbox}
+              projects={projects}
+              selectedId={sel !== null && sel.origin === 'inbox' ? sel.id : null}
+              onSelect={selectInbox}
+              onRefresh={refreshAll}
+              notify={notify}
+            />
+          </div>
+        ) : (
+          <div className="side-scroll">
+            <FolderTree notes={allNotes} selected={folder} onSelect={pickFolder} />
+            <div className="chips kinds" aria-label="Filter by kind">
+              {KINDS.map((k) => (
                 <button
-                  key={p.id}
-                  className={activeProject === p.id ? 'on' : ''}
-                  onClick={() => pickProject(p.id)}
-                  title={`${p.name} · ${counts.get(p.id) ?? 0}`}
+                  key={k.id}
+                  className={kind === k.id ? 'on' : ''}
+                  onClick={() => {
+                    setKind(k.id)
+                    setScope('notes')
+                  }}
+                  title={k.id === 'all' ? `${allNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
                 >
-                  <span className="dot" style={{ background: p.color ?? '#888' }} aria-hidden />
-                  {p.name}
-                  <span className="count">{counts.get(p.id) ?? 0}</span>
+                  {k.name}
+                  {k.id !== 'all' && <span className="count">{kindCounts.get(k.id as NoteKind) ?? 0}</span>}
                 </button>
               ))}
             </div>
@@ -340,7 +340,7 @@ function Main(): React.JSX.Element {
               </button>
             </div>
             <div className="pane-head">
-              <h2>{results ? `Results (${results.length})` : activeProject ? projects.find((p) => p.id === activeProject)?.name ?? '' : `All notes (${allNotes.length})`}</h2>
+              <h2>{listTitle}</h2>
             </div>
             {filtered.length === 0 && <p className="muted small pad">Nothing here yet — ⌥Space to capture.</p>}
             <ul className="nlist">
@@ -357,63 +357,110 @@ function Main(): React.JSX.Element {
               ))}
             </ul>
           </div>
-        ) : (
-          <div className="side-scroll">
-            <InboxQueue
-              items={inbox}
-              projects={projects}
-              selectedId={sel?.origin === 'inbox' ? sel.id : null}
-              onSelect={selectInbox}
-              onRefresh={refreshAll}
-              notify={notify}
-            />
-          </div>
         )}
 
         <div className="side-foot">
+          <div className="side-foot-row">
+            <button className="settings-btn" onClick={openSettings}>
+              <span aria-hidden>⚙</span> Settings
+            </button>
+            <button
+              className="quit-btn"
+              onClick={() => void window.api.app.quit()}
+              title="Quit Inkfish"
+              aria-label="Quit Inkfish"
+            >
+              <span aria-hidden>⏻</span>
+            </button>
+          </div>
           <span className="status-sub" title={vaultInfo?.root ?? ''}>
             {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
           </span>
         </div>
       </aside>
 
-      {/* Center: the actual note. */}
+      {/* Center: home dashboard, note stage, or full-page settings. */}
       <div className="content inkfish center">
-        <header className="topbar">
-          <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
-            ✒ Capture
-          </button>
-          <button className="btn ghost sm" onClick={() => setShowMeeting(true)}>
-            🎙 Meeting
-          </button>
-          <span className="flex-sp" />
-          {dirty && <span className="pill dirty-static">unsaved</span>}
-        </header>
-
-        <main className="note-stage" aria-label="Note">
-          {sel?.origin === 'inbox' && activeItem && (
-            <InboxBar
-              item={activeItem}
-              projects={projects}
-              onDone={(noteId) => {
-                refreshAll()
-                if (noteId) {
-                  pickScope('notes')
-                  pickProject(null)
-                  selectNote(noteId)
-                }
+        {settingsOpen ? (
+          <main className="view-scroll" aria-label="Settings">
+            <SettingsView
+              prefs={prefs}
+              vibrancySupported={sys?.platform === 'darwin'}
+              vault={vaultInfo}
+              sys={sys}
+              backend={backend}
+              onChange={setPrefs}
+              onBack={() => {
+                setSettingsOpen(false)
+                setScope(settingsReturn)
               }}
+              onPickVault={() => {
+                setSettingsOpen(false)
+                setOstep(0)
+                setShowOnboarding(true)
+              }}
+              onRescan={() =>
+                window.api.vault
+                  .reindex()
+                  .then((r) => {
+                    setBackend(r.backend)
+                    refreshAll()
+                    notify(`Re-indexed ${r.indexed} notes`)
+                  })
+                  .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
+              }
               notify={notify}
             />
-          )}
-          <NoteEditor
-            doc={doc}
-            dirty={dirty}
-            defaultMode={prefs.mode}
-            onDirty={setDirty}
-            onSave={saveDoc}
-          />
-        </main>
+          </main>
+        ) : (
+          <>
+            <header className="topbar">
+              <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
+                ✒ Capture
+              </button>
+              <button className="btn ghost sm" onClick={() => setShowMeeting(true)}>
+                🎙 Meeting
+              </button>
+              <span className="flex-sp" />
+              {dirty && <span className="pill dirty-static">unsaved</span>}
+            </header>
+
+            {scope === 'home' ? (
+              <main className="view-scroll" aria-label="Home">
+                <Home
+                  notes={allNotes}
+                  inbox={inbox}
+                  onOpenNote={selectNote}
+                  onOpenInbox={() => pickScope('inbox')}
+                  onOpenFolder={pickFolder}
+                  onCaptureHint={() => notify('Hit ⌥Space anywhere to capture')}
+                  onMeeting={() => setShowMeeting(true)}
+                />
+              </main>
+            ) : (
+              <main className="note-stage" aria-label="Note">
+                {sel?.origin === 'inbox' && activeItem && (
+                  <InboxBar
+                    item={activeItem}
+                    projects={projects}
+                    onDone={(noteId) => {
+                      refreshAll()
+                      if (noteId) selectNote(noteId)
+                    }}
+                    notify={notify}
+                  />
+                )}
+                <NoteEditor
+                  doc={doc}
+                  dirty={dirty}
+                  defaultMode={prefs.mode}
+                  onDirty={setDirty}
+                  onSave={saveDoc}
+                />
+              </main>
+            )}
+          </>
+        )}
       </div>
 
       {showOnboarding && (
@@ -430,32 +477,6 @@ function Main(): React.JSX.Element {
         <MeetingImport
           onClose={() => setShowMeeting(false)}
           onImported={refreshAll}
-          notify={notify}
-        />
-      )}
-      {showSettings && (
-        <Settings
-          prefs={prefs}
-          onChange={setPrefs}
-          vault={vaultInfo}
-          sys={sys}
-          backend={backend}
-          onClose={() => setShowSettings(false)}
-          onPickVault={() => {
-            setShowSettings(false)
-            setOstep(0)
-            setShowOnboarding(true)
-          }}
-          onRescan={() =>
-            window.api.vault
-              .reindex()
-              .then((r) => {
-                setBackend(r.backend)
-                refreshAll()
-                notify(`Re-indexed ${r.indexed} notes`)
-              })
-              .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
-          }
           notify={notify}
         />
       )}

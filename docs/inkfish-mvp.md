@@ -53,7 +53,7 @@ Later:
   (see `docs/vibrancy-and-tray.md`). Keep: no opaque full-window backgrounds.
 - Capture popover 380×~500: autofocus input, `Cmd-Enter` save, combined
   composer (type + image drop + dictate), project picker, subtle save animation.
-- Main: core sidebar (search, folder chips, notes list, inbox tab) + center note stage with Read/Edit/Split; settings (⚙) hold themes, accents, vault moves
+- Main: Home dashboard on launch; core sidebar (search, Home/Notes/Inbox tabs, folder tree, kind filters, notes list) + center note stage with Read/Edit/Split; full-page settings hold themes (incl. custom accent), density, motion, vault moves; sidebar footer has Settings + Quit like Blobfish
   with status pills. Dark-first, Liquid Glass materials.
 - Onboarding: 3 steps — vault location, Mic/ScreenRecording permission test,
   shortcut confirm. Empty state: "drop a .md folder here".

@@ -1311,10 +1311,10 @@ html[data-font='large'] { --ed-fs: 15px; }
 .md ul, .md ol { font-size: 1em; }
 .md pre { font-size: 0.92em; }
 
-/* Motion off (settings + prefers-reduced-motion) */
-html[data-motion='off'] *,
-html[data-motion='off'] *::before,
-html[data-motion='off'] *::after {
+/* Motion reduced (settings) + OS preference */
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
   animation: none !important;
   transition: none !important;
 }
@@ -1346,6 +1346,8 @@ html[data-motion='off'] *::after {
 .side-search {
   margin-top: 12px;
   width: 100%;
+  height: 38px;
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -1619,4 +1621,389 @@ html[data-motion='off'] *::after {
   width: 18px;
   height: 18px;
   border-radius: 50%;
+}
+
+/* ---------- Inkfish: settings page (full content view, not a modal) ---------- */
+
+.view-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 14px;
+  animation: rise 0.22s ease both;
+}
+
+.settings-page {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px 30px;
+}
+
+.settings-top {
+  margin-top: 0;
+  align-items: flex-start;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mint);
+}
+
+.settings-title {
+  margin: 2px 0 0;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.settings-sub {
+  margin: 4px 0 0;
+}
+
+.settings-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.settings-group h4 {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.setting-row {
+  margin-bottom: 14px;
+}
+
+.setting-row:last-child {
+  margin-bottom: 0;
+}
+
+.setting-row.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-row.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-label {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-hint {
+  margin: 0;
+  font-weight: 400;
+}
+
+.seg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seg-row .seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 11px;
+  padding: 7px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.seg-row .seg:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.seg-row .seg.selected {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--mint) 60%, transparent);
+  background: var(--mint-dim);
+}
+
+.seg-row .swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.seg-row .swatch.accent-chip {
+  border-radius: 50%;
+}
+
+.custom-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+  background: var(--inset-soft);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 8px 8px 8px 14px;
+}
+
+.color-input {
+  width: 52px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* ---------- Inkfish: sidebar footer (settings + quit, cf. Blobfish) ---------- */
+
+.side-foot-row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 11px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.settings-btn:hover {
+  background: var(--panel);
+}
+
+.quit-btn {
+  width: 40px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 11px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.quit-btn:hover {
+  color: var(--danger);
+  background: var(--panel);
+}
+
+/* ---------- Inkfish: folder tree ---------- */
+
+.ftree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 10px;
+}
+
+.frow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 6px 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.frow:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+button.frow.on,
+.frow.on {
+  color: var(--text);
+  background: var(--panel-strong);
+  border-color: var(--border);
+}
+
+.frow .caret {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.frow .caret.leaf {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.frow .fmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.frow .fname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.frow .fcount {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.frow .ficon {
+  flex-shrink: 0;
+}
+
+.chips.kinds {
+  margin-bottom: 4px;
+}
+
+/* ---------- Inkfish: home dashboard ---------- */
+
+.home {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 20px;
+  animation: rise 0.22s ease both;
+}
+
+.home-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-head h2 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.home-head p {
+  margin: 4px 0 0;
+}
+
+.home .stat-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stat.as-btn {
+  cursor: pointer;
+  color: var(--text);
+  text-align: left;
+  border: 1px solid var(--border);
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.stat.as-btn:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--mint) 45%, transparent);
+}
+
+.home-cols {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.home-card {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.home-card .chips {
+  margin-top: 2px;
+}
+
+/* ---------- Inkfish: compact density ---------- */
+
+html[data-density='compact'] .nlist button {
+  padding: 5px 8px;
+  gap: 0;
+}
+
+html[data-density='compact'] .nlist .muted.small {
+  display: none;
+}
+
+html[data-density='compact'] .frow {
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+
+html[data-density='compact'] .side-scroll {
+  margin-top: 8px;
+}
+
+html[data-density='compact'] .note-stage {
+  padding: 14px 18px;
+}
+
+html[data-density='compact'] .md p {
+  margin: 0.3em 0;
 }

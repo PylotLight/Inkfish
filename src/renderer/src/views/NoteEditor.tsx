@@ -5,6 +5,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import type { EditMode } from '../theme'
+import { plain } from '../text'
 import { renderMarkdown } from '../md'
 
 interface Props {
@@ -32,6 +33,8 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
   const [mode, setMode] = useState<EditMode>(defaultMode)
   const textRef = useRef(text)
   textRef.current = text
+  /** True once the user has typed — guards the doc.markdown fallback below. */
+  const editedRef = useRef(false)
   const saveRef = useRef({ doc, onSave })
   saveRef.current = { doc, onSave }
   const dirtyRef = useRef(onDirty)
@@ -61,6 +64,7 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
               setText(u.state.doc.toString())
+              editedRef.current = true
               dirtyRef.current(true)
             }
           }),
@@ -110,6 +114,7 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
       setText(next)
       setPreview(next)
+      editedRef.current = false
       dirtyRef.current(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,11 +149,24 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
     )
   }
 
+  // First paint can beat the editor sync — fall back to the saved markdown
+  // until the user types. Never render a silent blank box: surface the error.
+  const src = text || (!editedRef.current ? doc.markdown : '')
+  let html = ''
+  let failed = false
+  try {
+    html = renderMarkdown(mode === 'read' ? src : preview)
+  } catch (err) {
+    console.error('[editor] preview failed:', err)
+    failed = true
+  }
+  const showFallback = (failed || (src.trim() !== '' && html.trim() === '')) && mode !== 'edit'
+
   return (
     <div className="editor">
       <div className="ed-head">
         <div>
-          <h2>{doc.title}</h2>
+          <h2>{plain(doc.title).slice(0, 120) || 'Untitled'}</h2>
           <p className="muted small">
             {doc.path} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
           </p>
@@ -176,7 +194,14 @@ function NoteEditor({ doc, dirty, defaultMode, onDirty, onSave }: Props): React.
           aria-label="Markdown source"
           hidden={mode === 'read'}
         />
-        {(mode === 'read' || mode === 'split') && <Preview html={renderMarkdown(mode === 'read' ? text : preview)} />}
+        {(mode === 'read' || mode === 'split') &&
+          (showFallback ? (
+            <div className="ed-preview md">
+              <p className="muted">Preview failed for this note — switch to Edit to see the source.</p>
+            </div>
+          ) : (
+            <Preview key={doc.id} html={html} />
+          ))}
       </div>
     </div>
   )

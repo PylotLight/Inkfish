@@ -36,7 +36,7 @@ Two separate homes:
   (which notes folder), `inkfish.db` (FTS5 + metadata + embeddings **cache**,
   rebuilt from files by Rescan any time), downloaded models later.
 
-Move the notes home later from the sidebar ("Move notes…").
+Move the notes home later from Settings → Notes home.
 Overrides for testing: `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun run dev`.
 
 ## Scripts

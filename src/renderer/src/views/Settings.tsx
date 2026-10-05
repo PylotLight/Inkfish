@@ -1,172 +1,272 @@
-import { useState } from 'react'
-import { ACCENTS, THEMES, type EditMode, type FontId, type ThemeState } from '../theme'
+import { ACCENTS, THEMES, type DensityId, type EditMode, type FontId, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 
 interface Props {
-  prefs: ThemeState
-  onChange: (next: ThemeState) => void
+  prefs: Prefs
+  vibrancySupported: boolean
   vault: VaultInfo | null
   sys: SysInfo | null
   backend: string
-  onClose: () => void
+  onChange: (prefs: Prefs) => void
+  onBack: () => void
   onPickVault: () => void
   onRescan: () => void
   notify: (msg: string) => void
 }
 
-const FONTS: Array<{ id: FontId; name: string }> = [
-  { id: 'compact', name: 'Compact' },
-  { id: 'default', name: 'Default' },
-  { id: 'large', name: 'Large' }
+const FONTS: Array<{ id: FontId; name: string; hint: string }> = [
+  { id: 'compact', name: 'Compact', hint: 'Small reading type.' },
+  { id: 'default', name: 'Default', hint: 'Balanced reading type.' },
+  { id: 'large', name: 'Large', hint: 'Roomy reading type.' }
 ]
 
 const MODES: Array<{ id: EditMode; name: string; hint: string }> = [
-  { id: 'read', name: 'Read', hint: 'Rendered note' },
-  { id: 'edit', name: 'Edit', hint: 'Markdown source' },
-  { id: 'split', name: 'Split', hint: 'Side by side' }
+  { id: 'read', name: 'Read', hint: 'Rendered note.' },
+  { id: 'edit', name: 'Edit', hint: 'Markdown source.' },
+  { id: 'split', name: 'Split', hint: 'Side by side.' }
 ]
 
-/** Settings: themes, accents, reading size, editor default, window, vault. */
-export default function Settings({
-  prefs, onChange, vault, sys, backend, onClose, onPickVault, onRescan, notify
+/**
+ * Full-page settings view (not a modal) — same shape as Blobfish:
+ * grouped sections, seg-row radios, hint lines, Back/Done.
+ */
+export default function SettingsView({
+  prefs, vibrancySupported, vault, sys, backend, onChange, onBack, onPickVault, onRescan, notify
 }: Props): React.JSX.Element {
-  const [busy, setBusy] = useState(false)
-  const set = (patch: Partial<ThemeState>): void => onChange({ ...prefs, ...patch })
-
-  const toggleBlur = (): void => {
-    const next = !prefs.blur
-    set({ blur: next })
-    // macOS glass off/on — silent if unsupported.
-    window.api.glass
-      .set(next ? 'fullscreen-ui' : null)
-      .catch(() => undefined)
-  }
-
-  const rescan = (): void => {
-    setBusy(true)
-    onRescan()
-    window.setTimeout(() => setBusy(false), 800)
+  const set = (patch: Partial<Prefs>): void => {
+    const next = { ...prefs, ...patch }
+    onChange(next)
+    // macOS glass follows the blur switch immediately.
+    if (patch.blur !== undefined) {
+      window.api.glass.set(patch.blur ? 'fullscreen-ui' : null).catch(() => undefined)
+    }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal glass strong settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings">
-        <div className="row between" style={{ marginTop: 0 }}>
-          <h3>Settings</h3>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close settings">✕</button>
+    <section className="card settings-page fade-in" aria-label="Settings">
+      <div className="row between settings-top">
+        <div>
+          <span className="eyebrow">Inkfish</span>
+          <h2 className="settings-title">Settings</h2>
+          <p className="muted small settings-sub">
+            Stored locally in this app — nothing leaves your machine.
+          </p>
         </div>
+        <button className="btn ghost small" onClick={onBack}>
+          ← Back
+        </button>
+      </div>
 
-        <section>
-          <h4>Theme</h4>
-          <div className="swatches">
-            {THEMES.map((t) => (
+      <div className="settings-groups">
+        <section className="settings-group">
+          <h4>Appearance</h4>
+
+          <div className="setting-row stacked">
+            <span className="setting-label">Theme</span>
+            <div className="seg-row" role="radiogroup" aria-label="Theme">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  role="radio"
+                  aria-checked={prefs.theme === t.id}
+                  className={`seg${prefs.theme === t.id ? ' selected' : ''}`}
+                  onClick={() => set({ theme: t.id })}
+                  title={t.blurb}
+                >
+                  <span className="swatch theme-chip" style={{ background: t.swatch }} aria-hidden />
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <p className="muted small setting-hint">
+              {THEMES.find((t) => t.id === prefs.theme)?.blurb} Accent applies on top.
+            </p>
+          </div>
+
+          <div className="setting-row stacked">
+            <span className="setting-label">Accent color</span>
+            <div className="seg-row" role="radiogroup" aria-label="Accent color">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.id}
+                  role="radio"
+                  aria-checked={prefs.accent === a.id}
+                  className={`seg${prefs.accent === a.id ? ' selected' : ''}`}
+                  onClick={() => set({ accent: a.id })}
+                  title={a.desc}
+                >
+                  <span className="swatch accent-chip" style={{ background: a.hex }} aria-hidden />
+                  {a.name}
+                </button>
+              ))}
               <button
-                key={t.id}
-                className={`swatch${prefs.theme === t.id ? ' sel' : ''}`}
-                title={`${t.name} — ${t.blurb}`}
-                onClick={() => set({ theme: t.id })}
+                role="radio"
+                aria-checked={prefs.accent === 'custom'}
+                className={`seg${prefs.accent === 'custom' ? ' selected' : ''}`}
+                onClick={() => set({ accent: 'custom' })}
+                title="Pick any color below."
               >
-                <span className="chip" style={{ background: t.swatch }} aria-hidden />
-                {t.name}
+                <span className="swatch accent-chip" style={{ background: prefs.customAccent }} aria-hidden />
+                Custom
               </button>
-            ))}
+            </div>
+            {prefs.accent === 'custom' && (
+              <label className="custom-picker-row">
+                <span>
+                  Custom color <code>{prefs.customAccent}</code>
+                </span>
+                <input
+                  type="color"
+                  className="color-input"
+                  value={prefs.customAccent}
+                  onChange={(e) => set({ accent: 'custom', customAccent: e.target.value })}
+                  aria-label="Pick a custom accent color"
+                />
+              </label>
+            )}
+            <p className="muted small setting-hint">
+              Drives buttons, chips, selection and focus rings.
+            </p>
+          </div>
+
+          <div className="setting-row inline">
+            <div className="setting-label">
+              Density
+              <span className="muted small setting-hint">Comfortable breathes; compact fits more rows.</span>
+            </div>
+            <div className="seg-row" role="radiogroup" aria-label="Density">
+              {(['comfortable', 'compact'] as DensityId[]).map((d) => (
+                <button
+                  key={d}
+                  role="radio"
+                  aria-checked={prefs.density === d}
+                  className={`seg${prefs.density === d ? ' selected' : ''}`}
+                  onClick={() => set({ density: d })}
+                >
+                  {d === 'comfortable' ? 'Comfortable' : 'Compact'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="setting-row inline">
+            <div className="setting-label">
+              Motion
+              <span className="muted small setting-hint">Reduced disables entrance and pulse animations.</span>
+            </div>
+            <div className="seg-row" role="radiogroup" aria-label="Motion">
+              {(['full', 'reduced'] as Array<Prefs['motion']>).map((m) => (
+                <button
+                  key={m}
+                  role="radio"
+                  aria-checked={prefs.motion === m}
+                  className={`seg${prefs.motion === m ? ' selected' : ''}`}
+                  onClick={() => set({ motion: m })}
+                >
+                  {m === 'full' ? 'Full' : 'Reduced'}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 
-        <section>
-          <h4>Accent</h4>
-          <div className="swatches">
-            {ACCENTS.map((a) => (
-              <button
-                key={a.id}
-                className={`swatch${prefs.accent === a.id ? ' sel' : ''}`}
-                title={a.name}
-                onClick={() => set({ accent: a.id })}
-              >
-                <span className="dotpick" style={{ background: a.hex }} aria-hidden />
-                {a.name}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section>
+        <section className="settings-group">
           <h4>Reading</h4>
-          <div className="seg" role="group" aria-label="Reading font size">
-            {FONTS.map((f) => (
-              <button
-                key={f.id}
-                className={prefs.font === f.id ? 'on' : ''}
-                onClick={() => set({ font: f.id })}
-              >
-                {f.name}
-              </button>
-            ))}
+          <div className="setting-row stacked">
+            <span className="setting-label">Reading type size</span>
+            <div className="seg-row" role="radiogroup" aria-label="Reading type size">
+              {FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  role="radio"
+                  aria-checked={prefs.font === f.id}
+                  className={`seg${prefs.font === f.id ? ' selected' : ''}`}
+                  onClick={() => set({ font: f.id })}
+                  title={f.hint}
+                >
+                  {f.name}
+                </button>
+              ))}
+            </div>
+            <p className="muted small setting-hint">{FONTS.find((f) => f.id === prefs.font)?.hint}</p>
           </div>
-          <div className="seg" role="group" aria-label="Default editor view" style={{ marginTop: 8 }}>
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                className={prefs.mode === m.id ? 'on' : ''}
-                title={m.hint}
-                onClick={() => {
-                  set({ mode: m.id })
-                  notify(`Editor default: ${m.name}`)
-                }}
-              >
-                {m.name}
-              </button>
-            ))}
+
+          <div className="setting-row stacked">
+            <span className="setting-label">Default note view</span>
+            <div className="seg-row" role="radiogroup" aria-label="Default note view">
+              {MODES.map((m) => (
+                <button
+                  key={m.id}
+                  role="radio"
+                  aria-checked={prefs.mode === m.id}
+                  className={`seg${prefs.mode === m.id ? ' selected' : ''}`}
+                  onClick={() => {
+                    set({ mode: m.id })
+                    notify(`Editor default: ${m.name}`)
+                  }}
+                  title={m.hint}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+            <p className="muted small setting-hint">Read shows the rendered note; switch per-note any time.</p>
           </div>
         </section>
 
-        <section>
+        <section className="settings-group">
           <h4>Window</h4>
-          <label className="field row">
+          <div className="setting-row inline">
+            <div className="setting-label">
+              Native vibrancy blur {vibrancySupported ? '(macOS)' : ''}
+              {!vibrancySupported && (
+                <span className="muted small setting-hint">Only available on macOS.</span>
+              )}
+            </div>
             <button
-              className={`switch${prefs.blur ? ' on' : ''}`}
               role="switch"
               aria-checked={prefs.blur}
+              className={`switch${prefs.blur ? ' on' : ''}`}
+              disabled={!vibrancySupported}
+              onClick={() => set({ blur: !prefs.blur })}
               aria-label="Window blur"
-              onClick={toggleBlur}
             >
               <span className="knob" />
-            </button>
-            <span>Background blur <span className="muted small">(macOS vibrancy)</span></span>
-          </label>
-          <label className="field row">
-            <button
-              className={`switch${prefs.motion ? ' on' : ''}`}
-              role="switch"
-              aria-checked={prefs.motion}
-              aria-label="Interface animations"
-              onClick={() => set({ motion: !prefs.motion })}
-            >
-              <span className="knob" />
-            </button>
-            <span>Interface animations</span>
-          </label>
-        </section>
-
-        <section>
-          <h4>Notes home</h4>
-          <p className="muted small" title={vault?.root ?? ''} style={{ margin: '0 0 8px', overflowWrap: 'anywhere' }}>
-            {vault?.root ?? '…'}
-          </p>
-          <div className="row" style={{ marginTop: 0 }}>
-            <button className="btn ghost sm" disabled={vault?.managed} onClick={onPickVault}>
-              Move notes…
-            </button>
-            <button className="btn ghost sm" disabled={!vault?.configured || busy} onClick={rescan}>
-              {busy ? 'Scanning…' : 'Rescan vault'}
             </button>
           </div>
         </section>
 
-        <p className="muted small" style={{ marginBottom: 0 }}>
-          {sys ? `${sys.platform} · e${window.api.versions.electron()}` : '…'} · {backend}
-        </p>
+        <section className="settings-group">
+          <h4>Notes home</h4>
+          <div className="setting-row stacked">
+            <span className="setting-label">Location</span>
+            <p className="muted small setting-hint" title={vault?.root ?? ''} style={{ overflowWrap: 'anywhere' }}>
+              {vault?.root ?? '…'}
+            </p>
+            <div className="row" style={{ marginTop: 0 }}>
+              <button className="btn ghost sm" disabled={vault?.managed} onClick={onPickVault}>
+                Move notes…
+              </button>
+              <button
+                className="btn ghost sm"
+                disabled={!vault?.configured}
+                onClick={onRescan}
+              >
+                Rescan vault
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
+
+      <div className="row between">
+        <span className="muted small">
+          {sys ? `${sys.platform} · e${window.api.versions.electron()}` : '…'} · {backend}
+        </span>
+        <button className="btn mint" onClick={onBack}>
+          Done
+        </button>
+      </div>
+    </section>
   )
 }
