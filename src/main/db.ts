@@ -336,7 +336,11 @@ export function relatedNotes(noteId: string, limit = 5): NoteEntry[] {
       na += x * x
       nb += y * y
     }
-    if (na > 0 && nb > 0) scored.push({ r: cand, s: dot / (Math.sqrt(na) * Math.sqrt(nb)) })
+    if (na > 0 && nb > 0) {
+      const s = dot / (Math.sqrt(na) * Math.sqrt(nb))
+      // Floor: below this the "relation" is noise, not signal.
+      if (s >= 0.2) scored.push({ r: cand, s })
+    }
   }
   return scored.sort((x, y) => y.s - x.s).slice(0, limit).map(({ r }) => rowToEntry(r))
 }

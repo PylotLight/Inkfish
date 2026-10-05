@@ -49,7 +49,14 @@ function Main(): React.JSX.Element {
   }, [])
 
   const refreshInbox = useCallback(() => {
-    window.api.inbox.list().then(setInbox).catch(console.error)
+    window.api.inbox
+      .list()
+      .then((items) => {
+        setInbox(items)
+        const pending = items.filter((i) => i.status === 'inbox' || i.status === 'processing').length
+        void window.api.dock.setBadge(pending).catch(() => undefined)
+      })
+      .catch(console.error)
   }, [])
 
   const refreshProjects = useCallback(() => {
@@ -119,19 +126,21 @@ function Main(): React.JSX.Element {
   )
 
   const saveDoc = useCallback(() => {
-    if (!doc || sel?.origin !== 'note') return
+    if (!doc || !sel) return
     window.api.notes
       .save(doc.id, doc.markdown)
       .then((saved) => {
         if (saved) {
           setDoc(saved)
           setDirty(false)
-          refreshNotes(activeProject)
+          // Inbox docs edit the raw file; notes refresh their project list.
+          if (sel.origin === 'note') refreshNotes(activeProject)
+          else refreshInbox()
           notify('Saved ✓')
         }
       })
       .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
-  }, [doc, sel, activeProject, refreshNotes, notify])
+  }, [doc, sel, activeProject, refreshNotes, refreshInbox, notify])
 
   const pickProject = (id: string | null): void => {
     setActiveProject(id)
@@ -196,6 +205,25 @@ function Main(): React.JSX.Element {
           <span className={`status-pill${vibrancyOn ? ' on' : ''}`}>
             {pendingCount > 0 ? `inbox ${pendingCount}` : 'inbox zero'} · {backend}
           </span>
+          <div className="row">
+            <button
+              className="btn ghost sm"
+              title="Re-scan vault folder into the index (picks up externally added .md files)"
+              onClick={() =>
+                window.api.vault
+                  .reindex()
+                  .then((r) => {
+                    setBackend(r.backend)
+                    refreshInbox()
+                    refreshNotes(activeProject)
+                    notify(`Re-indexed ${r.indexed} notes`)
+                  })
+                  .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
+              }
+            >
+              Rescan vault
+            </button>
+          </div>
           <span className="status-sub">
             {sys ? `${sys.platform} · e${window.api.versions.electron()}` : '…'}
           </span>
@@ -244,14 +272,14 @@ function Main(): React.JSX.Element {
             <NoteEditor
               doc={doc}
               onChange={(markdown) => {
-                if (doc && sel?.origin === 'note') {
+                if (doc) {
                   setDoc({ ...doc, markdown })
                   setDirty(true)
                 }
               }}
               onSave={saveDoc}
             />
-            {dirty && sel?.origin === 'note' && <span className="pill dirty">unsaved</span>}
+            {dirty && <span className="pill dirty">unsaved</span>}
           </section>
 
           <aside className="rail glass" aria-label="Inbox queue">

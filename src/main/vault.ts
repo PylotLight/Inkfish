@@ -162,7 +162,7 @@ export function readInboxItem(id: string, paths: VaultPaths = vaultPaths()): Inb
   return {
     id: String(fm['id'] ?? id),
     kind: (fm['kind'] as NoteKind) ?? 'text',
-    raw: body,
+    raw: body.replace(/\s+$/, ''),
     assets: Array.isArray(assets) ? assets : [],
     status: (fm['status'] as NoteStatus) ?? 'inbox',
     projectHint: typeof fm['projectHint'] === 'string' ? fm['projectHint'] : 'auto',

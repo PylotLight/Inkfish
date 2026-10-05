@@ -37,8 +37,10 @@ Defaults to `~/Inkfish/` (`inbox/`, `projects/<name>/`, `assets/`,
 | `start` | Launch the built app (`electron ./out/main/index.js`) |
 | `preview` | Serve the built renderer only |
 | `clean` | Remove `out/` |
+| `test` | `bun test` — vault/AI/DB unit tests (also runs in CI) |
 | `typecheck` | `tsc --noEmit` over `src/`, `scripts/`, and config |
 | `assets` | Regenerate tray PNGs, zero dependencies |
+| `icon` | Regenerate app icon (`build/icon.png` + `build/icon.icns`), zero dependencies |
 | `dist` / `dist:mac` / `dist:linux` / `dist:ci` | Package via electron-builder → `release/` |
 | `release` | `bun scripts/release.ts` — cut a release, tag it (see `docs/releasing.md`) |
 | `postinstall` | Runs automatically: downloads the Electron binary Bun skips |
