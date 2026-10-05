@@ -67,8 +67,10 @@ Later:
   `nvidia/parakeet-tdt-0.6b-v3`, 178 MB, ~38× realtime CPU / ~43× GPU on M2 Air
   via Photon (Metal on Apple GPUs, NEON/AVX elsewhere), word+segment timestamps,
   built-in VAD segmentation (≤30s), beats original on FLEURS-25 + long-form.
-  - Runs via Photon (`pip install moondream`, `md.photon("moondream/parakeet-redux")`).
-    MVP: sidecar process (`bun spawn` python photon) transcribing wav → segments.
+  - Constraint (new): no pip/python in install or runtime — see
+    `docs/stt-options.md` for the researched replacements (parakeet-cli
+    sidecar recommended, own Swift Apple Speech CLI, sherpa-onnx-node).
+    Decision deferred; the python sidecar stays working until then.
     Fallback: Apple Speech on short clips. Keep audio → transcript separate from
     transcript → summary model (anarlog pattern).
 - Noise weakness noted in model card (MUSAN gap) → recommend headphones,
