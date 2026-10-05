@@ -112,3 +112,36 @@ describe('slugify', () => {
     expect(v.slugify('!!!')).toBe('untitled')
   })
 })
+
+describe('vault home', () => {
+  test('stored choice round-trips; env beats stored beats default', async () => {
+    const v = await vault()
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-'))
+    try {
+      v.setConfigDir(cfg)
+      delete process.env['INKFISH_VAULT']
+      expect(v.readStoredRoot()).toBeNull()
+
+      const chosen = join(cfg, 'MyVault')
+      v.storeRoot(chosen)
+      expect(v.readStoredRoot()).toBe(chosen)
+      expect(v.resolveVaultRoot()).toBe(chosen)
+      expect(v.vaultConfigured()).toBe(true)
+
+      const envDir = mkdtempSync(join(tmpdir(), 'inkfish-env-'))
+      try {
+        process.env['INKFISH_VAULT'] = envDir
+        expect(v.resolveVaultRoot()).toBe(envDir)
+        expect(v.envManaged()).toBe(true)
+        expect(v.vaultConfigured()).toBe(true)
+      } finally {
+        delete process.env['INKFISH_VAULT']
+        rmSync(envDir, { recursive: true, force: true })
+      }
+      expect(v.envManaged()).toBe(false)
+      expect(v.resolveVaultRoot()).toBe(chosen)
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+})

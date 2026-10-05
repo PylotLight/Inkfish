@@ -72,7 +72,13 @@ const api = {
     reveal: (): Promise<boolean> => ipcRenderer.invoke('vault:reveal'),
     reindex: (): Promise<{ indexed: number; backend: string }> =>
       ipcRenderer.invoke('vault:reindex'),
-    backend: (): Promise<string> => ipcRenderer.invoke('vault:backend')
+    backend: (): Promise<string> => ipcRenderer.invoke('vault:backend'),
+    pick: (): Promise<{ path: string } | { error: string }> =>
+      ipcRenderer.invoke('vault:pick'),
+    setRoot: (
+      root: string
+    ): Promise<{ info: VaultInfo; backend: string; indexed: number } | { error: string }> =>
+      ipcRenderer.invoke('vault:set-root', root)
   },
   projects: {
     list: (): Promise<Project[]> => ipcRenderer.invoke('projects:list'),

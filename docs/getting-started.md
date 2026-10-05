@@ -24,8 +24,11 @@ bun run start     # launch the built app
 
 ## Vault
 
-Defaults to `~/Inkfish/` (`inbox/`, `projects/<name>/`, `assets/`,
-`inkfish.db`). Override for testing: `INKFISH_VAULT=/tmp/vault bun run dev`.
+First launch opens the setup wizard on vault location — nothing is created
+until you confirm. Afterwards the vault lives where you chose (default
+suggestion: `~/Inkfish/`) with `inbox/`, `projects/<name>/`, `assets/`,
+`inkfish.db`. Move it later from the sidebar ("Move vault…").
+Override for testing: `INKFISH_VAULT=/tmp/vault bun run dev`.
 
 ## Scripts
 

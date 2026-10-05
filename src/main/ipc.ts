@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
 import { hidePopover } from './popover'
@@ -25,25 +25,31 @@ import {
   createProject,
   ensureSeedProjects,
   ensureVault,
+  envManaged,
   listInbox,
   listProjects,
   meetingToMarkdown,
   parseVtt,
   readInboxItem,
   resolveAsset,
+  resolveVaultRoot,
   routeToProject,
   saveAsset,
   setInboxStatus,
+  storeRoot,
   undoRoute,
+  vaultConfigured,
   vaultPaths,
   writeInboxItem
 } from './vault'
 import {
+  closeDb,
   countInbox,
   dbKind,
   getNote,
   indexFile,
   listNotes,
+  openDb,
   reindexVault,
   relatedNotes,
   removeNote,
@@ -73,7 +79,15 @@ function notify(title: string, body: string): boolean {
 
 function info(): VaultInfo {
   const p = vaultPaths()
-  return { root: p.root, inboxDir: p.inboxDir, projectsDir: p.projectsDir, assetsDir: p.assetsDir, dbPath: p.dbPath }
+  return {
+    root: p.root,
+    inboxDir: p.inboxDir,
+    projectsDir: p.projectsDir,
+    assetsDir: p.assetsDir,
+    dbPath: p.dbPath,
+    configured: vaultConfigured(),
+    managed: envManaged()
+  }
 }
 
 /** Background worker: classify + route one inbox item, never deleting raw. */
@@ -201,6 +215,44 @@ export function registerIpc(): void {
     return { indexed: reindexVault(paths.root), backend: dbKind() }
   })
   ipcMain.handle('vault:backend', (): string => dbKind())
+
+  /** First-run (or move) vault selection: creates + seeds + indexes the new home. */
+  ipcMain.handle(
+    'vault:set-root',
+    (
+      _e: IpcMainInvokeEvent,
+      root: string
+    ): { info: VaultInfo; backend: string; indexed: number } | { error: string } => {
+      if (envManaged()) return { error: 'vault location is managed by INKFISH_VAULT' }
+      if (typeof root !== 'string' || !root.trim()) return { error: 'choose a folder' }
+      try {
+        const paths = ensureVault(vaultPaths(resolve(root)))
+        storeRoot(paths.root)
+        closeDb()
+        ensureSeedProjects(paths)
+        const backend = openDb(paths.dbPath)
+        const indexed = reindexVault(paths.root)
+        console.log(`[inkfish] vault home → ${paths.root} (${backend}, ${indexed} notes)`)
+        return { info: info(), backend, indexed }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+  ipcMain.handle(
+    'vault:pick',
+    async (): Promise<{ path: string } | { error: string }> => {
+      const win = getMainWindow()
+      const opts = {
+        title: 'Choose your Inkfish vault folder',
+        properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+        defaultPath: os.homedir()
+      }
+      const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
+      return { path: picked.filePaths[0] as string }
+    }
+  )
 
   // --- projects ----------------------------------------------------------------
   ipcMain.handle('projects:list', (): Project[] => listProjects(ensureVault()))

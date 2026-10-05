@@ -88,6 +88,10 @@ export interface VaultInfo {
   projectsDir: string
   assetsDir: string
   dbPath: string
+  /** False on true first run — the wizard must pick a location before setup. */
+  configured: boolean
+  /** True when INKFISH_VAULT owns the location (dev/tests) — picker disabled. */
+  managed: boolean
 }
 
 /** One row of the notes index: vault path + frontmatter + snippet. */

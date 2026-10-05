@@ -6,7 +6,7 @@ import { createAppTray, destroyTray } from './tray'
 import { createWindow, showWindow } from './window'
 import { createPopover, togglePopover } from './popover'
 import { openDb, reindexVault } from './db'
-import { ensureSeedProjects, ensureVault, vaultPaths } from './vault'
+import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured, vaultPaths } from './vault'
 
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
@@ -25,10 +25,6 @@ function initVault(): void {
   }
 }
 
-export function vaultRoot(): string {
-  return vaultPaths().root
-}
-
 app.whenReady().then(() => {
   electronApp.setAppUserModelId(APP_ID)
 
@@ -36,7 +32,14 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  initVault()
+  setConfigDir(app.getPath('userData'))
+  if (vaultConfigured()) {
+    initVault()
+  } else {
+    // True first run: do NOTHING yet — the onboarding wizard picks the vault
+    // location first, then the renderer drives setup via `vault:set-root`.
+    console.log('[inkfish] first run — waiting for vault selection')
+  }
   registerIpc()
   createWindow()
   createPopover()

@@ -72,6 +72,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
     const require = createRequire(import.meta.url)
     const mod = require('node:sqlite') as typeof import('node:sqlite')
     const db = new mod.DatabaseSync(dbPath)
+    sqliteHandle = db
     db.exec(`
       CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
@@ -170,6 +171,12 @@ function createSqliteBackend(dbPath: string): Backend | null {
     }
   } catch (err) {
     console.warn('[db] node:sqlite unavailable, using in-memory index:', String(err))
+    try {
+      sqliteHandle?.close()
+    } catch {
+      // ignore
+    }
+    sqliteHandle = null
     return null
   }
 }
@@ -205,8 +212,10 @@ function createMemoryBackend(): Backend {
 
 let backend: Backend | null = null
 let backendKind = 'none'
+let sqliteHandle: { close(): void } | null = null
 
 export function openDb(dbPath: string): string {
+  closeDb()
   const sqlite = createSqliteBackend(dbPath)
   if (sqlite) {
     backend = sqlite
@@ -216,6 +225,18 @@ export function openDb(dbPath: string): string {
     backendKind = 'memory'
   }
   return backendKind
+}
+
+/** Release the current index (sqlite handle or memory) — used when the vault moves. */
+export function closeDb(): void {
+  try {
+    sqliteHandle?.close()
+  } catch {
+    // already closed
+  }
+  sqliteHandle = null
+  backend = null
+  backendKind = 'none'
 }
 
 function must(): Backend {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { APP_NAME, APP_TAGLINE } from '../../shared/config'
-import type { GlassState, InboxItem, NoteDoc, NoteEntry, Project, SysInfo } from '../../shared/types'
+import type { GlassState, InboxItem, NoteDoc, NoteEntry, Project, SysInfo, VaultInfo } from '../../shared/types'
 import Capture from './views/Capture'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
@@ -38,6 +38,8 @@ function Main(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NoteEntry[] | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [ostep, setOstep] = useState(0)
+  const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
   const [newProject, setNewProject] = useState('')
   const [toast, setToast] = useState<string | null>(null)
@@ -73,11 +75,27 @@ function Main(): React.JSX.Element {
   useEffect(() => {
     window.api.sys.info().then(setSys).catch(console.error)
     window.api.glass.get().then(setGlass).catch(console.error)
-    window.api.vault.backend().then(setBackend).catch(console.error)
-    refreshInbox()
-    refreshProjects()
-    refreshNotes(null)
-    if (!localStorage.getItem('inkfish.onboarded')) setShowOnboarding(true)
+    window.api.vault
+      .info()
+      .then((v) => {
+        setVaultInfo(v)
+        setBackend('…')
+        if (!v.configured) {
+          // First run: vault location first — no data loads until the user picks.
+          setOstep(0)
+          setShowOnboarding(true)
+          return
+        }
+        window.api.vault.backend().then(setBackend).catch(console.error)
+        refreshInbox()
+        refreshProjects()
+        refreshNotes(null)
+        if (!localStorage.getItem('inkfish.onboarded')) {
+          setOstep(0)
+          setShowOnboarding(true)
+        }
+      })
+      .catch(console.error)
   }, [refreshInbox, refreshNotes, refreshProjects])
 
   useEffect(() => {
@@ -142,6 +160,17 @@ function Main(): React.JSX.Element {
       .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
   }, [doc, sel, activeProject, refreshNotes, refreshInbox, notify])
 
+  const onVaultReady = useCallback(
+    (v: VaultInfo) => {
+      setVaultInfo(v)
+      window.api.vault.backend().then(setBackend).catch(console.error)
+      refreshInbox()
+      refreshProjects()
+      refreshNotes(null)
+    },
+    [refreshInbox, refreshNotes, refreshProjects]
+  )
+
   const pickProject = (id: string | null): void => {
     setActiveProject(id)
     setSel(null)
@@ -205,10 +234,25 @@ function Main(): React.JSX.Element {
           <span className={`status-pill${vibrancyOn ? ' on' : ''}`}>
             {pendingCount > 0 ? `inbox ${pendingCount}` : 'inbox zero'} · {backend}
           </span>
+          <span className="status-sub" title={vaultInfo?.root ?? ''}>
+            {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
+          </span>
           <div className="row">
             <button
               className="btn ghost sm"
+              title="Move the vault to a different folder"
+              disabled={!vaultInfo?.configured || vaultInfo?.managed}
+              onClick={() => {
+                setOstep(0)
+                setShowOnboarding(true)
+              }}
+            >
+              Move vault…
+            </button>
+            <button
+              className="btn ghost sm"
               title="Re-scan vault folder into the index (picks up externally added .md files)"
+              disabled={!vaultInfo?.configured}
               onClick={() =>
                 window.api.vault
                   .reindex()
@@ -295,7 +339,16 @@ function Main(): React.JSX.Element {
         </main>
       </div>
 
-      {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} />}
+      {showOnboarding && (
+        <Onboarding
+          step={ostep}
+          setStep={setOstep}
+          vault={vaultInfo}
+          onVaultReady={onVaultReady}
+          onDone={() => setShowOnboarding(false)}
+          notify={notify}
+        />
+      )}
       {showMeeting && (
         <MeetingImport
           onClose={() => setShowMeeting(false)}

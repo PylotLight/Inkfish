@@ -16,10 +16,58 @@ export interface VaultPaths {
   dbPath: string
 }
 
+// --- vault home: env > stored choice > default ----------------------------------
+// The user's choice persists in the Electron userData dir (`inkfish.json`).
+// Main startup calls `setConfigDir(app.getPath('userData'))` once; everything
+// else resolves dynamically so a mid-session move just works.
+
+let configDir: string | null = null
+
+export function setConfigDir(dir: string): void {
+  configDir = dir
+}
+
+function configPath(): string | null {
+  if (!configDir) return null
+  return join(configDir, 'inkfish.json')
+}
+
+export function readStoredRoot(): string | null {
+  try {
+    const p = configPath()
+    if (!p || !existsSync(p)) return null
+    const data = JSON.parse(readFileSync(p, 'utf8')) as { vaultRoot?: unknown }
+    return typeof data.vaultRoot === 'string' && data.vaultRoot ? data.vaultRoot : null
+  } catch {
+    return null
+  }
+}
+
+export function storeRoot(root: string): void {
+  const p = configPath()
+  if (!p) return
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, JSON.stringify({ vaultRoot: root }, null, 2))
+}
+
+/** True when INKFISH_VAULT is set (dev/tests manage the location). */
+export function envManaged(): boolean {
+  return !!process.env['INKFISH_VAULT']?.trim()
+}
+
 export function resolveVaultRoot(): string {
   const override = process.env['INKFISH_VAULT']
   if (override && override.trim()) return resolve(override)
-  return join(homedir(), 'Inkfish')
+  return readStoredRoot() ?? join(homedir(), 'Inkfish')
+}
+
+/** Has a vault home been established? Stored choice, env override, or a
+ * pre-existing default vault (adopted from earlier versions) all count.
+ * False only on true first run — the onboarding wizard must pick first. */
+export function vaultConfigured(): boolean {
+  if (envManaged()) return true
+  if (readStoredRoot()) return true
+  return existsSync(join(homedir(), 'Inkfish'))
 }
 
 export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {
