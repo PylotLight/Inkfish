@@ -22,7 +22,7 @@ renderer (React, browser) ──invoke───────┘
 - `src/main/db.ts` — sqlite index (`node:sqlite` + FTS5, `inkfish.db` in the
   vault root), in-memory fallback. Embeddings column reserved for sqlite-vec.
 - `src/main/ai.ts` — `transcribe()` / `classify()` / `summarize()` / `speak()`
-  abstraction: Apple → Ollama → rules chain, provider reported per result.
+  abstraction: Apple → rules chain, provider reported per result.
 - `src/main/ipc.ts` — every renderer→main call. Sections mirror the preload bridge.
 - `src/preload/index.ts` — typed `window.api`. Nothing here but forwarding.
 - `src/shared/config.ts` — runtime values safe to import anywhere (app name, id, geometry).

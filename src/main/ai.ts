@@ -7,42 +7,25 @@ import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/typ
 /**
  * AI abstraction: `transcribe()` / `classify()` / `summarize()` / `speak()`.
  *
- * Provider chain: Apple Intelligence where present → Ollama → rules fallback.
+ * Provider chain: Apple Intelligence where present → rules engine.
  * No account, offline default. Each result reports which `provider` produced
  * it so the UI can show it and the router can distrust low-confidence rules.
  *
  * Reality check (Electron, P0): Apple Foundation Models have no public API
  * reachable from Electron, and Apple Speech needs native code — so the
  * `apple` provider reports availability only (used for short-dictation
- * hooks later). Classification today = Ollama when reachable, else the
- * built-in rules engine. STT = parakeet-redux sidecar (`stt/`), Apple Speech
- * fallback later.
+ * hooks later). Classification today = the built-in rules engine.
+ * STT = parakeet-redux sidecar (`stt/`), Apple Speech fallback later.
  */
 
 export interface ProviderStatus {
-  id: 'apple' | 'ollama' | 'rules' | 'parakeet'
+  id: 'apple' | 'rules' | 'parakeet'
   available: boolean
   detail: string
 }
 
-const OLLAMA_HOST = process.env['OLLAMA_HOST'] ?? 'http://localhost:11434'
-const OLLAMA_MODEL = process.env['INKFISH_MODEL'] ?? 'qwen2.5:3b'
-
-async function ollamaAvailable(): Promise<boolean> {
-  try {
-    const ctl = new AbortController()
-    const t = setTimeout(() => ctl.abort(), 2500)
-    const res = await fetch(`${OLLAMA_HOST}/api/tags`, { signal: ctl.signal })
-    clearTimeout(t)
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-export async function providerStatus(): Promise<ProviderStatus[]> {
-  const ollama = await ollamaAvailable()
-  return [
+export function providerStatus(): Promise<ProviderStatus[]> {
+  return Promise.resolve([
     {
       id: 'apple',
       available: process.platform === 'darwin',
@@ -50,11 +33,6 @@ export async function providerStatus(): Promise<ProviderStatus[]> {
         process.platform === 'darwin'
           ? 'Apple Silicon detected — Foundation Models hook reserved (rules engine for now)'
           : 'Apple Intelligence needs macOS'
-    },
-    {
-      id: 'ollama',
-      available: ollama,
-      detail: ollama ? `reachable at ${OLLAMA_HOST} (model ${OLLAMA_MODEL})` : `not reachable at ${OLLAMA_HOST}`
     },
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
     {
@@ -64,7 +42,7 @@ export async function providerStatus(): Promise<ProviderStatus[]> {
         ? 'stt/transcribe.py present (moondream/parakeet-redux via photon)'
         : 'stt/transcribe.py missing — voice falls back to manual text'
     }
-  ]
+  ])
 }
 
 // --- classify -------------------------------------------------------------------
@@ -145,49 +123,8 @@ function rulesClassify(input: ClassifyInput): ClassifyResult {
   }
 }
 
-async function ollamaClassify(input: ClassifyInput): Promise<ClassifyResult | null> {
-  try {
-    const ctl = new AbortController()
-    const t = setTimeout(() => ctl.abort(), 20000)
-    const projectList = input.projects.map((p) => p.name).join(', ')
-    const prompt = [
-      `You route quick-capture notes to projects. Projects: ${projectList || '(none yet)'}.`,
-      `Reply with ONLY compact JSON: {"project": "<exact project name or a new short lowercase name>", "title": "<=80 chars>", "tags": ["kebab-case"], "markdown": "<formatted GitHub-flavored markdown body>"}.`,
-      `Note kind: ${input.kind}. Raw note:`,
-      input.raw.slice(0, 4000)
-    ].join('\n')
-    const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
-      method: 'POST',
-      signal: ctl.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false, format: 'json' })
-    })
-    clearTimeout(t)
-    if (!res.ok) return null
-    const data = (await res.json()) as { response?: string }
-    const parsed = JSON.parse(data.response ?? '{}') as Partial<ClassifyResult> & {
-      project?: string
-    }
-    const name = String(parsed.project ?? '').trim()
-    const match =
-      input.projects.find((p) => p.name.toLowerCase() === name.toLowerCase()) ?? null
-    return {
-      projectId: match?.id ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? 'general',
-      projectName: match?.name ?? name ?? 'general',
-      title: String(parsed.title ?? titleFromRaw(input.raw)).slice(0, 80),
-      tags: Array.isArray(parsed.tags) ? parsed.tags.map(String).slice(0, 8) : [],
-      markdown: String(parsed.markdown ?? input.raw),
-      provider: 'ollama',
-      confidence: 0.85
-    }
-  } catch {
-    return null
-  }
-}
-
-export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
-  if (input.projectHint && input.projectHint !== 'auto') return rulesClassify(input)
-  return (await ollamaClassify(input)) ?? rulesClassify(input)
+export function classify(input: ClassifyInput): Promise<ClassifyResult> {
+  return Promise.resolve(rulesClassify(input))
 }
 
 // --- summarize --------------------------------------------------------------------
@@ -197,29 +134,8 @@ export function summarizeExtractive(text: string, maxSentences = 3): string {
   return sentences.slice(0, maxSentences).join(' ').trim()
 }
 
-export async function summarize(text: string, maxSentences = 3): Promise<{ text: string; provider: string }> {
-  try {
-    const ctl = new AbortController()
-    const t = setTimeout(() => ctl.abort(), 20000)
-    const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
-      method: 'POST',
-      signal: ctl.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        prompt: `Summarize in at most ${maxSentences} sentences:\n${text.slice(0, 4000)}`,
-        stream: false
-      })
-    })
-    clearTimeout(t)
-    if (res.ok) {
-      const data = (await res.json()) as { response?: string }
-      if (data.response?.trim()) return { text: data.response.trim(), provider: 'ollama' }
-    }
-  } catch {
-    // fall through to extractive
-  }
-  return { text: summarizeExtractive(text, maxSentences), provider: 'rules' }
+export function summarize(text: string, maxSentences = 3): Promise<{ text: string; provider: string }> {
+  return Promise.resolve({ text: summarizeExtractive(text, maxSentences), provider: 'rules' })
 }
 
 // --- transcribe (parakeet-redux sidecar) --------------------------------------------

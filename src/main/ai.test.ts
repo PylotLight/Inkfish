@@ -53,7 +53,7 @@ describe('summarize', () => {
 describe('providerStatus', () => {
   test('rules always available, shape stable', async () => {
     const ps = await providerStatus()
-    expect(ps.map((p) => p.id)).toEqual(['apple', 'ollama', 'rules', 'parakeet'])
+    expect(ps.map((p) => p.id)).toEqual(['apple', 'rules', 'parakeet'])
     expect(ps.find((p) => p.id === 'rules')?.available).toBe(true)
   })
 })

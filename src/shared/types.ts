@@ -122,7 +122,7 @@ export interface ClassifyResult {
   tags: string[]
   /** Formatted GFM markdown body (no frontmatter — main adds it). */
   markdown: string
-  /** 'apple' | 'ollama' | 'rules' — which provider produced this. */
+  /** 'apple' | 'rules' — which provider produced this. */
   provider: string
   confidence: number
 }

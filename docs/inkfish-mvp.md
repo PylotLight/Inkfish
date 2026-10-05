@@ -37,7 +37,7 @@ P0 (MVP, local only, free):
 - [x] Glass UI: vibrancy popover + main 3-pane (sidebar / editor / inbox queue)
 
 P1:
-- [ ] Auto-router v1: Apple Intelligence (where available) → Ollama → rules fallback
+- [ ] Auto-router v1: Apple Intelligence (where available) → rules fallback
 - [ ] sqlite-vec similarity: "related notes", duplicate detection, project suggest
 - [ ] Image notes: paste/drop → OCR optional, thumbnail in note
 
@@ -61,8 +61,8 @@ Later:
 
 - Apple Intelligence first where present (Foundation Models / on-device LLM
   for classify/format/summarize, Speech framework for short dictation).
-  Abstract behind `summarize()`, `classify()`, `transcribe()` so Ollama/BYOK
-  can slot in. No account, offline default.
+  Abstract behind `summarize()`, `classify()`, `transcribe()` so Apple
+  Intelligence can slot in front. No account, offline default.
 - STT: `moondream/parakeet-redux` (HF, CC-BY-4.0) — 1.58-bit ternary build of
   `nvidia/parakeet-tdt-0.6b-v3`, 178 MB, ~38× realtime CPU / ~43× GPU on M2 Air
   via Photon (Metal on Apple GPUs, NEON/AVX elsewhere), word+segment timestamps,
@@ -90,7 +90,7 @@ Later:
    `src/main/ipc.ts` → expose in preload → `window.api`).
 3. Vault writer (main): inbox .md + sqlite row + FTS entry.
 4. STT sidecar (`stt/` python photon) + meeting import.
-5. Classifier worker (Apple Intel → Ollama → rules), router to projects/.
+5. Classifier worker (Apple Intelligence → rules), router to projects/.
 6. sqlite-vec related search + polish glass popover.
 
 Verify each step: `bun run typecheck`, `bun run build`, `bun run start`.
