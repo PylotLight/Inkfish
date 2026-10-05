@@ -4,6 +4,7 @@ name: release
 # Builds the artifacts, publishes a GitHub release with generated notes,
 # then updates the Homebrew cask in this repo (it doubles as the tap).
 # See docs/releasing.md.
+# Workflows register from the default branch (main).
 on:
   push:
     tags:
