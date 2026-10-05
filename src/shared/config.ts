@@ -6,7 +6,7 @@
 export const APP_NAME = 'Inkfish'
 
 /** One-liner shown under the brand in the sidebar. */
-export const APP_TAGLINE = 'squirt ink fast · AI sorts it later'
+export const APP_TAGLINE = 'capture fast · AI sorts it later'
 
 /**
  * Reverse-DNS id used for setAppUserModelId (Windows notifications/tasks).

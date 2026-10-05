@@ -727,41 +727,18 @@ input[type='range'] {
 
 .capture button,
 .capture textarea,
-.capture select,
-.capture .cap-drop {
+.capture select {
   -webkit-app-region: no-drag;
 }
 
-.capture.squirt {
-  animation: squirt 0.38s ease-out;
+.capture.pop {
+  animation: pop 0.38s ease-out;
 }
 
-@keyframes squirt {
+@keyframes pop {
   0% { transform: scale(1); }
   35% { transform: scale(0.96) rotate(-0.6deg); }
   100% { transform: scale(1); }
-}
-
-.cap-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.cap-tabs button {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 10px;
-  padding: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.cap-tabs button.active {
-  color: var(--text);
-  background: var(--panel-strong);
 }
 
 .cap-input {
@@ -784,21 +761,6 @@ input[type='range'] {
 
 .cap-foot select {
   flex: 1;
-}
-
-.cap-voice,
-.cap-drop {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cap-drop {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  align-items: stretch;
-  text-align: center;
 }
 
 /* ---------- Inkfish: main 3-pane ---------- */
@@ -1119,4 +1081,152 @@ select.sm {
 
 .queue .empty {
   padding: 8px 2px;
+}
+
+/* ---------- Inkfish: motion (transform/opacity only, GPU-cheap) ---------- */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Panes + cards settle in on mount / view switch. */
+.notelist,
+.noteview,
+.rail {
+  animation: rise 0.22s ease both;
+}
+
+.rail {
+  animation-delay: 0.04s;
+}
+
+.noteview {
+  animation-delay: 0.02s;
+}
+
+/* List rows: hover glide + press, selected snap. */
+.nlist button,
+.qlist > li,
+.proj-list button {
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+}
+
+.nlist button:hover,
+.proj-list button:hover {
+  transform: translateX(2px);
+}
+
+.nlist button:active,
+.qlist .btn:active,
+.proj-list button:active {
+  transform: scale(0.985);
+}
+
+/* Buttons: lift + press. */
+.btn {
+  transition: transform 0.12s ease, filter 0.12s ease, background 0.12s ease;
+}
+
+.btn:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* Modal + toast + popover entrances. */
+.modal {
+  animation: scaleIn 0.2s ease both;
+}
+
+.modal-backdrop {
+  animation: fadeIn 0.16s ease both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.toast {
+  animation: scaleIn 0.2s ease both;
+}
+
+.capture {
+  animation: scaleIn 0.18s ease both;
+}
+
+/* Editor swap + preview settle. */
+.ed-preview {
+  animation: fadeIn 0.18s ease both;
+}
+
+.ed-head h2 {
+  animation: rise 0.2s ease both;
+}
+
+/* Status pills pulse softly while work is in flight. */
+.status-pill.st-processing {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Recording indicator. */
+.cap-tools .danger {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Inkfish: combined composer ---------- */
+
+.cap-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cap-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cap-files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 5px 6px 5px 12px;
+  animation: rise 0.16s ease both;
+}
+
+.cap-files li button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0 7px;
+}
+
+.cap-files li button:hover {
+  color: var(--danger);
 }

@@ -56,7 +56,7 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
         notify(`Vault setup failed: ${r.error}`)
       } else {
         onVaultReady(r.info)
-        notify(`Vault ready — ${r.indexed} notes indexed`)
+        notify(`Notes ready — ${r.indexed} files indexed`)
         setStep(1)
       }
     } finally {
@@ -70,10 +70,13 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
         <span className="stat-label">Inkfish setup {step + 1}/3</span>
         {step === 0 && (
           <>
-            <h3>Where should your vault live?</h3>
+            <h3>Where do your notes live?</h3>
             <p className="muted">
-              Plain Markdown files — <code>inbox/</code>, <code>projects/&lt;name&gt;/</code>,{' '}
-              <code>assets/</code>. Nothing is created until you confirm. No server, no lock-in.
+              Pick a folder for your notes — a fresh empty folder, or an existing
+              vault (Obsidian etc.) whose <code>.md</code> files get indexed on
+              import. Inkfish adds <code>inbox/</code>, <code>projects/</code> and{' '}
+              <code>assets/</code> inside; your files stay plain Markdown.
+              Nothing is created until you confirm.
             </p>
             <code className="pill">{picked || '…'}</code>
             {vault?.managed && (
@@ -98,8 +101,8 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
                   : vault?.managed
                     ? 'Continue'
                     : vault?.configured
-                      ? 'Move vault here'
-                      : 'Create vault here'}
+                      ? 'Move notes here'
+                      : 'Use this folder'}
               </button>
             </div>
           </>
@@ -131,7 +134,7 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
         )}
         {step === 2 && (
           <>
-            <h3>⌥Space squirts ink</h3>
+            <h3>⌥Space captures from anywhere</h3>
             <p className="muted">
               The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the
               inbox — the worker routes it, raw is never deleted.

@@ -31,8 +31,8 @@ import {
   meetingToMarkdown,
   parseVtt,
   readInboxItem,
+  requireNotes,
   resolveAsset,
-  resolveVaultRoot,
   routeToProject,
   saveAsset,
   setInboxStatus,
@@ -40,7 +40,8 @@ import {
   undoRoute,
   vaultConfigured,
   vaultPaths,
-  writeInboxItem
+  writeInboxItem,
+  type VaultPaths
 } from './vault'
 import {
   closeDb,
@@ -92,7 +93,12 @@ function info(): VaultInfo {
 
 /** Background worker: classify + route one inbox item, never deleting raw. */
 async function processInboxItem(id: string): Promise<{ note: NoteEntry; classify: ClassifyResult } | { error: string }> {
-  const paths = vaultPaths()
+  let paths: VaultPaths
+  try {
+    paths = requireNotes()
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
   const item = readInboxItem(id, paths)
   if (!item) return { error: `inbox item ${id} not found` }
   setInboxStatus(id, 'processing', paths)
@@ -206,12 +212,12 @@ export function registerIpc(): void {
   // --- vault ------------------------------------------------------------------
   ipcMain.handle('vault:info', (): VaultInfo => info())
   ipcMain.handle('vault:reveal', (): boolean => {
-    const paths = ensureVault()
-    void shell.openPath(paths.root)
+    // Read-only: never creates anything.
+    void shell.openPath(vaultPaths().root)
     return true
   })
   ipcMain.handle('vault:reindex', (): { indexed: number; backend: string } => {
-    const paths = ensureVault()
+    const paths = requireNotes()
     return { indexed: reindexVault(paths.root), backend: dbKind() }
   })
   ipcMain.handle('vault:backend', (): string => dbKind())
@@ -255,15 +261,17 @@ export function registerIpc(): void {
   )
 
   // --- projects ----------------------------------------------------------------
-  ipcMain.handle('projects:list', (): Project[] => listProjects(ensureVault()))
-  ipcMain.handle('projects:ensure-seeds', (): Project[] => ensureSeedProjects(ensureVault()))
+  ipcMain.handle('projects:list', (): Project[] => {
+    if (!vaultConfigured()) return []
+    return listProjects(requireNotes())
+  })
   ipcMain.handle('projects:create', (_e: IpcMainInvokeEvent, name: string): Project =>
-    createProject(name, ensureVault())
+    createProject(name, requireNotes())
   )
 
   // --- inbox --------------------------------------------------------------------
   ipcMain.handle('inbox:add', (_e: IpcMainInvokeEvent, input: InboxAddInput): InboxItem => {
-    const paths = ensureVault()
+    const paths = requireNotes()
     const { item, path } = writeInboxItem(
       {
         kind: input.kind,
@@ -280,7 +288,10 @@ export function registerIpc(): void {
     return item
   })
 
-  ipcMain.handle('inbox:list', (): InboxItem[] => listInbox(ensureVault()))
+  ipcMain.handle('inbox:list', (): InboxItem[] => {
+    if (!vaultConfigured()) return []
+    return listInbox(requireNotes())
+  })
   ipcMain.handle('inbox:count', (): number => countInbox())
 
   ipcMain.handle(
@@ -290,12 +301,12 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
-    undoRoute(id, ensureVault())
-    const item = readInboxItem(id, ensureVault())
+    undoRoute(id, requireNotes())
+    const item = readInboxItem(id, requireNotes())
     if (!item) return { error: `inbox item ${id} not found` }
     // Force the router to this project by passing an explicit hint.
-    setInboxStatus(id, 'inbox', ensureVault())
-    const paths = ensureVault()
+    setInboxStatus(id, 'inbox', requireNotes())
+    const paths = requireNotes()
     const projects = listProjects(paths)
     const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: projectName })
     const routed = routeToProject(
@@ -309,7 +320,7 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => {
-    const paths = ensureVault()
+    const paths = requireNotes()
     const ok = undoRoute(id, paths)
     // Drop undone notes from the index (files are `.undone`, re-scan is cheap).
     void reindexVault(paths.root)
@@ -317,26 +328,30 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('inbox:set-status', (_e: IpcMainInvokeEvent, id: string, status: NoteStatus): boolean =>
-    setInboxStatus(id, status, ensureVault())
+    setInboxStatus(id, status, requireNotes())
   )
 
   // --- notes ---------------------------------------------------------------------
-  ipcMain.handle('notes:list', (_e: IpcMainInvokeEvent, projectId?: string | null): NoteEntry[] =>
-    listNotes(projectId)
-  )
-  ipcMain.handle('notes:get', (_e: IpcMainInvokeEvent, id: string): NoteDoc | null =>
-    getNote(id, ensureVault().root)
-  )
-  ipcMain.handle('notes:search', (_e: IpcMainInvokeEvent, query: string): SearchResult[] =>
-    searchNotes(query)
-  )
-  ipcMain.handle('notes:related', (_e: IpcMainInvokeEvent, id: string): NoteEntry[] =>
-    relatedNotes(id)
-  )
+  ipcMain.handle('notes:list', (_e: IpcMainInvokeEvent, projectId?: string | null): NoteEntry[] => {
+    if (!vaultConfigured()) return []
+    return listNotes(projectId)
+  })
+  ipcMain.handle('notes:get', (_e: IpcMainInvokeEvent, id: string): NoteDoc | null => {
+    if (!vaultConfigured()) return null
+    return getNote(id, requireNotes().root)
+  })
+  ipcMain.handle('notes:search', (_e: IpcMainInvokeEvent, query: string): SearchResult[] => {
+    if (!vaultConfigured()) return []
+    return searchNotes(query)
+  })
+  ipcMain.handle('notes:related', (_e: IpcMainInvokeEvent, id: string): NoteEntry[] => {
+    if (!vaultConfigured()) return []
+    return relatedNotes(id)
+  })
   ipcMain.handle(
     'notes:save',
     (_e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null => {
-      const paths = ensureVault()
+      const paths = requireNotes()
       const doc = getNote(id, paths.root)
       if (!doc) return null
       const abs = join(paths.root, doc.path)
@@ -348,7 +363,7 @@ export function registerIpc(): void {
     }
   )
   ipcMain.handle('notes:reveal', (_e: IpcMainInvokeEvent, id: string): boolean => {
-    const paths = ensureVault()
+    const paths = requireNotes()
     const doc = getNote(id, paths.root)
     if (!doc) return false
     void shell.showItemInFolder(join(paths.root, doc.path))
@@ -362,11 +377,11 @@ export function registerIpc(): void {
       const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
       if (!m) throw new Error('assets:save needs a data: URL')
       const buf = Buffer.from(m[2] ?? '', 'base64')
-      return saveAsset(fileName, buf, ensureVault())
+      return saveAsset(fileName, buf, requireNotes())
     }
   )
   ipcMain.handle('assets:path', (_e: IpcMainInvokeEvent, vaultRel: string): string =>
-    resolveAsset(vaultRel, ensureVault())
+    resolveAsset(vaultRel, requireNotes())
   )
 
   // --- AI --------------------------------------------------------------------------
@@ -374,7 +389,7 @@ export function registerIpc(): void {
   ipcMain.handle(
     'ai:classify',
     (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind): Promise<ClassifyResult> =>
-      classify({ raw, kind, projects: listProjects(ensureVault()) })
+      classify({ raw, kind, projects: vaultConfigured() ? listProjects(requireNotes()) : [] })
   )
   ipcMain.handle(
     'ai:summarize',
@@ -414,7 +429,7 @@ export function registerIpc(): void {
   ipcMain.handle(
     'meeting:import',
     (_e: IpcMainInvokeEvent, input: MeetingImportInput): InboxItem => {
-      const paths = ensureVault()
+      const paths = requireNotes()
       const cues = input.format === 'vtt' ? parseVtt(input.text) : null
       const raw =
         input.format === 'vtt' && cues

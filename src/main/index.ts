@@ -6,7 +6,7 @@ import { createAppTray, destroyTray } from './tray'
 import { createWindow, showWindow } from './window'
 import { createPopover, togglePopover } from './popover'
 import { openDb, reindexVault } from './db'
-import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured, vaultPaths } from './vault'
+import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
 
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {

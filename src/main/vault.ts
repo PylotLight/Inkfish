@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
@@ -9,23 +9,37 @@ import type { InboxItem, NoteKind, NoteSource, NoteStatus, Project } from '../sh
  */
 
 export interface VaultPaths {
+  /** User-visible notes home (selectable — may be an existing Obsidian vault). */
   root: string
   inboxDir: string
   projectsDir: string
   assetsDir: string
+  /** App-managed index in the hidden app-data dir — never in the notes home. */
   dbPath: string
 }
 
-// --- vault home: env > stored choice > default ----------------------------------
-// The user's choice persists in the Electron userData dir (`inkfish.json`).
-// Main startup calls `setConfigDir(app.getPath('userData'))` once; everything
-// else resolves dynamically so a mid-session move just works.
+// --- homes: app data (hidden) vs notes (user-visible) ------------------------------
+// App data (config, sqlite index, models) lives in the platform app-data dir
+// (`app.getPath('userData')` — ~/.config/<app> on Linux, ~/Library/… on mac).
+// Override with INKFISH_DATA for dev/tests. The notes home is chosen by the
+// user in onboarding (or INKFISH_VAULT) and holds only plain .md + assets.
 
 let configDir: string | null = null
 
 export function setConfigDir(dir: string): void {
   configDir = dir
 }
+
+export function appDataDir(): string | null {
+  const override = process.env['INKFISH_DATA']
+  if (override && override.trim()) return resolve(override)
+  return configDir
+}
+
+// --- notes home: env > stored choice > default ----------------------------------
+// The user's choice persists in the app-data dir (`inkfish.json`).
+// Main startup calls `setConfigDir(app.getPath('userData'))` once; everything
+// else resolves dynamically so a mid-session move just works.
 
 function configPath(): string | null {
   if (!configDir) return null
@@ -71,13 +85,22 @@ export function vaultConfigured(): boolean {
 }
 
 export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {
+  const data = appDataDir()
   return {
     root,
     inboxDir: join(root, 'inbox'),
     projectsDir: join(root, 'projects'),
     assetsDir: join(root, 'assets'),
-    dbPath: join(root, 'inkfish.db')
+    // Index lives with app data, never inside the notes home.
+    dbPath: data ? join(data, 'inkfish.db') : join(root, 'inkfish.db')
   }
+}
+
+/** Throw unless a notes home is established — write paths must not
+ * implicitly create directories before the user picks a location. */
+export function requireNotes(): VaultPaths {
+  if (!vaultConfigured()) throw new Error('notes folder not chosen yet')
+  return ensureVault()
 }
 
 export function ensureVault(paths: VaultPaths = vaultPaths()): VaultPaths {
@@ -234,7 +257,7 @@ export function setInboxStatus(
 }
 
 export function listInbox(paths: VaultPaths = vaultPaths()): InboxItem[] {
-  ensureVault(paths)
+  if (!existsSync(paths.inboxDir)) return []
   const items: InboxItem[] = []
   for (const f of readdirSync(paths.inboxDir)) {
     if (!f.endsWith('.md')) continue
@@ -270,18 +293,49 @@ export function ensureSeedProjects(paths: VaultPaths = vaultPaths()): Project[] 
   return out
 }
 
+/** Dirs that are ours, not import candidates. */
+const RESERVED_DIRS = new Set(['inbox', 'projects', 'assets'])
+
+/** Does this dir tree contain any .md (one level lookahead, skips hidden)? */
+function dirHasMd(dir: string): boolean {
+  let entries: Dirent<string>[]
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  for (const e of entries) {
+    const n = e.name
+    if (n.startsWith('.')) continue
+    if (e.isFile() && n.endsWith('.md')) return true
+    if (e.isDirectory()) {
+      if (dirHasMd(join(dir, n))) return true
+    }
+  }
+  return false
+}
+
 export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
-  ensureVault(paths)
   const found: Project[] = []
-  let i = 0
-  for (const f of readdirSync(paths.projectsDir, { withFileTypes: true })) {
-    if (!f.isDirectory()) continue
-    found.push({
-      id: slugToId(f.name),
-      name: f.name,
-      dir: `projects/${f.name}`,
-      color: PROJECT_COLORS[i++ % PROJECT_COLORS.length]
-    })
+  const seen = new Set<string>()
+  const push = (name: string, dir: string): void => {
+    const id = slugToId(name)
+    if (seen.has(id)) return
+    seen.add(id)
+    found.push({ id, name, dir, color: PROJECT_COLORS[found.length % PROJECT_COLORS.length] })
+  }
+  if (existsSync(paths.projectsDir)) {
+    for (const f of readdirSync(paths.projectsDir, { withFileTypes: true })) {
+      if (!f.isDirectory()) continue
+      push(f.name, `projects/${f.name}`)
+    }
+  }
+  // Imported vaults (e.g. Obsidian): top-level folders holding .md count too.
+  if (existsSync(paths.root)) {
+    for (const f of readdirSync(paths.root, { withFileTypes: true })) {
+      if (!f.isDirectory() || f.name.startsWith('.') || RESERVED_DIRS.has(f.name)) continue
+      if (dirHasMd(join(paths.root, f.name))) push(f.name, f.name)
+    }
   }
   return found.sort((a, b) => a.name.localeCompare(b.name))
 }

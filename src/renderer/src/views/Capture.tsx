@@ -1,59 +1,54 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 
-type Kind = 'text' | 'voice' | 'image'
-
-/** Capture popover (380px): autofocus input, Cmd-Enter save, kind tabs, project picker. */
+/**
+ * Capture popover (380px): one combined composer. Type, and/or drop/paste an
+ * image, and/or dictate — everything lands in the same box, Cmd-Enter saves.
+ */
 export default function Capture(): React.JSX.Element {
-  const [kind, setKind] = useState<Kind>('text')
   const [raw, setRaw] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [hint, setHint] = useState('auto')
   const [saving, setSaving] = useState(false)
-  const [squirt, setSquirt] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [recState, setRecState] = useState<'idle' | 'rec' | 'working'>('idle')
-  const [imageAsset, setImageAsset] = useState<string | null>(null)
-  const [audioAsset, setAudioAsset] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null)
 
   useEffect(() => {
-    window.api.projects.list().then(setProjects).catch(console.error)
+    window.api.projects.list().then(setProjects).catch(() => setProjects([]))
     inputRef.current?.focus()
   }, [])
-
-  useEffect(() => {
-    if (kind === 'text') inputRef.current?.focus()
-  }, [kind])
 
   const say = (msg: string): void => {
     setNote(msg)
     window.setTimeout(() => setNote(null), 2600)
   }
 
+  const appendText = (t: string): void =>
+    setRaw((prev) => (prev ? (prev.endsWith('\n') ? `${prev}${t}` : `${prev}\n${t}`) : t))
+
   const save = async (): Promise<void> => {
-    const text = raw.trim()
-    if (!text && !imageAsset && !audioAsset) return
+    if (!raw.trim() && attachments.length === 0) return
     setSaving(true)
     try {
-      const noteKind: NoteKind = kind === 'voice' ? 'voice' : kind === 'image' ? 'image' : 'text'
-      const assets = [imageAsset, audioAsset].filter((a): a is string => !!a)
-      const body = text || (kind === 'image' ? `![](${imageAsset ?? ''})` : '(voice note)')
+      const hasAudio = attachments.some((a) => /\.(wav|mp3|m4a|ogg|flac)$/i.test(a))
+      const hasImage = attachments.some((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a))
+      const kind: NoteKind = hasAudio ? 'voice' : hasImage ? 'image' : 'text'
       await window.api.inbox.add({
-        kind: noteKind,
-        raw: body,
+        kind,
+        raw: raw.trim(),
         projectHint: hint,
         source: 'popover',
-        assets
+        assets: attachments
       })
-      // Ink-squirt save animation, then clear + hide (popover semantics).
-      setSquirt(true)
+      setSaved(true)
       window.setTimeout(() => {
-        setSquirt(false)
+        setSaved(false)
         setRaw('')
-        setImageAsset(null)
-        setAudioAsset(null)
+        setAttachments([])
         setSaving(false)
         void window.api.popover.hide()
       }, 380)
@@ -61,7 +56,7 @@ export default function Capture(): React.JSX.Element {
       setSaving(false)
       say(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
     }
-  };
+  }
 
   const onKey = (e: React.KeyboardEvent): void => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -72,6 +67,15 @@ export default function Capture(): React.JSX.Element {
   }
 
   // --- voice: MediaRecorder → WAV PCM16 → assets → STT sidecar -------------------
+  const toggleRec = (): void => {
+    if (recState === 'rec') {
+      mediaRef.current?.rec.stop()
+      setRecState('working')
+    } else {
+      void startRec()
+    }
+  }
+
   const startRec = async (): Promise<void> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -89,25 +93,20 @@ export default function Capture(): React.JSX.Element {
     }
   }
 
-  const stopRec = (): void => {
-    mediaRef.current?.rec.stop()
-    setRecState('working')
-  }
-
   const finishRec = async (chunks: Blob[], stream: MediaStream): Promise<void> => {
     stream.getTracks().forEach((t) => t.stop())
     try {
       const wav = await toWav(new Blob(chunks, { type: mediaRef.current?.rec.mimeType }))
       const rel = await window.api.assets.save('voice-note.wav', await blobToDataUrl(wav))
-      setAudioAsset(rel)
-      const abs = await window.api.assets.path(rel)
+      setAttachments((prev) => [...prev, rel])
       say('Transcribing…')
       try {
+        const abs = await window.api.assets.path(rel)
         const stt = await window.api.stt.transcribe(abs)
-        setRaw((prev) => (prev ? `${prev}\n${stt.text}` : stt.text))
+        appendText(stt.text)
         say(stt.provider === 'parakeet' ? 'Transcribed ✓' : `Transcribed (${stt.provider}) ✓`)
       } catch {
-        say('STT unavailable — describe the note in text.')
+        say('STT unavailable — audio kept, describe it in text.')
       }
     } catch {
       say('Recording failed — type instead.')
@@ -116,126 +115,115 @@ export default function Capture(): React.JSX.Element {
     mediaRef.current = null
   }
 
-  // --- image: drop / paste / pick → assets/ ---------------------------------------
-  const ingestImage = async (file: File): Promise<void> => {
-    if (!file.type.startsWith('image/')) {
-      say('Only images here.')
+  // --- images: drop / paste / pick → assets/, ref appended inline ----------------
+  const ingestFile = async (file: File): Promise<void> => {
+    const isImage = file.type.startsWith('image/')
+    const isAudio = file.type.startsWith('audio/')
+    if (!isImage && !isAudio) {
+      say('Only images or audio here.')
       return
     }
     const rel = await window.api.assets.save(file.name, await blobToDataUrl(file))
-    setImageAsset(rel)
-    setRaw((prev) => (prev ? `${prev}\n![](${rel})` : `![](${rel})`))
+    setAttachments((prev) => [...prev, rel])
+    if (isImage) appendText(`![](${rel})`)
+    else appendText(`🎙 \`${rel}\``)
   }
 
-  const pickImage = async (): Promise<void> => {
+  const ingestMany = (files: Iterable<File>): void => {
+    for (const f of files) {
+      void ingestFile(f).catch(() => say('File ingest failed.'))
+    }
+  }
+
+  const pickFile = (): void => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = 'image/*,audio/*'
+    input.multiple = true
     input.onchange = () => {
-      const f = input.files?.[0]
-      if (f) void ingestImage(f).catch(() => say('Image ingest failed.'))
+      if (input.files) ingestMany(input.files)
     }
     input.click()
   }
 
-  const canSave = raw.trim().length > 0 || imageAsset !== null || audioAsset !== null
+  const importAudio = (): void => {
+    window.api.stt
+      .pickAudio()
+      .then((r) => {
+        if ('transcript' in r) appendText(r.transcript.text)
+        else if (r.error !== 'cancelled') say(`Import failed: ${r.error}`)
+      })
+      .catch((e: unknown) => say(String(e)))
+  }
+
+  const canSave = raw.trim().length > 0 || attachments.length > 0
 
   return (
-    <div className={`capture glass${squirt ? ' squirt' : ''}`} onKeyDown={onKey}>
-      <div className="cap-tabs" role="tablist" aria-label="Capture kind">
-        {(['text', 'voice', 'image'] as Kind[]).map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={kind === k}
-            className={kind === k ? 'active' : ''}
-            onClick={() => setKind(k)}
-          >
-            {k === 'text' ? 'Text' : k === 'voice' ? 'Voice' : 'Image'}
-          </button>
-        ))}
-      </div>
+    <div
+      className={`capture glass${saved ? ' pop' : ''}`}
+      onKeyDown={onKey}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault()
+        if (e.dataTransfer.files.length > 0) ingestMany(e.dataTransfer.files)
+      }}
+      onPaste={(e) => {
+        const files = [...e.clipboardData.files]
+        if (files.length > 0) {
+          e.preventDefault()
+          ingestMany(files)
+        }
+      }}
+    >
+      <textarea
+        ref={inputRef}
+        className="cap-input"
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        placeholder="Type, drop an image, or dictate… (⌘↵ saves to inbox)"
+        rows={8}
+      />
 
-      {kind === 'text' && (
-        <textarea
-          ref={inputRef}
-          className="cap-input"
-          value={raw}
-          onChange={(e) => setRaw(e.target.value)}
-          placeholder="Squirt ink… (⌘↵ saves to inbox)"
-          rows={7}
-        />
+      {attachments.length > 0 && (
+        <ul className="cap-files">
+          {attachments.map((a) => (
+            <li key={a}>
+              <span>{a.split('/').slice(-1)[0]}</span>
+              <button
+                aria-label={`Remove ${a}`}
+                onClick={() => {
+                  setAttachments((prev) => prev.filter((x) => x !== a))
+                  setRaw((prev) =>
+                    prev
+                      .split('\n')
+                      .filter((l) => !l.includes(a))
+                      .join('\n')
+                  )
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {kind === 'voice' && (
-        <div className="cap-voice">
-          <div className="row">
-            {recState === 'rec' ? (
-              <button className="btn danger" onClick={stopRec}>
-                ● Stop
-              </button>
-            ) : (
-              <button className="btn" disabled={recState === 'working'} onClick={() => void startRec()}>
-                {recState === 'working' ? 'Working…' : '◉ Record'}
-              </button>
-            )}
-            <button
-              className="btn ghost"
-              onClick={() =>
-                window.api.stt
-                  .pickAudio()
-                  .then((r) => {
-                    if ('transcript' in r) setRaw((p) => (p ? `${p}\n${r.transcript.text}` : r.transcript.text))
-                    else if (r.error !== 'cancelled') say(`Import failed: ${r.error}`)
-                  })
-                  .catch((e: unknown) => say(String(e)))
-              }
-            >
-              Import audio…
-            </button>
-          </div>
-          <textarea
-            className="cap-input"
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            placeholder="Transcript lands here — edit, then ⌘↵"
-            rows={5}
-          />
-          {audioAsset && <p className="muted small">🎙 {audioAsset}</p>}
-        </div>
-      )}
-
-      {kind === 'image' && (
-        <div
-          className="cap-drop"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault()
-            const f = e.dataTransfer.files?.[0]
-            if (f) void ingestImage(f).catch(() => say('Image ingest failed.'))
-          }}
-          onPaste={(e) => {
-            const f = [...e.clipboardData.files].find((x) => x.type.startsWith('image/'))
-            if (f) void ingestImage(f).catch(() => say('Image ingest failed.'))
-          }}
+      <div className="cap-tools">
+        <button
+          className={`btn ghost sm${recState === 'rec' ? ' danger' : ''}`}
+          title="Dictate (transcript is appended here)"
+          disabled={recState === 'working'}
+          onClick={toggleRec}
         >
-          {imageAsset ? (
-            <p className="muted">🖼 {imageAsset}</p>
-          ) : (
-            <p className="muted">Drop / paste an image here, or…</p>
-          )}
-          <button className="btn ghost" onClick={() => void pickImage()}>
-            Choose image…
-          </button>
-          <textarea
-            className="cap-input"
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            placeholder="Caption (optional)…"
-            rows={3}
-          />
-        </div>
-      )}
+          {recState === 'rec' ? '● Stop' : recState === 'working' ? '…' : '◉ Dictate'}
+        </button>
+        <button className="btn ghost sm" title="Attach image or audio" onClick={pickFile}>
+          📎 Attach
+        </button>
+        <button className="btn ghost sm" title="Transcribe an audio file" onClick={importAudio}>
+          Import audio…
+        </button>
+      </div>
 
       <div className="cap-foot">
         <select value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
@@ -247,7 +235,7 @@ export default function Capture(): React.JSX.Element {
           ))}
         </select>
         <button className="btn mint" disabled={!canSave || saving} onClick={() => void save()}>
-          {saving ? '…' : 'Squirt ⌘↵'}
+          {saving ? '…' : 'Save ⌘↵'}
         </button>
       </div>
       {note && <div className="toast glass">{note}</div>}

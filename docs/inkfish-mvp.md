@@ -8,8 +8,9 @@ remora (sticks notes to projects) were the runners-up. Picked: **inkfish**
 ## 1. Core flow (the whole app)
 
 ```
-Tray popover (Opt-Space) → inbox/ (dumping ground, raw .md + assets)
-  text / voice / image / Teams-meeting snippet
+Capture popover (Opt-Space) → inbox/ (dumping ground, raw .md + assets)
+  combined composer: text + dropped images + dictated transcripts,
+  Teams-meeting snippets land as kind: meeting
   → classify (project, type, tags, title, formatted MD)
   → projects/<name>/YYYY-MM-DD-slug.md (processed note, links back to inbox id)
   → searchable, undo/reassign if AI got it wrong
@@ -50,8 +51,8 @@ Later:
 
 - Template already gives native `fullscreen-ui` vibrancy + transparent window
   (see `docs/vibrancy-and-tray.md`). Keep: no opaque full-window backgrounds.
-- Tray popover 380×~500: autofocus input, `Cmd-Enter` save, kind tabs
-  Text | Voice | Image, project picker, subtle ink-squirt save animation.
+- Capture popover 380×~500: autofocus input, `Cmd-Enter` save, combined
+  composer (type + image drop + dictate), project picker, subtle save animation.
 - Main: sidebar (Projects + Inbox count), center editor, right rail inbox queue
   with status pills. Dark-first, Liquid Glass materials.
 - Onboarding: 3 steps — vault location, Mic/ScreenRecording permission test,
@@ -76,10 +77,12 @@ Later:
 - Noise weakness noted in model card (MUSAN gap) → recommend headphones,
   keep Teams built-in transcript import as backup path.
 
-## 5. DB: sqlite + vector
+## 5. DB: sqlite + vector (cache only — .md files are truth)
 
-- `inkfish.db` (bun:sqlite / better-sqlite3 via main process only):
-  `projects`, `inbox_items`, `notes` (vault path + frontmatter), FTS5 on body.
+- `inkfish.db` lives in the hidden app-data dir (never in the notes home),
+  main-process only (`node:sqlite`, in-memory fallback): `notes` index rows
+  (vault path + frontmatter copy), FTS5 on body. Delete it any time — Rescan
+  rebuilds everything from files.
 - `sqlite-vec` extension for `note_embeddings`: small local embed model
   (e.g. nomic-embed / Apple NL first pass), cosine search for related/similar,
   project auto-suggest. Embeddings are cache — .md files are truth.

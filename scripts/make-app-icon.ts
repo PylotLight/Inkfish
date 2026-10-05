@@ -1,7 +1,7 @@
 // Generates the app icon (build/icon.png + build/icon.icns) with zero dependencies.
 // Run with: bun scripts/make-app-icon.ts
 //
-// Mark: a deep-sea rounded square with a glowing ink drop (the "squirt").
+// Mark: a deep-sea rounded square with a glowing ink drop.
 // The .icns is hand-assembled: PNG-compressed entries (ic07..ic10 + small
 // sizes), which macOS accepts. electron-builder needs a prebuilt .icns on
 // non-mac hosts (no iconutil there), so both files are committed.
@@ -67,7 +67,7 @@ function encodePng(size: number, paint: (x: number, y: number) => RGBA): Buffer 
 // --- the mark ------------------------------------------------------------------
 // Background: deep-sea rounded square (#0b1626 → #13283f vertical).
 // Foreground: ink drop — a circle with a tapered top — in pale cyan with a
-// soft glow, slightly right of center like a fresh squirt.
+// soft glow, slightly right of center like a fresh drop of ink.
 
 function clamp(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v)

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { memo, useEffect } from 'react'
 import type { InboxItem, Project } from '../../../shared/types'
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
 }
 
 /** Right rail: inbox queue with `inbox → processing → ready` status pills. */
-export default function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }: Props): React.JSX.Element {
+function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }: Props): React.JSX.Element {
   useEffect(() => {
     const t = window.setInterval(onRefresh, 4000)
     return () => window.clearInterval(t)
@@ -36,7 +36,7 @@ export default function InboxQueue({ items, projects, selectedId, onSelect, onRe
       </div>
       {items.length === 0 && (
         <div className="empty">
-          <p className="muted">Inbox zero. Hit ⌥Space and squirt something.</p>
+          <p className="muted">Inbox zero. Hit ⌥Space and capture something.</p>
         </div>
       )}
       <ul className="qlist">
@@ -95,3 +95,5 @@ export default function InboxQueue({ items, projects, selectedId, onSelect, onRe
     </div>
   )
 }
+
+export default memo(InboxQueue)

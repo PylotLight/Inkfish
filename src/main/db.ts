@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, type Dirent } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import type { NoteDoc, NoteEntry, NoteKind, NoteStatus, SearchResult } from '../shared/types'
-import { parseFrontmatter } from './vault'
+import { parseFrontmatter, slugToId } from './vault'
 
 /**
  * SQLite index (main process only). Plain `.md` files stay the source of
@@ -268,7 +268,9 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   const id = str(fm['id']) ?? vaultRel
   const kind = (str(fm['kind']) as NoteKind | null) ?? 'text'
   const status = (str(fm['status']) as NoteStatus | null) ?? (vaultRel.startsWith('inbox/') ? 'inbox' : 'ready')
-  const projectId = str(fm['project'])
+  const fromFm = str(fm['project'])
+  const fromPath = projectFromPath(vaultRel)
+  const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null)
   const inboxId = str(fm['inbox'])
   const tags = Array.isArray(fm['tags']) ? fm['tags'].join(',') : ''
   let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN
@@ -282,7 +284,16 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   return rowToEntry(row)
 }
 
-/** Full vault re-scan: walks `inbox/` + `projects/` and indexes every `.md`. */
+/** Folder-derived project for imported notes (Obsidian trees). */
+export function projectFromPath(vaultRel: string): string | null {
+  const parts = vaultRel.split('/')
+  if (parts[0] === 'projects' && parts[1]) return parts[1] ?? null
+  if (parts[0] === 'inbox') return null
+  return parts.length > 1 ? (parts[0] ?? null) : null
+}
+
+/** Full notes-home scan: every non-hidden `.md` — our inbox/projects plus
+ * imported trees (Obsidian vaults). Rebuilds the index from files. */
 export function reindexVault(root: string): number {
   must().clear()
   let n = 0
@@ -302,8 +313,7 @@ export function reindexVault(root: string): number {
       }
     }
   }
-  walk(join(root, 'inbox'))
-  walk(join(root, 'projects'))
+  walk(root)
   return n
 }
 

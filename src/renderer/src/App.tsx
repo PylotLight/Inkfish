@@ -121,44 +121,41 @@ function Main(): React.JSX.Element {
       if (origin === 'note') {
         window.api.notes.get(id).then(setDoc).catch(console.error)
       } else {
-        // Inbox items aren't notes yet — show raw as a read-only doc until routed.
+        // Inbox items aren't routed yet — show the raw file until it is.
         const item = inbox.find((i) => i.id === id)
-        window.api.notes
-          .list(null)
-          .then(() => {
-            setDoc(
-              item
-                ? {
-                    id: item.id, path: `inbox/${item.id}.md`, title: item.raw.split('\n')[0]?.slice(0, 80) || item.id,
-                    kind: item.kind, status: item.status, projectId: null, inboxId: item.id,
-                    tags: [], snippet: item.raw.slice(0, 220), createdAt: item.createdAt,
-                    updatedAt: item.createdAt, markdown: item.raw
-                  }
-                : null
-            )
-          })
-          .catch(console.error)
+        setDoc(
+          item
+            ? {
+                id: item.id, path: `inbox/${item.id}.md`, title: item.raw.split('\n')[0]?.slice(0, 80) || item.id,
+                kind: item.kind, status: item.status, projectId: null, inboxId: item.id,
+                tags: [], snippet: item.raw.slice(0, 220), createdAt: item.createdAt,
+                updatedAt: item.createdAt, markdown: item.raw
+              }
+            : null
+        )
       }
     },
     [inbox]
   )
 
-  const saveDoc = useCallback(() => {
-    if (!doc || !sel) return
-    window.api.notes
-      .save(doc.id, doc.markdown)
-      .then((saved) => {
-        if (saved) {
-          setDoc(saved)
-          setDirty(false)
-          // Inbox docs edit the raw file; notes refresh their project list.
-          if (sel.origin === 'note') refreshNotes(activeProject)
-          else refreshInbox()
-          notify('Saved ✓')
-        }
-      })
-      .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
-  }, [doc, sel, activeProject, refreshNotes, refreshInbox, notify])
+  const saveDoc = useCallback(
+    (id: string, markdown: string) => {
+      window.api.notes
+        .save(id, markdown)
+        .then((saved) => {
+          if (saved) {
+            setDoc(saved)
+            setDirty(false)
+            // Inbox docs edit the raw file; notes refresh their project list.
+            if (sel?.origin === 'note') refreshNotes(activeProject)
+            else refreshInbox()
+            notify('Saved ✓')
+          }
+        })
+        .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
+    },
+    [sel, activeProject, refreshNotes, refreshInbox, notify]
+  )
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -170,6 +167,9 @@ function Main(): React.JSX.Element {
     },
     [refreshInbox, refreshNotes, refreshProjects]
   )
+
+  const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
+  const selectNote = useCallback((id: string) => openEntry(id, 'note'), [openEntry])
 
   const pickProject = (id: string | null): void => {
     setActiveProject(id)
@@ -240,14 +240,14 @@ function Main(): React.JSX.Element {
           <div className="row">
             <button
               className="btn ghost sm"
-              title="Move the vault to a different folder"
+              title="Move notes to a different folder"
               disabled={!vaultInfo?.configured || vaultInfo?.managed}
               onClick={() => {
                 setOstep(0)
                 setShowOnboarding(true)
               }}
             >
-              Move vault…
+              Move notes…
             </button>
             <button
               className="btn ghost sm"
@@ -302,7 +302,7 @@ function Main(): React.JSX.Element {
                 <li key={n.id}>
                   <button
                     className={sel?.id === n.id && sel.origin === 'note' ? 'sel' : ''}
-                    onClick={() => openEntry(n.id, 'note')}
+                    onClick={() => selectNote(n.id)}
                   >
                     <span className="ntitle">{n.title}</span>
                     <span className="muted small">{n.snippet.slice(0, 80)}</span>
@@ -315,12 +315,8 @@ function Main(): React.JSX.Element {
           <section className="noteview glass" aria-label="Editor">
             <NoteEditor
               doc={doc}
-              onChange={(markdown) => {
-                if (doc) {
-                  setDoc({ ...doc, markdown })
-                  setDirty(true)
-                }
-              }}
+              dirty={dirty}
+              onDirty={setDirty}
               onSave={saveDoc}
             />
             {dirty && <span className="pill dirty">unsaved</span>}
@@ -331,7 +327,7 @@ function Main(): React.JSX.Element {
               items={inbox}
               projects={projects}
               selectedId={sel?.origin === 'inbox' ? sel.id : null}
-              onSelect={(id) => openEntry(id, 'inbox')}
+              onSelect={selectInbox}
               onRefresh={refreshInbox}
               notify={notify}
             />

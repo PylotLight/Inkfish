@@ -1,6 +1,6 @@
 # Inkfish
 
-Menu-bar quick capture with AI auto-sort. Squirt ink fast — AI sorts it later.
+Menu-bar quick capture with AI auto-sort. Capture fast — AI sorts it later.
 Bun + Electron + React + Vite + TypeScript.
 
 > Status: P0 MVP (local only, free) — tray popover → `inbox/` → auto-routed
@@ -50,7 +50,7 @@ bun run start      # launch the built app
 ```
 
 Press **Opt-Space** anywhere to pop the capture window, type, `Cmd-Enter` to
-squirt it into the inbox. The background worker formats + routes it to
+save into the inbox. The background worker formats + routes it to
 `projects/<name>/`. Your vault lives at `~/Inkfish/` (`inbox/`,
 `projects/<name>/`, `assets/`); plain `.md` files stay the source of truth.
 

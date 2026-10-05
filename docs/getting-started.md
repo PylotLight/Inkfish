@@ -11,7 +11,7 @@ bun run dev   # dev server + app (wrapped: cleans terminal state on exit)
 ```
 
 Press **Opt-Space** anywhere for the capture popover, type, `Cmd-Enter` to
-squirt into the inbox. First launch shows 3-step onboarding (vault location,
+save into the inbox. First launch shows 3-step onboarding (notes location,
 mic test, shortcut confirm).
 
 ## Verify it
@@ -22,13 +22,22 @@ bun run build     # → out/{main,preload,renderer}/
 bun run start     # launch the built app
 ```
 
-## Vault
+## Storage: notes home + hidden app data
 
-First launch opens the setup wizard on vault location — nothing is created
-until you confirm. Afterwards the vault lives where you chose (default
-suggestion: `~/Inkfish/`) with `inbox/`, `projects/<name>/`, `assets/`,
-`inkfish.db`. Move it later from the sidebar ("Move vault…").
-Override for testing: `INKFISH_VAULT=/tmp/vault bun run dev`.
+Two separate homes:
+
+- **Notes home** (you pick it in the setup wizard — nothing is created
+  until you confirm): plain `.md` + assets only. A fresh empty folder, or an
+  existing vault (Obsidian etc.) whose `.md` files get indexed on import —
+  Inkfish adds `inbox/`, `projects/<name>/`, `assets/` inside and never
+  touches your files otherwise. This is the source of truth, always.
+- **App data** (hidden, platform-standard `userData` — `~/.config/Inkfish`
+  on Linux, `~/Library/Application Support/Inkfish` on mac): `inkfish.json`
+  (which notes folder), `inkfish.db` (FTS5 + metadata + embeddings **cache**,
+  rebuilt from files by Rescan any time), downloaded models later.
+
+Move the notes home later from the sidebar ("Move notes…").
+Overrides for testing: `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun run dev`.
 
 ## Scripts
 

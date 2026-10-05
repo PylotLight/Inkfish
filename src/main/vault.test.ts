@@ -144,4 +144,68 @@ describe('vault home', () => {
       rmSync(cfg, { recursive: true, force: true })
     }
   })
+
+  test('db lives in app data, never in the notes home', async () => {
+    const v = await vault()
+    const notes = mkdtempSync(join(tmpdir(), 'inkfish-notes-'))
+    const data = mkdtempSync(join(tmpdir(), 'inkfish-data-'))
+    try {
+      v.setConfigDir('')
+      process.env['INKFISH_VAULT'] = notes
+      process.env['INKFISH_DATA'] = data
+      expect(v.vaultPaths().dbPath).toBe(join(data, 'inkfish.db'))
+      expect(v.appDataDir()).toBe(data)
+      delete process.env['INKFISH_DATA']
+      expect(v.vaultPaths().dbPath).toBe(join(notes, 'inkfish.db'))
+    } finally {
+      delete process.env['INKFISH_DATA']
+      rmSync(notes, { recursive: true, force: true })
+      rmSync(data, { recursive: true, force: true })
+    }
+  })
+
+  test('requireNotes throws before any location is chosen', async () => {
+    const v = await vault()
+    const { homedir } = await import('node:os')
+    const { existsSync } = await import('node:fs')
+    // Only meaningful on machines without a pre-existing default vault.
+    if (existsSync(join(homedir(), 'Inkfish'))) return
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-empty-'))
+    try {
+      v.setConfigDir(cfg)
+      delete process.env['INKFISH_VAULT']
+      expect(v.vaultConfigured()).toBe(false)
+      expect(() => v.requireNotes()).toThrow(/not chosen/)
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('import: existing md trees index with folder projects, hidden skipped', async () => {
+    const v = await vault()
+    const db = await import('./db')
+    const { writeFileSync, mkdirSync } = await import('node:fs')
+    const notes = mkdtempSync(join(tmpdir(), 'inkfish-obsidian-'))
+    try {
+      process.env['INKFISH_VAULT'] = notes
+      mkdirSync(join(notes, 'My Recipes'), { recursive: true })
+      mkdirSync(join(notes, '.obsidian'), { recursive: true })
+      writeFileSync(join(notes, 'My Recipes', 'cake.md'), '# Cake\nflour sugar\n')
+      writeFileSync(join(notes, 'todo.md'), '- [ ] buy milk\n')
+      writeFileSync(join(notes, '.obsidian', 'app.json'), '{}')
+      const paths = v.vaultPaths()
+      const n = db.reindexVault(paths.root)
+      expect(n).toBe(2)
+      const all = db.listNotes(null)
+      expect(all.map((e) => e.path).sort()).toEqual(['My Recipes/cake.md', 'todo.md'])
+      const cake = all.find((e) => e.path === 'My Recipes/cake.md')
+      expect(cake?.projectId).toBe('my-recipes')
+      // …and the folder shows up as a project to file under.
+      const projs = v.listProjects(paths)
+      expect(projs.map((p) => p.id)).toContain('my-recipes')
+    } finally {
+      delete process.env['INKFISH_VAULT']
+      rmSync(notes, { recursive: true, force: true })
+    }
+  })
 })
