@@ -105,7 +105,6 @@ function Main(): React.JSX.Element {
   const [ostep, setOstep] = useState(0)
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
-  const [newFolder, setNewFolder] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [backend, setBackend] = useState('…')
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
@@ -564,18 +563,24 @@ function Main(): React.JSX.Element {
   )
 
   const doCreateFolder = useCallback(() => {
-    const name = newFolder.trim()
-    if (!name) return
-    window.api.files
-      .mkdir(targetDir, name)
-      .then((rel) => {
-        setNewFolder('')
-        setRevealDir(rel)
-        notify(`Folder ${name} ✓`)
-        refreshNotes()
-      })
-      .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
-  }, [newFolder, targetDir, notify, refreshNotes])
+    setPrompt({
+      title: `New folder in ${targetDir || '/'}`,
+      initial: '',
+      confirm: 'Create',
+      onSubmit: (v) => {
+        const name = v.trim()
+        if (!name) return
+        window.api.files
+          .mkdir(targetDir, name)
+          .then((rel) => {
+            setRevealDir(rel)
+            notify(`Folder ${name} ✓`)
+            refreshNotes()
+          })
+          .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
+      }
+    })
+  }, [targetDir, notify, refreshNotes])
 
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
@@ -867,7 +872,7 @@ function Main(): React.JSX.Element {
               onMenu={(target, x, y) => setMenu({ x, y, target })}
             />
             <div className="chips kinds" aria-label="Filter by kind">
-              {KINDS.map((k) => (
+              {KINDS.filter((k) => k.id === 'all' || (kindCounts.get(k.id as NoteKind) ?? 0) > 0).map((k) => (
                 <button
                   key={k.id}
                   className={kind === k.id ? 'on' : ''}
@@ -882,23 +887,20 @@ function Main(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            <div className="add-row mini">
-              <input
-                value={newFolder}
-                onChange={(e) => setNewFolder(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && doCreateFolder()}
-                placeholder={`New folder in ${targetDir || '/'}…`}
-                aria-label="New folder name"
-              />
-              <button className="btn mint sm" onClick={doCreateFolder} disabled={!newFolder.trim()} aria-label="Create folder">
-                +
+            <div className="side-actions">
+              <button className="btn ghost sm grow" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`}>
+                + New note
+              </button>
+              <button className="btn ghost sm icon" onClick={doCreateFolder} title={`New folder in ${targetDir || '/'}`} aria-label="New folder">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
+                  <path d="M8 7.2v3.6M6.2 9h3.6" />
+                </svg>
               </button>
             </div>
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn ghost sm" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`}>
-                + New note{targetDir ? ` in ${targetDir.split('/').pop()}` : ''}
-              </button>
-            </div>
+            {targetDir !== '' && (
+              <p className="muted side-target" title={targetDir}>in {targetDir.split('/').pop()}</p>
+            )}
           </div>
         )}
 
@@ -1145,7 +1147,9 @@ function TabBar({
                   onTogglePin(t.id)
                 }}
               >
-                📌
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                  <path d="M9.5 1.5l5 5-2 .5-2.5 5.5-2.5 2.5-.7-2.8-3.3-3.3-2.8-.7 2.5-2.5L8 2z" />
+                </svg>
               </button>
             )}
             <span className="tab-label">{label}</span>

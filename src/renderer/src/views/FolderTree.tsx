@@ -113,13 +113,59 @@ interface Props {
   onMenu: (target: TreeTarget, x: number, y: number) => void
 }
 
-export function kindIcon(kind: NoteKind): string {
-  switch (kind) {
-    case 'voice': return '🎙'
-    case 'image': return '🖼'
-    case 'meeting': return '📋'
-    default: return '📄'
+/** Minimal stroke icons — quieter than emoji, consistent across platforms. */
+function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
+  const common = {
+    width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none',
+    stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+  } as const
+  if (kind === 'voice') {
+    return (
+      <svg {...common} aria-hidden>
+        <rect x="6" y="1.5" width="4" height="7" rx="2" />
+        <path d="M4 7.5a4 4 0 0 0 8 0M8 11.5V14M6 14h4" />
+      </svg>
+    )
   }
+  if (kind === 'image') {
+    return (
+      <svg {...common} aria-hidden>
+        <rect x="2" y="3" width="12" height="10" rx="1.5" />
+        <circle cx="5.7" cy="6.6" r="1.1" />
+        <path d="M2.5 11.3l3.3-2.8 2.4 1.9 1.9-1.4 3.1 2.3" />
+      </svg>
+    )
+  }
+  if (kind === 'meeting') {
+    return (
+      <svg {...common} aria-hidden>
+        <rect x="4" y="2.8" width="8" height="11" rx="1.5" />
+        <path d="M6.3 2.8V1.7h3.4v1.1M6.3 7.2h3.4M6.3 9.8h3.4" />
+      </svg>
+    )
+  }
+  return (
+    <svg {...common} aria-hidden>
+      <path d="M4 1.5h5.2l2.8 2.8v10.2H4z" />
+      <path d="M9.2 1.5v2.8H12" />
+    </svg>
+  )
+}
+
+function FolderGlyph({ open }: { open: boolean }): React.JSX.Element {
+  return (
+    <svg
+      width={14} height={14} viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden
+    >
+      {open ? (
+        <path d="M1.8 5.2c0-.8.7-1.5 1.5-1.5h2.4l1.2 1.4h5.8c.8 0 1.5.7 1.5 1.5v1.2H1.8zM1.8 7.6v3.9c0 .8.7 1.5 1.5 1.5h9.4c.8 0 1.5-.7 1.5-1.5V6.6" />
+      ) : (
+        <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
+      )}
+    </svg>
+  )
 }
 
 /** Directory tree with files — navigation mirrors the actual vault. */
@@ -194,7 +240,6 @@ function FolderTree({
             entry={n}
             title={titleOf(n)}
             selected={selectedId === n.id}
-            showPath
             onOpen={() => onOpenFile(n.id)}
             onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
           />
@@ -272,7 +317,7 @@ function Node({
           }}
           title={`${node.rel} — toggle / set as target`}
         >
-          <span className="ficon" aria-hidden>{open ? '📂' : '📁'}</span>
+          <span className="ficon" aria-hidden><FolderGlyph open={open} /></span>
           <span className="fname">{node.name}</span>
           <span className="fcount">{node.total}</span>
         </button>
@@ -314,16 +359,18 @@ function Node({
 }
 
 export function FileRow({
-  entry, title, selected, showPath, onOpen, onMenu
+  entry, title, selected, onOpen, onMenu
 }: {
   entry: NoteEntry
   title: string
   selected: boolean
-  showPath?: boolean
   onOpen: () => void
   onMenu: (x: number, y: number) => void
 }): React.JSX.Element {
   const tip = `${entry.path}\n${entry.size > 0 ? `${fmtBytes(entry.size)} · ` : ''}edited ${timeAgo(entry.updatedAt)} · created ${new Date(entry.createdAt).toLocaleDateString()}`
+  // Slim meta: parent folder + relative time. No `.md`, no "edited", no size.
+  const parent = entry.path.includes('/') ? (entry.path.split('/').slice(0, -1).pop() ?? '') : ''
+  const meta = parent ? `${parent} · ${timeAgo(entry.updatedAt)}` : timeAgo(entry.updatedAt)
   return (
     <button
       className={`filerow${selected ? ' on' : ''}`}
@@ -334,13 +381,10 @@ export function FileRow({
       }}
       title={tip}
     >
-      <span className="ficon" aria-hidden>{kindIcon(entry.kind)}</span>
+      <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
       <span className="ftext">
         <span className="fname">{title}</span>
-        <span className="muted small">
-          {showPath ? `${entry.path} · ` : ''}edited {timeAgo(entry.updatedAt)}
-          {entry.size > 0 ? ` · ${fmtBytes(entry.size)}` : ''}
-        </span>
+        <span className="fmeta">{meta}</span>
       </span>
     </button>
   )

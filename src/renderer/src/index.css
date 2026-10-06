@@ -1872,29 +1872,30 @@ html[data-motion='reduced'] *::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 11px;
-  padding: 8px 12px;
-  font-size: 13.5px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.14s ease;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 
 .settings-btn:hover {
   background: var(--panel);
+  color: var(--text);
 }
 
 .quit-btn {
-  width: 40px;
-  border: 1px solid var(--border);
+  width: 36px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
-  border-radius: 11px;
-  font-size: 15px;
+  border-radius: 10px;
+  font-size: 14px;
   cursor: pointer;
   transition: color 0.14s ease, background 0.14s ease;
 }
@@ -1993,7 +1994,31 @@ button.frow.on,
 }
 
 .chips.kinds {
-  margin-bottom: 4px;
+  margin: 2px 0 4px;
+}
+
+.chips.kinds button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* Compact sidebar action row — replaces the old folder input + buttons. */
+.side-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.side-actions .grow {
+  flex: 1;
+}
+
+.side-target {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- Inkfish: home dashboard ---------- */
@@ -2192,15 +2217,15 @@ html[data-density='compact'] .md p {
 
 .filerow {
   display: flex;
-  align-items: flex-start;
-  gap: 7px;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
   border-radius: 9px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   font-size: 13px;
   cursor: pointer;
 }
@@ -2214,12 +2239,25 @@ html[data-density='compact'] .md p {
   border-color: var(--border);
 }
 
+.filerow .ficon,
+.frow .ficon {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.filerow.on .ficon {
+  color: var(--text);
+  opacity: 1;
+}
+
 .filerow .ftext {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
 .filerow .fname {
@@ -2227,12 +2265,18 @@ html[data-density='compact'] .md p {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.35;
 }
 
-.filerow .muted.small {
+.filerow .fmeta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 .fnode .caret {
@@ -2316,9 +2360,10 @@ html[data-density='compact'] .md p {
 .tab .tab-pin {
   border: none;
   background: transparent;
-  font-size: 11px;
+  color: var(--mint);
   cursor: pointer;
   padding: 0;
+  display: inline-flex;
 }
 
 .tab .tab-dot {
