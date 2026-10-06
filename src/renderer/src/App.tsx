@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
+import logoUrl from './assets/logo.png'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
 import { applyPrefs, loadPrefs, type EditMode, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
@@ -815,6 +816,9 @@ function Main(): React.JSX.Element {
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
+          <div className="brand-logo-frame">
+            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" />
+          </div>
           <div className="brand">
             <h1>{APP_NAME}</h1>
           </div>
