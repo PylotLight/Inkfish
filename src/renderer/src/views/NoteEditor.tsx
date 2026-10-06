@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { EditorState } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
@@ -85,6 +85,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
       state: EditorState.create({
         doc: textRef.current,
         extensions: [
+          lineNumbers(),
           foldGutter({ openText: '▾', closedText: '▸' }),
           syntaxHighlighting(defaultHighlightStyle),
           markdown(),

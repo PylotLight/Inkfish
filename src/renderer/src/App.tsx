@@ -114,6 +114,14 @@ function Main(): React.JSX.Element {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
+  /** Collapsible core sidebar (Blobfish-style) — persisted, toggled from the topbar. */
+  const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('inkfish.side.collapsed') === '1'
+    } catch {
+      return false
+    }
+  })
 
   // Dirtiness is derived from lifted drafts (per-tab, survives switches).
   const dirty = sel !== null && drafts[sel.id] !== undefined
@@ -136,6 +144,26 @@ function Main(): React.JSX.Element {
   useEffect(() => {
     applyPrefs(prefs)
   }, [prefs])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('inkfish.side.collapsed', sideCollapsed ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [sideCollapsed])
+
+  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault()
+        setSideCollapsed((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Quick font size adjustment: Ctrl+Scroll / pinch inside the note stage
   // scales content type only (UI chrome untouched), like Obsidian.
@@ -811,7 +839,7 @@ function Main(): React.JSX.Element {
   const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
 
   return (
-    <div className="shell" data-platform={sys?.platform ?? 'unknown'}>
+    <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
       {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
@@ -977,6 +1005,15 @@ function Main(): React.JSX.Element {
         ) : (
           <>
             <header className="topbar">
+              <button
+                className="side-toggle"
+                onClick={() => setSideCollapsed((v) => !v)}
+                title={sideCollapsed ? 'Expand sidebar (⌘\\)' : 'Collapse sidebar (⌘\\)'}
+                aria-label={sideCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!sideCollapsed}
+              >
+                {sideCollapsed ? '»' : '«'}
+              </button>
               <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
                 ✒ Capture
               </button>

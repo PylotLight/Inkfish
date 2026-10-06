@@ -103,6 +103,7 @@ function LiveView({ docId, text, onChange }: Props): React.JSX.Element {
             key={b.key}
             initial={draft}
             kind={b.kind}
+            line={b.startLine + 1}
             onChange={setDraft}
             onCommit={commit}
             onCancel={cancel}
@@ -111,13 +112,6 @@ function LiveView({ docId, text, onChange }: Props): React.JSX.Element {
           <LiveBlockView key={b.key} block={b} onEdit={startEdit} onToggle={toggleTask} />
         )
       )}
-      <button
-        className="live-add"
-        onClick={() => changeRef.current(`${textRef.current.replace(/\s+$/, '')}\n\n`)}
-        title="Add a paragraph below"
-      >
-        ＋
-      </button>
     </div>
   )
 }
@@ -153,18 +147,20 @@ const LiveBlockView = memo(function LiveBlockView({
       }}
       tabIndex={0}
       role="button"
-      aria-label={`Edit ${block.kind} block`}
+      aria-label={`Edit ${block.kind} block, line ${block.startLine + 1}`}
     >
-      <div className="md" dangerouslySetInnerHTML={{ __html: html }} />
+      <span className="live-ln" aria-hidden>{block.startLine + 1}</span>
+      <div className="live-body md" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   )
 })
 
 function BlockEditor({
-  initial, kind, onChange, onCommit, onCancel
+  initial, kind, line, onChange, onCommit, onCancel
 }: {
   initial: string
   kind: string
+  line: number
   onChange: (v: string) => void
   onCommit: () => void
   onCancel: () => void
@@ -185,6 +181,7 @@ function BlockEditor({
 
   return (
     <div className={`live-editing kind-${kind}`}>
+      <span className="live-ln" aria-hidden>{line}</span>
       <textarea
         ref={ref}
         className="live-textarea"
