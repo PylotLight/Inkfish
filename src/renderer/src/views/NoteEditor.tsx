@@ -87,7 +87,12 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, onDirty, onSave,
           }),
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
-            '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 'var(--ed-fs, 13.5px)' },
+            '.cm-content': {
+              fontFamily: 'var(--mono-font)',
+              fontSize: 'var(--ed-fs, 14px)',
+              caretColor: 'var(--text)'
+            },
+            '.cm-cursor': { borderLeftColor: 'var(--text)' },
             '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
           })
         ]
@@ -100,6 +105,9 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, onDirty, onSave,
       return
     }
     viewRef.current = view
+    // Focus so the caret is visible immediately — previously the editor
+    // mounted unfocused, looking like "no cursor".
+    requestAnimationFrame(() => view.focus())
 
     const onPaste = async (e: ClipboardEvent): Promise<void> => {
       const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'))
@@ -285,6 +293,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, onDirty, onSave,
             <textarea
               className="ed-fallback"
               value={text}
+              autoFocus
               onChange={(e) => {
                 setText(e.target.value)
                 editedRef.current = true

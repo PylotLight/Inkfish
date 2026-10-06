@@ -1,4 +1,4 @@
-import { ACCENTS, THEMES, type DensityId, type EditMode, type FontId, type Prefs } from '../theme'
+import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type EditMode, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 
 interface Props {
@@ -14,17 +14,44 @@ interface Props {
   notify: (msg: string) => void
 }
 
-const FONTS: Array<{ id: FontId; name: string; hint: string }> = [
-  { id: 'compact', name: 'Compact', hint: 'Small reading type.' },
-  { id: 'default', name: 'Default', hint: 'Balanced reading type.' },
-  { id: 'large', name: 'Large', hint: 'Roomy reading type.' }
-]
-
 const MODES: Array<{ id: EditMode; name: string; hint: string }> = [
   { id: 'read', name: 'Read', hint: 'Rendered note.' },
   { id: 'edit', name: 'Edit', hint: 'Markdown source.' },
   { id: 'split', name: 'Split', hint: 'Side by side.' }
 ]
+
+function FontField({
+  label, hint, value, placeholder, onChange
+}: {
+  label: string
+  hint: string
+  value: string
+  placeholder: string
+  onChange: (v: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="setting-row stacked">
+      <span className="setting-label">{label}</span>
+      <div className="row" style={{ marginTop: 0 }}>
+        <input
+          className="grow"
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={label}
+          spellCheck={false}
+        />
+        {value !== '' && (
+          <button className="btn ghost sm" onClick={() => onChange('')} title="Reset to system default">
+            ↺
+          </button>
+        )}
+      </div>
+      <p className="muted small setting-hint">{hint}</p>
+    </div>
+  )
+}
 
 /**
  * Full-page settings view (not a modal) — same shape as Blobfish:
@@ -171,24 +198,68 @@ export default function SettingsView({
         </section>
 
         <section className="settings-group">
-          <h4>Reading</h4>
+          <h4>Font</h4>
+          <FontField
+            label="Interface font"
+            hint="Set base font for all of Inkfish. Empty = system default."
+            value={prefs.interfaceFont}
+            placeholder="System default"
+            onChange={(v) => set({ interfaceFont: v })}
+          />
+          <FontField
+            label="Text font"
+            hint="Set font for editing and reading views."
+            value={prefs.textFont}
+            placeholder="System default"
+            onChange={(v) => set({ textFont: v })}
+          />
+          <FontField
+            label="Monospace font"
+            hint="Set font for places like code blocks and editor source."
+            value={prefs.monoFont}
+            placeholder="System monospace"
+            onChange={(v) => set({ monoFont: v })}
+          />
+
           <div className="setting-row stacked">
-            <span className="setting-label">Reading type size</span>
-            <div className="seg-row" role="radiogroup" aria-label="Reading type size">
-              {FONTS.map((f) => (
-                <button
-                  key={f.id}
-                  role="radio"
-                  aria-checked={prefs.font === f.id}
-                  className={`seg${prefs.font === f.id ? ' selected' : ''}`}
-                  onClick={() => set({ font: f.id })}
-                  title={f.hint}
-                >
-                  {f.name}
-                </button>
-              ))}
+            <span className="setting-label">Font size</span>
+            <div className="font-slider-row">
+              <button
+                className="btn ghost sm"
+                title="Reset to default"
+                onClick={() => set({ fontSize: DEFAULT_PREFS.fontSize })}
+                aria-label="Reset font size"
+              >
+                ↺
+              </button>
+              <span className="font-size-num" aria-live="polite">{prefs.fontSize}</span>
+              <input
+                type="range"
+                min={11}
+                max={28}
+                step={1}
+                value={prefs.fontSize}
+                onChange={(e) => set({ fontSize: Number(e.target.value) })}
+                aria-label="Font size in pixels"
+              />
             </div>
-            <p className="muted small setting-hint">{FONTS.find((f) => f.id === prefs.font)?.hint}</p>
+            <p className="muted small setting-hint">Font size in pixels that affects editing and reading views. UI chrome stays the same.</p>
+          </div>
+
+          <div className="setting-row inline">
+            <div className="setting-label">
+              Quick font size adjustment
+              <span className="muted small setting-hint">Adjust the font size using Ctrl + Scroll, or using the trackpad pinch-zoom gesture.</span>
+            </div>
+            <button
+              role="switch"
+              aria-checked={prefs.quickZoom}
+              className={`switch${prefs.quickZoom ? ' on' : ''}`}
+              onClick={() => set({ quickZoom: !prefs.quickZoom })}
+              aria-label="Quick font size adjustment"
+            >
+              <span className="knob" />
+            </button>
           </div>
 
           <div className="setting-row stacked">

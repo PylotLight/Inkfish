@@ -85,6 +85,26 @@ function Main(): React.JSX.Element {
     applyPrefs(prefs)
   }, [prefs])
 
+  // Quick font size adjustment: Ctrl+Scroll / pinch inside the note stage
+  // scales content type only (UI chrome untouched), like Obsidian.
+  useEffect(() => {
+    if (!prefs.quickZoom) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey) return
+      const el = e.target as HTMLElement | null
+      if (!el?.closest?.('.note-stage')) return
+      e.preventDefault()
+      setPrefs((prev) => {
+        const delta = e.deltaY < 0 ? 1 : e.deltaY > 0 ? -1 : 0
+        if (!delta) return prev
+        const next = Math.min(28, Math.max(11, prev.fontSize + delta))
+        return next === prev.fontSize ? prev : { ...prev, fontSize: next }
+      })
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [prefs.quickZoom])
+
   const notify = useCallback((msg: string) => {
     setToast(msg)
     window.setTimeout(() => setToast(null), 2600)

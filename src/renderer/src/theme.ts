@@ -18,7 +18,16 @@ export interface Prefs {
   customAccent: string
   density: DensityId
   motion: MotionId
+  /** Legacy preset — migrated to `fontSize` on load. Kept for back-compat. */
   font: FontId
+  /** Content font size (px) for reading + editing views. UI chrome unaffected. */
+  fontSize: number
+  /** Font-family stacks. Empty = system default. */
+  interfaceFont: string
+  textFont: string
+  monoFont: string
+  /** Ctrl+Scroll / pinch adjusts `fontSize` when inside the note stage. */
+  quickZoom: boolean
   mode: EditMode
   /** macOS vibrancy blur. */
   blur: boolean
@@ -31,6 +40,11 @@ export const DEFAULT_PREFS: Prefs = {
   density: 'comfortable',
   motion: 'full',
   font: 'default',
+  fontSize: 14,
+  interfaceFont: '',
+  textFont: '',
+  monoFont: '',
+  quickZoom: true,
   mode: 'read',
   blur: true
 }
@@ -78,6 +92,22 @@ function isAccent(v: unknown): v is AccentId {
 
 function isHex(v: unknown): v is string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+}
+
+function clampFontSize(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return DEFAULT_PREFS.fontSize
+  return Math.min(28, Math.max(11, Math.round(n)))
+}
+
+function cleanFontStack(v: unknown): string {
+  return typeof v === 'string' ? v.slice(0, 300).trim() : ''
+}
+
+export const FONT_SIZE_FROM_PRESET: Record<FontId, number> = {
+  compact: 12.5,
+  default: 14,
+  large: 16
 }
 
 /** Relative luminance → readable button text for any chosen color. */
@@ -141,13 +171,26 @@ function legacy(): Partial<Prefs> {
 
 export function loadPrefs(): Prefs {
   const base = { ...legacy(), ...loadBlob() }
+  const font = base.font === 'compact' || base.font === 'large' ? base.font : 'default'
+  // Migrate legacy 3-step preset → numeric size when no explicit size stored.
+  const fontSize =
+    typeof base.fontSize === 'number' && Number.isFinite(base.fontSize)
+      ? clampFontSize(base.fontSize)
+      : (base as { fontSize?: unknown }).fontSize !== undefined
+        ? clampFontSize((base as { fontSize?: unknown }).fontSize)
+        : FONT_SIZE_FROM_PRESET[font] ?? DEFAULT_PREFS.fontSize
   return {
     theme: isTheme(base.theme) ? base.theme : DEFAULT_PREFS.theme,
     accent: isAccent(base.accent) ? base.accent : DEFAULT_PREFS.accent,
     customAccent: isHex(base.customAccent) ? base.customAccent : DEFAULT_PREFS.customAccent,
     density: base.density === 'compact' ? 'compact' : 'comfortable',
     motion: base.motion === 'reduced' ? 'reduced' : 'full',
-    font: base.font === 'compact' || base.font === 'large' ? base.font : 'default',
+    font,
+    fontSize,
+    interfaceFont: cleanFontStack((base as Partial<Prefs>).interfaceFont),
+    textFont: cleanFontStack((base as Partial<Prefs>).textFont),
+    monoFont: cleanFontStack((base as Partial<Prefs>).monoFont),
+    quickZoom: (base as Partial<Prefs>).quickZoom !== false,
     mode: base.mode === 'edit' || base.mode === 'split' ? base.mode : 'read',
     blur: base.blur !== false
   }
@@ -170,5 +213,13 @@ export function applyPrefs(p: Prefs): void {
   el.dataset['font'] = p.font
   const vars = accentVars(p)
   for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
+  // Content type scale — editing + reading views only, UI chrome untouched.
+  el.style.setProperty('--ed-fs', `${clampFontSize(p.fontSize)}px`)
+  if (p.interfaceFont) el.style.setProperty('--ui-font', p.interfaceFont)
+  else el.style.removeProperty('--ui-font')
+  if (p.textFont) el.style.setProperty('--text-font', p.textFont)
+  else el.style.removeProperty('--text-font')
+  if (p.monoFont) el.style.setProperty('--mono-font', p.monoFont)
+  else el.style.removeProperty('--mono-font')
   savePrefs(p)
 }
