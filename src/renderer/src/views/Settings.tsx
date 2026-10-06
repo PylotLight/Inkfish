@@ -15,9 +15,8 @@ interface Props {
 }
 
 const MODES: Array<{ id: EditMode; name: string; hint: string }> = [
-  { id: 'read', name: 'Read', hint: 'Rendered note.' },
-  { id: 'edit', name: 'Edit', hint: 'Markdown source.' },
-  { id: 'split', name: 'Split', hint: 'Side by side.' }
+  { id: 'live', name: 'Live', hint: 'Rendered note, click any block to edit.' },
+  { id: 'raw', name: 'Raw', hint: 'Markdown source.' }
 ]
 
 function FontField({
@@ -281,7 +280,7 @@ export default function SettingsView({
                 </button>
               ))}
             </div>
-            <p className="muted small setting-hint">Read shows the rendered note; switch per-note any time.</p>
+            <p className="muted small setting-hint">Live renders the note — click any block to edit. Raw shows markdown source.</p>
           </div>
         </section>
 

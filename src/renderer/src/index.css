@@ -1567,7 +1567,9 @@ html[data-motion='reduced'] *::after {
 }
 
 .ed-cols.read,
-.ed-cols.edit {
+.ed-cols.edit,
+.ed-cols.live,
+.ed-cols.raw {
   grid-template-columns: 1fr;
 }
 
@@ -2235,4 +2237,209 @@ html[data-density='compact'] .md p {
 
 .fnode .caret {
   visibility: visible;
+}
+
+/* ---------- Inkfish: tab strip (Obsidian-style) ---------- */
+
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  margin: -6px -8px 12px;
+  padding: 6px 8px 8px;
+  scrollbar-width: thin;
+}
+
+.tabbar.empty {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  padding: 7px 8px 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.tab.on {
+  color: var(--text);
+  background: var(--panel-strong);
+  border-color: var(--border);
+  border-bottom: 2px solid var(--mint);
+}
+
+.tab .tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab .tab-x {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+.tab .tab-x:hover {
+  opacity: 1;
+  background: var(--panel-strong);
+}
+
+.tab .tab-pin {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tab .tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.tab-new {
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 4px 12px;
+  font-size: 15px;
+  cursor: pointer;
+  align-self: center;
+}
+
+.tab-new:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+/* ---------- Inkfish: live view (rendered + click-to-edit) ---------- */
+
+.live {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--inset-soft);
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  min-height: 200px;
+}
+
+.live-block {
+  border-radius: 8px;
+  padding: 2px 8px;
+  margin: 0 -8px;
+  cursor: text;
+  outline: none;
+}
+
+.live-block:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.live-block:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.live-block .md p:first-child { margin-top: 0.2em; }
+.live-block .md p:last-child { margin-bottom: 0.2em; }
+
+.live-block input[type='checkbox'] {
+  accent-color: var(--mint);
+  width: 15px;
+  height: 15px;
+  vertical-align: -2px;
+  cursor: pointer;
+}
+
+.live-editing {
+  margin: 2px -8px;
+  padding: 2px 8px;
+}
+
+.live-textarea {
+  width: 100%;
+  background: var(--inset);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text);
+  caret-color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono-font);
+  font-size: var(--ed-fs, 14px);
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+}
+
+.live-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.live-hint {
+  margin: 4px 2px 6px;
+}
+
+.live-add {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  border-radius: 8px;
+  padding: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.14s ease;
+}
+
+.live:hover .live-add,
+.live-add:focus-visible {
+  opacity: 0.7;
+}
+
+.live-add:hover {
+  opacity: 1 !important;
+  background: var(--panel);
+}
+
+.live-empty {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: text;
 }

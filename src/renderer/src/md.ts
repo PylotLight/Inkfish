@@ -132,3 +132,141 @@ export function renderMarkdown(md: string, opts?: RenderOptions): string {
   if (inCode) html.push(`<pre><code>${esc(codeBuf.join('\n'))}</code></pre>`)
   return html.join('\n')
 }
+
+// --- Live blocks --------------------------------------------------------------
+// Split source into independently renderable/editable blocks so the Live view
+// can offer click-to-edit reading. Each block tracks its source line range
+// for splicing edits back into the full document.
+
+export type BlockKind =
+  | 'heading' | 'paragraph' | 'list' | 'task' | 'quote' | 'code' | 'table' | 'hr'
+
+export interface LiveBlock {
+  /** Stable within one parse — `b<startLine>-<index>`. */
+  key: string
+  kind: BlockKind
+  /** Raw markdown source lines for this block. */
+  source: string
+  startLine: number
+  endLine: number
+}
+
+const TASK_RE = /^\s*-\s+\[([ xX])\]\s+/
+const LIST_RE = /^\s*(?:[-*]|\d+\.)\s+/
+const HEADING_RE = /^(#{1,4})\s+/
+const HR_RE = /^\s*(?:---|\*\*\*|___)\s*$/
+const QUOTE_RE = /^>\s?/
+const FENCE_RE = /^```/
+
+function isTableRow(line: string): boolean {
+  return /^\|.*\|\s*$/.test(line)
+}
+
+export function parseBlocks(markdown: string): LiveBlock[] {
+  const lines = markdown.split('\n')
+  const blocks: LiveBlock[] = []
+  let i = 0
+  let n = 0
+  const push = (kind: BlockKind, start: number, end: number): void => {
+    const source = lines.slice(start, end).join('\n')
+    if (source.trim() === '' && kind !== 'code') return
+    blocks.push({ key: `b${start}-${n++}`, kind, source, startLine: start, endLine: end })
+  }
+
+  while (i < lines.length) {
+    const line = lines[i] ?? ''
+    // Skip blank separators (they're re-added on splice).
+    if (/^\s*$/.test(line)) {
+      i++
+      continue
+    }
+    // Fenced code — one block through the closing fence.
+    if (FENCE_RE.test(line)) {
+      const start = i
+      i++
+      while (i < lines.length && !FENCE_RE.test(lines[i] ?? '')) i++
+      if (i < lines.length) i++ // consume closing fence
+      push('code', start, i)
+      continue
+    }
+    if (HR_RE.test(line)) {
+      push('hr', i, i + 1)
+      i++
+      continue
+    }
+    if (HEADING_RE.test(line)) {
+      push('heading', i, i + 1)
+      i++
+      continue
+    }
+    if (QUOTE_RE.test(line)) {
+      const start = i
+      while (i < lines.length && QUOTE_RE.test(lines[i] ?? '')) i++
+      push('quote', start, i)
+      continue
+    }
+    // Tables: consecutive pipe rows (+ delimiter) stay together.
+    if (isTableRow(line)) {
+      const start = i
+      while (i < lines.length && (isTableRow(lines[i] ?? '') || /^\s*\|?\s*:?-{3,}/.test(lines[i] ?? ''))) i++
+      push('table', start, i)
+      continue
+    }
+    // Lists: each item is its own block so tasks toggle independently.
+    // Continuation lines (indented, non-item) join the current item.
+    if (LIST_RE.test(line) || TASK_RE.test(line)) {
+      const start = i
+      const kind: BlockKind = TASK_RE.test(line) ? 'task' : 'list'
+      i++
+      while (
+        i < lines.length &&
+        !/^\s*$/.test(lines[i] ?? '') &&
+        !LIST_RE.test(lines[i] ?? '') &&
+        !TASK_RE.test(lines[i] ?? '') &&
+        !HEADING_RE.test(lines[i] ?? '') &&
+        !FENCE_RE.test(lines[i] ?? '') &&
+        !HR_RE.test(lines[i] ?? '') &&
+        !QUOTE_RE.test(lines[i] ?? '')
+      ) {
+        i++
+      }
+      push(kind, start, i)
+      continue
+    }
+    // Paragraph: run of plain lines.
+    const start = i
+    while (
+      i < lines.length &&
+      !/^\s*$/.test(lines[i] ?? '') &&
+      !FENCE_RE.test(lines[i] ?? '') &&
+      !HEADING_RE.test(lines[i] ?? '') &&
+      !HR_RE.test(lines[i] ?? '') &&
+      !QUOTE_RE.test(lines[i] ?? '') &&
+      !LIST_RE.test(lines[i] ?? '') &&
+      !TASK_RE.test(lines[i] ?? '') &&
+      !isTableRow(lines[i] ?? '')
+    ) {
+      i++
+    }
+    push('paragraph', start, i)
+  }
+  return blocks
+}
+
+/** Splice an edited block back into the full document. */
+export function spliceBlock(full: string, block: LiveBlock, nextSource: string): string {
+  const lines = full.split('\n')
+  const head = lines.slice(0, block.startLine)
+  const tail = lines.slice(block.endLine)
+  const insert = nextSource.split('\n')
+  // Preserve a blank separator when inserting between content.
+  return [...head, ...insert, ...tail].join('\n')
+}
+
+/** Flip `- [ ]` ↔ `- [x]` for a task block. Returns null when not a task. */
+export function toggleTaskSource(source: string): string | null {
+  const m = /^(\s*-\s+\[)([ xX])(\]\s+)/.exec(source)
+  if (!m) return null
+  const checked = m[2]?.toLowerCase() === 'x'
+  return `${m[1]}${checked ? ' ' : 'x'}${m[3]}${source.slice(m[0].length)}`
+}

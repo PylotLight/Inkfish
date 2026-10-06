@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
 import { applyPrefs, loadPrefs, type EditMode, type Prefs } from './theme'
@@ -24,6 +24,32 @@ export function isCaptureWindow(): boolean {
 type Selection = { id: string; origin: 'inbox' | 'note' } | null
 type Scope = 'home' | 'notes' | 'inbox'
 
+/** Open-note tab (notes only — inbox docs are ephemeral, never tabbed). */
+interface Tab {
+  id: string
+  path: string
+  pinned: boolean
+}
+
+const TABS_KEY = 'inkfish.tabs.v1'
+
+function loadTabs(): { tabs: Tab[]; activeId: string | null } {
+  try {
+    const raw = localStorage.getItem(TABS_KEY)
+    if (!raw) return { tabs: [], activeId: null }
+    const data = JSON.parse(raw) as { tabs?: Tab[]; activeId?: unknown }
+    const tabs = Array.isArray(data.tabs)
+      ? data.tabs
+        .filter((t) => t && typeof t.id === 'string' && typeof t.path === 'string')
+        .map((t) => ({ id: t.id, path: t.path, pinned: t.pinned === true }))
+        .slice(0, 30)
+      : []
+    return { tabs, activeId: typeof data.activeId === 'string' ? data.activeId : null }
+  } catch {
+    return { tabs: [], activeId: null }
+  }
+}
+
 const KINDS: Array<{ id: KindFilter; name: string }> = [
   { id: 'all', name: 'All' },
   { id: 'text', name: 'Text' },
@@ -35,7 +61,7 @@ const KINDS: Array<{ id: KindFilter; name: string }> = [
 interface MenuState {
   x: number
   y: number
-  target: TreeTarget | { kind: 'open-note' }
+  target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }
 }
 
 export default function App(): React.JSX.Element {
@@ -63,7 +89,15 @@ function Main(): React.JSX.Element {
   const [revealDir, setRevealDir] = useState<string | null>(null)
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
-  const [dirty, setDirty] = useState(false)
+  /** Open tabs (notes only) — persisted so files stay open across launches. */
+  const [tabs, setTabs] = useState<Tab[]>(() => loadTabs().tabs)
+  /** Unrestored active tab from storage — opened once notes load. */
+  const [pendingActive] = useState<string | null>(() => loadTabs().activeId)
+  const [restored, setRestored] = useState(false)
+  /** Unsaved per-tab edits — the source of dirtiness, survives tab switches. */
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  /** Saved docs by id — tab switches are instant, no IPC per click. */
+  const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
   const [openMode, setOpenMode] = useState<{ id: string; mode: EditMode } | null>(null)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NoteEntry[] | null>(null)
@@ -80,6 +114,24 @@ function Main(): React.JSX.Element {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
+
+  // Dirtiness is derived from lifted drafts (per-tab, survives switches).
+  const dirty = sel !== null && drafts[sel.id] !== undefined
+  const dirtyCount = Object.keys(drafts).length
+
+  // Refs so tab callbacks stay stable without re-creating per keystroke.
+  const allNotesRef = useRef<NoteEntry[]>([])
+  allNotesRef.current = allNotes
+  const docRef = useRef<NoteDoc | null>(null)
+  docRef.current = doc
+  const docsCacheRef = useRef<Record<string, NoteDoc>>({})
+  docsCacheRef.current = docsCache
+  const tabsRef = useRef<Tab[]>([])
+  tabsRef.current = tabs
+  const selRef = useRef<Selection>(null)
+  selRef.current = sel
+  const draftsRef = useRef<Record<string, string>>({})
+  draftsRef.current = drafts
 
   useEffect(() => {
     applyPrefs(prefs)
@@ -186,9 +238,38 @@ function Main(): React.JSX.Element {
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
       setSel({ id, origin })
-      setDirty(false)
       if (origin === 'note') {
-        window.api.notes.get(id).then(setDoc).catch(console.error)
+        // Cache-first: tab switches are instant; refresh in background.
+        const cached = docsCacheRef.current[id]
+        if (cached) {
+          setDoc(cached)
+          window.api.notes
+            .get(id)
+            .then((fresh) => {
+              if (fresh) {
+                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
+                if (selRef.current?.id === id) setDoc(fresh)
+              }
+            })
+            .catch(console.error)
+        } else {
+          window.api.notes
+            .get(id)
+            .then((fresh) => {
+              if (fresh) {
+                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
+                if (selRef.current?.id === id) setDoc(fresh)
+              }
+            })
+            .catch(console.error)
+        }
+        // Keep the file open as a tab (no duplicates).
+        setTabs((prev) => {
+          if (prev.some((t) => t.id === id)) return prev
+          const path =
+            prev.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path ?? id
+          return [...prev, { id, path, pinned: false }]
+        })
       } else {
         const item = inbox.find((i) => i.id === id)
         setDoc(
@@ -203,6 +284,7 @@ function Main(): React.JSX.Element {
         )
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [inbox]
   )
 
@@ -212,8 +294,26 @@ function Main(): React.JSX.Element {
         .save(id, markdown)
         .then((saved) => {
           if (saved) {
+            setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
+            // Renames (id = path by default) move the doc — follow it.
+            if (saved.id !== id) {
+              setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, id: saved.id, path: saved.path } : t)))
+              setDrafts((prev) => {
+                if (prev[id] === undefined) return prev
+                const next = { ...prev }
+                delete next[id]
+                return next
+              })
+              setSel((cur) => (cur?.id === id ? { ...cur, id: saved.id } : cur))
+            } else {
+              setDrafts((prev) => {
+                if (prev[id] === undefined) return prev
+                const next = { ...prev }
+                delete next[id]
+                return next
+              })
+            }
             setDoc(saved)
-            setDirty(false)
             if (sel?.origin === 'note') refreshNotes()
             else refreshAll()
             notify('Saved ✓')
@@ -223,6 +323,20 @@ function Main(): React.JSX.Element {
     },
     [sel, refreshNotes, refreshAll, notify]
   )
+
+  /** Lifted unsaved text per tab — typing never loses edits on switch. */
+  const handleDraft = useCallback((id: string, markdown: string) => {
+    const saved = docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
+    setDrafts((prev) => {
+      if (markdown === saved) {
+        if (prev[id] === undefined) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      }
+      return prev[id] === markdown ? prev : { ...prev, [id]: markdown }
+    })
+  }, [])
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -243,6 +357,139 @@ function Main(): React.JSX.Element {
     },
     [openEntry]
   )
+
+  // --- tabs --------------------------------------------------------------------
+  const activateNeighbor = useCallback((closedId: string, remaining: Tab[]) => {
+    const active = selRef.current
+    if (!active || active.id !== closedId) return
+    const next = remaining[remaining.length - 1]
+    if (next) {
+      openEntry(next.id, 'note')
+    } else {
+      setSel(null)
+      setDoc(null)
+    }
+  }, [openEntry])
+
+  const removeTab = useCallback((id: string) => {
+    const remaining = tabsRef.current.filter((t) => t.id !== id)
+    setTabs(remaining)
+    activateNeighbor(id, remaining)
+  }, [activateNeighbor])
+
+  const closeTab = useCallback((id: string) => {
+    if (draftsRef.current[id] !== undefined) {
+      setConfirm({
+        title: 'Close without saving?',
+        body: 'This tab has unsaved changes. They will be discarded.',
+        confirm: 'Discard changes',
+        onConfirm: () => {
+          setDrafts((d) => {
+            const next = { ...d }
+            delete next[id]
+            return next
+          })
+          removeTab(id)
+        }
+      })
+      return
+    }
+    removeTab(id)
+  }, [removeTab])
+
+  const togglePin = useCallback((id: string) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
+  }, [])
+
+  /** Close a set of tabs; blocked when any of them is dirty (save first). */
+  const closeTabsGuarded = useCallback((ids: string[], what: string) => {
+    const dirtyClosing = ids.filter((id) => draftsRef.current[id] !== undefined)
+    if (dirtyClosing.length > 0) {
+      notify(`Unsaved changes in ${dirtyClosing.length} tab${dirtyClosing.length === 1 ? '' : 's'} — save first`)
+      return
+    }
+    const keep = new Set(ids)
+    const remaining = tabsRef.current.filter((t) => !keep.has(t.id))
+    setTabs(remaining)
+    const active = selRef.current
+    if (active && keep.has(active.id)) activateNeighbor(active.id, remaining)
+    notify(what)
+  }, [activateNeighbor, notify])
+
+  const closeOthers = useCallback((id: string) => {
+    // Pinned tabs survive "close others" (Obsidian-style).
+    const victimIds = tabsRef.current.filter((t) => t.id !== id && !t.pinned).map((t) => t.id)
+    if (victimIds.length === 0) {
+      notify('Nothing else to close')
+      return
+    }
+    closeTabsGuarded(victimIds, `Closed ${victimIds.length} tab${victimIds.length === 1 ? '' : 's'}`)
+  }, [closeTabsGuarded, notify])
+
+  const closeUnpinned = useCallback(() => {
+    const victimIds = tabsRef.current.filter((t) => !t.pinned).map((t) => t.id)
+    if (victimIds.length === 0) {
+      notify('No unpinned tabs')
+      return
+    }
+    closeTabsGuarded(victimIds, `Closed ${victimIds.length} tab${victimIds.length === 1 ? '' : 's'}`)
+  }, [closeTabsGuarded, notify])
+
+  // Persist tabs so files stay open across launches.
+  useEffect(() => {
+    try {
+      localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId: sel?.id ?? null }))
+    } catch {
+      // ignore
+    }
+  }, [tabs, sel])
+
+  // Reconcile tabs against the note index: follow renames by path, drop gone.
+  useEffect(() => {
+    if (allNotes.length === 0) return
+    setTabs((prev) => {
+      if (prev.length === 0) return prev
+      const byId = new Map(allNotes.map((n) => [n.id, n]))
+      const byPath = new Map(allNotes.map((n) => [n.path, n]))
+      let changed = false
+      const next: Tab[] = []
+      for (const t of prev) {
+        const byIdMatch = byId.get(t.id)
+        if (byIdMatch) {
+          if (byIdMatch.path !== t.path) {
+            next.push({ ...t, path: byIdMatch.path })
+            changed = true
+          } else {
+            next.push(t)
+          }
+          continue
+        }
+        const byPathMatch = byPath.get(t.path)
+        if (byPathMatch) {
+          next.push({ ...t, id: byPathMatch.id })
+          changed = true
+          continue
+        }
+        changed = true // dropped — file gone
+      }
+      return changed ? next : prev
+    })
+  }, [allNotes])
+
+  // Restore the pre-restart session once notes load.
+  useEffect(() => {
+    if (restored || allNotes.length === 0) return
+    setRestored(true)
+    if (selRef.current || tabsRef.current.length === 0) return
+    const target = (pendingActive && tabsRef.current.some((t) => t.id === pendingActive))
+      ? pendingActive
+      : tabsRef.current[tabsRef.current.length - 1]?.id
+    if (target) {
+      setScope('notes')
+      openEntry(target, 'note')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allNotes, restored])
 
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
   useEffect(() => {
@@ -287,8 +534,8 @@ function Main(): React.JSX.Element {
 
   // --- file CRUD ---------------------------------------------------------------
   const guardDirty = (): boolean => {
-    if (dirty) {
-      notify('Unsaved changes — save first')
+    if (dirtyCount > 0) {
+      notify(`Unsaved changes in ${dirtyCount} tab${dirtyCount === 1 ? '' : 's'} — save first`)
       return true
     }
     return false
@@ -305,7 +552,7 @@ function Main(): React.JSX.Element {
             .then((all) => {
               setAllNotes(all)
               const found = all.find((n) => n.path === rel)
-              if (found) selectNote(found.id, 'edit')
+              if (found) selectNote(found.id, 'raw')
             })
             .catch(console.error)
           refreshInbox()
@@ -352,12 +599,29 @@ function Main(): React.JSX.Element {
                 .then((all) => {
                   setAllNotes(all)
                   window.api.notes.titles().then(setTitles).catch(console.error)
+                  const byPath = new Map(all.map((n) => [n.path, n]))
+                  // Follow every open tab across the rename (file or folder).
+                  setTabs((prev) =>
+                    prev.map((t) => {
+                      if (t.path === rel || t.path.startsWith(`${rel}/`)) {
+                        const movedPath = newRel + t.path.slice(rel.length)
+                        const found = byPath.get(movedPath)
+                        return found ? { ...t, id: found.id, path: movedPath } : t
+                      }
+                      return t
+                    })
+                  )
                   if (openPath && (openPath === rel || openPath.startsWith(`${rel}/`))) {
                     const movedPath = newRel + openPath.slice(rel.length)
                     const found = all.find((n) => n.path === movedPath)
                     if (found) {
                       setSel({ id: found.id, origin: 'note' })
-                      window.api.notes.get(found.id).then(setDoc).catch(console.error)
+                      window.api.notes.get(found.id).then((fresh) => {
+                        if (fresh) {
+                          setDocsCache((prev) => ({ ...prev, [found.id]: fresh }))
+                          setDoc(fresh)
+                        }
+                      }).catch(console.error)
                     } else {
                       setSel(null)
                       setDoc(null)
@@ -387,6 +651,26 @@ function Main(): React.JSX.Element {
             .trash(rel)
             .then(() => {
               notify(`Trashed ${name}`)
+              // Drop tabs under the trashed path; follow with a neighbor.
+              setTabs((prev) => {
+                const remaining = prev.filter((t) => t.path !== rel && !t.path.startsWith(`${rel}/`))
+                if (remaining.length !== prev.length) {
+                  const active = selRef.current
+                  if (active?.origin === 'note' && (active.id === selRef.current?.id)) {
+                    const gone = !remaining.some((t) => t.id === active.id) &&
+                      prev.some((t) => t.id === active.id && (t.path === rel || t.path.startsWith(`${rel}/`)))
+                    if (gone) {
+                      const next = remaining[remaining.length - 1]
+                      if (next) openEntry(next.id, 'note')
+                      else {
+                        setSel(null)
+                        setDoc(null)
+                      }
+                    }
+                  }
+                }
+                return remaining
+              })
               // Clear the center if the open note is gone.
               if (sel?.origin === 'note') {
                 window.api.notes
@@ -396,7 +680,12 @@ function Main(): React.JSX.Element {
                     if (!all.some((n) => n.id === sel.id)) {
                       setSel(null)
                       setDoc(null)
-                      setDirty(false)
+                      setDrafts((d) => {
+                        if (d[sel.id] === undefined) return d
+                        const next = { ...d }
+                        delete next[sel.id]
+                        return next
+                      })
                     }
                   })
                   .catch(console.error)
@@ -415,9 +704,19 @@ function Main(): React.JSX.Element {
     [sel, notify, refreshNotes, refreshInbox, refreshProjects]
   )
 
-  /** Context menu items for a tree target (or the open note). */
+  /** Context menu items for a tree target, the open note, or a tab. */
   const menuItems = useCallback(
-    (target: TreeTarget | { kind: 'open-note' }): MenuItem[] => {
+    (target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }): MenuItem[] => {
+      if (target.kind === 'tab') {
+        const tab = tabsRef.current.find((t) => t.id === target.id)
+        if (!tab) return []
+        return [
+          { label: tab.pinned ? 'Unpin tab' : 'Pin tab', action: () => togglePin(tab.id) },
+          { label: 'Close tab', action: () => closeTab(tab.id) },
+          { label: 'Close other tabs', action: () => closeOthers(tab.id) },
+          { label: 'Close unpinned tabs', action: () => closeUnpinned() }
+        ]
+      }
       if (target.kind === 'open-note') {
         if (!doc || sel?.origin !== 'note') return []
         const rel = doc.path
@@ -463,7 +762,7 @@ function Main(): React.JSX.Element {
         { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(target.rel, name) }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes]
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned]
   )
 
   // --- derived -------------------------------------------------------------------
@@ -482,9 +781,12 @@ function Main(): React.JSX.Element {
   const pickScope = (s: Scope): void => {
     setScope(s)
     if (s === 'home') {
+      // Tabs stay open (Obsidian-style) — just park the active selection.
       setSel(null)
       setDoc(null)
-      setDirty(false)
+    } else if (s === 'notes' && !selRef.current && tabsRef.current.length > 0) {
+      const last = tabsRef.current[tabsRef.current.length - 1]
+      if (last) openEntry(last.id, 'note')
     }
   }
 
@@ -696,6 +998,19 @@ function Main(): React.JSX.Element {
               </main>
             ) : (
               <main className="note-stage" aria-label="Note">
+                <TabBar
+                  tabs={tabs}
+                  activeId={sel?.origin === 'note' ? sel.id : null}
+                  drafts={drafts}
+                  allNotes={allNotes}
+                  titles={titles}
+                  titleOf={titleOf}
+                  onActivate={(id) => openEntry(id, 'note')}
+                  onClose={closeTab}
+                  onTogglePin={togglePin}
+                  onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
+                  onNew={() => doCreateFile(targetDir)}
+                />
                 {sel?.origin === 'inbox' && activeItem && (
                   <InboxBar
                     item={activeItem}
@@ -713,7 +1028,9 @@ function Main(): React.JSX.Element {
                   dirty={dirty}
                   defaultMode={prefs.mode}
                   openMode={openMode && doc && openMode.id === doc.id ? openMode.mode : null}
-                  onDirty={setDirty}
+                  draft={sel ? drafts[sel.id] : undefined}
+                  onDraft={handleDraft}
+                  onDirty={() => undefined}
                   onSave={saveDoc}
                   onRename={(t) => {
                     if (doc) renameNote(doc.id, t)
@@ -764,6 +1081,92 @@ function Main(): React.JSX.Element {
         />
       )}
       {toast && <div className="toast glass">{toast}</div>}
+    </div>
+  )
+}
+
+/** Obsidian-style tab strip: pinned files stay, × closes, right-click for more. */
+function TabBar({
+  tabs, activeId, drafts, allNotes, titles, titleOf,
+  onActivate, onClose, onTogglePin, onMenu, onNew
+}: {
+  tabs: Tab[]
+  activeId: string | null
+  drafts: Record<string, string>
+  allNotes: NoteEntry[]
+  titles: Record<string, string>
+  titleOf: (e: { id: string; path: string; title: string }) => string
+  onActivate: (id: string) => void
+  onClose: (id: string) => void
+  onTogglePin: (id: string) => void
+  onMenu: (id: string, x: number, y: number) => void
+  onNew: () => void
+}): React.JSX.Element {
+  const byId = new Map(allNotes.map((n) => [n.id, n]))
+  const ordered = [...tabs].sort((a, b) => Number(b.pinned) - Number(a.pinned))
+  if (ordered.length === 0) return <div className="tabbar empty" aria-hidden />
+  return (
+    <div className="tabbar" role="tablist" aria-label="Open notes">
+      {ordered.map((t) => {
+        const entry = byId.get(t.id)
+        const label = titleOf({ id: t.id, path: entry?.path ?? t.path, title: entry?.title ?? '' })
+        const isActive = t.id === activeId
+        const isDirty = drafts[t.id] !== undefined
+        return (
+          <div
+            key={t.id}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={0}
+            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${isDirty ? ' dirty' : ''}`}
+            title={`${entry?.path ?? t.path}${isDirty ? ' • unsaved' : ''}`}
+            onClick={() => onActivate(t.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onActivate(t.id)
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              onMenu(t.id, e.clientX, e.clientY)
+            }}
+            onMouseUp={(e) => {
+              if (e.button === 1) {
+                e.preventDefault()
+                onClose(t.id)
+              }
+            }}
+          >
+            {t.pinned && (
+              <button
+                className="tab-pin on"
+                title="Unpin tab"
+                aria-label="Unpin tab"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onTogglePin(t.id)
+                }}
+              >
+                📌
+              </button>
+            )}
+            <span className="tab-label">{label}</span>
+            {isDirty && <span className="tab-dot" aria-label="Unsaved changes" />}
+            <button
+              className="tab-x"
+              title="Close tab"
+              aria-label={`Close ${label}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose(t.id)
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )
+      })}
+      <button className="tab-new" onClick={onNew} title="New note" aria-label="New note">
+        +
+      </button>
     </div>
   )
 }
