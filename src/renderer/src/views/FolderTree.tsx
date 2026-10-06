@@ -113,7 +113,8 @@ interface Props {
   onMenu: (target: TreeTarget, x: number, y: number) => void
 }
 
-/** Minimal stroke icons — quieter than emoji, consistent across platforms. */
+/** Minimal stroke icons — used in search results only. The folder tree
+ *  itself is bare text (Obsidian-style): no per-file icons. */
 function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
   const common = {
     width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none',
@@ -148,22 +149,6 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
     <svg {...common} aria-hidden>
       <path d="M4 1.5h5.2l2.8 2.8v10.2H4z" />
       <path d="M9.2 1.5v2.8H12" />
-    </svg>
-  )
-}
-
-function FolderGlyph({ open }: { open: boolean }): React.JSX.Element {
-  return (
-    <svg
-      width={14} height={14} viewBox="0 0 16 16" fill="none"
-      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden
-    >
-      {open ? (
-        <path d="M1.8 5.2c0-.8.7-1.5 1.5-1.5h2.4l1.2 1.4h5.8c.8 0 1.5.7 1.5 1.5v1.2H1.8zM1.8 7.6v3.9c0 .8.7 1.5 1.5 1.5h9.4c.8 0 1.5-.7 1.5-1.5V6.6" />
-      ) : (
-        <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
-      )}
     </svg>
   )
 }
@@ -254,7 +239,6 @@ function FolderTree({
         <Node
           key={n.rel}
           node={n}
-          depth={0}
           titleOf={titleOf}
           selectedId={selectedId}
           collapsed={collapsed}
@@ -270,6 +254,7 @@ function FolderTree({
           entry={n}
           title={titleOf(n)}
           selected={selectedId === n.id}
+          bare
           onOpen={() => onOpenFile(n.id)}
           onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
         />
@@ -282,10 +267,9 @@ function FolderTree({
 }
 
 function Node({
-  node, depth, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu
+  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu
 }: {
   node: TreeNode
-  depth: number
   titleOf: (n: NoteEntry) => string
   selectedId: string | null
   collapsed: Set<string>
@@ -297,7 +281,7 @@ function Node({
   const open = !collapsed.has(node.rel)
   return (
     <div className="fnode">
-      <div className="frow" style={{ paddingLeft: 8 + depth * 14 }}>
+      <div className="frow">
         <button
           className="caret"
           onClick={() => onToggle(node.rel)}
@@ -317,9 +301,7 @@ function Node({
           }}
           title={`${node.rel} — toggle / set as target`}
         >
-          <span className="ficon" aria-hidden><FolderGlyph open={open} /></span>
           <span className="fname">{node.name}</span>
-          <span className="fcount">{node.total}</span>
         </button>
       </div>
       {open && (
@@ -328,7 +310,6 @@ function Node({
             <Node
               key={c.rel}
               node={c}
-              depth={depth + 1}
               titleOf={titleOf}
               selectedId={selectedId}
               collapsed={collapsed}
@@ -341,15 +322,15 @@ function Node({
           {node.files.map((f) => {
             const t = titleOf(f)
             return (
-              <div key={f.id} style={{ paddingLeft: 8 + (depth + 1) * 14 }}>
-                <FileRow
-                  entry={f}
-                  title={t}
-                  selected={selectedId === f.id}
-                  onOpen={() => onOpenFile(f.id)}
-                  onMenu={(x, y) => onMenu({ kind: 'file', rel: f.path, id: f.id, name: t }, x, y)}
-                />
-              </div>
+              <FileRow
+                key={f.id}
+                entry={f}
+                title={t}
+                selected={selectedId === f.id}
+                bare
+                onOpen={() => onOpenFile(f.id)}
+                onMenu={(x, y) => onMenu({ kind: 'file', rel: f.path, id: f.id, name: t }, x, y)}
+              />
             )
           })}
         </div>
@@ -359,21 +340,23 @@ function Node({
 }
 
 export function FileRow({
-  entry, title, selected, onOpen, onMenu
+  entry, title, selected, bare, onOpen, onMenu
 }: {
   entry: NoteEntry
   title: string
   selected: boolean
+  /** Bare text row for the folder tree (no icon, no meta). Search keeps chrome. */
+  bare?: boolean
   onOpen: () => void
   onMenu: (x: number, y: number) => void
 }): React.JSX.Element {
   const tip = `${entry.path}\n${entry.size > 0 ? `${fmtBytes(entry.size)} · ` : ''}edited ${timeAgo(entry.updatedAt)} · created ${new Date(entry.createdAt).toLocaleDateString()}`
-  // Slim meta: parent folder + relative time. No `.md`, no "edited", no size.
+  // Slim meta for search rows: parent folder + relative time.
   const parent = entry.path.includes('/') ? (entry.path.split('/').slice(0, -1).pop() ?? '') : ''
   const meta = parent ? `${parent} · ${timeAgo(entry.updatedAt)}` : timeAgo(entry.updatedAt)
   return (
     <button
-      className={`filerow${selected ? ' on' : ''}`}
+      className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
       onClick={onOpen}
       onContextMenu={(e) => {
         e.preventDefault()
@@ -381,10 +364,12 @@ export function FileRow({
       }}
       title={tip}
     >
-      <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+      {!bare && (
+        <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+      )}
       <span className="ftext">
         <span className="fname">{title}</span>
-        <span className="fmeta">{meta}</span>
+        {!bare && <span className="fmeta">{meta}</span>}
       </span>
     </button>
   )

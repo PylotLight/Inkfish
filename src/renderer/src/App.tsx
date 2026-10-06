@@ -863,6 +863,24 @@ function Main(): React.JSX.Element {
           </div>
         ) : (
           <div className="side-scroll">
+            <div className="tree-toolbar" role="toolbar" aria-label="Notes actions">
+              <button className="tree-tool" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`} aria-label="New note">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M4 1.5h5.2l2.8 2.8v10.2H4z" />
+                  <path d="M9.2 1.5v2.8H12" />
+                  <path d="M6.2 9.2h3.6M8 7.4v3.6" />
+                </svg>
+              </button>
+              <button className="tree-tool" onClick={doCreateFolder} title={`New folder in ${targetDir || '/'}`} aria-label="New folder">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
+                  <path d="M8 7.2v3.6M6.2 9h3.6" />
+                </svg>
+              </button>
+              {targetDir !== '' && (
+                <span className="tree-target" title={targetDir}>in {targetDir.split('/').pop()}</span>
+              )}
+            </div>
             <FolderTree
               notes={finalNotes}
               kind={kind}
@@ -891,20 +909,6 @@ function Main(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            <div className="side-actions">
-              <button className="btn ghost sm grow" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`}>
-                + New note
-              </button>
-              <button className="btn ghost sm icon" onClick={doCreateFolder} title={`New folder in ${targetDir || '/'}`} aria-label="New folder">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
-                  <path d="M8 7.2v3.6M6.2 9h3.6" />
-                </svg>
-              </button>
-            </div>
-            {targetDir !== '' && (
-              <p className="muted side-target" title={targetDir}>in {targetDir.split('/').pop()}</p>
-            )}
           </div>
         )}
 

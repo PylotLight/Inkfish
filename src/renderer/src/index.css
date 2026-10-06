@@ -1928,6 +1928,44 @@ html[data-motion='reduced'] *::after {
   background: var(--panel);
 }
 
+/* Slim icon toolbar above the tree (Obsidian-style). */
+.tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 8px;
+}
+
+.tree-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.tree-tool:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.tree-target {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.85;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- Inkfish: folder tree ---------- */
 
 .ftree {
@@ -1937,17 +1975,25 @@ html[data-motion='reduced'] *::after {
   margin-bottom: 10px;
 }
 
+/* Nesting indent + guide rule — indent accumulates per level. */
+.fkids {
+  margin-left: 9px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
 .frow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   width: 100%;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--text);
   border-radius: 9px;
-  padding: 6px 8px;
+  padding: 7px 8px;
   font-size: 13.5px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
 }
@@ -1965,11 +2011,12 @@ button.frow.on,
 }
 
 .frow .caret {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--muted);
+  opacity: 0.7;
   font-size: 11px;
   cursor: pointer;
   padding: 0;
@@ -1991,6 +2038,7 @@ button.frow.on,
   background: transparent;
   color: inherit;
   font-size: inherit;
+  font-weight: inherit;
   cursor: pointer;
   padding: 0;
   text-align: left;
@@ -2002,46 +2050,19 @@ button.frow.on,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
-}
-
-.frow .fcount {
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.65;
-  flex-shrink: 0;
-}
-
-.frow .ficon {
-  flex-shrink: 0;
 }
 
 .chips.kinds {
   margin: 2px 0 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .chips.kinds button {
   padding: 4px 10px;
   font-size: 12px;
-}
-
-/* Compact sidebar action row — replaces the old folder input + buttons. */
-.side-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.side-actions .grow {
-  flex: 1;
-}
-
-.side-target {
-  margin: 6px 2px 0;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ---------- Inkfish: home dashboard ---------- */
@@ -2287,9 +2308,18 @@ html[data-density='compact'] .md p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13.5px;
   line-height: 1.35;
+}
+
+/* Bare tree rows: single text line, no icon or meta. */
+.filerow.bare {
+  padding: 6px 10px;
+}
+
+.filerow.bare .ftext {
+  gap: 0;
 }
 
 .filerow .fmeta {
