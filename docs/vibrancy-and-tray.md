@@ -23,7 +23,8 @@ so you can compare `fullscreen-ui`, `sidebar`, `hud`, etc. against a bright wall
 - Left-click pops the context menu (`tray.popUpContextMenu()`). Showing the window
   happens only via the **Show window** menu item — never automatically.
 - Icons: `assets/trayTemplate.png` (macOS, auto dark/light) and `assets/tray.png`
-  (Windows/Linux). Regenerate with `bun run assets` or drop in your own PNGs.
+  (Windows/Linux) — both derived from `assets/Inkfish_logo.png`.
+  Regenerate with `bun run assets` or drop in your own PNGs.
 
 ## Hiding semantics (macOS)
 

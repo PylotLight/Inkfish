@@ -55,8 +55,8 @@ Overrides for testing: `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun r
 | `clean` | Remove `out/` |
 | `test` | `bun test` — vault/AI/DB unit tests (also runs in CI) |
 | `typecheck` | `tsc --noEmit` over `src/`, `scripts/`, and config |
-| `assets` | Regenerate tray PNGs, zero dependencies |
-| `icon` | Regenerate app icon (`build/icon.png` + `build/icon.icns`), zero dependencies |
+| `assets` | Regenerate tray PNGs from `assets/Inkfish_logo.png`, zero dependencies |
+| `icon` | Regenerate app icon (`build/icon.png` + `build/icon.icns`) from `assets/Inkfish_logo.png`, zero dependencies |
 | `dist` / `dist:mac` / `dist:linux` / `dist:ci` | Package via electron-builder → `release/` |
 | `release` | `bun scripts/release.ts` — cut a release, tag it (see `docs/releasing.md`) |
 | `postinstall` | Runs automatically: downloads the Electron binary Bun skips |

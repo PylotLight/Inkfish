@@ -24,6 +24,9 @@ function resolvePreload(): string {
 }
 
 export function createWindow(): BrowserWindow {
+  // Linux/Windows have no bundle icon — point the window at the squid logo.
+  // (macOS uses build/icon.icns from the app bundle instead.)
+  const logoIcon = !isMac ? join(__dirname, '../../build/icon.png') : undefined
   const win = new BrowserWindow({
     width: WINDOW.width,
     height: WINDOW.height,
@@ -31,6 +34,7 @@ export function createWindow(): BrowserWindow {
     minHeight: WINDOW.minHeight,
     show: false,
     autoHideMenuBar: true,
+    icon: logoIcon !== undefined && existsSync(logoIcon) ? logoIcon : undefined,
     // macOS glass: native vibrancy + transparent window + inset traffic lights.
     // The renderer MUST stay translucent (see index.css) or the blur is covered up.
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
