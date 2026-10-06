@@ -3,8 +3,8 @@
 Menu-bar quick capture with AI auto-sort. Capture fast — AI sorts it later.
 Bun + Electron + React + Vite + TypeScript.
 
-> Status: P0 MVP (local only, free) — tray popover → `inbox/` → auto-routed
-> `projects/<name>/` notes. See [docs/inkfish-mvp.md](docs/inkfish-mvp.md).
+> Status: P0 MVP (local only, free) — tray popover → staging inbox →
+> auto-routed top-level notes. See [docs/inkfish-mvp.md](docs/inkfish-mvp.md).
 
 ## Install
 
@@ -50,9 +50,10 @@ bun run start      # launch the built app
 ```
 
 Press **Opt-Space** anywhere to pop the capture window, type, `Cmd-Enter` to
-save into the inbox. The background worker formats + routes it to
-`projects/<name>/`. Your vault lives at `~/Inkfish/` (`inbox/`,
-`projects/<name>/`, `daily/`, `assets/`); plain `.md` files stay the source of truth.
+save to a staging inbox. The background worker formats + routes it to a
+top-level folder (`work/`, `personal/`, …). Your vault lives at `~/Inkfish/`
+and holds finalised outputs only; raw inbox captures and day-log scratch
+live in hidden app data. Plain `.md` files stay the source of truth.
 
 ## Docs
 

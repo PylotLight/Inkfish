@@ -6,7 +6,7 @@ import { createAppTray, destroyTray } from './tray'
 import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
-import { openDb, reindexVault } from './db'
+import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
 
 // Custom protocols must be privileged before the app is ready.
@@ -24,7 +24,7 @@ function initVault(): void {
     const paths = ensureVault()
     ensureSeedProjects(paths)
     const kind = openDb(paths.dbPath)
-    const n = reindexVault(paths.root)
+    const n = reindexVault(paths.root) + reindexStaging(paths)
     console.log(`[inkfish] vault ${paths.root} — index ${kind}, ${n} notes`)
   } catch (err) {
     console.error('[inkfish] vault init failed:', err)

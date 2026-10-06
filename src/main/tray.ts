@@ -38,7 +38,10 @@ export function createAppTray(cb: TrayCallbacks): void {
     const b = tray?.getBounds()
     return [b?.x, b?.y, b?.width, b?.height]
   }
-  tray.setContextMenu(
+  // NOTE: no `setContextMenu` — on macOS a bound menu also fires on
+  // left-click, which popped the menu *and* the capture window together.
+  // The menu is built on demand for right-click only.
+  const buildMenu = (): Menu =>
     Menu.buildFromTemplate([
       { label: 'New note  (⌥Space)', click: cb.onCapture },
       { label: 'Append to today  (⇧⌥Space)', click: () => cb.onDailyAt(...atTray()) },
@@ -56,14 +59,13 @@ export function createAppTray(cb: TrayCallbacks): void {
       { type: 'separator' },
       { label: 'Quit', click: cb.onQuit }
     ])
-  )
-  // Left-click pops the capture window (same as Opt-Space); right-click keeps
-  // the advanced menu (Show / test notification / Quit).
+  // Left-click pops the capture window (same as Opt-Space); right-click gets
+  // the menu — never both at once.
   tray.on('click', () => {
     const b = tray?.getBounds()
     cb.onCaptureAt(b?.x, b?.y, b?.width, b?.height)
   })
-  tray.on('right-click', () => tray?.popUpContextMenu())
+  tray.on('right-click', () => tray?.popUpContextMenu(buildMenu()))
 }
 
 export function destroyTray(): void {

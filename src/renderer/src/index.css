@@ -1113,6 +1113,24 @@ select.sm {
   resize: vertical;
 }
 
+/* Meeting as a full center page (not a modal): same fields, roomier. */
+.meeting-page textarea {
+  width: 100%;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  min-height: 260px;
+}
+
+.meeting-page .field input {
+  width: 100%;
+}
+
 .queue .empty {
   padding: 8px 2px;
 }

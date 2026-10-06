@@ -8,30 +8,36 @@ remora (sticks notes to projects) were the runners-up. Picked: **inkfish**
 ## 1. Core flow (the whole app)
 
 ```
-Capture popover (Opt-Space) → inbox/ (dumping ground, raw .md + assets)
+Capture popover (Opt-Space) → staging inbox (dumping ground, raw .md + assets)
   combined composer: text + dropped images + dictated transcripts,
   Teams-meeting snippets land as kind: meeting
   → classify (project, type, tags, title, formatted MD)
-  → projects/<name>/YYYY-MM-DD-slug.md (processed note, links back to inbox id)
+  → <name>/YYYY-MM-DD-slug.md (processed note, links back to inbox id)
   → searchable, undo/reassign if AI got it wrong
 ```
 
 - Quick note add to various dirs/projects: tray popover has project picker
-  (default: Auto). `Cmd-Enter` saves to `inbox/`, non-blocking.
+  (default: Auto) plus a Today toggle for day-log appends. `Cmd-Enter` saves
+  to the staging inbox (or appends to today), non-blocking.
 - Auto-sorted: background worker formats + routes. Inbox list shows
   `inbox → ready` state per item. Never deletes raw.
 - Idea tracking: every processed note keeps `inbox:` frontmatter ref,
   project backlinks, created/source (tray, meeting, image).
 - Teams-call notes: same inbox path — meeting recorder drops transcript
-  chunks into inbox as `kind: meeting`, processed into meeting note template
+  chunks into staging as `kind: meeting`, processed into meeting note template
   (attendees, decisions, actions).
 
 ## 2. Features (P0 → P1 → later)
 
 P0 (MVP, local only, free):
-- [x] Tray: popover quick-add (text), global shortcut, project dropdown + Auto
-- [x] Vault = plain folder (`~/Inkfish/`): `inbox/`, `projects/<name>/`, `assets/`
-- [x] Editor: CodeMirror 6 GFM source + preview, image paste → assets/ (Shiki code highlight deferred to polish)
+- [x] Tray: popover quick-add (text), global shortcut, project dropdown + Auto.
+  Left-click pops capture; right-click shows the menu (never both).
+- [x] Vault = plain folder (`~/Inkfish/`): finalised outputs only —
+  top-level `<name>/` note folders, `assets/`. A "project" is just a folder
+  name, not an app dir. Working state (raw inbox, day-log scratch, trash,
+  undone, index) lives in hidden app data, never in the vault.
+- [x] Editor: CodeMirror 6 GFM source + preview with folding, image paste →
+  assets/, long fenced blocks collapse in preview
 - [x] Voice: record in popover → local wav → STT sidecar → inbox text (see §4)
 - [x] Meeting: manual transcript paste + import .wav/.mp3 (STT) / .vtt, Teams export .vtt accepted (live mic+system capture via ScreenCaptureKit = later)
 - [x] SQLite index: FTS5 + metadata, plain .md stays source of truth (node:sqlite + memory fallback)
@@ -91,7 +97,7 @@ Later:
    `src/main/ipc.ts` → expose in preload → `window.api`).
 3. Vault writer (main): inbox .md + sqlite row + FTS entry.
 4. STT wiring (native `parakeet-cli` / Apple CLI) + meeting import.
-5. Classifier worker (Apple Intelligence → rules), router to projects/.
+5. Classifier worker (Apple Intelligence → rules), router to top-level folders.
 6. sqlite-vec related search + polish glass popover.
 
 Verify each step: `bun run typecheck`, `bun run build`, `bun run start`.

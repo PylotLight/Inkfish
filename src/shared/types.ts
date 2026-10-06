@@ -40,7 +40,7 @@ export type NoteSource = 'tray' | 'popover' | 'meeting' | 'image' | 'import'
 export interface Project {
   id: string
   name: string
-  /** Vault-relative dir, e.g. `projects/blobfish`. */
+  /** Vault-relative dir, e.g. `work` (a "project" is just a top-level folder). */
   dir: string
   color?: string
 }
@@ -82,10 +82,11 @@ export interface InboxAddInput {
 }
 
 export interface VaultInfo {
-  /** Absolute vault root, e.g. `/Users/you/Inkfish`. */
+  /** Absolute vault root, e.g. `/Users/you/Inkfish` — finalised outputs only. */
   root: string
+  /** Staging inbox in hidden app data (raw captures). */
   inboxDir: string
-  projectsDir: string
+  /** Staging day-log in hidden app data. */
   dailyDir: string
   assetsDir: string
   dbPath: string

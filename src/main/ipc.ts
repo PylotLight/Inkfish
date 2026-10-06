@@ -42,6 +42,7 @@ import {
   renamePath,
   requireNotes,
   resolveAsset,
+  resolveNoteAbs,
   routeToProject,
   saveAsset,
   saveProfile,
@@ -64,6 +65,7 @@ import {
   indexFile,
   listNotes,
   openDb,
+  reindexStaging,
   reindexVault,
   relatedNotes,
   removeNote,
@@ -96,7 +98,6 @@ function info(): VaultInfo {
   return {
     root: p.root,
     inboxDir: p.inboxDir,
-    projectsDir: p.projectsDir,
     dailyDir: p.dailyDir,
     assetsDir: p.assetsDir,
     dbPath: p.dbPath,
@@ -232,7 +233,8 @@ export function registerIpc(): void {
   })
   ipcMain.handle('vault:reindex', (): { indexed: number; backend: string } => {
     const paths = requireNotes()
-    return { indexed: reindexVault(paths.root), backend: dbKind() }
+    const n = reindexVault(paths.root) + reindexStaging(paths)
+    return { indexed: n, backend: dbKind() }
   })
   ipcMain.handle('vault:backend', (): string => dbKind())
 
@@ -251,7 +253,7 @@ export function registerIpc(): void {
         closeDb()
         ensureSeedProjects(paths)
         const backend = openDb(paths.dbPath)
-        const indexed = reindexVault(paths.root)
+        const indexed = reindexVault(paths.root) + reindexStaging(paths)
         console.log(`[inkfish] vault home → ${paths.root} (${backend}, ${indexed} notes)`)
         return { info: info(), backend, indexed }
       } catch (err) {
@@ -336,7 +338,7 @@ export function registerIpc(): void {
   ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()
     const ok = undoRoute(id, paths)
-    // Drop undone notes from the index (files are `.undone`, re-scan is cheap).
+    // Drop undone notes from the index (files moved to app-data, re-scan is cheap).
     void reindexVault(paths.root)
     return ok
   })
@@ -378,7 +380,7 @@ export function registerIpc(): void {
         closeDb()
         ensureSeedProjects(paths)
         const backend = openDb(paths.dbPath)
-        const indexed = reindexVault(paths.root)
+        const indexed = reindexVault(paths.root) + reindexStaging(paths)
         return { info: info(), backend, indexed }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -409,7 +411,7 @@ export function registerIpc(): void {
       const paths = requireNotes()
       const doc = getNote(id, paths.root)
       if (!doc) return null
-      const abs = join(paths.root, doc.path)
+      const abs = resolveNoteAbs(doc.path, paths)
       if (!existsSync(abs)) return null
       writeFileSync(abs, markdown, 'utf8')
       removeNote(id)
@@ -421,7 +423,7 @@ export function registerIpc(): void {
     const paths = requireNotes()
     const doc = getNote(id, paths.root)
     if (!doc) return false
-    void shell.showItemInFolder(join(paths.root, doc.path))
+    void shell.showItemInFolder(resolveNoteAbs(doc.path, paths))
     return true
   })
   // --- custom display titles (app-data `titles.json`, never in the notes) -------

@@ -262,12 +262,15 @@ function Node({
         </button>
         <button
           className="fmain"
-          onClick={() => onPickDir(node.rel)}
+          onClick={() => {
+            onToggle(node.rel)
+            onPickDir(node.rel)
+          }}
           onContextMenu={(e) => {
             e.preventDefault()
             onMenu({ kind: 'dir', rel: node.rel, id: null, name: node.name }, e.clientX, e.clientY)
           }}
-          title={node.rel}
+          title={`${node.rel} — toggle / set as target`}
         >
           <span className="ficon" aria-hidden>{open ? '📂' : '📁'}</span>
           <span className="fname">{node.name}</span>

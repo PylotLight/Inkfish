@@ -128,7 +128,7 @@ function rulesClassify(input: ClassifyInput): ClassifyResult {
       }
     }
     confidence = best >= 2 ? 0.7 : best > 0 ? 0.45 : 0.25
-    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'projects/general' }
+    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'general' }
   }
   return {
     projectId: project.id,

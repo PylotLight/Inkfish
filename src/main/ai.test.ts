@@ -3,8 +3,8 @@ import { classify, summarize, summarizeExtractive, providerStatus } from './ai'
 import type { Project } from '../shared/types'
 
 const projects: Project[] = [
-  { id: 'personal', name: 'personal', dir: 'projects/personal' },
-  { id: 'work', name: 'work', dir: 'projects/work' }
+  { id: 'personal', name: 'personal', dir: 'personal' },
+  { id: 'work', name: 'work', dir: 'work' }
 ]
 
 describe('classify (rules engine, offline)', () => {

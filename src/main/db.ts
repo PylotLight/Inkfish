@@ -310,17 +310,20 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   return rowToEntry(row)
 }
 
-/** Folder-derived project for imported notes (Obsidian trees). */
+/** Folder-derived project for imported notes (Obsidian trees). Staging
+ * (`inbox/`, `daily/`) never becomes a project; legacy `projects/<p>/`
+ * maps to `<p>` so pre-migration indexes stay sane. */
 export function projectFromPath(vaultRel: string): string | null {
   const parts = vaultRel.split('/')
   if (parts[0] === 'projects' && parts[1]) return parts[1] ?? null
-  if (parts[0] === 'inbox') return null
-  if (parts[0] === 'daily') return 'daily'
+  if (parts[0] === 'inbox' || parts[0] === 'daily') return null
   return parts.length > 1 ? (parts[0] ?? null) : null
 }
 
-/** Full notes-home scan: every non-hidden `.md` — our inbox/projects plus
- * imported trees (Obsidian vaults). Rebuilds the index from files. */
+/** Full notes-home scan: every non-hidden `.md` — our projects plus
+ * imported trees (Obsidian vaults). Rebuilds the index from files.
+ * Skips the staging namespace (`inbox/`, `daily/`): those live in app data
+ * and are indexed separately via `reindexStaging`. */
 export function reindexVault(root: string): number {
   must().clear()
   let n = 0
@@ -333,6 +336,9 @@ export function reindexVault(root: string): number {
     }
     for (const e of entries) {
       const p = join(dir, e.name)
+      const rel = relative(root, p)
+      const top = rel.split('/')[0]
+      if (top === 'inbox' || top === 'daily') continue
       if (e.isDirectory()) {
         if (!e.name.startsWith('.')) walk(p)
       } else if (e.name.endsWith('.md') && !e.name.startsWith('.')) {
@@ -341,6 +347,31 @@ export function reindexVault(root: string): number {
     }
   }
   walk(root)
+  return n
+}
+
+/** Index staging (app-data `inbox/` + `daily/`) under the same rel namespace
+ * (`inbox/<id>.md`, `daily/YYYY-MM-DD.md`). Does NOT clear — call after
+ * `reindexVault` so one boot covers both. */
+export function reindexStaging(paths: {
+  inboxDir: string
+  dailyDir: string
+}): number {
+  let n = 0
+  const flat = (dir: string, prefix: string): void => {
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith('.md') || e.name.startsWith('.')) continue
+      if (indexFile(join(dir, e.name), `${prefix}/${e.name}`)) n++
+    }
+  }
+  flat(paths.inboxDir, 'inbox')
+  flat(paths.dailyDir, 'daily')
   return n
 }
 

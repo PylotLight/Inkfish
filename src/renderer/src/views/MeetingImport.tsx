@@ -4,10 +4,12 @@ interface Props {
   onClose: () => void
   onImported: () => void
   notify: (msg: string) => void
+  /** Render as a full center page instead of a modal popup. */
+  page?: boolean
 }
 
-/** Meeting modal: paste transcript or import Teams .vtt / audio → kind: meeting. */
-export default function MeetingImport({ onClose, onImported, notify }: Props): React.JSX.Element {
+/** Meeting import: paste transcript or import Teams .vtt / audio → kind: meeting. */
+export default function MeetingImport({ onClose, onImported, notify, page }: Props): React.JSX.Element {
   const [text, setText] = useState('')
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,16 +60,72 @@ export default function MeetingImport({ onClose, onImported, notify }: Props): R
     }
   }
 
-  return (
+  return page ? (
+    <div className="settings-page meeting-page" aria-label="Meeting notes">
+      <div className="row settings-top">
+        <div>
+          <span className="eyebrow">Capture</span>
+          <h2 className="settings-title">Meeting notes</h2>
+          <p className="muted small settings-sub">Paste a transcript, import a Teams .vtt export, or transcribe audio.</p>
+        </div>
+        <span className="flex-sp" />
+        <button className="btn ghost sm" onClick={onClose}>
+          ← Back
+        </button>
+      </div>
+      <Body
+        text={text}
+        setText={setText}
+        title={title}
+        setTitle={setTitle}
+        busy={busy}
+        pickFile={() => void pickFile()}
+        pickAudio={() => void pickAudio()}
+        save={() => void save()}
+        onClose={onClose}
+      />
+    </div>
+  ) : (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal glass strong meeting" onClick={(e) => e.stopPropagation()}>
         <h3>Meeting notes</h3>
         <p className="muted">Paste a transcript, import a Teams .vtt export, or transcribe audio.</p>
+        <Body
+          text={text}
+          setText={setText}
+          title={title}
+          setTitle={setTitle}
+          busy={busy}
+          pickFile={() => void pickFile()}
+          pickAudio={() => void pickAudio()}
+          save={() => void save()}
+          onClose={onClose}
+        />
+      </div>
+    </div>
+  )
+}
+
+function Body({
+  text, setText, title, setTitle, busy, pickFile, pickAudio, save, onClose
+}: {
+  text: string
+  setText: (v: string) => void
+  title: string
+  setTitle: (v: string) => void
+  busy: boolean
+  pickFile: () => void
+  pickAudio: () => void
+  save: () => void
+  onClose: () => void
+}): React.JSX.Element {
+  return (
+    <>
         <div className="row wrap">
-          <button className="btn ghost sm" disabled={busy} onClick={() => void pickFile()}>
+          <button className="btn ghost sm" disabled={busy} onClick={pickFile}>
             Import .vtt / .txt…
           </button>
-          <button className="btn ghost sm" disabled={busy} onClick={() => void pickAudio()}>
+          <button className="btn ghost sm" disabled={busy} onClick={pickAudio}>
             Transcribe audio…
           </button>
         </div>
@@ -81,18 +139,17 @@ export default function MeetingImport({ onClose, onImported, notify }: Props): R
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="WEBVTT… or plain transcript…"
-            rows={8}
+            rows={12}
           />
         </label>
         <div className="row end">
           <button className="btn ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn mint" disabled={!text.trim() || busy} onClick={() => void save()}>
+          <button className="btn mint" disabled={!text.trim() || busy} onClick={save}>
             Drop in inbox
           </button>
         </div>
-      </div>
-    </div>
+    </>
   )
 }

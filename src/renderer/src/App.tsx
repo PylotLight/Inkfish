@@ -447,11 +447,17 @@ function Main(): React.JSX.Element {
   )
 
   // --- derived -------------------------------------------------------------------
+  // Staging (inbox/daily working state) lives in app data and is surfaced via
+  // the Inbox tab + Today — never as folders in the vault tree or Home.
+  const finalNotes = useMemo(
+    () => allNotes.filter((n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/')),
+    [allNotes]
+  )
   const kindCounts = useMemo(() => {
     const m = new Map<NoteKind, number>()
-    for (const n of allNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
+    for (const n of finalNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
     return m
-  }, [allNotes])
+  }, [finalNotes])
 
   const pickScope = (s: Scope): void => {
     setScope(s)
@@ -527,7 +533,7 @@ function Main(): React.JSX.Element {
         ) : (
           <div className="side-scroll">
             <FolderTree
-              notes={allNotes}
+              notes={finalNotes}
               kind={kind}
               titleOf={titleOf}
               selectedId={sel?.origin === 'note' ? sel.id : null}
@@ -547,7 +553,7 @@ function Main(): React.JSX.Element {
                     setKind(k.id)
                     setScope('notes')
                   }}
-                  title={k.id === 'all' ? `${allNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
+                  title={k.id === 'all' ? `${finalNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
                 >
                   {k.name}
                   {k.id !== 'all' && <span className="count">{kindCounts.get(k.id as NoteKind) ?? 0}</span>}
@@ -627,6 +633,15 @@ function Main(): React.JSX.Element {
               notify={notify}
             />
           </main>
+        ) : showMeeting ? (
+          <main className="view-scroll" aria-label="Meeting notes">
+            <MeetingImport
+              page
+              onClose={() => setShowMeeting(false)}
+              onImported={refreshAll}
+              notify={notify}
+            />
+          </main>
         ) : (
           <>
             <header className="topbar">
@@ -643,7 +658,7 @@ function Main(): React.JSX.Element {
             {scope === 'home' ? (
               <main className="view-scroll" aria-label="Home">
                 <Home
-                  notes={allNotes}
+                  notes={finalNotes}
                   inbox={inbox}
                   titleOf={titleOf}
                   onOpenNote={selectNote}
@@ -725,13 +740,6 @@ function Main(): React.JSX.Element {
           vault={vaultInfo}
           onVaultReady={onVaultReady}
           onDone={() => setShowOnboarding(false)}
-          notify={notify}
-        />
-      )}
-      {showMeeting && (
-        <MeetingImport
-          onClose={() => setShowMeeting(false)}
-          onImported={refreshAll}
           notify={notify}
         />
       )}

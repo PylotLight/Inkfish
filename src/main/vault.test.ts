@@ -73,7 +73,7 @@ describe('projects + routing', () => {
       { inboxId: item.id, projectName: 'my-project', title: 'Hello World', tags: ['x'], markdown: 'note body', kind: 'text' },
       paths
     )
-    expect(routed.vaultRel).toMatch(/^projects\/my-project\/\d{4}-\d{2}-\d{2}-hello-world\.md$/)
+    expect(routed.vaultRel).toMatch(/^my-project\/\d{4}-\d{2}-\d{2}-hello-world\.md$/)
 
     expect(v.undoRoute(item.id, paths)).toBe(true)
     // Raw inbox file untouched, status reset.
@@ -171,20 +171,90 @@ describe('vault home', () => {
     }
   })
 
-  test('daily append creates day-log; ensureVault only makes user dirs', async () => {
+  test('daily append creates day-log; vault holds finalised outputs only', async () => {
     const v = await vault()
     const { existsSync, readdirSync } = await import('node:fs')
     const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-daily-'))
     try {
       v.setConfigDir(cfg)
+      delete process.env['INKFISH_DATA']
       const paths = v.ensureVault()
       expect(existsSync(paths.dailyDir)).toBe(true)
+      expect(existsSync(paths.inboxDir)).toBe(true)
+      // Vault root: finalised outputs only — no inbox/, daily/, projects/ app dirs.
       const top = readdirSync(paths.root).sort()
-      expect(top).toEqual(['assets', 'daily', 'inbox', 'projects'])
+      expect(top).toEqual(['assets'])
+      // Staging lives in app data.
+      expect(paths.inboxDir.startsWith(cfg)).toBe(true)
+      expect(paths.dailyDir.startsWith(cfg)).toBe(true)
       const out = v.appendDaily('standup: shipped x', { kind: 'text' }, paths)
       expect(out.vaultRel).toMatch(/^daily\/\d{4}-\d{2}-\d{2}\.md$/)
+      expect(existsSync(out.path)).toBe(true)
       const again = v.appendDaily('second update', {}, paths)
       expect(again.vaultRel).toBe(out.vaultRel)
+      // Staging rels resolve into app data, vault rels into the vault.
+      expect(v.resolveNoteAbs(out.vaultRel, paths)).toBe(out.path)
+      expect(v.resolveNoteAbs('work/n.md', paths)).toBe(join(paths.root, 'work/n.md'))
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('legacy vault inbox/daily migrate to staging once', async () => {
+    const v = await vault()
+    const { writeFileSync, existsSync, mkdirSync, readdirSync } = await import('node:fs')
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-migstage-'))
+    try {
+      v.setConfigDir(cfg)
+      delete process.env['INKFISH_DATA']
+      const paths = v.ensureVault()
+      // Simulate a pre-move vault with working dirs inside it.
+      mkdirSync(join(paths.root, 'inbox'), { recursive: true })
+      mkdirSync(join(paths.root, 'daily'), { recursive: true })
+      writeFileSync(join(paths.root, 'inbox', 'in-old.md'), '# old\n')
+      writeFileSync(join(paths.root, 'daily', '2026-01-01.md'), '# day\n')
+      const { moved } = v.migrateStaging(paths)
+      expect(moved).toBe(2)
+      expect(existsSync(join(paths.inboxDir, 'in-old.md'))).toBe(true)
+      expect(existsSync(join(paths.dailyDir, '2026-01-01.md'))).toBe(true)
+      expect(existsSync(join(paths.root, 'inbox'))).toBe(false)
+      expect(existsSync(join(paths.root, 'daily'))).toBe(false)
+      expect(readdirSync(paths.root).sort()).toEqual(['assets'])
+      // Second run is a no-op.
+      expect(v.migrateStaging(paths)).toEqual({ moved: 0, skipped: 0 })
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('legacy projects/ container migrates to top-level folders', async () => {
+    const v = await vault()
+    const { writeFileSync, existsSync, mkdirSync, readdirSync } = await import('node:fs')
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-migproj-'))
+    try {
+      v.setConfigDir(cfg)
+      delete process.env['INKFISH_DATA']
+      const paths = v.ensureVault()
+      // Legacy layout + a colliding top-level folder.
+      mkdirSync(join(paths.root, 'projects', 'work'), { recursive: true })
+      mkdirSync(join(paths.root, 'Work'), { recursive: true })
+      writeFileSync(join(paths.root, 'projects', 'work', 'a.md'), '# A\n')
+      writeFileSync(join(paths.root, 'Work', 'a.md'), '# existing\n')
+      writeFileSync(join(paths.root, 'projects', 'work', '.a.md.undone'), '# residue\n')
+      const { moved } = v.migrateProjects(paths)
+      expect(moved).toBe(2)
+      expect(existsSync(join(paths.root, 'work', 'a.md'))).toBe(true)
+      expect(existsSync(join(paths.root, 'Work', 'a.md'))).toBe(true)
+      expect(existsSync(join(paths.root, 'projects'))).toBe(false)
+      // No app container dir left; routed notes land top-level.
+      const { item } = v.writeInboxItem({ kind: 'text', raw: 'x', source: 'tray' }, paths)
+      const routed = v.routeToProject(
+        { inboxId: item.id, projectName: 'work', title: 'T', tags: [], markdown: 'x', kind: 'text' },
+        paths
+      )
+      expect(routed.vaultRel).toMatch(/^work\/\d{4}-\d{2}-\d{2}-t\.md$/)
+      expect(readdirSync(paths.root).sort()).toEqual(['Work', 'assets', 'work'])
+      expect(v.migrateProjects(paths)).toEqual({ moved: 0, skipped: 0 })
     } finally {
       rmSync(cfg, { recursive: true, force: true })
     }

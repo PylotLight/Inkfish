@@ -53,7 +53,7 @@ describe('index', () => {
     ] as Array<[string, string]>) {
       const f = join(dir, `${id}.md`)
       writeFileSync(f, `---\nid: ${id}\nkind: text\nstatus: ready\n---\n${body}\n`)
-      d.indexFile(f, `projects/p/${id}.md`)
+      d.indexFile(f, `p/${id}.md`)
     }
     // Hand-set embeddings: a≈b, c orthogonal.
     d.saveEmbedding('a', [1, 0])
@@ -65,7 +65,7 @@ describe('index', () => {
     expect(d.relatedNotes('missing')).toEqual([])
   })
 
-  test('reindex walks a vault tree', async () => {
+  test('reindex walks a vault tree; staging indexed separately', async () => {
     const d = await db()
     d.openDb(join(dir, 'scan.db'))
     const v = await import('./vault')
@@ -76,7 +76,12 @@ describe('index', () => {
       const paths = v.ensureVault(v.vaultPaths())
       v.ensureSeedProjects(paths)
       v.writeInboxItem({ kind: 'text', raw: 'scan me' }, paths)
-      expect(d.reindexVault(paths.root)).toBe(1)
+      v.appendDaily('day note', {}, paths)
+      // Vault scan skips the staging namespace (nothing finalised yet).
+      expect(d.reindexVault(paths.root)).toBe(0)
+      // Staging scan picks up the inbox item + day-log.
+      expect(d.reindexStaging(paths)).toBe(2)
+      expect(d.countInbox()).toBe(1)
     } finally {
       delete process.env['INKFISH_VAULT']
       delete process.env['INKFISH_DATA']

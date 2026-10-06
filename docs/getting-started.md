@@ -27,14 +27,18 @@ bun run start     # launch the built app
 Two separate homes:
 
 - **Notes home** (you pick it in the setup wizard — nothing is created
-  until you confirm): plain `.md` + assets only. A fresh empty folder, or an
-  existing vault (Obsidian etc.) whose `.md` files get indexed on import —
-  Inkfish adds `inbox/`, `projects/<name>/`, `assets/` inside and never
-  touches your files otherwise. This is the source of truth, always.
+  until you confirm): finalised outputs only — plain `.md` notes in
+  top-level folders (`work/`, `personal/`, …), `assets/` attachments, plus
+  whatever you already had. A "project" is just a folder name; there is no
+  app container dir.
+  A fresh empty folder, or an existing vault (Obsidian etc.) whose `.md`
+  files get indexed on import — Inkfish never touches your files otherwise.
+  This is the source of truth, always.
 - **App data** (hidden, platform-standard `userData` — `~/.config/Inkfish`
   on Linux, `~/Library/Application Support/Inkfish` on mac): `inkfish.json`
   (which notes folder), `inkfish.db` (FTS5 + metadata + embeddings **cache**,
-  rebuilt from files by Rescan any time), downloaded models later.
+  rebuilt from files by Rescan any time), `staging/` (raw inbox captures +
+  day-log scratch), `trash/`, `undone/`, downloaded models later.
 
 Move the notes home later from Settings → Notes home.
 Overrides for testing: `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun run dev`.

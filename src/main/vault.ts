@@ -5,16 +5,24 @@ import type { InboxItem, NoteKind, NoteSource, NoteStatus, Project } from '../sh
 
 /**
  * Vault writer (main process only). Plain `.md` files are the source of
- * truth; sqlite (`db.ts`) is just an index. Never deletes raw inbox files.
+ * truth; sqlite (`db.ts`) is just an index.
+ *
+ * Layout rule: the notes home (vault) holds ONLY finalised outputs — plain
+ * note files and folders (a routed note lands in `<vault>/<project>/`, a
+ * "project" is just the top-level folder name, no app container dir).
+ * Everything working-state lives in the hidden app-data dir: raw inbox
+ * captures, day-log scratch, trash, undone routings, index.
+ * Never deletes raw inbox files.
  */
 
 export interface VaultPaths {
-  /** User-visible notes home (selectable — may be an existing Obsidian vault). */
+  /** User-visible notes home: finalised outputs only. */
   root: string
+  /** Staging in app data: raw captures, never in the vault. */
   inboxDir: string
-  projectsDir: string
-  /** Day-log notes (`daily/YYYY-MM-DD.md`) — user-visible, plain markdown. */
+  /** Staging in app data: day-log scratch, never in the vault. */
   dailyDir: string
+  /** Final attachments in the vault (embedded by finalised notes). */
   assetsDir: string
   /** App-managed index in the hidden app-data dir — never in the notes home. */
   dbPath: string
@@ -320,23 +328,37 @@ export function vaultConfigured(): boolean {
 
 export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {
   const data = appDataDir()
-  // The index must never live inside the notes home (it would pollute sync,
-  // Obsidian, and git). Fail loud instead of falling back into the vault.
+  // Staging + index must never live inside the notes home (it would pollute
+  // sync, Obsidian, and git). Fail loud instead of falling back into the vault.
   if (!data) throw new Error('app data dir unavailable — refusing to place index inside notes home')
+  const staging = join(data, 'staging')
   return {
     root,
-    inboxDir: join(root, 'inbox'),
-    projectsDir: join(root, 'projects'),
-    dailyDir: join(root, 'daily'),
+    inboxDir: join(staging, 'inbox'),
+    dailyDir: join(staging, 'daily'),
     assetsDir: join(root, 'assets'),
     dbPath: join(data, 'inkfish.db')
   }
 }
 
+/** Resolve a note rel to an absolute path — staging rels (`inbox/`, `daily/`) live in app data. */
+export function resolveNoteAbs(rel: string, paths: VaultPaths = vaultPaths()): string {
+  if (rel === 'inbox' || rel.startsWith('inbox/')) return join(paths.inboxDir, rel.slice('inbox/'.length))
+  if (rel === 'daily' || rel.startsWith('daily/')) return join(paths.dailyDir, rel.slice('daily/'.length))
+  return join(paths.root, rel)
+}
+
+/** True for staging rels (working state) vs finalised vault content. */
+export function isStagingRel(rel: string): boolean {
+  return rel === 'inbox' || rel.startsWith('inbox/') || rel === 'daily' || rel.startsWith('daily/')
+}
+
 export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPaths()): { abs: string; vaultRel: string } {
   const day = date.toISOString().slice(0, 10)
   const abs = join(paths.dailyDir, `${day}.md`)
-  return { abs, vaultRel: relative(paths.root, abs) }
+  // Staging rel namespace (`daily/<day>.md`) — stable even though the file
+  // lives in app data, so index rows, tree filters, and open-today all agree.
+  return { abs, vaultRel: `daily/${day}.md` }
 }
 
 /** Append a timestamped section to today's day-log. Creates the file on first use. */
@@ -364,6 +386,80 @@ export function appendDaily(
   return { vaultRel, path: abs }
 }
 
+/** One-time move: legacy `projects/<name>/` container → top-level `<name>/`
+ * folders. A "project" is just the folder name now, not an app dir.
+ * Merges into existing same-named folders (collisions get `name 2.md`);
+ * old dotfile residue (`.<f>.undone`) goes to app-data undone. */
+export function migrateProjects(paths: VaultPaths = vaultPaths()): { moved: number; skipped: number } {
+  const legacy = join(paths.root, 'projects')
+  if (!existsSync(legacy)) return { moved: 0, skipped: 0 }
+  let moved = 0
+  let skipped = 0
+  const moveOne = (from: string, toDir: string, name: string): void => {
+    mkdirSync(toDir, { recursive: true })
+    const ext = extname(name)
+    const base = ext ? name.slice(0, -ext.length) : name
+    const target = join(toDir, uniqueFile(toDir, base || 'untitled', ext || '.md'))
+    try {
+      renameSync(from, target)
+      moved++
+    } catch {
+      skipped++
+    }
+  }
+  const walk = (dir: string): void => {
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const abs = join(dir, e.name)
+      if (e.isDirectory()) {
+        walk(abs)
+        continue
+      }
+      if (e.name.startsWith('.')) {
+        // Old app residue — relocate to app-data undone, never left in vault.
+        try {
+          moveOne(abs, undoneDir(), e.name.replace(/^\.+/, ''))
+        } catch {
+          skipped++
+        }
+        continue
+      }
+      const rel = relative(legacy, abs)
+      const first = rel.split('/')[0]
+      if (!first || !e.name.endsWith('.md')) {
+        skipped++
+        continue
+      }
+      // rel already starts with the project dir — re-root it onto the vault.
+      moveOne(abs, join(paths.root, dirname(rel)), e.name)
+    }
+  }
+  walk(legacy)
+  // Remove emptied dirs bottom-up (deepest first).
+  const rmdirs = (dir: string): void => {
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) if (e.isDirectory()) rmdirs(join(dir, e.name))
+    try {
+      if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true })
+    } catch {
+      // leave leftovers alone
+    }
+  }
+  rmdirs(legacy)
+  if (moved > 0 || skipped > 0) console.log(`[inkfish] projects migration: ${moved} moved, ${skipped} skipped`)
+  return { moved, skipped }
+}
+
 /** Throw unless a notes home is established — write paths must not
  * implicitly create directories before the user picks a location. */
 export function requireNotes(): VaultPaths {
@@ -371,11 +467,59 @@ export function requireNotes(): VaultPaths {
   return ensureVault()
 }
 
+/** One-time move: legacy `inbox/` + `daily/` inside the vault → staging in
+ * app data. Moves files only (never deletes); skips on name collision. */
+export function migrateStaging(paths: VaultPaths = vaultPaths()): { moved: number; skipped: number } {
+  let moved = 0
+  let skipped = 0
+  for (const [legacy, dest] of [
+    [join(paths.root, 'inbox'), paths.inboxDir],
+    [join(paths.root, 'daily'), paths.dailyDir]
+  ] as Array<[string, string]>) {
+    if (!existsSync(legacy)) continue
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(legacy, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    mkdirSync(dest, { recursive: true })
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith('.md')) {
+        skipped++
+        continue
+      }
+      const from = join(legacy, e.name)
+      const to = join(dest, e.name)
+      if (existsSync(to)) {
+        skipped++
+        continue
+      }
+      try {
+        renameSync(from, to)
+        moved++
+      } catch {
+        skipped++
+      }
+    }
+    try {
+      if (readdirSync(legacy).length === 0) rmSync(legacy, { recursive: true })
+    } catch {
+      // leave leftovers alone
+    }
+  }
+  if (moved > 0 || skipped > 0) console.log(`[inkfish] staging migration: ${moved} moved, ${skipped} skipped`)
+  return { moved, skipped }
+}
+
 export function ensureVault(paths: VaultPaths = vaultPaths()): VaultPaths {
-  mkdirSync(paths.inboxDir, { recursive: true })
-  mkdirSync(paths.projectsDir, { recursive: true })
-  mkdirSync(paths.dailyDir, { recursive: true })
+  // Vault: finalised outputs only (plain files/folders + attachments).
+  // Staging (inbox/daily) lives in app data.
   mkdirSync(paths.assetsDir, { recursive: true })
+  mkdirSync(paths.inboxDir, { recursive: true })
+  mkdirSync(paths.dailyDir, { recursive: true })
+  migrateStaging(paths)
+  migrateProjects(paths)
   return paths
 }
 
@@ -544,26 +688,22 @@ export function slugToId(slug: string): string {
   return slugify(slug, 32)
 }
 
-/** Seed projects on first run so the picker + router have somewhere to go. */
+/** Seed starter folders on first run so the picker + router have somewhere
+ * to go. Only for fresh vaults (no .md yet) — adopted vaults keep exactly
+ * the folders they already have. */
 export function ensureSeedProjects(paths: VaultPaths = vaultPaths()): Project[] {
   ensureVault(paths)
-  const seeds = ['personal', 'work', 'reading']
-  const out: Project[] = []
-  seeds.forEach((name, i) => {
-    const dir = join(paths.projectsDir, name)
-    mkdirSync(dir, { recursive: true })
-    out.push({ id: slugToId(name), name, dir: `projects/${name}`, color: PROJECT_COLORS[i] })
-  })
-  // Keep user-created project dirs visible too.
-  for (const f of readdirSync(paths.projectsDir, { withFileTypes: true })) {
-    if (!f.isDirectory() || seeds.includes(f.name)) continue
-    out.push({ id: slugToId(f.name), name: f.name, dir: `projects/${f.name}` })
+  if (!dirHasMd(paths.root)) {
+    for (const name of ['personal', 'work', 'reading']) {
+      mkdirSync(join(paths.root, name), { recursive: true })
+    }
   }
-  return out
+  return listProjects(paths)
 }
 
-/** Dirs that are ours, not import candidates. */
-const RESERVED_DIRS = new Set(['inbox', 'projects', 'assets'])
+/** Dirs that are staging/app-owned, not projects. User folders are never
+ * touched — only these reserved names stay out of the project list. */
+const RESERVED_DIRS = new Set(['inbox', 'daily', 'assets'])
 
 /** Does this dir tree contain any .md (one level lookahead, skips hidden)? */
 function dirHasMd(dir: string): boolean {
@@ -593,17 +733,13 @@ export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
     seen.add(id)
     found.push({ id, name, dir, color: PROJECT_COLORS[found.length % PROJECT_COLORS.length] })
   }
-  if (existsSync(paths.projectsDir)) {
-    for (const f of readdirSync(paths.projectsDir, { withFileTypes: true })) {
-      if (!f.isDirectory()) continue
-      push(f.name, `projects/${f.name}`)
-    }
-  }
-  // Imported vaults (e.g. Obsidian): top-level folders holding .md count too.
+  // A "project" is just a top-level folder — ours or imported. No app
+  // container dir: routed notes land in `<vault>/<name>/` directly.
+  // Empty folders count too (fresh seeds start empty).
   if (existsSync(paths.root)) {
     for (const f of readdirSync(paths.root, { withFileTypes: true })) {
       if (!f.isDirectory() || f.name.startsWith('.') || RESERVED_DIRS.has(f.name)) continue
-      if (dirHasMd(join(paths.root, f.name))) push(f.name, f.name)
+      push(f.name, f.name)
     }
   }
   return found.sort((a, b) => a.name.localeCompare(b.name))
@@ -612,9 +748,9 @@ export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
 export function createProject(name: string, paths: VaultPaths = vaultPaths()): Project {
   const slug = slugify(name, 32)
   if (!slug || slug === 'untitled') throw new Error('project name is empty')
-  const dir = join(paths.projectsDir, slug)
+  const dir = join(paths.root, slug)
   mkdirSync(dir, { recursive: true })
-  return { id: slugToId(slug), name: slug, dir: `projects/${slug}` }
+  return { id: slugToId(slug), name: slug, dir: slug }
 }
 
 // --- processed notes ------------------------------------------------------------
@@ -628,14 +764,14 @@ export interface RouteInput {
   kind: NoteKind
 }
 
-/** Write the processed note into `projects/<name>/`, link back to the inbox id. */
+/** Write the processed note into `<vault>/<project>/`, link back to the inbox id. */
 export function routeToProject(
   input: RouteInput,
   paths: VaultPaths = vaultPaths()
 ): { noteId: string; path: string; vaultRel: string } {
   ensureVault(paths)
   const slug = slugify(input.projectName, 32)
-  const dir = join(paths.projectsDir, slug)
+  const dir = join(paths.root, slug)
   mkdirSync(dir, { recursive: true })
   const noteId = newId('n')
   const createdAt = Date.now()
@@ -664,8 +800,10 @@ function undoneDir(): string {
 /** Undo a routing: inbox item back to `inbox`, processed file moved aside. */
 export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
   // Find processed notes pointing at this inbox id and archive them.
+  // Only routed notes carry an `inbox:` frontmatter ref, so walking the
+  // vault is safe — user files never match.
   let found = false
-  if (!existsSync(paths.projectsDir)) return false
+  if (!existsSync(paths.root)) return false
   const walk = (dir: string): void => {
     for (const f of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, f.name)
@@ -684,7 +822,7 @@ export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): bo
       }
     }
   }
-  walk(paths.projectsDir)
+  walk(paths.root)
   setInboxStatus(inboxId, 'inbox', paths)
   return found
 }

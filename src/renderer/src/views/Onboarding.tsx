@@ -74,9 +74,10 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
             <p className="muted">
               Pick a folder for your notes — a fresh empty folder, or an existing
               vault (Obsidian etc.) whose <code>.md</code> files get indexed on
-              import. Inkfish adds <code>inbox/</code>, <code>projects/</code> and{' '}
-              <code>assets/</code> inside; your files stay plain Markdown.
-              Nothing is created until you confirm.
+              import. Routed notes land in plain top-level folders
+              (<code>work/</code>, <code>personal/</code>…); working state stays
+              in hidden app data, never in your folder. Your files stay plain
+              Markdown. Nothing is created until you confirm.
             </p>
             <code className="pill">{picked || '…'}</code>
             {vault?.managed && (

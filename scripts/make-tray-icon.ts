@@ -64,37 +64,24 @@ function encodePng(size: number, paint: (x: number, y: number) => RGBA): Buffer 
   ])
 }
 
-function roundedRect(x: number, y: number, size: number, inset: number, radius: number): boolean {
-  const l = inset
-  const r = size - inset
-  if (x < l || x >= r || y < l || y >= r) return false
-  const corners: Array<[number, number]> = [
-    [l + radius, l + radius],
-    [r - 1 - radius, l + radius],
-    [l + radius, r - 1 - radius],
-    [r - 1 - radius, r - 1 - radius]
-  ]
-  for (const [cx, cy] of corners) {
-    const dx = x - cx
-    const dy = y - cy
-    const inX = x < l + radius || x >= r - radius
-    const inY = y < l + radius || y >= r - radius
-    if (inX && inY && dx * dx + dy * dy > radius * radius) return false
-  }
-  return true
-}
-
-/** Ring plate (macOS template style: solid fg with transparent hole + fg dot). */
-function paintRing(size: number, fg: RGBA): (x: number, y: number) => RGBA {
+/** Ink drop (macOS template style: solid fg silhouette), matching the app
+ * mark in `make-app-icon.ts`: a circle with a tapered tip. Reads at 22px
+ * where the old ring plate was just a rounded square. */
+function paintDrop(size: number, fg: RGBA): (x: number, y: number) => RGBA {
   const transparent: RGBA = [0, 0, 0, 0]
+  const dcx = 0.5
+  const dcy = 0.6
+  const dr = 0.25
+  const tip = 0.1
   return (x, y) => {
-    const outer = roundedRect(x, y, size, size * 0.08, size * 0.3)
-    if (!outer) return transparent
-    const inner = roundedRect(x, y, size, size * 0.3, size * 0.16)
-    if (!inner) return fg
-    const cx = (x - size / 2 + 0.5) / size
-    const cy = (y - size / 2 + 0.5) / size
-    return cx * cx + cy * cy < 0.09 * 0.09 * 4 ? fg : transparent
+    const px = (x + 0.5) / size
+    const py = (y + 0.5) / size
+    const inCircle = Math.hypot(px - dcx, py - dcy) <= dr
+    const tipT = (dcy - py) / (dcy - tip) // 0 at bulb, 1 at apex
+    const taper = Math.pow(1 - Math.max(0, Math.min(1, tipT)), 1.6)
+    const half = 0.003 + taper * dr * 0.6
+    const inTip = py < dcy && py >= tip && Math.abs(px - dcx) <= half
+    return inCircle || inTip ? fg : transparent
   }
 }
 
@@ -108,7 +95,7 @@ const outputs: Array<[string, number, RGBA]> = [
 ]
 
 for (const [name, size, fg] of outputs) {
-  const png = encodePng(size, paintRing(size, fg))
+  const png = encodePng(size, paintDrop(size, fg))
   writeFileSync(join(assetsDir, name), png)
   console.log(`wrote assets/${name} (${size}x${size}, ${png.length} bytes)`)
 }
