@@ -58,7 +58,15 @@ export function renderMarkdown(md: string, opts?: RenderOptions): string {
     const fence = /^```(\w*)\s*$/.exec(line)
     if (fence) {
       if (inCode) {
-        html.push(`<pre><code class="lang-${esc(codeLang)}">${esc(codeBuf.join('\n'))}</code></pre>`)
+        const body = esc(codeBuf.join('\n'))
+        const n = codeBuf.length
+        if (n > 25) {
+          html.push(
+            `<details class="codeblock"><summary>${esc(codeLang || 'code')} · ${n} lines — expand</summary><pre><code class="lang-${esc(codeLang)}">${body}</code></pre></details>`
+          )
+        } else {
+          html.push(`<pre><code class="lang-${esc(codeLang)}">${body}</code></pre>`)
+        }
         codeBuf = []
         inCode = false
       } else {

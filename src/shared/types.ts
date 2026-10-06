@@ -86,6 +86,7 @@ export interface VaultInfo {
   root: string
   inboxDir: string
   projectsDir: string
+  dailyDir: string
   assetsDir: string
   dbPath: string
   /** False on true first run — the wizard must pick a location before setup. */
@@ -143,7 +144,7 @@ export interface MeetingImportInput {
 
 export interface SttResult {
   text: string
-  /** 'parakeet' | 'apple' | 'unavailable' */
+  /** 'stt' (native binary) | 'apple' | 'unavailable' */
   provider: string
   segments?: Array<{ start: number; end: number; text: string }>
 }

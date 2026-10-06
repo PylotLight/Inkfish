@@ -1,7 +1,6 @@
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/types'
 
 /**
@@ -15,17 +14,36 @@ import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/typ
  * reachable from Electron, and Apple Speech needs native code — so the
  * `apple` provider reports availability only (used for short-dictation
  * hooks later). Classification today = the built-in rules engine.
- * STT = parakeet-redux sidecar (`stt/`), Apple Speech fallback later.
+ * STT = native binaries only (`$INKFISH_STT_BIN`, `parakeet-cli`,
+ * `inkfish-stt` Apple Speech CLI) — never python/pip. See `stt/README.md`.
  */
 
 export interface ProviderStatus {
-  id: 'apple' | 'rules' | 'parakeet'
+  id: 'apple' | 'rules' | 'stt'
   available: boolean
   detail: string
 }
 
-export function providerStatus(): Promise<ProviderStatus[]> {
-  return Promise.resolve([
+async function nativeSttBin(): Promise<string | null> {
+  const override = process.env['INKFISH_STT_BIN']?.trim()
+  if (override && existsSync(override)) return override
+  const execFileAsync = promisify(execFile)
+  for (const bin of ['parakeet-cli', 'inkfish-stt']) {
+    try {
+      const cmd = process.platform === 'win32' ? 'where' : 'which'
+      const { stdout } = await execFileAsync(cmd, [bin])
+      const hit = stdout.split('\n').map((l) => l.trim()).find(Boolean)
+      if (hit) return bin
+    } catch {
+      // not on PATH — try next
+    }
+  }
+  return null
+}
+
+export async function providerStatus(): Promise<ProviderStatus[]> {
+  const stt = await nativeSttBin()
+  return [
     {
       id: 'apple',
       available: process.platform === 'darwin',
@@ -36,13 +54,13 @@ export function providerStatus(): Promise<ProviderStatus[]> {
     },
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
     {
-      id: 'parakeet',
-      available: sidecarExists(),
-      detail: sidecarExists()
-        ? 'stt/transcribe.py present (moondream/parakeet-redux via photon)'
-        : 'stt/transcribe.py missing — voice falls back to manual text'
+      id: 'stt',
+      available: stt !== null,
+      detail: stt
+        ? `native STT ready (${stt}) — no python`
+        : 'no native STT binary (parakeet-cli / inkfish-stt) — voice falls back to manual text'
     }
-  ])
+  ]
 }
 
 // --- classify -------------------------------------------------------------------
@@ -138,47 +156,43 @@ export function summarize(text: string, maxSentences = 3): Promise<{ text: strin
   return Promise.resolve({ text: summarizeExtractive(text, maxSentences), provider: 'rules' })
 }
 
-// --- transcribe (parakeet-redux sidecar) --------------------------------------------
+// --- transcribe (native STT binaries only — never python) -------------------------------
 
-function sidecarPath(): string {
-  // out/main in prod and dev alike → ../../stt/transcribe.py from repo root.
-  const here = dirname(fileURLToPath(import.meta.url))
-  const candidates = [
-    join(here, '../../stt/transcribe.py'),
-    join(process.cwd(), 'stt/transcribe.py')
-  ]
-  return candidates.find((c) => existsSync(c)) ?? candidates[1] ?? ''
-}
-
-function sidecarExists(): boolean {
-  const p = sidecarPath()
-  return !!p && existsSync(p)
-}
-
-/** wav → segments via the photon/parakeet sidecar. Rejects when unavailable. */
-export function transcribe(wavPath: string, timeoutMs = 120_000): Promise<SttResult> {
+/** wav → `{ text, segments }` via a native STT binary. Rejects when unavailable. */
+export async function transcribe(wavPath: string, timeoutMs = 120_000): Promise<SttResult> {
+  const bin = await nativeSttBin()
+  if (!bin) {
+    throw new Error('STT unavailable (no native engine — install parakeet-cli or import transcript text instead)')
+  }
   return new Promise((resolve, reject) => {
-    const script = sidecarPath()
-    if (!existsSync(script)) {
-      reject(new Error('STT sidecar missing (stt/transcribe.py) — import transcript text instead'))
-      return
-    }
-    const py = spawn('python3', [script, '--wav', wavPath, '--json'], { timeout: timeoutMs })
+    // Contract: binary takes the wav path and prints
+    // `{"text": "...", "segments": [{"start": 0, "end": 1.2, "text": "..."}]}`
+    // on stdout. Both `parakeet-cli --json` and the Apple `inkfish-stt` CLI
+    // follow it; anything else is surfaced as plain text when parseable.
+    const args = bin === 'parakeet-cli'
+      ? ['transcribe', '--input', wavPath, '--json']
+      : [wavPath, '--json']
+    const child = spawn(bin, args, { timeout: timeoutMs })
     let out = ''
     let err = ''
-    py.stdout.on('data', (d: Buffer) => (out += d.toString()))
-    py.stderr.on('data', (d: Buffer) => (err += d.toString()))
-    py.on('error', (e) => reject(new Error(`STT sidecar failed to start: ${e.message}`)))
-    py.on('close', (code) => {
+    child.stdout.on('data', (d: Buffer) => (out += d.toString()))
+    child.stderr.on('data', (d: Buffer) => (err += d.toString()))
+    child.on('error', (e) => reject(new Error(`STT engine failed to start (${bin}): ${e.message}`)))
+    child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`STT sidecar exited ${code}: ${err.slice(0, 300) || out.slice(0, 300)}`))
+        reject(new Error(`STT engine exited ${code}: ${err.slice(0, 300) || out.slice(0, 300)}`))
         return
       }
       try {
         const parsed = JSON.parse(out) as { text: string; segments?: SttResult['segments'] }
-        resolve({ text: parsed.text ?? '', provider: 'parakeet', segments: parsed.segments ?? [] })
+        resolve({ text: parsed.text ?? '', provider: 'stt', segments: parsed.segments ?? [] })
       } catch {
-        resolve({ text: out.trim(), provider: 'parakeet', segments: [] })
+        const text = out.trim()
+        if (!text) {
+          reject(new Error(`STT engine returned no transcript (${bin})`))
+          return
+        }
+        resolve({ text, provider: 'stt', segments: [] })
       }
     })
   })

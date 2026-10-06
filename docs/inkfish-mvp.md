@@ -58,22 +58,18 @@ Later:
 - Onboarding: 3 steps — vault location, Mic/ScreenRecording permission test,
   shortcut confirm. Empty state: "drop a .md folder here".
 
-## 4. AI: Apple Intelligence + parakeet-redux
+## 4. AI: Apple Intelligence + native STT (no python)
 
 - Apple Intelligence first where present (Foundation Models / on-device LLM
   for classify/format/summarize, Speech framework for short dictation).
   Abstract behind `summarize()`, `classify()`, `transcribe()` so Apple
   Intelligence can slot in front. No account, offline default.
-- STT: `moondream/parakeet-redux` (HF, CC-BY-4.0) — 1.58-bit ternary build of
-  `nvidia/parakeet-tdt-0.6b-v3`, 178 MB, ~38× realtime CPU / ~43× GPU on M2 Air
-  via Photon (Metal on Apple GPUs, NEON/AVX elsewhere), word+segment timestamps,
-  built-in VAD segmentation (≤30s), beats original on FLEURS-25 + long-form.
-  - Constraint (new): no pip/python in install or runtime — see
-    `docs/stt-options.md` for the researched replacements (parakeet-cli
-    sidecar recommended, own Swift Apple Speech CLI, sherpa-onnx-node).
-    Decision deferred; the python sidecar stays working until then.
-    Fallback: Apple Speech on short clips. Keep audio → transcript separate from
-    transcript → summary model (anarlog pattern).
+- STT: native binaries only — `$INKFISH_STT_BIN` → `parakeet-cli`
+  (parakeet-tdt-0.6b-v3 family, GGUF) → `inkfish-stt` Apple Speech CLI.
+  No pip/python in install or runtime (see `docs/stt-options.md` and
+  `stt/README.md`). Missing engine = reject with a clear message; the UI
+  keeps the audio asset and falls back to manual text. Keep audio →
+  transcript separate from transcript → summary.
 - Noise weakness noted in model card (MUSAN gap) → recommend headphones,
   keep Teams built-in transcript import as backup path.
 
@@ -94,7 +90,7 @@ Later:
 2. Tray popover view + `Opt-Space` shortcut, IPC `inbox:add` (rule: handle in
    `src/main/ipc.ts` → expose in preload → `window.api`).
 3. Vault writer (main): inbox .md + sqlite row + FTS entry.
-4. STT sidecar (`stt/` python photon) + meeting import.
+4. STT wiring (native `parakeet-cli` / Apple CLI) + meeting import.
 5. Classifier worker (Apple Intelligence → rules), router to projects/.
 6. sqlite-vec related search + polish glass popover.
 

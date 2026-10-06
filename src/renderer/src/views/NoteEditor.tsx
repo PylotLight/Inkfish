@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
+import { foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
@@ -59,11 +60,15 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, onDirty, onSave,
       state: EditorState.create({
         doc: textRef.current,
         extensions: [
+          foldGutter({ openText: '▾', closedText: '▸' }),
+          syntaxHighlighting(defaultHighlightStyle),
           markdown(),
+          EditorView.lineWrapping,
           history(),
           keymap.of([
             ...defaultKeymap,
             ...historyKeymap,
+            ...foldKeymap,
             {
               key: 'Mod-s',
               run: () => {

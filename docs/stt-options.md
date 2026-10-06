@@ -1,10 +1,10 @@
-# STT options (non-Python) — research, decision deferred
+# STT options (native only — python removed)
 
-Constraint: no pip/python anywhere in install or runtime. The current
-`stt/transcribe.py` (photon + `moondream/parakeet-redux`) works but violates
-it. When we revisit, the candidates below replace it behind the existing
-`transcribe()` abstraction (`src/main/ai.ts`) — the `{ text, segments }`
-contract and the spawn-sidecar pattern stay the same.
+Constraint (enforced): no pip/python anywhere in install or runtime.
+`transcribe()` (`src/main/ai.ts`) resolves a native engine in order —
+`$INKFISH_STT_BIN` → `parakeet-cli` on `PATH` → `inkfish-stt` Apple Speech
+CLI in app resources — and rejects otherwise (audio kept, manual text
+fallback). The `{ text, segments }` contract is unchanged.
 
 ## Option 1 — parakeet-cli sidecar (recommended, smallest diff)
 

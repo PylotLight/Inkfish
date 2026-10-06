@@ -315,6 +315,7 @@ export function projectFromPath(vaultRel: string): string | null {
   const parts = vaultRel.split('/')
   if (parts[0] === 'projects' && parts[1]) return parts[1] ?? null
   if (parts[0] === 'inbox') return null
+  if (parts[0] === 'daily') return 'daily'
   return parts.length > 1 ? (parts[0] ?? null) : null
 }
 

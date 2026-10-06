@@ -15,7 +15,10 @@ import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialo
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
-  return typeof window !== 'undefined' && window.location.hash === '#capture'
+  return (
+    typeof window !== 'undefined' &&
+    (window.location.hash === '#capture' || window.location.hash === '#capture-daily')
+  )
 }
 
 type Selection = { id: string; origin: 'inbox' | 'note' } | null
@@ -220,6 +223,29 @@ function Main(): React.JSX.Element {
     },
     [openEntry]
   )
+
+  // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
+  useEffect(() => {
+    const sub = (window as unknown as { api?: { onOpenToday?: (cb: () => void) => () => void } }).api
+      ?.onOpenToday
+    if (!sub) return
+    return sub(() => {
+      window.api.daily
+        .today()
+        .then(({ vaultRel }) => {
+          refreshNotes()
+          window.api.notes
+            .list(null)
+            .then((all) => {
+              const found = all.find((n) => n.path === vaultRel)
+              if (found) selectNote(found.id)
+              else notify('Today opened ✓')
+            })
+            .catch(console.error)
+        })
+        .catch((err: unknown) => notify(`Today failed: ${String(err)}`))
+    })
+  }, [notify, refreshNotes, selectNote])
 
   const renameNote = useCallback(
     (id: string, title: string) => {

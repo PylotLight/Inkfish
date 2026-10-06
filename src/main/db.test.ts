@@ -70,6 +70,8 @@ describe('index', () => {
     d.openDb(join(dir, 'scan.db'))
     const v = await import('./vault')
     process.env['INKFISH_VAULT'] = dir
+    const dataDir = mkdtempSync(join(tmpdir(), 'inkfish-db-data-'))
+    process.env['INKFISH_DATA'] = dataDir
     try {
       const paths = v.ensureVault(v.vaultPaths())
       v.ensureSeedProjects(paths)
@@ -77,6 +79,8 @@ describe('index', () => {
       expect(d.reindexVault(paths.root)).toBe(1)
     } finally {
       delete process.env['INKFISH_VAULT']
+      delete process.env['INKFISH_DATA']
+      rmSync(dataDir, { recursive: true, force: true })
     }
   })
 })

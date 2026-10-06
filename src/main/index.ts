@@ -3,8 +3,8 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { createAppTray, destroyTray } from './tray'
-import { createWindow, showWindow } from './window'
-import { createPopover, togglePopover, togglePopoverAtTray } from './popover'
+import { createWindow, getMainWindow, showWindow } from './window'
+import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
 import { openDb, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
@@ -54,12 +54,20 @@ app.whenReady().then(() => {
     onShow: showWindow,
     onCapture: togglePopover,
     onCaptureAt: (x, y, w) => togglePopoverAtTray(x, y, w),
+    onDailyAt: (x, y, w) => toggleDailyAtTray(x, y, w),
+    onOpenToday: () => {
+      showWindow()
+      getMainWindow()?.webContents.send('inkfish:open-today')
+    },
     onQuit: () => app.quit()
   })
 
   // Opt-Space capture shortcut (Alt+Space). Unregisters automatically on quit.
   const ok = globalShortcut.register('Alt+Space', togglePopover)
   if (!ok) console.warn('[inkfish] Alt+Space already taken — capture via tray menu')
+  // Shift+Opt-Space appends to today's day-log.
+  const okDaily = globalShortcut.register('Shift+Alt+Space', toggleDaily)
+  if (!okDaily) console.warn('[inkfish] Shift+Alt+Space already taken — append via tray menu')
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

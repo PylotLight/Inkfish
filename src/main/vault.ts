@@ -13,6 +13,8 @@ export interface VaultPaths {
   root: string
   inboxDir: string
   projectsDir: string
+  /** Day-log notes (`daily/YYYY-MM-DD.md`) — user-visible, plain markdown. */
+  dailyDir: string
   assetsDir: string
   /** App-managed index in the hidden app-data dir — never in the notes home. */
   dbPath: string
@@ -62,6 +64,53 @@ export function storeRoot(root: string): void {
   if (!p) return
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify({ vaultRoot: root }, null, 2))
+}
+
+// --- profiles: named vault roots (work / personal), all state in app data --------
+
+export interface NoteProfile {
+  id: string
+  name: string
+  root: string
+}
+
+function profilesPath(): string | null {
+  if (!configDir) return null
+  return join(configDir, 'profiles.json')
+}
+
+/** All known profiles. The stored `vaultRoot` is the active one. */
+export function listProfiles(): NoteProfile[] {
+  try {
+    const p = profilesPath()
+    if (!p || !existsSync(p)) {
+      const root = readStoredRoot()
+      return root ? [{ id: 'default', name: 'default', root }] : []
+    }
+    const data = JSON.parse(readFileSync(p, 'utf8')) as { profiles?: NoteProfile[] }
+    return Array.isArray(data.profiles) ? data.profiles.filter((x) => x && x.root) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveProfile(name: string, root: string): NoteProfile[] {
+  const p = profilesPath()
+  const id = slugify(name, 32) || 'profile'
+  const next = [...listProfiles().filter((x) => x.id !== id), { id, name: name.trim().slice(0, 80), root }]
+  if (p) {
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(p, JSON.stringify({ profiles: next }, null, 2))
+  }
+  return next
+}
+
+/** Switch the active vault root (persists choice, caller re-opens DB + rescans). */
+export function switchProfile(id: string): string {
+  const found = listProfiles().find((x) => x.id === id)
+  if (!found) throw new Error(`profile ${id} not found`)
+  storeRoot(found.root)
+  return found.root
 }
 
 /** Custom display titles (id → title), kept in app data — never in the notes. */
@@ -271,14 +320,48 @@ export function vaultConfigured(): boolean {
 
 export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {
   const data = appDataDir()
+  // The index must never live inside the notes home (it would pollute sync,
+  // Obsidian, and git). Fail loud instead of falling back into the vault.
+  if (!data) throw new Error('app data dir unavailable — refusing to place index inside notes home')
   return {
     root,
     inboxDir: join(root, 'inbox'),
     projectsDir: join(root, 'projects'),
+    dailyDir: join(root, 'daily'),
     assetsDir: join(root, 'assets'),
-    // Index lives with app data, never inside the notes home.
-    dbPath: data ? join(data, 'inkfish.db') : join(root, 'inkfish.db')
+    dbPath: join(data, 'inkfish.db')
   }
+}
+
+export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPaths()): { abs: string; vaultRel: string } {
+  const day = date.toISOString().slice(0, 10)
+  const abs = join(paths.dailyDir, `${day}.md`)
+  return { abs, vaultRel: relative(paths.root, abs) }
+}
+
+/** Append a timestamped section to today's day-log. Creates the file on first use. */
+export function appendDaily(
+  raw: string,
+  opts: { kind?: NoteKind; date?: Date; source?: NoteSource } = {},
+  paths: VaultPaths = vaultPaths()
+): { vaultRel: string; path: string } {
+  ensureVault(paths)
+  const text = raw.trim()
+  if (!text) throw new Error('daily note is empty')
+  const { abs, vaultRel } = dailyFile(opts.date ?? new Date(), paths)
+  mkdirSync(dirname(abs), { recursive: true })
+  const stamp = (opts.date ?? new Date()).toTimeString().slice(0, 5)
+  const kind = opts.kind ?? 'text'
+  const header = `# ${new Date().toISOString().slice(0, 10)}\n\n`
+  const section = `## ${stamp}${kind !== 'text' ? ` · ${kind}` : ''}\n\n${text}\n\n`
+  if (!existsSync(abs)) {
+    const fm = stringifyFrontmatter({ kind: 'daily', created: new Date().toISOString(), source: opts.source ?? 'tray' })
+    writeFileSync(abs, `${fm}${header}${section}`, 'utf8')
+  } else {
+    const prev = readFileSync(abs, 'utf8')
+    writeFileSync(abs, `${prev.replace(/\s+$/, '')}\n\n${section}`, 'utf8')
+  }
+  return { vaultRel, path: abs }
 }
 
 /** Throw unless a notes home is established — write paths must not
@@ -291,6 +374,7 @@ export function requireNotes(): VaultPaths {
 export function ensureVault(paths: VaultPaths = vaultPaths()): VaultPaths {
   mkdirSync(paths.inboxDir, { recursive: true })
   mkdirSync(paths.projectsDir, { recursive: true })
+  mkdirSync(paths.dailyDir, { recursive: true })
   mkdirSync(paths.assetsDir, { recursive: true })
   return paths
 }
@@ -568,6 +652,15 @@ export function routeToProject(
   return { noteId, path: file, vaultRel: relative(paths.root, file) }
 }
 
+/** Undone routings land here (app data) — never as dotfiles inside the vault. */
+function undoneDir(): string {
+  const data = appDataDir()
+  if (!data) throw new Error('app data dir unavailable')
+  const dir = join(data, 'undone')
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
 /** Undo a routing: inbox item back to `inbox`, processed file moved aside. */
 export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
   // Find processed notes pointing at this inbox id and archive them.
@@ -583,7 +676,7 @@ export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): bo
       if (!f.name.endsWith('.md')) continue
       const [fm] = parseFrontmatter(readFileSync(p, 'utf8'))
       if (fm['inbox'] === inboxId) {
-        const trashed = join(dirname(p), `.${basename(p)}.undone`)
+        const trashed = join(undoneDir(), `${inboxId}-${basename(p)}`)
         writeFileSync(trashed, readFileSync(p))
         // Remove the original (raw inbox .md is untouched — nothing lost).
         unlinkSync(p)

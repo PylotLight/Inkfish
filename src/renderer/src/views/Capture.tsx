@@ -9,6 +9,9 @@ export default function Capture(): React.JSX.Element {
   const [raw, setRaw] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [hint, setHint] = useState('auto')
+  const [dest, setDest] = useState<'inbox' | 'today'>(
+    typeof window !== 'undefined' && window.location.hash === '#capture-daily' ? 'today' : 'inbox'
+  )
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -20,6 +23,12 @@ export default function Capture(): React.JSX.Element {
   useEffect(() => {
     window.api.projects.list().then(setProjects).catch(() => setProjects([]))
     inputRef.current?.focus()
+    const onHash = (): void => {
+      setDest(window.location.hash === '#capture-daily' ? 'today' : 'inbox')
+      inputRef.current?.focus()
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   const say = (msg: string): void => {
@@ -37,13 +46,20 @@ export default function Capture(): React.JSX.Element {
       const hasAudio = attachments.some((a) => /\.(wav|mp3|m4a|ogg|flac)$/i.test(a))
       const hasImage = attachments.some((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a))
       const kind: NoteKind = hasAudio ? 'voice' : hasImage ? 'image' : 'text'
-      await window.api.inbox.add({
-        kind,
-        raw: raw.trim(),
-        projectHint: hint,
-        source: 'popover',
-        assets: attachments
-      })
+      if (dest === 'today') {
+        const body = attachments.length > 0
+          ? `${raw.trim()}\n${attachments.map((a) => `![](${a})`).join('\n')}`.trim()
+          : raw.trim()
+        await window.api.daily.append(body, kind)
+      } else {
+        await window.api.inbox.add({
+          kind,
+          raw: raw.trim(),
+          projectHint: hint,
+          source: 'popover',
+          assets: attachments
+        })
+      }
       setSaved(true)
       window.setTimeout(() => {
         setSaved(false)
@@ -104,7 +120,7 @@ export default function Capture(): React.JSX.Element {
         const abs = await window.api.assets.path(rel)
         const stt = await window.api.stt.transcribe(abs)
         appendText(stt.text)
-        say(stt.provider === 'parakeet' ? 'Transcribed ✓' : `Transcribed (${stt.provider}) ✓`)
+        say(`Transcribed (${stt.provider}) ✓`)
       } catch {
         say('STT unavailable — audio kept, describe it in text.')
       }
@@ -226,16 +242,26 @@ export default function Capture(): React.JSX.Element {
       </div>
 
       <div className="cap-foot">
-        <select value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
-          <option value="auto">✨ Auto</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="seg sm" role="group" aria-label="Destination">
+          <button className={dest === 'inbox' ? 'on' : ''} onClick={() => setDest('inbox')}>
+            Inbox
+          </button>
+          <button className={dest === 'today' ? 'on' : ''} onClick={() => setDest('today')}>
+            Today
+          </button>
+        </div>
+        {dest === 'inbox' && (
+          <select value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
+            <option value="auto">✨ Auto</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button className="btn mint" disabled={!canSave || saving} onClick={() => void save()}>
-          {saving ? '…' : 'Save ⌘↵'}
+          {saving ? '…' : dest === 'today' ? 'Append ⌘↵' : 'Save ⌘↵'}
         </button>
       </div>
       {note && <div className="toast glass">{note}</div>}

@@ -66,6 +66,11 @@ const api = {
   popover: {
     hide: (): Promise<void> => ipcRenderer.invoke('popover:hide')
   },
+  onOpenToday: (cb: () => void): (() => void) => {
+    const fn = (): void => cb()
+    ipcRenderer.on('inkfish:open-today', fn)
+    return () => ipcRenderer.removeListener('inkfish:open-today', fn)
+  },
   // --- inkfish ---
   vault: {
     info: (): Promise<VaultInfo> => ipcRenderer.invoke('vault:info'),
@@ -95,6 +100,18 @@ const api = {
     undo: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:undo', id),
     setStatus: (id: string, status: NoteStatus): Promise<boolean> =>
       ipcRenderer.invoke('inbox:set-status', id, status)
+  },
+  daily: {
+    append: (raw: string, kind?: NoteKind): Promise<{ vaultRel: string }> =>
+      ipcRenderer.invoke('daily:append', raw, kind),
+    today: (): Promise<{ vaultRel: string }> => ipcRenderer.invoke('daily:today')
+  },
+  profiles: {
+    list: (): Promise<Array<{ id: string; name: string; root: string }>> =>
+      ipcRenderer.invoke('profiles:list'),
+    save: (name: string, root: string): Promise<Array<{ id: string; name: string; root: string }>> =>
+      ipcRenderer.invoke('profiles:save', name, root),
+    switch: (id: string): Promise<unknown> => ipcRenderer.invoke('profiles:switch', id)
   },
   files: {
     create: (dirRel: string): Promise<string> => ipcRenderer.invoke('files:create', dirRel),

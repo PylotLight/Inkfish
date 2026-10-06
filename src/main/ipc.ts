@@ -22,13 +22,16 @@ import type {
   VibrancyName
 } from '../shared/types'
 import {
+  appendDaily,
   createNoteFile,
   createProject,
   createDir,
+  dailyFile,
   ensureSeedProjects,
   ensureVault,
   envManaged,
   listInbox,
+  listProfiles,
   listProjects,
   loadTitles,
   migrateTitles,
@@ -41,9 +44,11 @@ import {
   resolveAsset,
   routeToProject,
   saveAsset,
+  saveProfile,
   setInboxStatus,
   setTitleOverride,
   storeRoot,
+  switchProfile,
   trashPath,
   undoRoute,
   vaultConfigured,
@@ -92,6 +97,7 @@ function info(): VaultInfo {
     root: p.root,
     inboxDir: p.inboxDir,
     projectsDir: p.projectsDir,
+    dailyDir: p.dailyDir,
     assetsDir: p.assetsDir,
     dbPath: p.dbPath,
     configured: vaultConfigured(),
@@ -337,6 +343,47 @@ export function registerIpc(): void {
 
   ipcMain.handle('inbox:set-status', (_e: IpcMainInvokeEvent, id: string, status: NoteStatus): boolean =>
     setInboxStatus(id, status, requireNotes())
+  )
+
+  // --- daily (day-log append + open-today; EOD source) -------------------------------
+  ipcMain.handle(
+    'daily:append',
+    (_e: IpcMainInvokeEvent, raw: string, kind?: NoteKind): { vaultRel: string } => {
+      const paths = requireNotes()
+      const out = appendDaily(raw, { kind: kind ?? 'text', source: 'tray' }, paths)
+      indexFile(out.path, out.vaultRel)
+      return { vaultRel: out.vaultRel }
+    }
+  )
+  ipcMain.handle('daily:today', (): { vaultRel: string } => {
+    const paths = requireNotes()
+    const { abs, vaultRel } = dailyFile(new Date(), paths)
+    if (!existsSync(abs)) appendDaily('_Day started._', { source: 'tray' }, paths)
+    indexFile(abs, vaultRel)
+    return { vaultRel }
+  })
+
+  // --- profiles (named vault roots in app data; INKFISH_VAULT still wins) ------------
+  ipcMain.handle('profiles:list', () => listProfiles())
+  ipcMain.handle('profiles:save', (_e: IpcMainInvokeEvent, name: string, root: string) =>
+    saveProfile(name, resolve(root))
+  )
+  ipcMain.handle(
+    'profiles:switch',
+    (_e: IpcMainInvokeEvent, id: string): { info: VaultInfo; backend: string; indexed: number } | { error: string } => {
+      if (envManaged()) return { error: 'vault location is managed by INKFISH_VAULT' }
+      try {
+        const root = switchProfile(id)
+        const paths = ensureVault(vaultPaths(resolve(root)))
+        closeDb()
+        ensureSeedProjects(paths)
+        const backend = openDb(paths.dbPath)
+        const indexed = reindexVault(paths.root)
+        return { info: info(), backend, indexed }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
   )
 
   // --- notes ---------------------------------------------------------------------

@@ -4,15 +4,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 let dir = ''
+let dataDir = ''
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'inkfish-vault-'))
+  dataDir = mkdtempSync(join(tmpdir(), 'inkfish-data-'))
   process.env['INKFISH_VAULT'] = dir
+  process.env['INKFISH_DATA'] = dataDir
 })
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
+  rmSync(dataDir, { recursive: true, force: true })
   delete process.env['INKFISH_VAULT']
+  delete process.env['INKFISH_DATA']
 })
 
 async function vault(): Promise<typeof import('./vault')> {
@@ -156,11 +161,54 @@ describe('vault home', () => {
       expect(v.vaultPaths().dbPath).toBe(join(data, 'inkfish.db'))
       expect(v.appDataDir()).toBe(data)
       delete process.env['INKFISH_DATA']
-      expect(v.vaultPaths().dbPath).toBe(join(notes, 'inkfish.db'))
+      // No app-data dir → refuse instead of polluting the vault.
+      v.setConfigDir('')
+      expect(() => v.vaultPaths()).toThrow(/app data dir unavailable/)
     } finally {
       delete process.env['INKFISH_DATA']
       rmSync(notes, { recursive: true, force: true })
       rmSync(data, { recursive: true, force: true })
+    }
+  })
+
+  test('daily append creates day-log; ensureVault only makes user dirs', async () => {
+    const v = await vault()
+    const { existsSync, readdirSync } = await import('node:fs')
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-daily-'))
+    try {
+      v.setConfigDir(cfg)
+      const paths = v.ensureVault()
+      expect(existsSync(paths.dailyDir)).toBe(true)
+      const top = readdirSync(paths.root).sort()
+      expect(top).toEqual(['assets', 'daily', 'inbox', 'projects'])
+      const out = v.appendDaily('standup: shipped x', { kind: 'text' }, paths)
+      expect(out.vaultRel).toMatch(/^daily\/\d{4}-\d{2}-\d{2}\.md$/)
+      const again = v.appendDaily('second update', {}, paths)
+      expect(again.vaultRel).toBe(out.vaultRel)
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('profiles round-trip in app data; switch changes active root', async () => {
+    const v = await vault()
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-prof-'))
+    try {
+      v.setConfigDir(cfg)
+      const a = mkdtempSync(join(tmpdir(), 'inkfish-prof-a-'))
+      const b = mkdtempSync(join(tmpdir(), 'inkfish-prof-b-'))
+      try {
+        v.saveProfile('work', a)
+        v.saveProfile('personal', b)
+        expect(v.listProfiles().map((p) => p.id).sort()).toEqual(['personal', 'work'])
+        expect(v.switchProfile('work')).toBe(a)
+        expect(v.readStoredRoot()).toBe(a)
+      } finally {
+        rmSync(a, { recursive: true, force: true })
+        rmSync(b, { recursive: true, force: true })
+      }
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
     }
   })
 
@@ -233,6 +281,8 @@ describe('file ops', () => {
     const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-fs-'))
     try {
       v.setConfigDir(cfg)
+      // Trash lives in app data: point it at this cfg for the assertion below.
+      delete process.env['INKFISH_DATA']
       const a = v.createNoteFile('')
       const b = v.createNoteFile('')
       expect(a).not.toBe(b)

@@ -52,7 +52,7 @@ bun run start      # launch the built app
 Press **Opt-Space** anywhere to pop the capture window, type, `Cmd-Enter` to
 save into the inbox. The background worker formats + routes it to
 `projects/<name>/`. Your vault lives at `~/Inkfish/` (`inbox/`,
-`projects/<name>/`, `assets/`); plain `.md` files stay the source of truth.
+`projects/<name>/`, `daily/`, `assets/`); plain `.md` files stay the source of truth.
 
 ## Docs
 

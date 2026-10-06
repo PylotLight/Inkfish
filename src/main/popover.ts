@@ -75,6 +75,10 @@ export function getPopover(): BrowserWindow | null {
 
 /** Toggle near the tray icon (left-click): just under the menu bar. */
 export function togglePopoverAtTray(x?: number, y?: number, w?: number): void {
+  showPopoverAt(x, y, w)
+}
+
+function showPopoverAt(x?: number, y?: number, w?: number, hash = 'capture'): void {
   const win = popover ?? createPopover()
   if (win.isVisible()) {
     win.hide()
@@ -95,6 +99,41 @@ export function togglePopoverAtTray(x?: number, y?: number, w?: number): void {
       // fall through to default position
     }
   }
+  void setPopoverHash(win, hash)
+  win.show()
+  win.focus()
+}
+
+function setPopoverHash(win: BrowserWindow, hash: string): Promise<void> {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    return win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${hash}`)
+  }
+  return win.loadFile(join(__dirname, '../renderer/index.html'), { hash })
+}
+
+/** Append-to-today popover: same window, `#capture-daily` hash. */
+export function toggleDailyAtTray(x?: number, y?: number, w?: number): void {
+  showPopoverAt(x, y, w, 'capture-daily')
+}
+
+/** Append-to-today near the cursor (Shift+Alt+Space). */
+export function toggleDaily(): void {
+  const win = popover ?? createPopover()
+  if (win.isVisible()) {
+    win.hide()
+    return
+  }
+  try {
+    const cursor = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursor)
+    const { width } = win.getBounds()
+    const x = Math.round(display.bounds.x + (display.workArea.width - width) / 2)
+    const y = Math.round(display.workArea.y + 48)
+    win.setPosition(x, y)
+  } catch {
+    // headless / no screen module — just show where it was
+  }
+  void setPopoverHash(win, 'capture-daily')
   win.show()
   win.focus()
 }

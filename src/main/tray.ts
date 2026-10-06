@@ -6,6 +6,8 @@ export interface TrayCallbacks {
   onShow(): void
   onCapture(): void
   onCaptureAt(x?: number, y?: number, w?: number, h?: number): void
+  onDailyAt(x?: number, y?: number, w?: number, h?: number): void
+  onOpenToday(): void
   onQuit(): void
 }
 
@@ -32,9 +34,15 @@ export function createAppTray(cb: TrayCallbacks): void {
   if (tray) return
   tray = new Tray(resolveIcon())
   tray.setToolTip(TRAY_TOOLTIP)
+  const atTray = (): [number | undefined, number | undefined, number | undefined, number | undefined] => {
+    const b = tray?.getBounds()
+    return [b?.x, b?.y, b?.width, b?.height]
+  }
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'New note  (⌥Space)', click: cb.onCapture },
+      { label: 'Append to today  (⇧⌥Space)', click: () => cb.onDailyAt(...atTray()) },
+      { label: 'Open today', click: cb.onOpenToday },
       { label: 'Show Inkfish', click: cb.onShow },
       { type: 'separator' },
       {
