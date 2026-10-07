@@ -1039,8 +1039,6 @@ function Main(): React.JSX.Element {
                     }
                     setScope('notes')
                   }}
-                  onCaptureHint={() => notify('Hit ⌥Space anywhere to capture')}
-                  onMeeting={() => setShowMeeting(true)}
                 />
               </main>
             ) : (

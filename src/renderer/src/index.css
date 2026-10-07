@@ -2201,66 +2201,286 @@ button.frow.on,
   flex-shrink: 0;
 }
 
-/* ---------- Inkfish: home dashboard ---------- */
+/* ---------- Inkfish: home dashboard ----------
+ * Full-width, card-light. Structure comes from type, spacing and hairlines
+ * rather than boxed glass panels. Accent is reserved for state (pending
+ * inbox, hover affordances) so it reads as signal, not decoration.
+ */
 
 .home {
-  max-width: 860px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-bottom: 20px;
+  gap: 28px;
+  padding: 6px 0 32px;
   animation: rise 0.22s ease both;
-}
-
-.home-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .home-head h2 {
   margin: 0;
-  font-size: 26px;
-  letter-spacing: -0.01em;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .home-head p {
   margin: 4px 0 0;
+  font-size: 13.5px;
 }
 
-.home .stat-grid {
-  grid-template-columns: repeat(3, 1fr);
+/* Stat strip — open numbers divided by hairlines, no boxes. */
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
-.stat.as-btn {
-  cursor: pointer;
+.hstat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 20px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
   color: var(--text);
   text-align: left;
-  border: 1px solid var(--border);
-  transition: transform 0.14s ease, border-color 0.14s ease;
+  font: inherit;
 }
 
-.stat.as-btn:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--mint) 45%, transparent);
+.hstat:first-child {
+  border-left: none;
+  padding-left: 0;
 }
 
-.home-cols {
+.hstat-value {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hstat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.hstat.as-btn {
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.hstat.as-btn:hover {
+  background: var(--panel);
+}
+
+.hstat.live .hstat-value {
+  color: var(--accent);
+}
+
+.hstat.live .hstat-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+
+/* Main grid: Latest fills the width, side rail holds inbox + folders. */
+.home-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 2.2fr) minmax(240px, 1fr);
+  gap: clamp(24px, 4vw, 56px);
   align-items: start;
 }
 
-.home-card {
-  border-radius: var(--radius);
-  padding: 14px 16px;
+.home-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
-.home-card .chips {
-  margin-top: 2px;
+.hsec-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.hsec-empty {
+  margin: 6px 0 0;
+}
+
+.hrows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hrows li + li {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.hrow,
+.hfolder {
+  width: 100%;
+  display: grid;
+  align-items: baseline;
+  gap: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s ease;
+}
+
+.hrow {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  padding: 11px 10px;
+  margin: 0 -10px;
+  width: calc(100% + 20px);
+}
+
+.hrow.stack {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.hrow:hover,
+.hfolder:hover {
+  background: var(--panel);
+}
+
+.hrow-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s ease;
+}
+
+.hrow:hover .hrow-title,
+.hfolder:hover .hfolder-name {
+  color: var(--accent);
+}
+
+.hrow-path {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hrow-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hfolder {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'name count' 'bar bar';
+  row-gap: 7px;
+  padding: 10px 10px 11px;
+  margin: 0 -10px;
+  width: calc(100% + 20px);
+}
+
+.hfolder-name {
+  grid-area: name;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: color 0.12s ease;
+}
+
+.hfolder-count {
+  grid-area: count;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hfolder-bar {
+  grid-area: bar;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--inset-soft);
+  overflow: hidden;
+}
+
+.hfolder-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+  transition: background 0.12s ease;
+}
+
+.hfolder:hover .hfolder-bar > span {
+  background: var(--accent);
+}
+
+.hlink {
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+@media (max-width: 860px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .hstat:nth-child(3) {
+    border-left: none;
+    padding-left: 0;
+  }
+  .hstat:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+  .hrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .hrow .hrow-path {
+    display: none;
+  }
+}
+
+html[data-density='compact'] .home { gap: 20px; }
+html[data-density='compact'] .hstat { padding: 10px 16px; }
+html[data-density='compact'] .hstat-value { font-size: 24px; }
+html[data-density='compact'] .hrow { padding: 7px 10px; }
+
+/* Sparing accent elsewhere: active scope tab + selected tree row. */
+.scope-tabs button.on {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+button.frow.on,
+.frow.on {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* ---------- Inkfish: compact density ---------- */
