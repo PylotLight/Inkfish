@@ -60,20 +60,48 @@ export interface Meeting {
   micDevice: string
   systemDevice: string | null
   startedAt: number
+  /** Why the call side is missing ('' when captured). */
+  systemError: string
+  /** Current input level per channel, 0–1, for the meters. */
+  levels: () => { mic: number; system: number }
   stop: () => Promise<MeetingResult>
   cancel: () => Promise<void>
 }
 
-async function openSystemAudio(): Promise<MediaStream | null> {
+/** Why the call side isn't being captured, for the UI ('' when it is). */
+export let systemAudioError = ''
+
+/**
+ * The call side. Keep the (tiny) video track alive but disabled: on macOS,
+ * stopping it ends the ScreenCaptureKit stream and the loopback audio goes
+ * silent with it. Callers get an audio-only stream; `stopAll` ends both.
+ */
+async function openSystemAudio(): Promise<{ audio: MediaStream; stopAll: () => void } | null> {
+  systemAudioError = ''
   try {
-    const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-    s.getVideoTracks().forEach((t) => {
-      t.stop()
-      s.removeTrack(t)
+    const s = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: 2, height: 2, frameRate: 1 },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
     })
-    if (s.getAudioTracks().length === 0) return null
-    return s
+    s.getVideoTracks().forEach((t) => (t.enabled = false))
+    const tracks = s.getAudioTracks()
+    if (tracks.length === 0) {
+      systemAudioError = 'no system audio track (needs macOS 13+)'
+      s.getTracks().forEach((t) => t.stop())
+      return null
+    }
+    tracks.forEach((t) => {
+      t.onended = () => console.warn('[meeting] system audio track ended')
+    })
+    return { audio: new MediaStream(tracks), stopAll: () => s.getTracks().forEach((t) => t.stop()) }
   } catch (e) {
+    const name = e instanceof DOMException ? e.name : ''
+    systemAudioError =
+      name === 'NotAllowedError'
+        ? 'Screen & System Audio Recording permission is off'
+        : e instanceof Error
+          ? e.message
+          : String(e)
     console.warn('[meeting] system audio unavailable', e)
     return null
   }
@@ -103,7 +131,8 @@ export function toMarkdown(lines: MeetingLine[], labels: SpeakerLabels = loadLab
 
 export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Promise<Meeting> {
   const mic = await openMic()
-  const sys = await openSystemAudio()
+  const sysCap = await openSystemAudio()
+  const sys = sysCap?.audio ?? null
 
   // Live view: settled segments from both sides plus each side's draft.
   let meSeg: LiveSegment[] = []
@@ -131,8 +160,24 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
   // One mixed recording for the note's audio attachment.
   const ctx = new AudioContext()
   const dest = ctx.createMediaStreamDestination()
-  ctx.createMediaStreamSource(mic).connect(dest)
-  if (sys) ctx.createMediaStreamSource(sys).connect(dest)
+  const meter = (stream: MediaStream): AnalyserNode => {
+    const a = ctx.createAnalyser()
+    a.fftSize = 512
+    const src = ctx.createMediaStreamSource(stream)
+    src.connect(dest)
+    src.connect(a)
+    return a
+  }
+  const micMeter = meter(mic)
+  const sysMeter = sys ? meter(sys) : null
+  const buf = new Float32Array(512)
+  const rms = (a: AnalyserNode | null): number => {
+    if (!a) return 0
+    a.getFloatTimeDomainData(buf)
+    let sum = 0
+    for (const v of buf) sum += v * v
+    return Math.min(1, Math.sqrt(sum / buf.length) * 4)
+  }
   const rec = new MediaRecorder(dest.stream)
   const chunks: Blob[] = []
   rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data)
@@ -140,7 +185,7 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
 
   const release = (): void => {
     mic.getTracks().forEach((t) => t.stop())
-    sys?.getTracks().forEach((t) => t.stop())
+    sysCap?.stopAll()
     void ctx.close()
   }
 
@@ -150,6 +195,8 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
     micDevice: mic.getAudioTracks()[0]?.label || 'Microphone',
     systemDevice: sys ? sys.getAudioTracks()[0]?.label || 'Mac audio' : null,
     startedAt,
+    systemError: systemAudioError,
+    levels: () => ({ mic: rms(micMeter), system: rms(sysMeter) }),
     stop: async () => {
       const recorded = new Promise<Blob>((res) => {
         rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType }))

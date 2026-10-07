@@ -22,7 +22,11 @@ app.commandLine.appendSwitch(
   'enable-features',
   [
     'SharedArrayBuffer',
-    ...(process.platform === 'darwin' ? ['MacLoopbackAudioForScreenShare', 'MacSckSystemAudioLoopbackOverride'] : [])
+    // macOS 14.2+: CoreAudio tap (CATap) is the more reliable loopback path;
+    // SCK loopback remains the fallback on 13.x.
+    ...(process.platform === 'darwin'
+      ? ['MacLoopbackAudioForScreenShare', 'MacSckSystemAudioLoopbackOverride', 'MacCatapLoopbackAudioForScreenShare']
+      : [])
   ].join(',')
 )
 
@@ -71,7 +75,7 @@ app.whenReady().then(() => {
   })
 
   // Meeting capture: grant getDisplayMedia the primary screen plus system-audio
-  // loopback without a picker. The renderer drops the video track at once; macOS
+  // loopback without a picker. The renderer keeps a 2px video track alive but disabled (stopping it kills SCK audio); macOS
   // asks for Screen & System Audio Recording the first time.
   session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
     // null denies (documented), though the typings omit it.
