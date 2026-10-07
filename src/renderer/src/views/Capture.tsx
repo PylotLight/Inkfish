@@ -25,6 +25,8 @@ export default function Capture(): React.JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null)
   const [caption, setCaption] = useState('')
+  const captionRef = useRef<HTMLDivElement>(null)
+  const stickRef = useRef(true)
   const liveRef = useRef<Promise<LiveSession | null> | null>(null)
   const meetingRef = useRef<Meeting | null>(null)
   const [meetState, setMeetState] = useState<'idle' | 'rec' | 'working'>('idle')
@@ -257,6 +259,23 @@ export default function Capture(): React.JSX.Element {
 
   const recLabel = recState === 'rec' ? 'Stop dictation' : recState === 'working' ? 'Transcribing…' : 'Dictate'
 
+  // Keep the newest live text in view; pause if the user scrolls up to reread.
+  const onCaptionScroll = (): void => {
+    const el = captionRef.current
+    if (!el) return
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8
+    el.classList.toggle('overflowing', el.scrollTop > 0)
+  }
+  useEffect(() => {
+    const el = captionRef.current
+    if (!el) return
+    if (stickRef.current) el.scrollTop = el.scrollHeight
+    el.classList.toggle('overflowing', el.scrollTop > 0)
+  }, [caption, meetLines])
+  useEffect(() => {
+    if (recState !== 'rec' && meetState !== 'rec') stickRef.current = true
+  }, [recState, meetState])
+
   return (
     <div
       className={`capture${saved ? ' pop' : ''}`}
@@ -304,13 +323,18 @@ export default function Capture(): React.JSX.Element {
       />
 
       {recState === 'rec' && caption && (
-        <p className="cap-caption" aria-live="polite">
-          {caption}
-        </p>
+        <div ref={captionRef} className="cap-caption cap-scroll" aria-live="polite" onScroll={onCaptionScroll}>
+          <p>{caption}</p>
+        </div>
       )}
 
       {meetState === 'rec' && meetLines.length > 0 && (
-        <div className="cap-caption cap-meeting" aria-live="polite">
+        <div
+          ref={captionRef}
+          className="cap-caption cap-scroll cap-meeting"
+          aria-live="polite"
+          onScroll={onCaptionScroll}
+        >
           {meetLines.slice(-6).map((l, i) => (
             <p key={i}>
               <b>{l.who}</b> {l.text}

@@ -3352,11 +3352,22 @@ html[data-density='compact'] .md p {
   font-size: 12.5px;
   color: var(--muted);
   font-style: italic;
-  max-height: 3.6em;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+}
+.cap-scroll {
+  max-height: 4.2em;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+/* soft fade on older lines once they start scrolling off the top */
+.cap-scroll.overflowing {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.2em);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.2em);
+}
+.cap-scroll::-webkit-scrollbar {
+  display: none;
+}
+.cap-scroll > p {
+  margin: 0;
 }
 
 .engine-icon.moonshine {
@@ -3371,7 +3382,6 @@ html[data-density='compact'] .md p {
 
 .cap-meeting {
   max-height: 96px;
-  overflow-y: auto;
 }
 .cap-meeting p {
   margin: 0 0 2px;
