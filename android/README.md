@@ -16,7 +16,7 @@ No dev build needed for V1 (all modules are Expo Go compatible).
 
 ## What V1 does
 
-- **Capture** — text + voice memo (`.m4a` via `expo-av`), Inbox/Today toggle,
+- **Capture** — text + voice memo (`.m4a` via `expo-audio`), Inbox/Today toggle,
   project hint chips (Auto default)
 - **Inbox** — queue with `inbox → processing → ready`, Route / Move→ / Undo
 - **Notes** — project filter, substring search, new note, full editor

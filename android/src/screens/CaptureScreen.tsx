@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Audio } from 'expo-av';
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { dark, ui } from '../theme';
 import { useStore } from '../lib/store';
 import { saveAssetCopy } from '../lib/vault';
@@ -28,9 +28,11 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
   const [assets, setAssets] = useState<string[]>([]);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [rec, setRec] = useState<Audio.Recording | null>(null);
+  const [recording, setRecording] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const seenShare = useRef<string | null>(null);
+  // expo-audio recorder (HIGH_QUALITY = .m4a). Instance is component-scoped.
+  const voiceRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   // A fresh share prefills the composer (appended if the user already typed).
   useEffect(() => {
@@ -97,10 +99,10 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
 
   async function toggleRec(): Promise<void> {
     try {
-      if (rec) {
-        const uri = rec.getURI();
-        await rec.stopAndUnloadAsync();
-        setRec(null);
+      if (recording) {
+        await voiceRecorder.stop();
+        const uri = voiceRecorder.uri;
+        setRecording(false);
         if (uri) {
           const rel = await saveAssetCopy(uri, '.m4a');
           setAssets((p) => [...p, rel]);
@@ -108,19 +110,18 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
         }
         return;
       }
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Mic blocked', 'Allow microphone access to record voice notes.');
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const r = new Audio.Recording();
-      await r.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await r.startAsync();
-      setRec(r);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await voiceRecorder.prepareToRecordAsync();
+      voiceRecorder.record();
+      setRecording(true);
     } catch (e) {
       setMsg(`Recording failed: ${e instanceof Error ? e.message : String(e)}`);
-      setRec(null);
+      setRecording(false);
     }
   }
 
@@ -190,8 +191,8 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
       )}
 
       <View style={[ui.row, { marginTop: 4 }]}>
-        <Pressable onPress={() => void toggleRec()} style={[ui.chip, rec ? ui.chipOn : null]}>
-          <Text style={[ui.chipText, rec ? ui.chipTextOn : null]}>{rec ? '■ Stop' : '🎙 Dictate'}</Text>
+        <Pressable onPress={() => void toggleRec()} style={[ui.chip, recording ? ui.chipOn : null]}>
+          <Text style={[ui.chipText, recording ? ui.chipTextOn : null]}>{recording ? '■ Stop' : '🎙 Dictate'}</Text>
         </Pressable>
       </View>
 

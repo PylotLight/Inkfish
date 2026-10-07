@@ -21,7 +21,7 @@
     },
     "plugins": [
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Inkfish records voice notes when you press the mic button."
         }
@@ -29,7 +29,10 @@
       [
         "expo-share-intent",
         {
-          "androidIntentFilters": ["text/*", "image/*"],
+          "androidIntentFilters": [
+            "text/*",
+            "image/*"
+          ],
           "disableIOS": true
         }
       ]
