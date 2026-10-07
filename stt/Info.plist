@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.pylotlight.inkfish.stt</string>
+    <key>CFBundleName</key>
+    <string>inkfish-stt</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Inkfish transcribes your voice notes on this Mac.</string>
+  </dict>
+</plist>

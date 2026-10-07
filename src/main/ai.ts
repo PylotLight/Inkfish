@@ -1,6 +1,7 @@
 import { spawn, execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { promisify } from 'node:util'
+import { basename, join } from 'node:path'
 import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/types'
 
 /**
@@ -11,9 +12,9 @@ import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/typ
  * it so the UI can show it and the router can distrust low-confidence rules.
  *
  * Reality check (Electron, P0): Apple Foundation Models have no public API
- * reachable from Electron, and Apple Speech needs native code — so the
- * `apple` provider reports availability only (used for short-dictation
- * hooks later). Classification today = the built-in rules engine.
+ * reachable from Electron, so classification today = the built-in rules
+ * engine. Apple Speech runs through the bundled `inkfish-stt` Swift CLI
+ * (`stt/inkfish-stt.swift`, on-device `SFSpeechRecognizer`).
  * STT = native binaries only (`$INKFISH_STT_BIN`, `parakeet-cli`,
  * `inkfish-stt` Apple Speech CLI) — never python/pip. See `stt/README.md`.
  */
@@ -24,40 +25,66 @@ export interface ProviderStatus {
   detail: string
 }
 
+/** Where a GUI-launched Mac app can find Homebrew binaries (PATH is minimal from Finder). */
+const EXTRA_BIN_DIRS = ['/opt/homebrew/bin', '/usr/local/bin']
+
+/** Bundled Apple Speech CLI: app resources when packaged, `stt/bin` in a dev checkout. */
+function bundledAppleStt(): string | null {
+  if (process.platform !== 'darwin') return null
+  const res = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  const candidates = [
+    res ? join(res, 'bin', 'inkfish-stt') : '',
+    join(process.cwd(), 'stt', 'bin', 'inkfish-stt')
+  ].filter(Boolean)
+  return candidates.find((p) => existsSync(p)) ?? null
+}
+
+async function onPath(bin: string): Promise<string | null> {
+  for (const dir of EXTRA_BIN_DIRS) {
+    const p = join(dir, bin)
+    if (existsSync(p)) return p
+  }
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which'
+    const { stdout } = await promisify(execFile)(cmd, [bin])
+    return stdout.split('\n').map((l) => l.trim()).find(Boolean) ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolve a native STT engine (absolute path), in order:
+ * `$INKFISH_STT_BIN` → `parakeet-cli` (if installed) → bundled Apple Speech
+ * `inkfish-stt` → `inkfish-stt` on PATH.
+ */
 async function nativeSttBin(): Promise<string | null> {
   const override = process.env['INKFISH_STT_BIN']?.trim()
   if (override && existsSync(override)) return override
-  const execFileAsync = promisify(execFile)
-  for (const bin of ['parakeet-cli', 'inkfish-stt']) {
-    try {
-      const cmd = process.platform === 'win32' ? 'where' : 'which'
-      const { stdout } = await execFileAsync(cmd, [bin])
-      const hit = stdout.split('\n').map((l) => l.trim()).find(Boolean)
-      if (hit) return bin
-    } catch {
-      // not on PATH — try next
-    }
-  }
-  return null
+  return (await onPath('parakeet-cli')) ?? bundledAppleStt() ?? (await onPath('inkfish-stt'))
 }
+
+const isParakeet = (bin: string): boolean => basename(bin).startsWith('parakeet')
 
 export async function providerStatus(): Promise<ProviderStatus[]> {
   const stt = await nativeSttBin()
   return [
     {
       id: 'apple',
-      available: process.platform === 'darwin',
+      available: bundledAppleStt() !== null,
       detail:
-        process.platform === 'darwin'
-          ? 'Apple Silicon detected — Foundation Models hook reserved (rules engine for now)'
-          : 'Apple Intelligence needs macOS'
+        process.platform !== 'darwin'
+          ? 'Apple Speech needs macOS'
+          : bundledAppleStt()
+            ? 'Apple Speech on-device transcription bundled (inkfish-stt)'
+            : 'Apple Speech CLI not built — run `bun run stt:build`'
     },
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
     {
       id: 'stt',
       available: stt !== null,
       detail: stt
-        ? `native STT ready (${stt}) — no python`
+        ? `native STT ready (${basename(stt)}) — no python`
         : 'no native STT binary (parakeet-cli / inkfish-stt) — voice falls back to manual text'
     }
   ]
@@ -162,14 +189,19 @@ export function summarize(text: string, maxSentences = 3): Promise<{ text: strin
 export async function transcribe(wavPath: string, timeoutMs = 120_000): Promise<SttResult> {
   const bin = await nativeSttBin()
   if (!bin) {
-    throw new Error('STT unavailable (no native engine — install parakeet-cli or import transcript text instead)')
+    throw new Error(
+      process.platform === 'darwin'
+        ? 'STT unavailable (Apple Speech CLI missing from this build — reinstall, or `brew install whisper-cpp` for parakeet-cli)'
+        : 'STT unavailable (no native engine — install parakeet-cli or import transcript text instead)'
+    )
   }
   return new Promise((resolve, reject) => {
     // Contract: binary takes the wav path and prints
     // `{"text": "...", "segments": [{"start": 0, "end": 1.2, "text": "..."}]}`
     // on stdout. Both `parakeet-cli --json` and the Apple `inkfish-stt` CLI
     // follow it; anything else is surfaced as plain text when parseable.
-    const args = bin === 'parakeet-cli'
+    const provider = isParakeet(bin) ? 'stt' : 'apple'
+    const args = isParakeet(bin)
       ? ['transcribe', '--input', wavPath, '--json']
       : [wavPath, '--json']
     const child = spawn(bin, args, { timeout: timeoutMs })
@@ -177,22 +209,22 @@ export async function transcribe(wavPath: string, timeoutMs = 120_000): Promise<
     let err = ''
     child.stdout.on('data', (d: Buffer) => (out += d.toString()))
     child.stderr.on('data', (d: Buffer) => (err += d.toString()))
-    child.on('error', (e) => reject(new Error(`STT engine failed to start (${bin}): ${e.message}`)))
+    child.on('error', (e) => reject(new Error(`STT engine failed to start (${basename(bin)}): ${e.message}`)))
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`STT engine exited ${code}: ${err.slice(0, 300) || out.slice(0, 300)}`))
+        reject(new Error((err.trim() || out.trim()).slice(0, 300) || `STT engine exited ${code}`))
         return
       }
       try {
         const parsed = JSON.parse(out) as { text: string; segments?: SttResult['segments'] }
-        resolve({ text: parsed.text ?? '', provider: 'stt', segments: parsed.segments ?? [] })
+        resolve({ text: parsed.text ?? '', provider, segments: parsed.segments ?? [] })
       } catch {
         const text = out.trim()
         if (!text) {
           reject(new Error(`STT engine returned no transcript (${bin})`))
           return
         }
-        resolve({ text, provider: 'stt', segments: [] })
+        resolve({ text, provider, segments: [] })
       }
     })
   })
