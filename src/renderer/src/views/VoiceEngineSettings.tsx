@@ -241,9 +241,10 @@ export default function VoiceEngineSettings(): React.JSX.Element {
 
       <div className="setting-row inline" style={{ marginTop: 16 }}>
         <div className="setting-label">
-          Live captions while dictating
+          Live transcription while dictating
           <span className="muted small setting-hint">
-            Moonshine streams a preview as you speak (English, downloads once).
+            Text streams in as you speak. Uses Parakeet Redux once downloaded (and skips the wait after stop when
+            Redux is your engine); otherwise Moonshine previews in English.
           </span>
         </div>
         <button

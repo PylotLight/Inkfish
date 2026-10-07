@@ -1,15 +1,65 @@
 /**
- * Moonshine streaming captions while dictating. Purely a preview: the saved
- * transcript still comes from the chosen engine once recording stops.
+ * Live transcription while recording. Parakeet Redux (vocule) streams drafts
+ * every ~100 ms and settles a segment after each pause, so when Redux is the
+ * chosen engine its settled text *is* the final transcript — no wait after
+ * stop. Without Redux downloaded, Moonshine streams a preview instead.
  */
 import { loadAudioPrefs } from './audio'
-import { moonshineModule } from './webStt'
+import { isWebReady, moonshineModule } from './webStt'
 
-export interface LiveCaptions {
-  stop: () => Promise<void>
+export const LIVE_ENGINE = 'web-parakeet-redux'
+
+export interface LiveSegment {
+  text: string
+  start: number
+  end: number
 }
 
-export async function startLiveCaptions(onText: (text: string) => void): Promise<LiveCaptions> {
+export interface LiveResult {
+  engine: string
+  text: string
+  segments: LiveSegment[]
+}
+
+export interface LiveSession {
+  engine: string
+  /** Drain pending audio and return the settled transcript. */
+  stop: () => Promise<LiveResult>
+  cancel: () => Promise<void>
+}
+
+/** Redux streaming on a caller-owned stream (mic, or system audio). */
+export async function startRedux(
+  stream: MediaStream,
+  onText: (text: string, settled: LiveSegment[]) => void
+): Promise<LiveSession> {
+  const { createSpeech } = await import('@karanganesan/vocule')
+  const speech = createSpeech()
+  let segments: LiveSegment[] = []
+  const live = await speech.listen({
+    stream,
+    onUpdate: (u) => {
+      segments = u.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+      onText(u.text.trim(), segments)
+    },
+    onError: (e) => console.warn('[live] redux', e)
+  })
+  return {
+    engine: 'Parakeet Redux · live',
+    stop: async () => {
+      const text = (await live.stop()).replace(/\s+/g, ' ').trim()
+      segments = live.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+      speech.dispose()
+      return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
+    },
+    cancel: async () => {
+      await live.cancel().catch(() => undefined)
+      speech.dispose()
+    }
+  }
+}
+
+async function startMoonshine(onText: (text: string) => void): Promise<LiveSession> {
   const { MicTranscriber, Transcriber, ModelArch } = await import('@moonshine-ai/moonshine-wasm')
   const transcriber = await Transcriber.load({
     language: 'en',
@@ -27,11 +77,24 @@ export async function startLiveCaptions(onText: (text: string) => void): Promise
       onText(done.join(' '))
     })
   await mic.start()
-  return {
-    stop: async () => {
-      await mic.stop().catch(() => undefined)
-      mic.close()
-      transcriber.close()
-    }
+  const close = async (): Promise<void> => {
+    await mic.stop().catch(() => undefined)
+    mic.close()
+    transcriber.close()
   }
+  return {
+    engine: 'Moonshine · live',
+    stop: async () => {
+      await close()
+      const text = done.join(' ').trim()
+      return { engine: 'Moonshine · live', text, segments: [] }
+    },
+    cancel: close
+  }
+}
+
+/** Redux when downloaded (or chosen), else Moonshine preview. */
+export function startLive(stream: MediaStream, onText: (text: string) => void): Promise<LiveSession> {
+  const { engine } = loadAudioPrefs()
+  return engine === LIVE_ENGINE || isWebReady(LIVE_ENGINE) ? startRedux(stream, onText) : startMoonshine(onText)
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, protocol, session, systemPreferences } from 'electron'
+import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session, systemPreferences } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
@@ -16,7 +16,15 @@ protocol.registerSchemesAsPrivileged([
 
 // In-app WASM speech engines (Moonshine, ONNX Runtime Web) use threads, which
 // need SharedArrayBuffer; file:// pages can't send COOP/COEP headers.
-app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
+// On macOS, Chromium's ScreenCaptureKit loopback gives getDisplayMedia the
+// Mac's output audio — the "Them" side of meeting capture (macOS 13+).
+app.commandLine.appendSwitch(
+  'enable-features',
+  [
+    'SharedArrayBuffer',
+    ...(process.platform === 'darwin' ? ['MacLoopbackAudioForScreenShare', 'MacSckSystemAudioLoopbackOverride'] : [])
+  ].join(',')
+)
 
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
@@ -60,6 +68,18 @@ app.whenReady().then(() => {
     else if (status === 'not-determined') {
       systemPreferences.askForMediaAccess('microphone').then(callback, () => callback(false))
     } else callback(false)
+  })
+
+  // Meeting capture: grant getDisplayMedia the primary screen plus system-audio
+  // loopback without a picker. The renderer drops the video track at once; macOS
+  // asks for Screen & System Audio Recording the first time.
+  session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
+    // null denies (documented), though the typings omit it.
+    const deny = (): void => (callback as (s: unknown) => void)(null)
+    desktopCapturer
+      .getSources({ types: ['screen'] })
+      .then((sources) => (sources[0] ? callback({ video: sources[0], audio: 'loopback' }) : deny()))
+      .catch(deny)
   })
 
   setConfigDir(app.getPath('userData'))

@@ -145,6 +145,8 @@ const readySet = (): Set<string> => {
 }
 const saveReady = (s: Set<string>): void => localStorage.setItem(READY_KEY, JSON.stringify([...s]))
 
+export const isWebReady = (id: string): boolean => readySet().has(id)
+
 export function webEngines(): SttEngine[] {
   const ready = readySet()
   const ok = typeof WebAssembly !== 'undefined'

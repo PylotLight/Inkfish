@@ -77,7 +77,8 @@
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Inkfish records voice notes when you press the mic button.",
-        "NSSpeechRecognitionUsageDescription": "Inkfish transcribes your voice notes on this Mac."
+        "NSSpeechRecognitionUsageDescription": "Inkfish transcribes your voice notes on this Mac.",
+        "NSAudioCaptureUsageDescription": "Inkfish records the other side of your meetings when you start meeting capture."
       },
       "extraResources": [
         {
