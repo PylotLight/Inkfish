@@ -93,6 +93,9 @@ enum Fluid {
 
     var placement: String { self == .redux ? "GPU" : "Neural Engine" }
 
+    /// Hugging Face repo for the models that need a non-default encoder placement.
+    var repo: Repo { .parakeetRedux }
+
     /// Redux / Phonon-2 / Cohere q8 use macOS 15 Core ML ops.
     var minMacOS15: Bool { self == .redux || self == .phonon2 || self == .cohere }
 
@@ -174,6 +177,17 @@ enum Fluid {
 
   // MARK: prepare / remove / transcribe
 
+  /// The vocab JSON isn't in the repo's required-model set, so a raw
+  /// ModelHub.download skips it (FluidAudio #748). Fetch it directly.
+  static func ensureVocab(_ m: Model, _ dir: URL) async throws {
+    let url = dir.appendingPathComponent(ModelNames.ASR.vocabularyFile)
+    if FileManager.default.fileExists(atPath: url.path) { return }
+    let remote = try ModelRegistry.resolveModel(m.repo.rawValue, ModelNames.ASR.vocabularyFile)
+    let data = try await ModelHub.fetchFile(from: remote, description: ModelNames.ASR.vocabularyFile)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try data.write(to: url, options: [.atomic])
+  }
+
   static func remove(_ m: Model, _ opts: Options) throws {
     let dir = modelDir(m, opts)
     if FileManager.default.fileExists(atPath: dir.path) { try FileManager.default.removeItem(at: dir) }
@@ -185,10 +199,24 @@ enum Fluid {
   static func prepare(_ m: Model, _ opts: Options, progress: ProgressHandler? = nil) async throws {
     guard m.supported else { throw STTError("\(m.name) needs macOS 15", code: 3) }
     if let v = m.asrVersion {
+      let dir = AsrModels.defaultCacheDirectory(for: v)
+      if let units = m.encoderUnits {
+        // Don't use AsrModels.download here: after fetching it *loads* every
+        // file on the Neural Engine to warm the cache, and for Redux's 2-bit
+        // encoder that ANE compile takes 5–25 min (stuck at "Optimising for
+        // the Neural Engine · 0%"). Fetch the raw files + vocab instead, then
+        // load once with the encoder on the GPU.
+        if !AsrModels.modelsExist(at: dir, version: v) {
+          try await ModelHub.download(m.repo, to: dir.deletingLastPathComponent(), progressHandler: progress)
+          try await ensureVocab(m, dir)
+        }
+        _ = try await AsrModels.load(from: dir, version: v, encoderComputeUnits: units, progressHandler: progress)
+        return
+      }
       _ = try await AsrModels.download(version: v, progressHandler: progress)
       // Load once now so any Core ML compile happens during the download
       // (no timeout) instead of on the first transcription; it's cached after.
-      _ = try await AsrModels.downloadAndLoad(version: v, encoderComputeUnits: m.encoderUnits)
+      _ = try await AsrModels.load(from: dir, version: v, encoderComputeUnits: m.encoderUnits)
       return
     }
     switch m {
@@ -214,8 +242,11 @@ enum Fluid {
     let t0 = Date()
     var loadMs = 0
     if let v = m.asrVersion {
-      // cached → load only
-      let models = try await AsrModels.downloadAndLoad(version: v, encoderComputeUnits: m.encoderUnits)
+      // Already on disk (checked above) → load only. Never downloadAndLoad:
+      // its download step re-runs an ANE warm-up compile when anything is
+      // missing, which for Redux ignores the GPU placement below.
+      let models = try await AsrModels.load(
+        from: AsrModels.defaultCacheDirectory(for: v), version: v, encoderComputeUnits: m.encoderUnits)
       let asr = AsrManager()
       try await asr.loadModels(models)
       loadMs = Int(Date().timeIntervalSince(t0) * 1000)
