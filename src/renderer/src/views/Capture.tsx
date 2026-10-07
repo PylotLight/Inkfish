@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
-import { LIVE_ENGINE, startLive, type LiveSession } from '../liveCaptions'
+import { LIVE_ENGINE, liveAvailable, startLive, type LiveSession } from '../liveCaptions'
 import { loadLabels, startMeeting, toMarkdown, type Meeting, type MeetingLine } from '../meeting'
 import { isWebEngine, transcribeWeb, warmWeb } from '../webStt'
 
@@ -33,7 +33,10 @@ export default function Capture(): React.JSX.Element {
   const [meetLines, setMeetLines] = useState<MeetingLine[]>([])
 
   useEffect(() => {
-    window.api.projects.list().then(setProjects).catch(() => setProjects([]))
+    window.api.projects
+      .list()
+      .then(setProjects)
+      .catch(() => setProjects([]))
     inputRef.current?.focus()
     // Build the chosen in-app engine now so stop → text is just inference.
     warmWeb(loadAudioPrefs().engine)
@@ -64,9 +67,10 @@ export default function Capture(): React.JSX.Element {
       const hasImage = attachments.some((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a))
       const kind: NoteKind = hasAudio ? 'voice' : hasImage ? 'image' : 'text'
       if (dest === 'today') {
-        const body = attachments.length > 0
-          ? `${raw.trim()}\n${attachments.map((a) => `![](${a})`).join('\n')}`.trim()
-          : raw.trim()
+        const body =
+          attachments.length > 0
+            ? `${raw.trim()}\n${attachments.map((a) => `![](${a})`).join('\n')}`.trim()
+            : raw.trim()
         await window.api.daily.append(body, kind)
       } else {
         await window.api.inbox.add({
@@ -123,7 +127,7 @@ export default function Capture(): React.JSX.Element {
       setRecState('rec')
       const prefs = loadAudioPrefs()
       // Redux as the engine streams the real transcript; otherwise a preview.
-      if (prefs.liveCaptions || prefs.engine === LIVE_ENGINE) {
+      if ((prefs.liveCaptions || prefs.engine === LIVE_ENGINE) && liveAvailable()) {
         liveRef.current = startLive(stream, (t) => setCaption(t)).catch((e) => {
           console.warn('[live]', e)
           return null
@@ -296,10 +300,20 @@ export default function Capture(): React.JSX.Element {
     >
       <div className="cap-top">
         <div className="cap-dest" role="tablist" aria-label="Destination">
-          <button role="tab" aria-selected={dest === 'inbox'} className={dest === 'inbox' ? 'on' : ''} onClick={() => setDest('inbox')}>
+          <button
+            role="tab"
+            aria-selected={dest === 'inbox'}
+            className={dest === 'inbox' ? 'on' : ''}
+            onClick={() => setDest('inbox')}
+          >
             Inbox
           </button>
-          <button role="tab" aria-selected={dest === 'today'} className={dest === 'today' ? 'on' : ''} onClick={() => setDest('today')}>
+          <button
+            role="tab"
+            aria-selected={dest === 'today'}
+            className={dest === 'today' ? 'on' : ''}
+            onClick={() => setDest('today')}
+          >
             Today
           </button>
         </div>
@@ -377,9 +391,20 @@ export default function Capture(): React.JSX.Element {
           onClick={toggleRec}
         >
           {recState === 'rec' ? (
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" /></svg>
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+              <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" />
+            </svg>
           ) : (
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden
+            >
               <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
               <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
             </svg>
@@ -392,19 +417,57 @@ export default function Capture(): React.JSX.Element {
           disabled={meetState === 'working' || recState !== 'idle'}
           onClick={toggleMeeting}
         >
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            aria-hidden
+          >
             <circle cx="5.5" cy="5" r="2.2" />
             <circle cx="11" cy="5.5" r="1.8" />
             <path d="M1.5 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4M10 9.6c2.3 0 4.5 1.4 4.5 3.9" />
           </svg>
         </button>
-        <button className="cap-icon" title="Attach image or audio" aria-label="Attach image or audio" onClick={pickFile}>
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <button
+          className="cap-icon"
+          title="Attach image or audio"
+          aria-label="Attach image or audio"
+          onClick={pickFile}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M13.5 7.5 8 13a3.5 3.5 0 0 1-5-5l5.8-5.8a2.3 2.3 0 0 1 3.3 3.3L6.3 11.3a1.1 1.1 0 0 1-1.6-1.6L10 4.5" />
           </svg>
         </button>
-        <button className="cap-icon" title="Transcribe an audio file" aria-label="Transcribe an audio file" onClick={importAudio}>
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+        <button
+          className="cap-icon"
+          title="Transcribe an audio file"
+          aria-label="Transcribe an audio file"
+          onClick={importAudio}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            aria-hidden
+          >
             <path d="M2 8h1M5 5v6M8 2.5v11M11 5v6M14 8h-1" />
           </svg>
         </button>

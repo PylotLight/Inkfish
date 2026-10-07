@@ -2,10 +2,9 @@
  * Live transcription while recording. Parakeet Redux (vocule) streams drafts
  * every ~100 ms and settles a segment after each pause, so when Redux is the
  * chosen engine its settled text *is* the final transcript — no wait after
- * stop. Without Redux downloaded, Moonshine streams a preview instead.
+ * stop. Live text needs Redux · Web downloaded.
  */
-import { loadAudioPrefs } from './audio'
-import { isWebReady, moonshineModule, reduxSpeech } from './webStt'
+import { isWebReady, reduxSpeech } from './webStt'
 
 export const LIVE_ENGINE = 'web-parakeet-redux'
 
@@ -63,42 +62,10 @@ export async function startRedux(
   }
 }
 
-async function startMoonshine(onText: (text: string) => void): Promise<LiveSession> {
-  const { MicTranscriber, Transcriber, ModelArch } = await import('@moonshine-ai/moonshine-wasm')
-  const transcriber = await Transcriber.load({
-    language: 'en',
-    modelArch: ModelArch.SmallStreaming,
-    moduleOptions: await moonshineModule()
-  })
-  const done: string[] = []
-  const { inputId } = loadAudioPrefs()
-  const mic = new MicTranscriber()
-    .useTranscriber(transcriber)
-    .audioConstraints(inputId ? { deviceId: { exact: inputId } } : true)
-    .onText((t) => onText([...done, t].join(' ').trim()))
-    .onLine((l) => {
-      done.push(l.text.trim())
-      onText(done.join(' '))
-    })
-  await mic.start()
-  const close = async (): Promise<void> => {
-    await mic.stop().catch(() => undefined)
-    mic.close()
-    transcriber.close()
-  }
-  return {
-    engine: 'Moonshine · live',
-    stop: async () => {
-      await close()
-      const text = done.join(' ').trim()
-      return { engine: 'Moonshine · live', text, segments: [] }
-    },
-    cancel: close
-  }
-}
+/** Live text runs on Redux · Web; without it downloaded there's no preview. */
+export const liveAvailable = (): boolean => isWebReady(LIVE_ENGINE)
 
-/** Redux when downloaded (or chosen), else Moonshine preview. */
 export function startLive(stream: MediaStream, onText: (text: string) => void): Promise<LiveSession> {
-  const { engine } = loadAudioPrefs()
-  return engine === LIVE_ENGINE || isWebReady(LIVE_ENGINE) ? startRedux(stream, onText) : startMoonshine(onText)
+  if (!liveAvailable()) return Promise.reject(new Error('Download Parakeet Redux · Web for live text'))
+  return startRedux(stream, onText)
 }

@@ -27,7 +27,6 @@ All FluidAudio (Apache-2.0) models download once to
 |---|---|---|
 | `web-parakeet-redux` | `@karanganesan/vocule` | Redux in a worker; ~178 MB; closed-source engine, MIT package |
 | `web-parakeet-v2` | `parakeet.js` | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (1.24 GB; WebGPU can't run int8), int8 on CPU (652 MB). Native Core ML v2 is ~442 MB |
-| `web-moonshine` | `@moonshine-ai/moonshine-wasm` | Base, English; SmallStreaming powers live captions |
 
 Bundled as devDependencies (Vite bundles them into the renderer; native
 `onnxruntime-node`/`sharp` deps are never loaded or shipped). Needs CSP
@@ -42,7 +41,7 @@ wasm to the app bundle.
 |---|---|
 | Parakeet Redux WASM | Redundant — the same Redux weights run natively on the ANE via FluidAudio, much faster than WASM CPU. |
 | Transformers.js (Whisper, WebGPU) | Only worth it as a Windows/Linux/Intel fallback. Costs onnxruntime-web (~20 MB), CSP `wasm-unsafe-eval`, and a renderer-side engine. Later. |
-| Moonshine WASM (`@moonshine-ai/moonshine-wasm` 0.1.x) | The one new capability: true streaming English for live captions while recording. Young package — try as a live-preview layer, keep the batch engine for the saved transcript. |
+| Moonshine WASM (`@moonshine-ai/moonshine-wasm` 0.1.x) | Tried and removed (Oct 2026): its threaded Emscripten build stalled loading inside Electron (CSP `unsafe-eval` / pthread pool), and Redux · Web already streams live text. |
 | Moonshine JS | Superseded by moonshine-wasm. |
 | Transcribe.js / shout (whisper.cpp WASM) | CPU-only Whisper; slower than Transformers.js WebGPU. Skip. |
 | vosk-browser | Low accuracy; command words only. Skip. |

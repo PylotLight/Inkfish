@@ -769,6 +769,14 @@ html[data-theme='paper'] .toast.glass {
   color: var(--muted);
 }
 
+.bench-scroll {
+  overflow-x: auto;
+}
+
+.bench-table th[title] {
+  cursor: help;
+}
+
 .bench-table td.best {
   color: var(--mint);
   font-weight: 600;
@@ -840,6 +848,21 @@ html[data-theme='paper'] .toast.glass {
 
 .engine-text {
   overflow-wrap: anywhere;
+}
+
+.engine-detail {
+  white-space: pre-line;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-row.is-hidden {
+  opacity: 0.55;
+}
+
+.engine-heading .link-btn {
+  margin-left: 10px;
+  font-weight: 400;
 }
 
 .error-text {
@@ -3641,11 +3664,6 @@ html[data-density='compact'] .md p {
 }
 .cap-scroll > p {
   margin: 0;
-}
-
-.engine-icon.moonshine {
-  background: #1d1b3a;
-  color: #f5d76e;
 }
 
 .engine-icon.openai {

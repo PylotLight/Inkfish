@@ -10,7 +10,7 @@ export interface AudioPrefs {
   outputId: string
   /** Transcription engine id; '' = best ready engine. */
   engine: string
-  /** Show Moonshine live captions while dictating (English). */
+  /** Stream live text while dictating (Parakeet Redux · Web). */
   liveCaptions: boolean
   /** Model download host; '' = huggingface.co. */
   modelMirror: string
