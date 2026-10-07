@@ -120,9 +120,46 @@ function buildUi(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
       flex: 1,
       backgroundColor: c.bg,
       paddingHorizontal: 20,
-      paddingTop: 18,
-      paddingBottom: 132
+      paddingTop: 0
     },
+    // Scroll content padding: clears the floating toolbar.
+    scrollPad: { paddingBottom: 132 },
+    // Obsidian-mobile top bar: icon · title · icons.
+    topBar: { flexDirection: 'row', alignItems: 'center', height: 52, marginHorizontal: -10, marginBottom: 4 },
+    topTitle: { flex: 1, color: c.text, fontSize: 17 * s, fontWeight: '600', marginLeft: 2 },
+    iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
+    // Large page title (Home only).
+    display: { color: c.text, fontSize: 28 * s, fontWeight: '700', letterSpacing: -0.6 },
+    // Quiet section label — sentence case, no all-caps shouting.
+    label: { color: c.faint, fontSize: 13, fontWeight: '600', marginTop: 26, marginBottom: 4 },
+    // Flat list row (Obsidian file list): icon · title/meta · trailing.
+    listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 14 },
+    listText: { flex: 1, minWidth: 0 },
+    // Inline composer line: text field with trailing icon actions, hairline under.
+    inputLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+      paddingVertical: 2
+    },
+    inputText: { flex: 1, color: c.text, fontSize: 16 * s, paddingVertical: 10 },
+    chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+    chipOn: { backgroundColor: c.tabOn },
+    chipText: { color: c.muted, fontSize: 13.5, fontWeight: '500' },
+    chipTextOn: { color: c.accent, fontWeight: '600' },
+    // Keyboard-docked accessory row (capture/editor).
+    dock: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: c.bg
+    },
+    swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: c.border },
+    swatchOn: { borderWidth: 2, borderColor: c.text },
     center: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' },
     h1: {
       color: c.text,
@@ -132,15 +169,7 @@ function buildUi(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
       marginBottom: 2
     },
     sub: { color: c.muted, fontSize: 13.5, marginBottom: 16, lineHeight: 18 },
-    section: {
-      color: c.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-      marginTop: 20,
-      marginBottom: 4
-    },
+    section: { color: c.faint, fontSize: 13, fontWeight: '600', marginTop: 26, marginBottom: 6 },
     row: { flexDirection: 'row', alignItems: 'center' },
     segRow: { flexDirection: 'row', gap: 20, marginBottom: 8 },
     segWrap: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, rowGap: 2, marginBottom: 8 },
@@ -195,23 +224,25 @@ function buildUi(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
     notice: { color: c.accent, fontSize: 13, fontWeight: '600' },
     dismiss: { color: c.muted, fontSize: 13, textDecorationLine: 'underline', marginTop: 6 },
     // Floating glass toolbar.
-    barWrap: { position: 'absolute', left: 44, right: 44 },
+    barWrap: { position: 'absolute', alignSelf: 'center' },
     bar: {
       flexDirection: 'row',
-      justifyContent: 'space-around',
       alignItems: 'center',
+      gap: 6,
       borderRadius: 999,
-      borderWidth: 1,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.border,
       overflow: 'hidden',
-      paddingVertical: 6,
+      paddingVertical: 5,
+      paddingHorizontal: 6,
       backgroundColor: c.barBg
     },
-    tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
+    tab: { width: 52, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+    tabAdd: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: c.accent, marginHorizontal: 4 },
     tabOn: { backgroundColor: c.tabOn },
     glyph: { color: c.muted, fontSize: 21 },
     glyphOn: { color: c.accent },
-    badge: { color: c.accent, fontSize: 11, fontWeight: '700', marginLeft: 4 }
+    badge: { position: 'absolute', top: 9, right: 13, width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent }
   });
 }
 
@@ -225,7 +256,12 @@ function buildMd(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
     bullet: { color: c.muted },
     bold: { fontWeight: '700' },
     mono: { fontFamily: 'monospace', backgroundColor: c.inset, borderRadius: 4 },
+    italic: { fontStyle: 'italic' },
+    strike: { textDecorationLine: 'line-through', color: c.muted },
     link: { color: c.accent, textDecorationLine: 'underline' },
+    quote: { borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: 12, marginVertical: 4 },
+    rule: { height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginVertical: 14 },
+    check: { color: c.accent },
     codeBox: { backgroundColor: c.inset, borderRadius: 10, padding: 12, marginVertical: 8 },
     code: { color: c.text, fontFamily: 'monospace', fontSize: 13.5 * s, lineHeight: 20 * s },
     imgRef: { color: c.muted, fontSize: 13, marginVertical: 4 }
@@ -238,3 +274,16 @@ export function useTheme(): AppTheme {
   const { prefs } = usePrefs();
   return useMemo(() => buildTheme(prefs), [prefs]);
 }
+
+/** Swatch colours for the Settings pickers. */
+export const THEME_SWATCH: Record<ThemeId, string> = {
+  deep: '#08090c',
+  abyss: '#06090f',
+  forest: '#0e1a14',
+  plum: '#171222',
+  paper: '#f2efe8',
+  amoled: '#000000'
+};
+export const ACCENT_SWATCH: Record<AccentId, string> = Object.fromEntries(
+  Object.entries(ACCENT_HEX).map(([k, v]) => [k, v.accent])
+) as Record<AccentId, string>;

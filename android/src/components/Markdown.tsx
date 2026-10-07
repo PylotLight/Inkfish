@@ -21,6 +21,9 @@ type Block =
   | { t: 'li'; text: string }
   | { t: 'code'; text: string }
   | { t: 'img'; alt: string; src: string }
+  | { t: 'task'; done: boolean; text: string }
+  | { t: 'quote'; text: string }
+  | { t: 'hr' }
   | { t: 'gap' };
 
 function parse(text: string): Block[] {
@@ -39,7 +42,21 @@ function parse(text: string): Block[] {
       code.push(line);
       continue;
     }
-    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) {
+      out.push({ t: 'hr' });
+      continue;
+    }
+    const task = /^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(line);
+    if (task) {
+      out.push({ t: 'task', done: task[1] !== ' ', text: task[2] ?? '' });
+      continue;
+    }
+    const q = /^\s*>\s?(.*)$/.exec(line);
+    if (q) {
+      out.push({ t: 'quote', text: q[1] ?? '' });
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
       out.push({ t: 'h', level: h[1]?.length ?? 1, text: h[2] ?? '' });
       continue;
@@ -67,12 +84,21 @@ function parse(text: string): Block[] {
   return out;
 }
 
-/** Inline `**bold**`, `` `code` ``, [links](…) — rendered as plain runs. */
+/** Inline `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, [links](…), [[wikilinks]]. */
 function runs(text: string, base: object, md: AppTheme['md']): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[.+?\]\(.+?\))/g);
+  const parts = text.split(
+    /(\*\*[^*]+\*\*|~~[^~]+~~|`[^`]+`|\[\[[^\]]+\]\]|\[.+?\]\(.+?\)|(?<![\w*])\*[^*\s][^*]*\*(?!\w)|(?<!\w)_[^_\s][^_]*_(?!\w))/g
+  );
   return parts.map((p, i) => {
+    if (!p) return null;
     const b = /^\*\*(.+)\*\*$/.exec(p);
     if (b) return <Text key={i} style={[base, md.bold]}>{b[1]}</Text>;
+    const st = /^~~(.+)~~$/.exec(p);
+    if (st) return <Text key={i} style={[base, md.strike]}>{st[1]}</Text>;
+    const it = /^(?:\*([^*].*)\*|_(.+)_)$/.exec(p);
+    if (it) return <Text key={i} style={[base, md.italic]}>{it[1] ?? it[2]}</Text>;
+    const w = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(p);
+    if (w) return <Text key={i} style={[base, md.link]}>{w[2] ?? w[1]}</Text>;
     const c = /^`([^`]+)`$/.exec(p);
     if (c) return <Text key={i} style={[base, md.mono]}>{c[1]}</Text>;
     const l = /^\[(.+?)\]\(.+?\)$/.exec(p);
@@ -105,7 +131,22 @@ function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.E
         </View>
       );
     case 'img':
-      return <Text style={md.imgRef}>🖼 {block.alt || block.src}</Text>;
+      return <Text style={md.imgRef}>{/\.(m4a|wav|mp3|ogg)$/i.test(block.src) ? 'Voice memo' : 'Image'} · {block.alt || block.src.split('/').pop()}</Text>;
+    case 'task':
+      return (
+        <Text style={md.p}>
+          <Text style={md.check}>{block.done ? '☑  ' : '☐  '}</Text>
+          <Text style={block.done ? md.strike : undefined}>{runs(block.text, {}, md)}</Text>
+        </Text>
+      );
+    case 'quote':
+      return (
+        <View style={md.quote}>
+          <Text style={[md.p, md.italic]}>{runs(block.text, {}, md)}</Text>
+        </View>
+      );
+    case 'hr':
+      return <View style={md.rule} />;
     case 'p':
       return <Text style={md.p}>{runs(block.text, {}, md)}</Text>;
   }

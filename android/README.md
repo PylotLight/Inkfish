@@ -16,11 +16,18 @@ No dev build needed for V1 (all modules are Expo Go compatible).
 
 ## What V1 does
 
-- **Capture** — text + voice memo (`.m4a` via `expo-audio`), Inbox/Today toggle,
+Navigation: floating toolbar **Home · Inbox · ＋ · Today · Settings** (Lucide
+icons, the set Obsidian uses), left file drawer from ☰, Android back closes
+drawer → sheet → note → returns Home.
+
+- **Home** — date, capture line (tap = composer, mic = voice memo), inbox
+  waiting, today's last entries, recent notes, search in the top bar
+
+- **Capture** (＋, full-screen sheet) — text + voice memo (`.m4a` via `expo-audio`), Inbox/Today toggle,
   project hint chips (Auto default)
 - **Inbox** — queue with `inbox → processing → ready`, Route / Move→ / Undo
-- **Notes** — project filter, substring search, new note, full editor
-  (raw markdown + rendered preview)
+- **Notes** — file drawer by folder, search, new note; editor opens in
+  reading view, pencil to edit, **autosaves** (no Save button)
 - **Today** — day-log append + view (`daily/YYYY-MM-DD.md`)
 - **Settings** — vault paths, counts, re-scan
 
