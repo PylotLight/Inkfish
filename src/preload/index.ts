@@ -170,6 +170,24 @@ const api = {
     pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>
       ipcRenderer.invoke('stt:pick-audio')
   },
+  /** Audio-only system capture (Core Audio tap via the helper). */
+  systap: {
+    start: (): Promise<{ rate: number } | { error: string }> => ipcRenderer.invoke('systap:start'),
+    stop: (): Promise<void> => ipcRenderer.invoke('systap:stop'),
+    onData: (cb: (pcm: Float32Array) => void): (() => void) => {
+      const fn = (_e: unknown, buf: Uint8Array): void => {
+        const copy = buf.slice()
+        cb(new Float32Array(copy.buffer, copy.byteOffset, copy.byteLength / 4))
+      }
+      ipcRenderer.on('systap:data', fn)
+      return () => ipcRenderer.removeListener('systap:data', fn)
+    },
+    onEnded: (cb: () => void): (() => void) => {
+      const fn = (): void => cb()
+      ipcRenderer.on('systap:ended', fn)
+      return () => ipcRenderer.removeListener('systap:ended', fn)
+    }
+  },
   meeting: {
     import: (input: MeetingImportInput): Promise<InboxItem> =>
       ipcRenderer.invoke('meeting:import', input),

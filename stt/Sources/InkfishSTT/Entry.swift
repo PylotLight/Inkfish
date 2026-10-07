@@ -105,6 +105,9 @@ struct InkfishSTT {
       switch cmd {
       case "engines":
         emit(await listEngines(opts))
+      case "tap":
+        guard #available(macOS 14.2, *) else { throw STTError("system audio capture needs macOS 14.2+", code: 64) }
+        try SystemTap.run()
       case "prepare":
         guard let model = Fluid.Model(rawValue: engine) else {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
