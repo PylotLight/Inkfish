@@ -2,14 +2,32 @@ import { useEffect, useRef, useState } from 'react'
 import { pickAutoEngine } from '../../../shared/stt'
 import type { SttEngine } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, saveAudioPrefs, toWav } from '../audio'
+import benchUrl from '../assets/bench/librispeech-1272.wav?url'
+import { BENCH_CLIP, fmtSpeed, fmtWer, speedFactor, wordErrorRate } from '../../../shared/sttBench'
 import { isWebEngine, prepareWeb, removeWeb, transcribeWeb, webEngines } from '../webStt'
 
 type Run =
   | { state: 'running' }
-  | { state: 'done'; text: string; ms: number; runtime?: string }
+  | { state: 'done'; text: string; ms: number; runtime?: string; wer?: number; speed?: number }
   | { state: 'error'; text: string }
 
 const CLIP_SECONDS = 6
+const SCORES_KEY = 'inkfish.sttScores'
+
+/** Last benchmark-clip result per engine, kept so the list stays comparable. */
+type Score = { wer: number; speed: number; at: number }
+function loadScores(): Record<string, Score> {
+  try {
+    return JSON.parse(localStorage.getItem(SCORES_KEY) || '{}') as Record<string, Score>
+  } catch {
+    return {}
+  }
+}
+
+/** Duration of a 16 kHz mono 16-bit wav from toWav(). */
+const wavSeconds = (wav: Blob): number => Math.max(0, wav.size - 44) / 32000
+
+type Clip = { dataUrl: string; wav: Blob; label: string; seconds: number; reference?: string }
 
 /**
  * Settings › Voice Engine — FluidVoice-style: the active model up top, every
@@ -21,7 +39,9 @@ export default function VoiceEngineSettings(): React.JSX.Element {
   const [choice, setChoice] = useState(loadAudioPrefs().engine)
   const [busy, setBusy] = useState<Record<string, string>>({})
   const [runs, setRuns] = useState<Record<string, Run>>({})
-  const [clip, setClip] = useState<{ dataUrl: string; wav: Blob; label: string } | null>(null)
+  const [clip, setClip] = useState<Clip | null>(null)
+  const [reference, setReference] = useState('')
+  const [scores, setScores] = useState<Record<string, Score>>(loadScores)
   const [captions, setCaptions] = useState(loadAudioPrefs().liveCaptions)
   const [recording, setRecording] = useState(false)
   const [comparing, setComparing] = useState(false)
@@ -76,10 +96,18 @@ export default function VoiceEngineSettings(): React.JSX.Element {
       if (choice === e.id) activate('')
     })
 
-  const useClip = async (blob: Blob, label: string): Promise<void> => {
+  const useClip = async (blob: Blob, label: string, ref?: string): Promise<Clip> => {
     const wav = await toWav(blob)
-    setClip({ dataUrl: await blobToDataUrl(wav), wav, label })
+    const c: Clip = { dataUrl: await blobToDataUrl(wav), wav, label, seconds: wavSeconds(wav), reference: ref }
+    setClip(c)
+    setReference(ref ?? '')
     setRuns({})
+    return c
+  }
+
+  const benchClip = async (): Promise<Clip> => {
+    const blob = await (await fetch(benchUrl)).blob()
+    return useClip(blob, `Benchmark · ${Math.round(BENCH_CLIP.seconds)} s of read English (LibriSpeech)`, BENCH_CLIP.text)
   }
 
   const record = async (): Promise<void> => {
@@ -104,8 +132,11 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     window.setTimeout(() => rec.state === 'recording' && rec.stop(), CLIP_SECONDS * 1000)
   }
 
-  const compare = async (): Promise<void> => {
-    if (!clip || !engines) return
+  const compare = async (given?: Clip): Promise<void> => {
+    const c = given ?? clip
+    if (!c || !engines) return
+    const ref = (given ? c.reference : reference)?.trim() || ''
+    const isBench = ref === BENCH_CLIP.text
     setComparing(true)
     const targets = engines.filter((e) => e.ready)
     setRuns(Object.fromEntries(targets.map((e) => [e.id, { state: 'running' } as Run])))
@@ -113,15 +144,27 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     for (const e of targets) {
       try {
         const r = isWebEngine(e.id)
-          ? await transcribeWeb(e.id, clip.wav)
-          : await window.api.stt.test(clip.dataUrl, e.id)
+          ? await transcribeWeb(e.id, c.wav)
+          : await window.api.stt.test(c.dataUrl, e.id)
+        const ms = r.ms ?? 0
+        const wer = ref ? wordErrorRate(ref, r.text).wer : undefined
+        const speed = speedFactor(c.seconds, ms) || undefined
+        if (isBench && wer !== undefined && speed) {
+          setScores((prev) => {
+            const next = { ...prev, [e.id]: { wer, speed, at: Date.now() } }
+            localStorage.setItem(SCORES_KEY, JSON.stringify(next))
+            return next
+          })
+        }
         setRuns((p) => ({
           ...p,
           [e.id]: {
             state: 'done',
             text: r.text.trim() || '(no speech heard)',
-            ms: r.ms ?? 0,
-            runtime: r.runtime
+            ms,
+            runtime: r.runtime,
+            wer,
+            speed
           }
         }))
       } catch (err) {
@@ -138,6 +181,17 @@ export default function VoiceEngineSettings(): React.JSX.Element {
   const chosen = engines?.find((e) => e.id === choice && e.ready)
   const active = chosen ?? (engines ? pickAutoEngine(engines) : undefined)
   const others = engines?.filter((e) => e.id !== active?.id) ?? []
+  const scored = Object.entries(scores).filter(([id]) => engines?.some((e) => e.id === id))
+  const bestWer = Math.min(...scored.map(([, v]) => v.wer))
+  const bestSpeed = Math.max(...scored.map(([, v]) => v.speed))
+  const benchAll = async (): Promise<void> => {
+    setNote(null)
+    try {
+      await compare(await benchClip())
+    } catch (err) {
+      setNote(`Benchmark clip: ${ipcError(err)}`)
+    }
+  }
   const fastest = Math.min(...Object.values(runs).flatMap((r) => (r.state === 'done' && r.ms > 0 ? [r.ms] : [])))
 
   const row = (e: SttEngine, isActive: boolean): React.JSX.Element => {
@@ -152,6 +206,22 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             {e.size && <span className="tag">{e.size}</span>}
             {e.languages && <span className="tag">{e.languages}</span>}
             {!e.ready && <span className="tag dim">{e.detail}</span>}
+            {scores[e.id] && (
+              <>
+                <span
+                  className={`tag score${scores[e.id]!.wer === bestWer ? ' best' : ''}`}
+                  title="Word error rate on the benchmark clip — lower is more accurate"
+                >
+                  {fmtWer(scores[e.id]!.wer)} errors
+                </span>
+                <span
+                  className={`tag score${scores[e.id]!.speed === bestSpeed ? ' best' : ''}`}
+                  title="Seconds of audio per second of processing on this Mac — higher is faster"
+                >
+                  {fmtSpeed(scores[e.id]!.speed)}
+                </span>
+              </>
+            )}
             {e.ready && e.id.startsWith('apple-speech') && <span className="tag dim">Needs Siri or Dictation</span>}
           </div>
           {run && (
@@ -160,6 +230,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
               {run.state === 'done' && (
                 <>
                   <span className={`engine-ms${run.ms === fastest ? ' best' : ''}`}>{fmtMs(run.ms)}</span>
+                  {run.wer !== undefined && <span className="engine-ms">{fmtWer(run.wer)} WER</span>}
                   <span className="engine-text">{run.text}</span>
                   {run.runtime && <span className="muted small engine-runtime">{run.runtime}</span>}
                 </>
@@ -272,23 +343,28 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <span className="muted small setting-hint">
             {clip
               ? `Clip: ${clip.label}`
-              : `Record ${CLIP_SECONDS} seconds or pick an audio file, then run every ready engine on it.`}
+              : `Benchmark runs every downloaded engine on a ${Math.round(BENCH_CLIP.seconds)} s clip with a known transcript and scores accuracy (word error rate, lower is better) and speed on this Mac. Or try your own recording or file.`}
           </span>
         </span>
         <div className="row" style={{ marginTop: 0 }}>
+          <button
+            className="btn sm mint"
+            disabled={recording || comparing || ready.length === 0}
+            onClick={() => void benchAll()}
+          >
+            {comparing ? 'Running…' : `Benchmark ${ready.length} engine${ready.length === 1 ? '' : 's'}`}
+          </button>
           <button className="btn ghost sm" disabled={recording || comparing} onClick={() => void record()}>
             {recording ? `Recording… (${CLIP_SECONDS} s)` : 'Record clip'}
           </button>
           <button className="btn ghost sm" disabled={recording || comparing} onClick={() => fileRef.current?.click()}>
             Use audio file…
           </button>
-          <button
-            className="btn sm mint"
-            disabled={!clip || comparing || ready.length === 0}
-            onClick={() => void compare()}
-          >
-            {comparing ? 'Comparing…' : `Compare ${ready.length} engine${ready.length === 1 ? '' : 's'}`}
-          </button>
+          {clip && clip.reference !== BENCH_CLIP.text && (
+            <button className="btn ghost sm" disabled={comparing || ready.length === 0} onClick={() => void compare()}>
+              {comparing ? 'Comparing…' : 'Compare on this clip'}
+            </button>
+          )}
           <input
             ref={fileRef}
             type="file"
@@ -301,6 +377,24 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             }}
           />
         </div>
+        {clip && clip.reference !== BENCH_CLIP.text && (
+          <div className="row" style={{ marginTop: 8 }}>
+            <input
+              className="grow"
+              type="text"
+              value={reference}
+              placeholder="What was said (optional) — adds an error rate for this clip"
+              onChange={(e) => setReference(e.target.value)}
+              aria-label="Reference transcript"
+            />
+          </div>
+        )}
+        {scored.length > 0 && (
+          <p className="muted small setting-hint">
+            Scores on each model are from the last benchmark on this Mac. Accuracy is on clean read English; noisy calls
+            and accents will score worse for every model.
+          </p>
+        )}
         {note && (
           <p className="small setting-hint error-text" style={{ overflowWrap: 'anywhere' }}>
             {note}

@@ -37,7 +37,8 @@
     "dist:ci": "electron-builder --publish never",
     "release": "bun scripts/release.ts",
     "postinstall": "install-electron",
-    "stt:build": "bun scripts/build-stt.ts"
+    "stt:build": "bun scripts/build-stt.ts",
+    "bench:stt": "bun scripts/bench-stt.ts"
   },
   "build": {
     "appId": "com.pylotlight.inkfish",
