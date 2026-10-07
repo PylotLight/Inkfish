@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "expo": "^57.0.0",
+    "expo-application": "~57.0.3",
     "expo-asset": "~57.0.19",
     "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.3",
     "expo-constants": "~57.0.21",
     "expo-file-system": "~57.0.7",
+    "expo-intent-launcher": "~57.0.1",
     "expo-linking": "~57.0.12",
     "expo-share-intent": "^8.0.1",
     "lucide-react-native": "^1.52.0",

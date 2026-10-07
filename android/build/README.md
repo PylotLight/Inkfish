@@ -40,14 +40,41 @@ POD=$(kubectl -n shuttle-build get pod -l job-name=inkfish-apk-build -o jsonpath
 kubectl -n shuttle-build cp "$POD:/cache/output/app-release.apk" ./Inkfish.apk
 ```
 
-The job clones the `android-client` branch, so **push the branch before building**.
+The job clones `main` (override with the `BRANCH` env in the Job), so **push before building**.
 Gradle/npm caches persist on the `shuttle-build-cache` PVC — first build is
 slow (~10–20 min), later ones reuse the cache.
 
 ## What the job does
 
-1. `git clone --branch android-client --depth 1`
+1. `git clone --branch $BRANCH --depth 1` (default `main`)
 2. `npm ci` (cached on PVC)
 3. `npx expo prebuild --platform android --clean` (generates `android/android/`, gitignored)
 4. `build/inject-signing.sh` — release `signingConfigs` from the Secret env
 5. `./gradlew :app:assembleRelease` + `apksigner verify`
+
+## GitHub releases + in-app updates
+
+`.github/workflows/android-release.yml` builds the same signed APK on GitHub
+Actions and publishes it as a release (`android-vX.Y.Z`, never "latest", so
+the Mac cask is untouched). The app checks those releases (Settings ›
+Updates, plus an auto-check on launch) and installs over itself — same key,
+data kept.
+
+One-time: copy the cluster keystore into repo secrets (values never printed):
+
+```bash
+R=PylotLight/Inkfish
+kubectl -n shuttle-build get secret android-release-keystore -o jsonpath='{.data.keystore}' \
+  | gh secret set ANDROID_KEYSTORE_BASE64 -R $R
+for k in store-password key-password key-alias; do
+  name=ANDROID_$(echo $k | tr a-z- A-Z_)
+  kubectl -n shuttle-build get secret android-release-keystore -o jsonpath="{.data.$k}" | base64 -d \
+    | gh secret set "$name" -R $R
+done
+```
+
+Release: `git tag android-v0.2.0 && git push origin android-v0.2.0` (or Actions
+› android-release › Run workflow). versionCode = MAJOR·10000 + MINOR·100 + PATCH.
+
+**First install of the updater:** builds before 0.2.0 don't have it, so install
+that one APK manually; every later version arrives in-app.

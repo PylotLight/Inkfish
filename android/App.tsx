@@ -7,6 +7,7 @@ import Constants from 'expo-constants';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { StoreProvider, useStore } from './src/lib/store';
 import { PrefsProvider, usePrefs } from './src/lib/prefs';
+import { UpdatesProvider } from './src/lib/updates';
 import { toPendingShare, type PendingShare } from './src/lib/share';
 import { useTheme } from './src/theme';
 import { CaptureScreen } from './src/screens/CaptureScreen';
@@ -150,6 +151,7 @@ function Shell(): React.JSX.Element {
             onCompose={(o) => setComposing({ voice: !!o?.voice })}
             onInbox={() => setTab('inbox')}
             onToday={() => setTab('today')}
+            onUpdates={() => setTab('settings')}
           />
         ) : tab === 'inbox' ? (
           <InboxScreen onOpen={(id) => setOpenId(id)} onMenu={() => setDrawer(true)} />
@@ -194,7 +196,9 @@ export default function App(): React.JSX.Element {
       <PrefsProvider>
         <ShareIntentProvider options={{ disabled }}>
           <StoreProvider>
-            <Shell />
+            <UpdatesProvider>
+              <Shell />
+            </UpdatesProvider>
           </StoreProvider>
         </ShareIntentProvider>
       </PrefsProvider>

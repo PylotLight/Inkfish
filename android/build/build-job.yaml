@@ -47,6 +47,8 @@ spec:
               mountPath: /keystore
               readOnly: true
           env:
+            - name: BRANCH
+              value: main
             - name: CI
               value: "1"
             - name: GRADLE_USER_HOME
@@ -73,7 +75,7 @@ spec:
             - |
               set -euo pipefail
               export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-              git clone --branch android-client --depth 1 \
+              git clone --branch "${BRANCH:-main}" --depth 1 \
                 https://github.com/PylotLight/Inkfish.git /src
               cd /src/android
               npm ci --cache /cache/npm --no-audit --no-fund
