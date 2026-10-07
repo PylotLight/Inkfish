@@ -32,6 +32,7 @@ const TEXT_FONTS = [
   'Trebuchet MS',
   'Gill Sans',
   'Avenir Next',
+  'Libron',
   'Georgia',
   'Palatino',
   'Charter',
