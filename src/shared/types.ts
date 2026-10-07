@@ -143,6 +143,24 @@ export interface MeetingImportInput {
   source?: NoteSource
 }
 
+/** A live-captured meeting written straight into the vault as its own note. */
+export interface MeetingSaveInput {
+  title: string
+  /** Vault folder it is filed under ('' = root). Defaults to `Meetings`. */
+  folder: string
+  tags: string[]
+  /** Transcript markdown (speaker-labelled paragraphs). */
+  transcript: string
+  /** Speaker labels in channel order, e.g. ['Me', 'Remote']. */
+  speakers: string[]
+  startedAt: number
+  durationSec: number
+  /** Mixed recording, vault-relative (`assets/…`). */
+  audioRel?: string
+  /** Existing note to replace (re-title / re-file after the first save). */
+  replaceRel?: string
+}
+
 export interface SttResult {
   text: string
   /** Engine id that produced it (e.g. 'parakeet-v3', 'apple-speech'). */

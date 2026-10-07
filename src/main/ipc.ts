@@ -10,6 +10,7 @@ import type {
   InboxAddInput,
   InboxItem,
   MeetingImportInput,
+  MeetingSaveInput,
   NoteDoc,
   NoteEntry,
   NoteKind,
@@ -37,6 +38,8 @@ import {
   loadTitles,
   migrateTitles,
   meetingToMarkdown,
+  movePath,
+  writeMeetingNote,
   parseVtt,
   purgeTrash,
   readInboxItem,
@@ -454,6 +457,13 @@ export function registerIpc(): void {
     reindexVault(paths.root)
     return next
   })
+  ipcMain.handle('files:move', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): string => {
+    const paths = requireNotes()
+    const next = movePath(rel, destDirRel, paths)
+    migrateTitles(rel, next)
+    reindexVault(paths.root)
+    return next
+  })
   ipcMain.handle('files:trash', (_e: IpcMainInvokeEvent, rel: string) => {
     const paths = requireNotes()
     const entry = trashPath(rel, paths)
@@ -556,6 +566,16 @@ export function registerIpc(): void {
       return item
     }
   )
+  ipcMain.handle('meeting:save', (_e: IpcMainInvokeEvent, input: MeetingSaveInput): string => {
+    const paths = requireNotes()
+    const rel = writeMeetingNote(input, paths)
+    if (input.replaceRel && input.replaceRel !== rel) {
+      migrateTitles(input.replaceRel, rel)
+      indexFile(join(paths.root, input.replaceRel), input.replaceRel)
+    }
+    indexFile(join(paths.root, rel), rel)
+    return rel
+  })
   ipcMain.handle(
     'meeting:pick-file',
     async (): Promise<{ text: string; format: 'vtt' | 'text' } | { error: string }> => {

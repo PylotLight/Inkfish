@@ -10,7 +10,7 @@ import Home from './views/Home'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
-import MeetingImport from './views/MeetingImport'
+import Meetings from './views/Meetings'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 
@@ -106,6 +106,8 @@ function Main(): React.JSX.Element {
   const [ostep, setOstep] = useState(0)
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
+  /** A capture is running — keep the Meetings page mounted while you browse. */
+  const [meetingLive, setMeetingLive] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [backend, setBackend] = useState('…')
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
@@ -859,7 +861,7 @@ function Main(): React.JSX.Element {
             setQuery(e.target.value)
             if (scope !== 'notes') setScope('notes')
           }}
-          placeholder="Search notes… (FTS)"
+          placeholder="Search notes…"
           aria-label="Search notes"
         />
 
@@ -941,6 +943,9 @@ function Main(): React.JSX.Element {
         )}
 
         <div className="side-foot">
+          <span className="status-sub" title={vaultInfo?.root ?? ''}>
+            {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
+          </span>
           <div className="side-foot-row">
             <button className="settings-btn" onClick={openSettings}>
               <span aria-hidden>⚙</span> Settings
@@ -954,9 +959,6 @@ function Main(): React.JSX.Element {
               <span aria-hidden>⏻</span>
             </button>
           </div>
-          <span className="status-sub" title={vaultInfo?.root ?? ''}>
-            {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
-          </span>
         </div>
       </aside>
 
@@ -993,16 +995,7 @@ function Main(): React.JSX.Element {
               notify={notify}
             />
           </main>
-        ) : showMeeting ? (
-          <main className="view-scroll" aria-label="Meeting notes">
-            <MeetingImport
-              page
-              onClose={() => setShowMeeting(false)}
-              onImported={refreshAll}
-              notify={notify}
-            />
-          </main>
-        ) : (
+        ) : showMeeting ? null : (
           <>
             <header className="topbar">
               <button
@@ -1017,8 +1010,8 @@ function Main(): React.JSX.Element {
               <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
                 ✒ Capture
               </button>
-              <button className="btn ghost sm" onClick={() => setShowMeeting(true)}>
-                🎙 Meeting
+              <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
+                {meetingLive ? '● Recording' : '🎙 Meetings'}
               </button>
               <span className="flex-sp" />
               {dirty && <span className="pill dirty-static">unsaved</span>}
@@ -1085,6 +1078,22 @@ function Main(): React.JSX.Element {
               </main>
             )}
           </>
+        )}
+        {(showMeeting || meetingLive) && (
+          <main className="view-scroll" aria-label="Meetings" hidden={!showMeeting || settingsOpen}>
+            <Meetings
+              notes={finalNotes}
+              titleOf={titleOf}
+              onOpenNote={(id) => {
+                setShowMeeting(false)
+                selectNote(id)
+              }}
+              onRefresh={refreshAll}
+              onClose={() => setShowMeeting(false)}
+              onRecording={setMeetingLive}
+              notify={notify}
+            />
+          </main>
         )}
       </div>
 

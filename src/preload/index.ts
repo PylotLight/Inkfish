@@ -5,6 +5,7 @@ import type {
   InboxAddInput,
   InboxItem,
   MeetingImportInput,
+  MeetingSaveInput,
   NoteDoc,
   NoteEntry,
   NoteKind,
@@ -120,6 +121,7 @@ const api = {
       ipcRenderer.invoke('files:mkdir', parentRel, name),
     rename: (rel: string, newName: string): Promise<string> =>
       ipcRenderer.invoke('files:rename', rel, newName),
+    move: (rel: string, destDirRel: string): Promise<string> => ipcRenderer.invoke('files:move', rel, destDirRel),
     trash: (rel: string): Promise<{ id: string; originalRel: string; name: string }> =>
       ipcRenderer.invoke('files:trash', rel),
     purgeTrash: (): Promise<number> => ipcRenderer.invoke('files:purge-trash'),
@@ -171,6 +173,8 @@ const api = {
   meeting: {
     import: (input: MeetingImportInput): Promise<InboxItem> =>
       ipcRenderer.invoke('meeting:import', input),
+    /** Write a live-captured meeting as its own note. Returns its vault rel. */
+    save: (input: MeetingSaveInput): Promise<string> => ipcRenderer.invoke('meeting:save', input),
     pickFile: (): Promise<{ text: string; format: 'vtt' | 'text' } | { error: string }> =>
       ipcRenderer.invoke('meeting:pick-file')
   }
