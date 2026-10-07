@@ -4,6 +4,9 @@ import Foundation
 import Speech
 
 enum AppleSpeech {
+  static let name = "Apple Speech · Legacy"
+  static let subtitle = "SFSpeechRecognizer — built into macOS, on-device"
+
   static func authName(_ s: SFSpeechRecognizerAuthorizationStatus) -> String {
     switch s {
     case .authorized: return "authorized"
@@ -20,8 +23,8 @@ enum AppleSpeech {
 
   static func engine(_ opts: Options) -> Engine {
     guard let r = recognizer(opts) else {
-      return Engine(id: "apple-speech", name: "Apple Speech", available: false, ready: false,
-                    detail: "No recognizer for \(opts.locale.identifier)")
+      return Engine(id: "apple-speech", name: name, available: false, ready: false,
+                    detail: "No recognizer for \(opts.locale.identifier)", subtitle: subtitle)
     }
     let auth = SFSpeechRecognizer.authorizationStatus()
     let ready = r.isAvailable && r.supportsOnDeviceRecognition && auth != .denied && auth != .restricted
@@ -33,9 +36,10 @@ enum AppleSpeech {
     } else if !r.isAvailable {
       detail = "Unavailable — turn on Siri or Dictation in System Settings"
     } else {
-      detail = "Built in, on-device · needs Siri or Dictation enabled"
+      detail = "Ready · needs Siri or Dictation enabled"
     }
-    return Engine(id: "apple-speech", name: "Apple Speech", available: true, ready: ready, detail: detail)
+    return Engine(id: "apple-speech", name: name, available: true, ready: ready, detail: detail,
+                  subtitle: subtitle, size: "Built in", languages: r.locale.identifier)
   }
 
   static func authorize() async -> SFSpeechRecognizerAuthorizationStatus {

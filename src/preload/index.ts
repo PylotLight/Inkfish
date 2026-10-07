@@ -163,6 +163,8 @@ const api = {
     engines: (): Promise<SttEngine[]> => ipcRenderer.invoke('stt:engines'),
     /** Download models / language assets for an engine (can take minutes). */
     prepare: (engine: string): Promise<void> => ipcRenderer.invoke('stt:prepare', engine),
+    /** Delete an engine's downloaded models. */
+    remove: (engine: string): Promise<void> => ipcRenderer.invoke('stt:remove', engine),
     pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>
       ipcRenderer.invoke('stt:pick-audio')
   },

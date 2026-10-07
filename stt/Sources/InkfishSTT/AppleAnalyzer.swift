@@ -9,7 +9,8 @@ import Speech
 
 enum AppleAnalyzer {
   static let id = "apple-analyzer"
-  static let name = "Apple SpeechAnalyzer"
+  static let name = "Apple Speech · macOS 26+"
+  static let subtitle = "SpeechAnalyzer — Apple's new on-device transcriber"
 
   static func engine(_ opts: Options) async -> Engine {
     #if compiler(>=6.2)
@@ -17,14 +18,15 @@ enum AppleAnalyzer {
       let locale = await SpeechTranscriber.supportedLocale(equivalentTo: opts.locale)
       guard let locale else {
         return Engine(id: id, name: name, available: false, ready: false,
-                      detail: "Language \(opts.locale.identifier) not supported")
+                      detail: "Language \(opts.locale.identifier) not supported", subtitle: subtitle)
       }
       return Engine(id: id, name: name, available: true, ready: true,
-                    detail: "Built into macOS 26 · \(locale.identifier) · fetches language assets on first use")
+                    detail: "Ready · fetches language assets on first use",
+                    subtitle: subtitle, size: "Built in", languages: locale.identifier)
     }
-    return Engine(id: id, name: name, available: false, ready: false, detail: "Needs macOS 26")
+    return Engine(id: id, name: name, available: false, ready: false, detail: "Needs macOS 26", subtitle: subtitle)
     #else
-    return Engine(id: id, name: name, available: false, ready: false, detail: "Built without the macOS 26 SDK")
+    return Engine(id: id, name: name, available: false, ready: false, detail: "Built without the macOS 26 SDK", subtitle: subtitle)
     #endif
   }
 

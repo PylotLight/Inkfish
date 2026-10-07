@@ -14,8 +14,7 @@ import { listEngines } from './stt'
  * reachable from Electron, so classification today = the built-in rules
  * engine. Apple Speech runs through the bundled `inkfish-stt` Swift CLI
  * (`stt/inkfish-stt.swift`, on-device `SFSpeechRecognizer`).
- * STT = native binaries only (`$INKFISH_STT_BIN`, `parakeet-cli`,
- * `inkfish-stt` Apple Speech CLI) — never python/pip. See `stt/README.md`.
+ * STT = bundled native helper only (see ./stt.ts, stt/README.md) — never python/pip.
  */
 
 export interface ProviderStatus {

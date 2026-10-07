@@ -125,7 +125,9 @@ export default function AudioSettings(): React.JSX.Element {
   const play = async (url: string): Promise<void> => {
     const el = new Audio(url)
     await routeOutput(el, prefs.outputId)
-    await el.play().catch(() => setResult({ ok: false, text: 'Playback failed on that output.' }))
+    await el
+      .play()
+      .catch((e: unknown) => setResult({ ok: false, text: `Playback failed: ${e instanceof Error ? e.message : String(e)}` }))
   }
 
   const playTone = async (): Promise<void> => {
