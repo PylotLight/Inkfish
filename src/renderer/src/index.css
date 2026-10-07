@@ -465,6 +465,39 @@ input[type='range'] {
   z-index: 50;
 }
 
+/* Sits over the composer: tinted with the theme bg + heavier frost than the
+   shared .glass so text underneath doesn't read through. */
+.toast.glass {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme='paper'] .toast.glass {
+  background: rgba(250, 248, 243, 0.78);
+  box-shadow: 0 10px 30px rgba(30, 25, 15, 0.18);
+}
+
+.level-meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.level-meter span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 60ms linear;
+}
+
+.error-text {
+  color: var(--danger, #ff8a80);
+}
+
 .toast-detail {
   display: block;
   margin-top: 3px;

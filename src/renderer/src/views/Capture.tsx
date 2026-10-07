@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
+import { blobToDataUrl, openMic, toWav } from '../audio'
 
 /**
  * Capture popover (380×300): one borderless composer on the window's own
@@ -98,7 +99,7 @@ export default function Capture(): React.JSX.Element {
 
   const startRec = async (): Promise<void> => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await openMic()
       const rec = new MediaRecorder(stream)
       const chunks: Blob[] = []
       rec.ondataavailable = (e) => {
@@ -292,54 +293,4 @@ export default function Capture(): React.JSX.Element {
       )}
     </div>
   )
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(String(r.result))
-    r.onerror = () => reject(new Error('read failed'))
-    r.readAsDataURL(blob)
-  })
-}
-
-/** Decode any recorded audio → 16kHz mono WAV PCM16 for the STT sidecar. */
-async function toWav(blob: Blob): Promise<Blob> {
-  const ctx = new AudioContext()
-  try {
-    const buf = await ctx.decodeAudioData(await blob.arrayBuffer())
-    const targetRate = 16000
-    const offline = new OfflineAudioContext(1, Math.ceil((buf.duration * targetRate) / 1), targetRate)
-    const src = offline.createBufferSource()
-    src.buffer = buf
-    src.connect(offline.destination)
-    src.start()
-    const rendered = await offline.startRendering()
-    const data = rendered.getChannelData(0)
-    const wav = new ArrayBuffer(44 + data.length * 2)
-    const view = new DataView(wav)
-    const writeStr = (off: number, s: string): void => {
-      for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i))
-    }
-    writeStr(0, 'RIFF')
-    view.setUint32(4, 36 + data.length * 2, true)
-    writeStr(8, 'WAVE')
-    writeStr(12, 'fmt ')
-    view.setUint32(16, 16, true)
-    view.setUint16(20, 1, true)
-    view.setUint16(22, 1, true)
-    view.setUint32(24, targetRate, true)
-    view.setUint32(28, targetRate * 2, true)
-    view.setUint16(32, 2, true)
-    view.setUint16(34, 16, true)
-    writeStr(36, 'data')
-    view.setUint32(40, data.length * 2, true)
-    for (let i = 0; i < data.length; i++) {
-      const s = Math.max(-1, Math.min(1, data[i] ?? 0))
-      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
-    }
-    return new Blob([wav], { type: 'audio/wav' })
-  } finally {
-    void ctx.close()
-  }
 }
