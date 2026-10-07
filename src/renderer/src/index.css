@@ -694,6 +694,16 @@ html[data-theme='paper'] .toast.glass {
   color: var(--muted);
 }
 
+.tag.score {
+  border-color: transparent;
+  background: var(--panel);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag.score.best {
+  color: var(--mint);
+}
+
 .engine-actions {
   flex: none;
   display: flex;
