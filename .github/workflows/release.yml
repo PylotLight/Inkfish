@@ -41,13 +41,9 @@ jobs:
           bun-version: latest
 
       - run: bun install --frozen-lockfile
-      - run: bun run build
-
-      # Apple Speech CLI (Swift) → stt/bin/inkfish-stt, bundled as
+      # Also builds the Apple Speech CLI (stt/bin/inkfish-stt), bundled as
       # Contents/Resources/bin/inkfish-stt via build.mac.extraResources.
-      - name: build apple speech cli
-        if: matrix.name == 'macos'
-        run: bun run stt:build
+      - run: bun run build
 
       # Unsigned on macOS unless CSC_* secrets are configured — see
       # docs/releasing.md ("Code signing"). Brew casks work either way.

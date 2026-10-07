@@ -15,7 +15,7 @@ export default function Capture(): React.JSX.Element {
   )
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
+  const [note, setNote] = useState<{ msg: string; detail?: string } | null>(null)
   const [recState, setRecState] = useState<'idle' | 'rec' | 'working'>('idle')
   const [attachments, setAttachments] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -32,9 +32,12 @@ export default function Capture(): React.JSX.Element {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const say = (msg: string): void => {
-    setNote(msg)
-    window.setTimeout(() => setNote(null), 2600)
+  const noteTimer = useRef<number | undefined>(undefined)
+  /** Short status line; `detail` shows on hover. Errors linger longer. */
+  const say = (msg: string, detail?: string, ms = 2600): void => {
+    setNote({ msg, detail })
+    window.clearTimeout(noteTimer.current)
+    noteTimer.current = window.setTimeout(() => setNote(null), ms)
   }
 
   const appendText = (t: string): void =>
@@ -106,7 +109,7 @@ export default function Capture(): React.JSX.Element {
       rec.start()
       setRecState('rec')
     } catch {
-      say('Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.')
+      say('Mic blocked', 'Allow Inkfish in System Settings › Privacy & Security › Microphone', 6000)
     }
   }
 
@@ -124,7 +127,7 @@ export default function Capture(): React.JSX.Element {
         say(`Transcribed (${stt.provider}) ✓`)
       } catch (e) {
         const why = (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-        say(`STT failed — audio kept. ${why}`)
+        say("Couldn't transcribe — audio saved", why, 6000)
       }
     } catch {
       say('Recording failed — type instead.')
@@ -281,7 +284,12 @@ export default function Capture(): React.JSX.Element {
           <kbd>⌘↵</kbd>
         </button>
       </div>
-      {note && <div className="toast glass">{note}</div>}
+      {note && (
+        <div className="toast glass" title={note.detail}>
+          {note.msg}
+          {note.detail && <span className="toast-detail">{note.detail}</span>}
+        </div>
+      )}
     </div>
   )
 }

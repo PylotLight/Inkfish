@@ -8,7 +8,7 @@
 // pending stdin bytes before returning the terminal to the shell.
 //
 // Run with: bun scripts/dev.ts [-- ...electron-vite args]
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +17,9 @@ const bin =
   process.platform === 'win32'
     ? join(root, 'node_modules', '.bin', 'electron-vite.cmd')
     : join(root, 'node_modules', '.bin', 'electron-vite')
+
+// Apple Speech CLI for voice notes (macOS; no-op elsewhere, skips if fresh).
+spawnSync(process.execPath, [join(root, 'scripts', 'build-stt.ts')], { stdio: 'inherit' })
 
 const child: ChildProcess = spawn(bin, ['dev', ...process.argv.slice(2)], {
   stdio: 'inherit',
