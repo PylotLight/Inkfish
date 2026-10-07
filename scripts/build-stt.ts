@@ -1,6 +1,6 @@
 // Build Inkfish's bundled transcription helper → stt/bin/inkfish-stt
 // (SwiftPM package in stt/: Apple Speech, SpeechAnalyzer, Parakeet via
-// FluidAudio). Universal arm64 + x86_64 when possible, else host arch.
+// FluidAudio). Host arch locally; universal arm64 + x86_64 in CI/releases.
 // Runs from `bun run dev` and `bun run build`; skips when the binary is newer
 // than its sources. No Xcode tools: warns locally, fails in CI. `--force`
 // rebuilds. No-op off macOS.
@@ -71,16 +71,24 @@ const binPath = (args: string[]): string | null => {
   return candidates.find((d) => d && existsSync(join(d, 'inkfish-stt'))) ?? null
 }
 
+// Local dev: this Mac's arch only (arm64 on Apple silicon) — fast, and no
+// "x86_64 is deprecated" warning. Releases still ship an Intel build, so CI
+// (or INKFISH_STT_UNIVERSAL=1) builds a universal arm64 + x86_64 binary.
+const hostArch = process.arch === 'x64' ? 'x86_64' : 'arm64'
+const universal = !!process.env['CI'] || process.env['INKFISH_STT_UNIVERSAL'] === '1'
+const archArgs = universal ? ['--arch', 'arm64', '--arch', 'x86_64'] : ['--arch', hostArch]
+
 let productDir: string | null = null
 try {
-  swift(['--arch', 'arm64', '--arch', 'x86_64'])
-  productDir = binPath(['--arch', 'arm64', '--arch', 'x86_64'])
+  swift(archArgs)
+  productDir = binPath(archArgs)
 } catch {
-  console.warn('[stt:build] universal build failed — building for this Mac only')
+  if (!universal) throw new Error(`[stt:build] ${hostArch} build failed`)
+  console.warn('[stt:build] universal build failed — building arm64 only')
 }
-if (!productDir) {
-  swift([])
-  productDir = binPath([])
+if (!productDir && universal) {
+  swift(['--arch', 'arm64'])
+  productDir = binPath(['--arch', 'arm64'])
 }
 if (!productDir) {
   console.error('[stt:build] built, but could not find the inkfish-stt product under stt/.build')
@@ -96,4 +104,9 @@ for (const e of readdirSync(productDir)) {
 }
 execFileSync('strip', ['-x', out])
 execFileSync('codesign', ['--force', '--sign', '-', '--options', 'runtime', out], { stdio: 'inherit' })
-console.log(`[stt:build] ${out}`)
+const archs = execFileSync('lipo', ['-archs', out], { encoding: 'utf8' }).trim()
+if (!archs.split(/\s+/).includes('arm64')) {
+  console.error(`[stt:build] ${out} has no arm64 slice (${archs})`)
+  process.exit(1)
+}
+console.log(`[stt:build] ${out} (${archs})`)
