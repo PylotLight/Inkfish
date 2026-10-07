@@ -3740,3 +3740,56 @@ html[data-density='compact'] .md p {
 .meet-ch.ch-system .meet-level {
   color: var(--accent);
 }
+
+/* ---------- Inkfish: settings fill the window ----------
+   Settings used to sit in a 720px column, so a maximised window left it cramped
+   in the middle. It now spans the content area and reflows by its own width
+   (container queries), so Meetings pages keep their narrower column. */
+
+.settings-page.settings-wide {
+  max-width: none;
+  width: 100%;
+  padding: clamp(22px, 2.6vw, 40px) clamp(24px, 3.2vw, 56px);
+}
+
+.settings-wide .settings-body {
+  grid-template-columns: clamp(168px, 14vw, 220px) minmax(0, 1fr);
+  gap: clamp(22px, 2.4vw, 40px);
+}
+
+.settings-wide .settings-groups {
+  container-type: inline-size;
+  container-name: settings;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 26px clamp(24px, 3vw, 48px);
+  align-items: start;
+}
+
+/* Long hints stay readable instead of running the full width. */
+.settings-wide .setting-hint {
+  max-width: 72ch;
+}
+
+/* Device pickers don't need to be a metre long. */
+.settings-wide .settings-group select.grow {
+  max-width: 640px;
+}
+
+@container settings (min-width: 900px) {
+  .settings-wide .engine-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+    gap: 8px;
+  }
+
+  .settings-wide .engine-row {
+    height: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-wide .settings-body {
+    grid-template-columns: 1fr;
+  }
+}

@@ -157,7 +157,7 @@ export default function SettingsView({
   }
 
   return (
-    <section className="card settings-page fade-in" aria-label="Settings">
+    <section className="card settings-page settings-wide fade-in" aria-label="Settings">
       <div className="row between settings-top">
         <div>
           <span className="eyebrow">Inkfish</span>
