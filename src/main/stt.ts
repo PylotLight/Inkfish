@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { pickAutoEngine } from '../shared/stt'
+import { parseHelperJson, pickAutoEngine } from '../shared/stt'
 import type { DownloadProgress, DownloadState, SttEngine, SttResult } from '../shared/types'
 export type { DownloadProgress } from '../shared/types'
 
@@ -65,7 +65,7 @@ export async function listEngines(): Promise<SttEngine[]> {
   const helper = helperPath()
   if (helper) {
     try {
-      engines.push(...(JSON.parse(await run(helper, ['engines'], 20_000)) as SttEngine[]))
+      engines.push(...(parseHelperJson<SttEngine[]>(await run(helper, ['engines'], 20_000)) ?? []))
     } catch (e) {
       engines.push({
         id: 'apple-speech',
@@ -107,26 +107,25 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
     out = await run(helperPath() as string, ['transcribe', wavPath, '--engine', engine.id], timeoutMs)
   }
   const ms = Date.now() - t0
-  try {
-    const p = JSON.parse(out) as {
-      text?: string
-      segments?: SttResult['segments']
-      ms?: number
-      runtime?: string
-    }
+  const p = parseHelperJson<{
+    text?: string
+    segments?: SttResult['segments']
+    ms?: number
+    runtime?: string
+  }>(out)
+  if (p && typeof p === 'object' && !Array.isArray(p)) {
     return {
-      text: p.text ?? '',
+      text: (p.text ?? '').trim(),
       provider: engine.id,
       engine: engine.name,
       segments: p.segments ?? [],
       ms: p.ms ?? ms,
       runtime: p.runtime || undefined
     }
-  } catch {
-    const text = out.trim()
-    if (!text) throw new Error(`${engine.name} returned no transcript`)
-    return { text, provider: engine.id, engine: engine.name, segments: [], ms }
   }
+  const text = out.trim()
+  if (!text) throw new Error(`${engine.name} returned no transcript`)
+  return { text, provider: engine.id, engine: engine.name, segments: [], ms }
 }
 
 // MARK: downloads — progress, pause/resume, retry

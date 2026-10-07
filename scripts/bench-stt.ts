@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BENCH_CLIP, fmtSpeed, fmtWer, speedFactor, wordErrorRate } from '../src/shared/sttBench'
+import { parseHelperJson } from '../src/shared/stt'
 
 const root = join(import.meta.dir, '..')
 const bin = join(root, 'stt', 'bin', 'inkfish-stt')
@@ -27,7 +28,7 @@ type Engine = { id: string; name: string; ready: boolean; available: boolean; do
 const helper = (args: string[], timeout = 600_000): string =>
   execFileSync(bin, args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 })
 
-let engines = JSON.parse(helper(['engines'])) as Engine[]
+let engines = parseHelperJson<Engine[]>(helper(['engines'])) ?? []
 if (download) {
   for (const e of engines.filter((x) => x.available && !x.ready && x.downloadable)) {
     console.log(`[bench] downloading ${e.name}…`)
@@ -37,7 +38,7 @@ if (download) {
       console.warn(`[bench] ${e.name}: download failed — ${(err as Error).message.split('\n')[0]}`)
     }
   }
-  engines = JSON.parse(helper(['engines'])) as Engine[]
+  engines = parseHelperJson<Engine[]>(helper(['engines'])) ?? []
 }
 
 const ready = engines.filter((e) => e.ready)
@@ -54,12 +55,19 @@ for (const e of ready) {
     helper(['transcribe', clip, '--engine', e.id])
     for (let i = 0; i < runs; i++) {
       const t0 = Date.now()
-      const out = JSON.parse(helper(['transcribe', clip, '--engine', e.id])) as { text?: string; ms?: number }
+      const out = parseHelperJson<{ text?: string; ms?: number }>(helper(['transcribe', clip, '--engine', e.id])) ?? {}
       times.push(out.ms ?? Date.now() - t0)
       text = out.text ?? ''
     }
     const ms = times.sort((a, b) => a - b)[Math.floor(times.length / 2)] as number
-    const row = { id: e.id, name: e.name, ms, text, wer: wordErrorRate(BENCH_CLIP.text, text).wer, speed: speedFactor(BENCH_CLIP.seconds, ms) }
+    const row = {
+      id: e.id,
+      name: e.name,
+      ms,
+      text,
+      wer: wordErrorRate(BENCH_CLIP.text, text).wer,
+      speed: speedFactor(BENCH_CLIP.seconds, ms)
+    }
     rows.push(row)
     console.log(`  ${e.name.padEnd(32)} ${fmtWer(row.wer).padStart(6)} errors  ${fmtSpeed(row.speed)}`)
   } catch (err) {
@@ -74,5 +82,8 @@ console.log('\n| Engine | Errors (WER) | Speed |\n| --- | --- | --- |')
 for (const r of ok) console.log(`| ${r.name} | ${fmtWer(r.wer as number)} | ${fmtSpeed(r.speed as number)} |`)
 if (skipped.length) console.log(`\nNot downloaded: ${skipped.join(', ')} (use --download)`)
 
-writeFileSync(join(root, 'bench-results.json'), JSON.stringify({ at: new Date().toISOString(), clip: BENCH_CLIP.source, rows }, null, 2))
+writeFileSync(
+  join(root, 'bench-results.json'),
+  JSON.stringify({ at: new Date().toISOString(), clip: BENCH_CLIP.source, rows }, null, 2)
+)
 console.log('\n[bench] wrote bench-results.json')
