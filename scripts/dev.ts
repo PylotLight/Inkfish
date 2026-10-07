@@ -9,6 +9,7 @@
 //
 // Run with: bun scripts/dev.ts [-- ...electron-vite args]
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +18,17 @@ const bin =
   process.platform === 'win32'
     ? join(root, 'node_modules', '.bin', 'electron-vite.cmd')
     : join(root, 'node_modules', '.bin', 'electron-vite')
+
+// Pulled new dependencies? Install them before Vite trips over a missing import.
+const lock = join(root, 'bun.lock')
+const stamp = join(root, 'node_modules', '.bun-tag')
+const mtime = (p: string): number => (existsSync(p) ? statSync(p).mtimeMs : 0)
+if (!existsSync(join(root, 'node_modules')) || mtime(lock) > Math.max(mtime(stamp), mtime(join(root, 'node_modules')))) {
+  console.log('[dev] dependencies changed — running bun install')
+  const r = spawnSync(process.execPath, ['install'], { cwd: root, stdio: 'inherit' })
+  if (r.status !== 0) process.exit(r.status ?? 1)
+  spawnSync('touch', [join(root, 'node_modules')])
+}
 
 // Apple Speech CLI for voice notes (macOS; no-op elsewhere, skips if fresh).
 spawnSync(process.execPath, [join(root, 'scripts', 'build-stt.ts')], { stdio: 'inherit' })
