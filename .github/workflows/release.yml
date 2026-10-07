@@ -130,7 +130,6 @@ jobs:
           {
             echo "version=$version"
             echo "sha256_arm=$(shasum -a 256 "dist/Inkfish-${version}-mac-arm64.zip" | cut -d ' ' -f 1)"
-            echo "sha256_intel=$(shasum -a 256 "dist/Inkfish-${version}-mac-x64.zip" | cut -d ' ' -f 1)"
           } >> "$GITHUB_OUTPUT"
 
       - name: render cask
@@ -138,7 +137,6 @@ jobs:
           bun scripts/render-cask.ts \
             --version "${{ steps.meta.outputs.version }}" \
             --sha256-arm "${{ steps.meta.outputs.sha256_arm }}" \
-            --sha256-intel "${{ steps.meta.outputs.sha256_intel }}" \
             --out Casks/inkfish.rb
 
       - name: commit and push cask update
