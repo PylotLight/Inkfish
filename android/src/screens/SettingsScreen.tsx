@@ -4,6 +4,8 @@ import { useTheme, THEME_SWATCH, ACCENT_SWATCH } from '../theme';
 import { ScreenHead } from '../components/ScreenHead';
 import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
 import { useStore } from '../lib/store';
+import { useUpdates } from '../lib/updates';
+import { when } from '../lib/when';
 import { vaultRootUri } from '../lib/vault';
 
 /**
@@ -15,6 +17,7 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
   const { prefs, update } = usePrefs();
   const { inbox, notes, projects, refresh, error } = useStore();
   const [scanned, setScanned] = useState(false);
+  const upd = useUpdates();
 
   const seg = <T extends string | boolean>(
     opts: ReadonlyArray<{ id: T; name: string }>,
@@ -81,8 +84,40 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.quietText}>{scanned ? 'Re-scanned' : 'Re-scan files'}</Text>
       </Pressable>
 
+      <Text style={ui.label}>Updates</Text>
+      <View style={[ui.row, { justifyContent: 'space-between' }]}>
+        <Text style={ui.title}>Version {upd.version}</Text>
+        {upd.status === 'available' || upd.status === 'ready' ? (
+          <Pressable onPress={() => void upd.update()} style={ui.quiet}>
+            <Text style={ui.quietText}>{upd.status === 'ready' ? 'Install' : `Update to ${upd.release?.version}`}</Text>
+          </Pressable>
+        ) : upd.status === 'downloading' ? (
+          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Downloading {Math.round(upd.progress * 100)}%</Text>
+        ) : (
+          <Pressable onPress={() => void upd.check()} disabled={upd.status === 'checking'} style={ui.quiet}>
+            <Text style={ui.quietText}>{upd.status === 'checking' ? 'Checking…' : 'Check now'}</Text>
+          </Pressable>
+        )}
+      </View>
+      <Text style={[ui.meta, { marginTop: 0 }]}>
+        {upd.status === 'error'
+          ? `Couldn't update: ${upd.error}`
+          : upd.status === 'current'
+            ? `Up to date${upd.lastChecked ? ` · checked ${when(upd.lastChecked)}` : ''}`
+            : upd.release && upd.status !== 'checking'
+              ? `${Math.round(upd.release.apkSize / 1e6)} MB from GitHub · Android asks once to allow installs from Inkfish`
+              : 'Updates come from GitHub releases'}
+      </Text>
+      {upd.release?.notes && (upd.status === 'available' || upd.status === 'ready') ? (
+        <Text style={[ui.meta, { marginTop: 8 }]} numberOfLines={6}>{upd.release.notes}</Text>
+      ) : null}
+      <View style={[ui.row, { justifyContent: 'space-between', marginTop: 12 }]}>
+        <Text style={ui.title}>Check automatically</Text>
+        {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.autoUpdate, (v) => update({ autoUpdate: v }))}
+      </View>
+
       <Text style={ui.label}>Sync</Text>
-      <Text style={ui.meta}>Not set up yet. Notes use the same files as the Mac app, ready to sync.</Text>
+      <Text style={ui.meta}>Coming next: sync with your Mac over local Wi-Fi.</Text>
 
       <Text style={[ui.meta, { marginTop: 28, color: c.faint }]}>
         On this phone: voice memos are transcribed on Mac, search matches text, and routing uses folder keywords.

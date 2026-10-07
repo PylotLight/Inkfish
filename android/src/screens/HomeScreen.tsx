@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { AudioLines, ChevronRight, FileText, Image as ImageIcon, Inbox, Mic, Search, Sun, X } from 'lucide-react-native';
+import { AudioLines, ArrowDownToLine, ChevronRight, FileText, Image as ImageIcon, Inbox, Mic, Search, Sun, X } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
+import { useUpdates } from '../lib/updates';
 import { searchNotesSync } from '../lib/vault';
 import { folderOf, longDate, when } from '../lib/when';
 import type { NoteKind } from '../lib/format';
@@ -15,6 +16,7 @@ interface Props {
   onCompose: (opts?: { voice?: boolean }) => void;
   onInbox: () => void;
   onToday: () => void;
+  onUpdates: () => void;
 }
 
 const KIND_ICON: Record<NoteKind, typeof FileText> = {
@@ -30,9 +32,10 @@ const KIND_ICON: Record<NoteKind, typeof FileText> = {
  * and quiet labels (Obsidian's file list), accent only on the live bits.
  * Search lives in the top bar and swaps the page for results in place.
  */
-export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday }: Props): React.JSX.Element {
+export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpdates }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
   const { inbox, notes, readDaily } = useStore();
+  const upd = useUpdates();
   const [query, setQuery] = useState<string | null>(null);
   const [todayLines, setTodayLines] = useState<string[]>([]);
 
@@ -93,6 +96,12 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday }: Prop
       <ScreenHead title="" onMenu={onMenu} actions={[{ icon: Search, label: 'Search', onPress: () => setQuery('') }]} />
 
       <Text style={ui.display}>{longDate()}</Text>
+      {upd.release && (upd.status === 'available' || upd.status === 'ready' || upd.status === 'downloading') && (
+        <Pressable onPress={onUpdates} style={[ui.row, { gap: 6, marginTop: 6 }]} accessibilityLabel="Update available">
+          <Icon as={ArrowDownToLine} size={14} color={c.accent} />
+          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Inkfish {upd.release.version} is available</Text>
+        </Pressable>
+      )}
 
       {/* Capture line — opens the full composer; the mic starts a voice memo. */}
       <View style={[ui.inputLine, { marginTop: 18 }]}>

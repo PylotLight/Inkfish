@@ -12,9 +12,11 @@ export interface Prefs {
   textSize: TextSizeId;
   /** Frosted-glass floating toolbar (off = solid). */
   blur: boolean;
+  /** Check GitHub for a new APK on launch/foreground (every 6 h at most). */
+  autoUpdate: boolean;
 }
 
-export const DEFAULT_PREFS: Prefs = { theme: 'deep', accent: 'mint', textSize: 'default', blur: true };
+export const DEFAULT_PREFS: Prefs = { theme: 'deep', accent: 'mint', textSize: 'default', blur: true, autoUpdate: true };
 
 export const THEMES: Array<{ id: ThemeId; name: string }> = [
   { id: 'deep', name: 'Deep' },
@@ -49,6 +51,7 @@ function clean(raw: unknown): Partial<Prefs> {
   if (ACCENTS.some((a) => a.id === r['accent'])) out.accent = r['accent'] as AccentId;
   if (TEXT_SIZES.some((s) => s.id === r['textSize'])) out.textSize = r['textSize'] as TextSizeId;
   if (typeof r['blur'] === 'boolean') out.blur = r['blur'];
+  if (typeof r['autoUpdate'] === 'boolean') out.autoUpdate = r['autoUpdate'];
   return out;
 }
 

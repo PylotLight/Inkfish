@@ -1,0 +1,118 @@
+name: android-release
+
+# Signed Android APK → GitHub Release, picked up by the app's in-app updater
+# (android/src/lib/updater.ts). Trigger: push a tag `android-vX.Y.Z`
+#   git tag android-v0.2.0 && git push origin android-v0.2.0
+# or run manually with a version. The Mac release workflow only matches `v*`,
+# and these releases are never marked "latest", so the Homebrew cask is unaffected.
+#
+# Secrets (same keystore as the cluster build — never rotate it):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_STORE_PASSWORD, ANDROID_KEY_PASSWORD, ANDROID_KEY_ALIAS
+on:
+  push:
+    tags:
+      - "android-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 0.2.0 (creates tag android-v<version>)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: version
+        id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME#android-v}"; fi
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must be X.Y.Z, got '$V'"; exit 1; }
+          IFS=. read -r MA MI PA <<< "$V"
+          CODE=$((MA * 10000 + MI * 100 + PA))
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          jq --arg v "$V" --argjson c "$CODE" '.expo.version=$v | .expo.android.versionCode=$c' app.json > app.tmp && mv app.tmp app.json
+          echo "Inkfish Android $V (versionCode $CODE)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: android/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: keystore
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$KS" ] || { echo "::error::ANDROID_KEYSTORE_BASE64 secret missing (see android/build/README.md)"; exit 1; }
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/inkfish.keystore"
+
+      - name: prebuild + sign
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/inkfish.keystore
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          npx expo prebuild --platform android --clean
+          ./build/inject-signing.sh
+
+      - name: assemble
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/inkfish.keystore
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          cd android
+          ./gradlew :app:assembleRelease -Dorg.gradle.jvmargs=-Xmx4g --console=plain
+          OUT="$GITHUB_WORKSPACE/Inkfish-android-${{ steps.v.outputs.version }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$OUT"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          "$BT"apksigner verify --print-certs "$OUT" | head -4
+          ls -la "$OUT"
+
+      - name: notes
+        working-directory: .
+        run: |
+          PREV=$(git tag --list 'android-v*' --sort=-v:refname | grep -vx "android-v${{ steps.v.outputs.version }}" | head -1 || true)
+          RANGE=${PREV:+$PREV..HEAD}
+          {
+            echo "Inkfish for Android ${{ steps.v.outputs.version }}"
+            echo
+            git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared/sync | head -40
+          } > ANDROID_NOTES.md
+          cat ANDROID_NOTES.md
+
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ steps.v.outputs.version }}
+          name: Android ${{ steps.v.outputs.version }}
+          body_path: ANDROID_NOTES.md
+          make_latest: "false"
+          files: Inkfish-android-${{ steps.v.outputs.version }}.apk
