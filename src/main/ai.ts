@@ -28,12 +28,18 @@ export interface ProviderStatus {
 export async function providerStatus(): Promise<ProviderStatus[]> {
   const engines = await listEngines()
   const ready = engines.filter((e) => e.ready)
-  const apple = engines.find((e) => e.id === 'apple-analyzer' && e.available) ?? engines.find((e) => e.id === 'apple-speech')
+  const apple =
+    engines.find((e) => e.id === 'apple-analyzer' && e.available) ?? engines.find((e) => e.id === 'apple-speech')
   return [
     {
       id: 'apple',
       available: apple?.available ?? false,
-      detail: process.platform !== 'darwin' ? 'Apple Speech needs macOS' : apple ? `${apple.name}: ${apple.detail}` : 'not built'
+      detail:
+        process.platform !== 'darwin'
+          ? 'Apple Speech needs macOS'
+          : apple
+            ? `${apple.name}: ${apple.detail}`
+            : 'not built'
     },
     await intelStatus().then((s) => ({ id: 'intelligence' as const, available: s.available, detail: s.detail })),
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
@@ -58,10 +64,11 @@ export interface ClassifyInput {
 }
 
 function titleFromRaw(raw: string): string {
-  const first = raw
-    .split('\n')
-    .map((l) => l.trim().replace(/^#+\s*/, ''))
-    .find((l) => l.length > 0) ?? 'Untitled'
+  const first =
+    raw
+      .split('\n')
+      .map((l) => l.trim().replace(/^#+\s*/, ''))
+      .find((l) => l.length > 0) ?? 'Untitled'
   const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
   return sentence.slice(0, 80).trim() || 'Untitled'
 }

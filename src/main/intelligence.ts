@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { parseHelperJson } from '../shared/stt'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
@@ -97,7 +98,11 @@ export async function intelStatus(fresh = false): Promise<IntelStatus> {
     status = { available: false, reason: 'unsupported', detail: 'Apple Intelligence needs macOS 26 on Apple silicon' }
   } else {
     try {
-      status = JSON.parse(await call(['ai', 'status'], null, 15_000)) as IntelStatus
+      status = parseHelperJson<IntelStatus>(await call(['ai', 'status'], null, 15_000)) ?? {
+        available: false,
+        reason: 'helper',
+        detail: 'Apple Intelligence status unreadable'
+      }
     } catch (e) {
       status = { available: false, reason: 'helper', detail: e instanceof Error ? e.message : String(e) }
     }
@@ -129,7 +134,8 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
   // Long notes clean up in ~2.4k-char chunks, a few seconds each.
   const timeout = 30_000 + Math.ceil(input.text.length / 2400) * 20_000
   const t0 = Date.now()
-  const out = JSON.parse(await call(['ai', 'run'], JSON.stringify(req), timeout)) as IntelResult
+  const out = parseHelperJson<IntelResult>(await call(['ai', 'run'], JSON.stringify(req), timeout))
+  if (!out) throw new Error('Apple Intelligence returned no result')
   return { ...out, ms: out.ms || Date.now() - t0, provider: 'apple' }
 }
 
