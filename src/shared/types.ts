@@ -207,5 +207,9 @@ export interface DownloadProgress {
   error?: string
   /** Set when the error looks like Hugging Face is unreachable (VPN, firewall). */
   blocked?: boolean
+  /** Bytes so far / expected, when the downloader knows them (Web engines). */
+  bytes?: number
+  totalBytes?: number
+  /** File being fetched. */
+  file?: string
 }
-

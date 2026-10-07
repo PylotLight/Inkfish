@@ -95,9 +95,20 @@ export const WEB_ENGINES: WebEngine[] = [
     load: async (gpu, onProgress) => {
       const { fromHub } = await import('parakeet.js')
       const encoderQuant = gpu.ok ? 'fp16' : 'int8'
+      const expected = gpu.ok ? 1.24e9 : 0.652e9
+      const seen = new Map<string, { loaded: number; total: number }>()
       const model = await fromHub('parakeet-tdt-0.6b-v2', {
-        progress: (p: { loaded: number; total: number; file: string }) =>
-          onProgress({ loaded: p.loaded, total: p.total, file: p.file, phase: 'downloading' }),
+        // parakeet.js reports per file; sum across files so the bar only moves forward.
+        progress: (p: { loaded: number; total: number; file: string }) => {
+          seen.set(p.file, p)
+          let loaded = 0
+          let total = 0
+          for (const f of seen.values()) {
+            loaded += f.loaded
+            total += f.total
+          }
+          onProgress({ loaded, total: Math.max(total, expected), file: p.file, phase: 'downloading' })
+        },
         backend: gpu.ok ? 'webgpu-hybrid' : 'wasm',
         encoderQuant,
         decoderQuant: 'int8',
