@@ -9,19 +9,26 @@ EAS-free, k8s-native signed release builds. One-time setup, then one command per
 kubectl -n shuttle-build apply -f android/build/keystore-init-job.yaml
 kubectl -n shuttle-build wait --for=condition=complete job/inkfish-keystore-init --timeout=300s
 
-# 2. mirror it into the Secret the build consumes
-POD=$(kubectl -n shuttle-build get pod -l job-name=inkfish-keystore-init -o jsonpath='{.items[0].metadata.name}')
-kubectl -n shuttle-build cp "$POD:/cache/keystore/inkfish.keystore" /tmp/inkfish.keystore
-kubectl -n shuttle-build cp "$POD:/cache/keystore/creds.env" /tmp/creds.env
-source /tmp/creds.env
-kubectl -n shuttle-build create secret generic inkfish-android-keystore \
-  --from-file=inkfish.keystore=/tmp/inkfish.keystore \
-  --from-literal=store-password="$STORE_PASSWORD" \
-  --from-literal=key-password="$KEY_PASSWORD" \
-  --from-literal=key-alias="$KEY_ALIAS"
-shred -u /tmp/inkfish.keystore /tmp/creds.env
+# 2. mirror it into the PERMANENT shared Secret (values copied
+#    base64-to-base64 — key material never leaves the cluster):
+kubectl -n shuttle-build get secret inkfish-android-keystore -o json | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+data = d['data']; data['keystore'] = data.pop('inkfish.keystore')
+print(json.dumps({'apiVersion':'v1','kind':'Secret','type':'Opaque',
+  'metadata':{'name':'android-release-keystore','namespace':'shuttle-build',
+    'annotations':{'inkfish.dev/permanent':'true'}},
+  'data':data}))" | kubectl apply -f -
+kubectl -n shuttle-build delete secret inkfish-android-keystore
 unset STORE_PASSWORD KEY_PASSWORD KEY_ALIAS
 ```
+
+Permanent infra: `android-release-keystore` (keys: `keystore`,
+`store-password`, `key-password`, `key-alias`) is shared by all Android
+release builds. **Never delete or rotate it** — store upgrades require the
+same signing key. Future apps reuse this keystore with a new alias
+(`keytool -genkeypair -alias <app> …`). A backup copy also sits on the
+`shuttle-build-cache` PVC at `/cache/keystore/`.
 
 ## Every build
 
