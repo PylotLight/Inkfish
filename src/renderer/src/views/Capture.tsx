@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
+import { startLiveCaptions, type LiveCaptions } from '../liveCaptions'
+import { isWebEngine, transcribeWeb } from '../webStt'
 
 /**
  * Capture popover (380×300): one borderless composer on the window's own
@@ -21,6 +23,15 @@ export default function Capture(): React.JSX.Element {
   const [attachments, setAttachments] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null)
+  const [caption, setCaption] = useState('')
+  const captionsRef = useRef<Promise<LiveCaptions | null> | null>(null)
+
+  const stopCaptions = (): void => {
+    const p = captionsRef.current
+    captionsRef.current = null
+    void p?.then((c) => c?.stop())
+    setCaption('')
+  }
 
   useEffect(() => {
     window.api.projects.list().then(setProjects).catch(() => setProjects([]))
@@ -109,6 +120,9 @@ export default function Capture(): React.JSX.Element {
       mediaRef.current = { rec, chunks, stream }
       rec.start()
       setRecState('rec')
+      if (loadAudioPrefs().liveCaptions) {
+        captionsRef.current = startLiveCaptions(setCaption).catch(() => null)
+      }
     } catch {
       say('Mic blocked', 'Allow Inkfish in System Settings › Privacy & Security › Microphone', 6000)
     }
@@ -116,14 +130,17 @@ export default function Capture(): React.JSX.Element {
 
   const finishRec = async (chunks: Blob[], stream: MediaStream): Promise<void> => {
     stream.getTracks().forEach((t) => t.stop())
+    stopCaptions()
     try {
       const wav = await toWav(new Blob(chunks, { type: mediaRef.current?.rec.mimeType }))
       const rel = await window.api.assets.save('voice-note.wav', await blobToDataUrl(wav))
       setAttachments((prev) => [...prev, rel])
       say('Transcribing…')
       try {
-        const abs = await window.api.assets.path(rel)
-        const stt = await window.api.stt.transcribe(abs, loadAudioPrefs().engine)
+        const engine = loadAudioPrefs().engine
+        const stt = isWebEngine(engine)
+          ? await transcribeWeb(engine, wav)
+          : await window.api.stt.transcribe(await window.api.assets.path(rel), engine)
         appendText(stt.text)
         say(`Transcribed ✓ · ${stt.engine ?? stt.provider}`)
       } catch (e) {
@@ -226,6 +243,12 @@ export default function Capture(): React.JSX.Element {
         onChange={(e) => setRaw(e.target.value)}
         placeholder={dest === 'today' ? 'Add to today…' : 'Capture a thought…'}
       />
+
+      {recState === 'rec' && caption && (
+        <p className="cap-caption" aria-live="polite">
+          {caption}
+        </p>
+      )}
 
       {attachments.length > 0 && (
         <ul className="cap-files">

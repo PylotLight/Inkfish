@@ -10,6 +10,8 @@ export interface AudioPrefs {
   outputId: string
   /** Transcription engine id; '' = best ready engine. */
   engine: string
+  /** Show Moonshine live captions while dictating (English). */
+  liveCaptions: boolean
 }
 
 export function loadAudioPrefs(): AudioPrefs {
@@ -18,10 +20,11 @@ export function loadAudioPrefs(): AudioPrefs {
     return {
       inputId: typeof raw.inputId === 'string' ? raw.inputId : '',
       outputId: typeof raw.outputId === 'string' ? raw.outputId : '',
-      engine: typeof raw.engine === 'string' ? raw.engine : ''
+      engine: typeof raw.engine === 'string' ? raw.engine : '',
+      liveCaptions: raw.liveCaptions === true
     }
   } catch {
-    return { inputId: '', outputId: '', engine: '' }
+    return { inputId: '', outputId: '', engine: '', liveCaptions: false }
   }
 }
 

@@ -21,6 +21,23 @@ All FluidAudio (Apache-2.0) models download once to
 `~/Library/Application Support/FluidAudio/Models`. Removed: `parakeet-cli`
 (Homebrew whisper-cpp) — no external dependency remains.
 
+## In-app Web engines (renderer, WebGPU/WASM — `src/renderer/src/webStt.ts`)
+
+| Engine id | Package | Notes |
+|---|---|---|
+| `web-parakeet-redux` | `@karanganesan/vocule` | Redux in a worker; ~178 MB; closed-source engine, MIT package |
+| `web-parakeet-v2` | `parakeet.js` | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (~1.2 GB) |
+| `web-moonshine` | `@moonshine-ai/moonshine-wasm` | Base, English; SmallStreaming powers live captions |
+| `web-whisper-turbo` | `@huggingface/transformers` | whisper-large-v3-turbo, WebGPU |
+| `web-whisper-base` | `@huggingface/transformers` | whisper-base q8 |
+
+Bundled as devDependencies (Vite bundles them into the renderer; native
+`onnxruntime-node`/`sharp` deps are never loaded or shipped). Needs CSP
+`'wasm-unsafe-eval'`, `worker-src blob: data:`, `connect-src https:` and the
+`SharedArrayBuffer` feature switch (main/index.ts). Ready state is a
+localStorage flag; weights live in Cache Storage / IndexedDB. Adds ~65 MB of
+wasm to the app bundle.
+
 ## WASM / pure-JS review (2026-10)
 
 | Option | Verdict |

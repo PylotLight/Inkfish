@@ -14,6 +14,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ])
 
+// In-app WASM speech engines (Moonshine, ONNX Runtime Web) use threads, which
+// need SharedArrayBuffer; file:// pages can't send COOP/COEP headers.
+app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
+
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
