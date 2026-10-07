@@ -46,6 +46,10 @@ export function vaultRootUri(): string {
 export function stagingUri(): string {
   return STAGING;
 }
+/** Roots the sync layer maps `inbox/`, `daily/` and vault paths onto. */
+export function syncRoots(): { app: string; vault: string; inbox: string; daily: string } {
+  return { app: APP, vault: VAULT, inbox: INBOX, daily: DAILY };
+}
 
 /** Dirs that are staging/app-owned, never projects (same set as Mac). */
 const RESERVED = new Set(['inbox', 'daily', 'assets']);

@@ -18,7 +18,8 @@
       "versionCode": 1,
       "permissions": [
         "RECORD_AUDIO",
-        "REQUEST_INSTALL_PACKAGES"
+        "REQUEST_INSTALL_PACKAGES",
+        "CAMERA"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-foreground.png",
@@ -42,7 +43,24 @@
           "disableIOS": true
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-build-properties",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Inkfish uses the camera only to scan the pairing code shown on your Mac.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ]
   }
 }

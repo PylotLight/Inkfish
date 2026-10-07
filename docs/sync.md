@@ -1,6 +1,39 @@
 # Inkfish sync — Mac ↔ Android, peer-to-peer, no server
 
-Status: **design agreed, not implemented**. 2026-10-08.
+Status: **v1 implemented** (LAN only), 2026-10-08.
+
+## What shipped in v1 (read this first)
+
+v1 uses a **sealed HTTP transport on the LAN** instead of iroh, so Android
+needs no Rust/native networking module and the whole protocol is shared,
+tested TypeScript (`src/shared/sync/`):
+
+- **Mac** (`src/main/sync.ts`) listens on port 47821 (0.0.0.0). It only
+  serves files and applies changes; it never initiates.
+- **Phone** (`android/src/lib/syncing.tsx`) drives every session: launch,
+  foreground, ~4 s after local edits, going to background, and *Sync now*.
+- **Pairing**: Mac › Settings › Sync › *Show pairing code* → QR
+  `inkfish://pair?d=…` with Mac id, name, LAN IPs, port, a fresh 32-byte
+  key and a 5-minute expiry. The phone scans (`expo-camera`), proves the key
+  on `/v1/pair`, and that key becomes the phone's sync key. One code, one
+  phone. Mac stores keys via `safeStorage` (Keychain).
+- **Security**: every request/response body is XChaCha20-Poly1305 sealed
+  (`@noble/ciphers`) with that key, AAD binds direction + endpoint + phone id,
+  timestamps ±5 min plus a nonce cache stop replays. Unknown phones get only
+  `/v1/hello` (id + name). Android allows cleartext HTTP for this
+  (`expo-build-properties`), the content is still encrypted.
+- **Discovery**: last good IP → QR IPs → sweep of those /24s for the Mac's
+  id on `/v1/hello`. No mDNS needed.
+- **Endpoints**: `GET /v1/hello`, `POST /v1/pair | manifest | get | apply | done`.
+- **State**: the phone keeps the per-Mac base manifest + base note texts in
+  `inkfish/.sync/<macId>/`; the Mac is stateless apart from paired keys.
+  Deletes go to trash on both sides (Mac app trash, phone `inkfish/trash/`).
+- Tests: `src/shared/sync/e2e.test.ts` runs pairing + multi-round sync over
+  the real handler with two in-memory vaults.
+
+iroh (below) stays the plan for away-from-home sync; the engine, merge rules
+and files don't change, only the transport under `Remote`.
+
 
 **Decision (2026-10-08): v1 is LAN only.** No relays of any kind — iroh runs with
 relays disabled and local discovery (mDNS) only, so the phone syncs when it's

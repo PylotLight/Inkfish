@@ -4,6 +4,7 @@ import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
 import VoiceEngineSettings from './VoiceEngineSettings'
+import SyncSettings from './SyncSettings'
 
 interface Props {
   prefs: Prefs
@@ -129,12 +130,13 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'apple-intelligence'
+type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'apple-intelligence'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
   { id: 'appearance', label: 'Appearance', icon: '◐', group: 'Configure' },
   { id: 'notes', label: 'Notes', icon: '▤', group: 'Configure' },
+  { id: 'sync', label: 'Sync', icon: '⇅', group: 'Configure' },
   { id: 'audio', label: 'Audio', icon: '♪', group: 'Voice' },
   { id: 'voice', label: 'Voice Engine', icon: '≋', group: 'Voice' },
   { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' }
@@ -452,6 +454,8 @@ export default function SettingsView({
           {tab === 'voice' && <VoiceEngineSettings />}
 
           {tab === 'apple-intelligence' && <IntelligenceSettings />}
+
+          {tab === 'sync' && <SyncSettings />}
 
           {tab === 'notes' && (
             <section className="settings-group">

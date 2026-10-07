@@ -1,3 +1,5 @@
+import { utf8Encode as utf8 } from './bytes'
+
 /**
  * SHA-256 (hex) in plain TS — identical on Electron, Bun and Hermes with no
  * native module. Used to content-address files in the sync manifest.
@@ -13,9 +15,6 @@ const K = new Uint32Array([
   0xc67178f2
 ])
 
-function utf8(s: string): Uint8Array {
-  return new TextEncoder().encode(s)
-}
 
 export function sha256(input: string | Uint8Array): string {
   const msg = typeof input === 'string' ? utf8(input) : input

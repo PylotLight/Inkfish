@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
+import { cancelPairing, renameDevice, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
@@ -184,6 +185,12 @@ async function processInboxItem(
  * 3. call it from the renderer via `window.api`.
  */
 export function registerIpc(): void {
+  ipcMain.handle('sync:status', (): SyncStatus => syncStatus())
+  ipcMain.handle('sync:pair', (): Promise<SyncStatus> => startPairing())
+  ipcMain.handle('sync:cancel-pair', (): SyncStatus => cancelPairing())
+  ipcMain.handle('sync:unpair', (_e: IpcMainInvokeEvent, id: string): SyncStatus => unpair(id))
+  ipcMain.handle('sync:rename', (_e: IpcMainInvokeEvent, name: string): SyncStatus => renameDevice(name))
+
   ipcMain.handle('ping', () => 'pong')
 
   ipcMain.handle('sys:info', (): SysInfo => {
@@ -276,6 +283,7 @@ export function registerIpc(): void {
         const backend = openDb(paths.dbPath)
         const indexed = reindexVault(paths.root) + reindexStaging(paths)
         console.log(`[inkfish] vault home → ${paths.root} (${backend}, ${indexed} notes)`)
+        startSync()
         return { info: info(), backend, indexed }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }

@@ -4015,3 +4015,22 @@ html[data-density='compact'] .md p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Settings › Sync pairing QR */
+.sync-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sync-qr {
+  width: 220px;
+  height: 220px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff; /* QR needs light quiet zone in every theme */
+}
+.sync-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
