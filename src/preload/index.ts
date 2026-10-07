@@ -155,6 +155,8 @@ const api = {
   stt: {
     transcribe: (wavPath: string): Promise<SttResult> =>
       ipcRenderer.invoke('stt:transcribe', wavPath),
+    /** Transcribe a WAV data: URL via a temp file (Settings test; nothing saved). */
+    test: (wavDataUrl: string): Promise<SttResult> => ipcRenderer.invoke('stt:test', wavDataUrl),
     pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>
       ipcRenderer.invoke('stt:pick-audio')
   },

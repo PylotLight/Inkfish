@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { openMic } from '../audio'
 import type { VaultInfo } from '../../../shared/types'
 
 interface Props {
@@ -22,7 +23,7 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
 
   const testMic = async (): Promise<void> => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const s = await openMic()
       s.getTracks().forEach((t) => t.stop())
       setMic('ok')
     } catch {

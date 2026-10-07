@@ -1,5 +1,5 @@
 import { app, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
@@ -501,6 +501,17 @@ export function registerIpc(): void {
   ipcMain.handle('stt:transcribe', (_e: IpcMainInvokeEvent, wavPath: string): Promise<SttResult> =>
     transcribe(wavPath)
   )
+  ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string): Promise<SttResult> => {
+    const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
+    if (!m) throw new Error('stt:test needs a data: URL')
+    const tmp = join(os.tmpdir(), `inkfish-stt-test-${Date.now()}.wav`)
+    writeFileSync(tmp, Buffer.from(m[2] ?? '', 'base64'))
+    try {
+      return await transcribe(tmp)
+    } finally {
+      rmSync(tmp, { force: true })
+    }
+  })
   ipcMain.handle(
     'stt:pick-audio',
     async (): Promise<{ path: string; transcript: SttResult } | { error: string }> => {
