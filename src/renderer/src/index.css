@@ -3368,3 +3368,16 @@ html[data-density='compact'] .md p {
   background: #10a37f;
   color: #fff;
 }
+
+.cap-meeting {
+  max-height: 96px;
+  overflow-y: auto;
+}
+.cap-meeting p {
+  margin: 0 0 2px;
+}
+.cap-meeting b {
+  font-weight: 600;
+  margin-right: 4px;
+  opacity: 0.7;
+}

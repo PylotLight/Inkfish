@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
-import { startLiveCaptions, type LiveCaptions } from '../liveCaptions'
+import { LIVE_ENGINE, startLive, type LiveSession } from '../liveCaptions'
+import { startMeeting, type Meeting, type MeetingLine } from '../meeting'
 import { isWebEngine, transcribeWeb } from '../webStt'
 
 /**
@@ -24,14 +25,10 @@ export default function Capture(): React.JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; stream: MediaStream } | null>(null)
   const [caption, setCaption] = useState('')
-  const captionsRef = useRef<Promise<LiveCaptions | null> | null>(null)
-
-  const stopCaptions = (): void => {
-    const p = captionsRef.current
-    captionsRef.current = null
-    void p?.then((c) => c?.stop())
-    setCaption('')
-  }
+  const liveRef = useRef<Promise<LiveSession | null> | null>(null)
+  const meetingRef = useRef<Meeting | null>(null)
+  const [meetState, setMeetState] = useState<'idle' | 'rec' | 'working'>('idle')
+  const [meetLines, setMeetLines] = useState<MeetingLine[]>([])
 
   useEffect(() => {
     window.api.projects.list().then(setProjects).catch(() => setProjects([]))
@@ -120,8 +117,13 @@ export default function Capture(): React.JSX.Element {
       mediaRef.current = { rec, chunks, stream }
       rec.start()
       setRecState('rec')
-      if (loadAudioPrefs().liveCaptions) {
-        captionsRef.current = startLiveCaptions(setCaption).catch(() => null)
+      const prefs = loadAudioPrefs()
+      // Redux as the engine streams the real transcript; otherwise a preview.
+      if (prefs.liveCaptions || prefs.engine === LIVE_ENGINE) {
+        liveRef.current = startLive(stream, (t) => setCaption(t)).catch((e) => {
+          console.warn('[live]', e)
+          return null
+        })
       }
     } catch {
       say('Mic blocked', 'Allow Inkfish in System Settings › Privacy & Security › Microphone', 6000)
@@ -129,15 +131,27 @@ export default function Capture(): React.JSX.Element {
   }
 
   const finishRec = async (chunks: Blob[], stream: MediaStream): Promise<void> => {
+    const engine = loadAudioPrefs().engine
+    const pending = liveRef.current
+    liveRef.current = null
+    const live = await pending
+    // Drain the live session before releasing the mic so the last words land.
+    const liveResult = live ? await live.stop().catch(() => null) : null
     stream.getTracks().forEach((t) => t.stop())
-    stopCaptions()
+    setCaption('')
     try {
       const wav = await toWav(new Blob(chunks, { type: mediaRef.current?.rec.mimeType }))
       const rel = await window.api.assets.save('voice-note.wav', await blobToDataUrl(wav))
       setAttachments((prev) => [...prev, rel])
+      if (engine === LIVE_ENGINE && liveResult?.engine.startsWith('Parakeet Redux') && liveResult.text) {
+        appendText(liveResult.text)
+        say(`Transcribed ✓ · ${liveResult.engine}`)
+        setRecState('idle')
+        mediaRef.current = null
+        return
+      }
       say('Transcribing…')
       try {
-        const engine = loadAudioPrefs().engine
         const stt = isWebEngine(engine)
           ? await transcribeWeb(engine, wav)
           : await window.api.stt.transcribe(await window.api.assets.path(rel), engine)
@@ -151,6 +165,49 @@ export default function Capture(): React.JSX.Element {
     }
     setRecState('idle')
     mediaRef.current = null
+  }
+
+  // --- meeting: mic (Me) + Mac output (Them), both live via Redux -------------
+  const toggleMeeting = (): void => {
+    if (meetState === 'rec') void stopMeeting()
+    else if (meetState === 'idle') void beginMeeting()
+  }
+
+  const beginMeeting = async (): Promise<void> => {
+    try {
+      setMeetLines([])
+      const m = await startMeeting(setMeetLines)
+      meetingRef.current = m
+      setMeetState('rec')
+      if (!m.hasSystemAudio)
+        say(
+          'Mic only — no system audio',
+          'Allow Inkfish in System Settings › Privacy & Security › Screen & System Audio Recording',
+          7000
+        )
+    } catch (e) {
+      say('Meeting capture failed', ipcError(e), 6000)
+      setMeetState('idle')
+    }
+  }
+
+  const stopMeeting = async (): Promise<void> => {
+    const m = meetingRef.current
+    meetingRef.current = null
+    if (!m) return
+    setMeetState('working')
+    try {
+      const r = await m.stop()
+      const wav = await toWav(r.audio)
+      const rel = await window.api.assets.save('meeting.wav', await blobToDataUrl(wav))
+      setAttachments((prev) => [...prev, rel])
+      if (r.markdown) appendText(r.markdown)
+      say(`Meeting transcribed ✓ · ${r.lines.length} lines`)
+    } catch (e) {
+      say('Meeting capture failed', ipcError(e), 6000)
+    }
+    setMeetLines([])
+    setMeetState('idle')
   }
 
   // --- images: drop / paste / pick → assets/, ref appended inline ----------------
@@ -250,6 +307,16 @@ export default function Capture(): React.JSX.Element {
         </p>
       )}
 
+      {meetState === 'rec' && meetLines.length > 0 && (
+        <div className="cap-caption cap-meeting" aria-live="polite">
+          {meetLines.slice(-6).map((l, i) => (
+            <p key={i}>
+              <b>{l.who}</b> {l.text}
+            </p>
+          ))}
+        </div>
+      )}
+
       {attachments.length > 0 && (
         <ul className="cap-files">
           {attachments.map((a) => (
@@ -279,7 +346,7 @@ export default function Capture(): React.JSX.Element {
           className={`cap-icon${recState === 'rec' ? ' rec' : ''}`}
           title={recLabel}
           aria-label={recLabel}
-          disabled={recState === 'working'}
+          disabled={recState === 'working' || meetState !== 'idle'}
           onClick={toggleRec}
         >
           {recState === 'rec' ? (
@@ -290,6 +357,19 @@ export default function Capture(): React.JSX.Element {
               <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
             </svg>
           )}
+        </button>
+        <button
+          className={`cap-icon${meetState === 'rec' ? ' rec' : ''}`}
+          title={meetState === 'rec' ? 'Stop meeting' : 'Record meeting (you + Mac audio)'}
+          aria-label={meetState === 'rec' ? 'Stop meeting' : 'Record meeting'}
+          disabled={meetState === 'working' || recState !== 'idle'}
+          onClick={toggleMeeting}
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+            <circle cx="5.5" cy="5" r="2.2" />
+            <circle cx="11" cy="5.5" r="1.8" />
+            <path d="M1.5 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4M10 9.6c2.3 0 4.5 1.4 4.5 3.9" />
+          </svg>
         </button>
         <button className="cap-icon" title="Attach image or audio" aria-label="Attach image or audio" onClick={pickFile}>
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
