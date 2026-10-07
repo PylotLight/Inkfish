@@ -4,6 +4,8 @@
 //   inkfish-stt transcribe <audio> --engine ID  → {text, segments, engine, ms}
 //   inkfish-stt prepare --engine ID             → downloads models, {ok}
 //   inkfish-stt remove --engine ID              → deletes downloaded models, {ok}
+//   inkfish-stt ai status                       → Apple Intelligence availability JSON
+//   inkfish-stt ai run   (JSON request on stdin) → cleanup / organise / summarise JSON
 //   options: --locale en-AU, --allow-network (apple-speech only)
 //
 // Engines: apple-speech (SFSpeechRecognizer), apple-analyzer (SpeechAnalyzer,
@@ -154,6 +156,20 @@ struct InkfishSTT {
       switch cmd {
       case "engines":
         emit(await listEngines(opts))
+      case "ai":
+        // Apple Intelligence (Foundation Models) — see Intelligence.swift.
+        switch positional.dropFirst().first ?? "status" {
+        case "status":
+          emit(Intelligence.status())
+        case "run":
+          let data = FileHandle.standardInput.readDataToEndOfFile()
+          guard let req = try? JSONDecoder().decode(IntelRequest.self, from: data) else {
+            throw STTError("ai run: expected a JSON request on stdin", code: 64)
+          }
+          emit(try await Intelligence.run(req))
+        default:
+          throw STTError("usage: inkfish-stt ai status | ai run", code: 64)
+        }
       case "tap":
         guard #available(macOS 14.2, *) else { throw STTError("system audio capture needs macOS 14.2+", code: 64) }
         try SystemTap.run()
@@ -179,7 +195,7 @@ struct InkfishSTT {
         if !cmd.isEmpty, FileManager.default.fileExists(atPath: cmd) {
           emit(try await transcribe(URL(fileURLWithPath: cmd), engine: engine, opts))
         } else {
-          fail("usage: inkfish-stt engines | transcribe <audio> --engine ID | prepare --engine ID", 64)
+          fail("usage: inkfish-stt engines | transcribe <audio> --engine ID | prepare --engine ID | ai status | ai run", 64)
         }
       }
     } catch let e as STTError {

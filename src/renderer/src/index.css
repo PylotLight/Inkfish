@@ -450,7 +450,9 @@ input[type='range'] {
   height: 18px;
   border-radius: 50%;
   background: var(--muted);
-  transition: left 0.15s ease, background 0.15s ease;
+  transition:
+    left 0.15s ease,
+    background 0.15s ease;
 }
 
 .switch.on .knob {
@@ -1160,9 +1162,15 @@ html[data-theme='paper'] .toast.glass {
 }
 
 @keyframes pop {
-  0% { transform: scale(1); }
-  35% { transform: scale(0.97); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.97);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .cap-top {
@@ -1188,7 +1196,9 @@ html[data-theme='paper'] .toast.glass {
   color: var(--muted);
   cursor: pointer;
   box-shadow: inset 0 -1.5px 0 transparent;
-  transition: color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .cap-dest button:hover {
@@ -1213,9 +1223,12 @@ html[data-theme='paper'] .toast.glass {
   border-radius: 6px;
   text-align: right;
   cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: right 6px center, right 2px center;
+  background-position:
+    right 6px center,
+    right 2px center;
   background-size: 4px 4px;
   background-repeat: no-repeat;
   max-width: 55%;
@@ -1263,7 +1276,9 @@ html[data-theme='paper'] .toast.glass {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .cap-icon:hover {
@@ -1294,7 +1309,9 @@ html[data-theme='paper'] .toast.glass {
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
-  transition: filter 0.12s ease, opacity 0.12s ease;
+  transition:
+    filter 0.12s ease,
+    opacity 0.12s ease;
 }
 
 .cap-save:hover {
@@ -1584,13 +1601,37 @@ select.sm {
 
 /* rendered markdown */
 
-.md h1 { font-size: 21px; margin: 0.35em 0 0.25em; }
-.md h2 { font-size: 17px; margin: 0.45em 0 0.25em; }
-.md h3, .md h4 { font-size: 15px; margin: 0.4em 0 0.2em; }
-.md p { margin: 0.28em 0; font-size: 14px; line-height: 1.5; }
-.md ul, .md ol { padding-left: 22px; margin: 0.28em 0; font-size: 14px; line-height: 1.5; }
-.md li { margin: 1px 0; }
-.md li > p { margin: 0.1em 0; }
+.md h1 {
+  font-size: 21px;
+  margin: 0.35em 0 0.25em;
+}
+.md h2 {
+  font-size: 17px;
+  margin: 0.45em 0 0.25em;
+}
+.md h3,
+.md h4 {
+  font-size: 15px;
+  margin: 0.4em 0 0.2em;
+}
+.md p {
+  margin: 0.28em 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.md ul,
+.md ol {
+  padding-left: 22px;
+  margin: 0.28em 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.md li {
+  margin: 1px 0;
+}
+.md li > p {
+  margin: 0.1em 0;
+}
 .md blockquote {
   border-left: 3px solid var(--accent);
   margin: 0.5em 0;
@@ -1605,8 +1646,14 @@ select.sm {
   overflow-x: auto;
   font-size: 12.5px;
 }
-.md img { max-width: 100%; border-radius: 8px; }
-.md .task { list-style: none; margin-left: -22px; }
+.md img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+.md .task {
+  list-style: none;
+  margin-left: -22px;
+}
 
 /* Code blocks: header row (lang + copy/expand) over highlighted source. */
 .md .codeblock {
@@ -1648,7 +1695,9 @@ select.sm {
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 
 .md .copy-code:hover,
@@ -1670,18 +1719,42 @@ select.sm {
 }
 
 /* Syntax tokens (dependency-free highlighter in md.ts). */
-.md .tok-kw { color: #8ab4ff; }
-.md .tok-str { color: #7ee2a8; }
-.md .tok-com { color: var(--muted); font-style: italic; opacity: 0.85; }
-.md .tok-num { color: #f2c069; }
-.md .tok-key { color: #b79bff; }
-.md .tok-tag { color: #f28b8b; }
+.md .tok-kw {
+  color: #8ab4ff;
+}
+.md .tok-str {
+  color: #7ee2a8;
+}
+.md .tok-com {
+  color: var(--muted);
+  font-style: italic;
+  opacity: 0.85;
+}
+.md .tok-num {
+  color: #f2c069;
+}
+.md .tok-key {
+  color: #b79bff;
+}
+.md .tok-tag {
+  color: #f28b8b;
+}
 
-html[data-theme='paper'] .md .tok-kw { color: #2f6fed; }
-html[data-theme='paper'] .md .tok-str { color: #3d8a56; }
-html[data-theme='paper'] .md .tok-num { color: #b26a00; }
-html[data-theme='paper'] .md .tok-key { color: #7a4fd0; }
-html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
+html[data-theme='paper'] .md .tok-kw {
+  color: #2f6fed;
+}
+html[data-theme='paper'] .md .tok-str {
+  color: #3d8a56;
+}
+html[data-theme='paper'] .md .tok-num {
+  color: #b26a00;
+}
+html[data-theme='paper'] .md .tok-key {
+  color: #7a4fd0;
+}
+html[data-theme='paper'] .md .tok-tag {
+  color: #c0454f;
+}
 /* CodeMirror fold gutter — quiet, aligns with the editor font. */
 .ed-src .cm-foldGutter {
   color: var(--muted);
@@ -1749,13 +1822,25 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 /* ---------- Inkfish: motion (transform/opacity only, GPU-cheap) ---------- */
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.97) translateY(6px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* Panes + cards settle in on mount / view switch. */
@@ -1777,7 +1862,10 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 .nlist button,
 .qlist > li,
 .proj-list button {
-  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+  transition:
+    transform 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease;
 }
 
 .nlist button:hover,
@@ -1793,7 +1881,10 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 
 /* Buttons: lift + press. */
 .btn {
-  transition: transform 0.12s ease, filter 0.12s ease, background 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    filter 0.12s ease,
+    background 0.12s ease;
 }
 
 .btn:not(:disabled):active {
@@ -1810,8 +1901,12 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .toast {
@@ -1835,7 +1930,6 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 .status-pill.st-processing {
   animation: pulse 1.4s ease-in-out infinite;
 }
-
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1949,20 +2043,48 @@ html[data-theme='paper'] .nlist button.sel {
 }
 
 /* Reading font size */
-html[data-font='compact'] { --ed-fs: 12.5px; }
-html[data-font='large'] { --ed-fs: 16px; }
+html[data-font='compact'] {
+  --ed-fs: 12.5px;
+}
+html[data-font='large'] {
+  --ed-fs: 16px;
+}
 
-.md { font-size: var(--ed-fs, 14px); font-family: var(--text-font); }
-.md p { font-size: 1em; }
-.md ul, .md ol { font-size: 1em; }
-.md pre { font-size: 0.92em; font-family: var(--mono-font); }
-.md code { font-family: var(--mono-font); }
+.md {
+  font-size: var(--ed-fs, 14px);
+  font-family: var(--text-font);
+}
+.md p {
+  font-size: 1em;
+}
+.md ul,
+.md ol {
+  font-size: 1em;
+}
+.md pre {
+  font-size: 0.92em;
+  font-family: var(--mono-font);
+}
+.md code {
+  font-family: var(--mono-font);
+}
 
 /* CodeMirror caret — default black is invisible on dark themes. */
-.ed-src .cm-content { caret-color: var(--text); font-family: var(--mono-font); }
-.ed-src .cm-cursor { border-left-color: var(--text) !important; }
-.ed-src .cm-fat-cursor { background: var(--text) !important; color: var(--inset); }
-.ed-src .cm-selectionBackground, .ed-src ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.ed-src .cm-content {
+  caret-color: var(--text);
+  font-family: var(--mono-font);
+}
+.ed-src .cm-cursor {
+  border-left-color: var(--text) !important;
+}
+.ed-src .cm-fat-cursor {
+  background: var(--text) !important;
+  color: var(--inset);
+}
+.ed-src .cm-selectionBackground,
+.ed-src ::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
 
 /* Motion reduced (settings) + OS preference */
 html[data-motion='reduced'] *,
@@ -1977,7 +2099,10 @@ html[data-motion='reduced'] *::after {
 .sidebar.core {
   width: 324px;
   gap: 0;
-  transition: width 0.18s ease, padding 0.18s ease, opacity 0.18s ease;
+  transition:
+    width 0.18s ease,
+    padding 0.18s ease,
+    opacity 0.18s ease;
 }
 
 /* Collapsible sidebar (Blobfish-style) — width animates to zero. */
@@ -2087,7 +2212,9 @@ html[data-motion='reduced'] *::after {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .scope-tabs button.on {
@@ -2136,7 +2263,10 @@ html[data-motion='reduced'] *::after {
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
 }
 
 .chips button:hover {
@@ -2336,7 +2466,9 @@ html[data-motion='reduced'] *::after {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.14s ease, transform 0.14s ease;
+  transition:
+    border-color 0.14s ease,
+    transform 0.14s ease;
 }
 
 .swatch:hover {
@@ -2472,7 +2604,10 @@ html[data-motion='reduced'] *::after {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease,
+    background 0.14s ease;
 }
 
 .seg-row .seg:hover {
@@ -2558,7 +2693,9 @@ html[data-motion='reduced'] *::after {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .settings-btn:hover {
@@ -2574,7 +2711,9 @@ html[data-motion='reduced'] *::after {
   border-radius: 10px;
   font-size: 14px;
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 
 .quit-btn:hover {
@@ -2601,7 +2740,9 @@ html[data-motion='reduced'] *::after {
   color: var(--muted);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .tree-tool:hover {
@@ -2986,10 +3127,18 @@ button.frow.on,
   }
 }
 
-html[data-density='compact'] .home { gap: 20px; }
-html[data-density='compact'] .hstat { padding: 10px 16px; }
-html[data-density='compact'] .hstat-value { font-size: 24px; }
-html[data-density='compact'] .hrow { padding: 7px 10px; }
+html[data-density='compact'] .home {
+  gap: 20px;
+}
+html[data-density='compact'] .hstat {
+  padding: 10px 16px;
+}
+html[data-density='compact'] .hstat-value {
+  font-size: 24px;
+}
+html[data-density='compact'] .hrow {
+  padding: 7px 10px;
+}
 
 /* Sparing accent elsewhere: active scope tab + selected tree row. */
 .scope-tabs button.on {
@@ -3246,7 +3395,9 @@ html[data-density='compact'] .md p {
   cursor: pointer;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .tab:hover {
@@ -3363,8 +3514,12 @@ html[data-density='compact'] .md p {
 
 /* Kill first/last child margins so the gutter's first line box starts at
    exactly the same y as the body's first text line. */
-.live-body > :first-child { margin-top: 0 !important; }
-.live-body > :last-child { margin-bottom: 0 !important; }
+.live-body > :first-child {
+  margin-top: 0 !important;
+}
+.live-body > :last-child {
+  margin-bottom: 0 !important;
+}
 
 .live-body {
   min-width: 0;
@@ -3792,4 +3947,53 @@ html[data-density='compact'] .md p {
   .settings-wide .settings-body {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Settings › Apple Intelligence ---------- */
+.intel-text {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  border: none;
+  border-radius: 8px;
+  outline: none;
+}
+.intel-text:focus {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mint) 60%, transparent);
+}
+.intel-out {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.intel-out-head {
+  margin-bottom: 6px;
+}
+.intel-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.intel-fields dt {
+  color: var(--muted);
+}
+.intel-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.intel-body {
+  margin: 0 0 6px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

@@ -53,7 +53,15 @@ describe('summarize', () => {
 describe('providerStatus', () => {
   test('rules always available, shape stable', async () => {
     const ps = await providerStatus()
-    expect(ps.map((p) => p.id)).toEqual(['apple', 'rules', 'stt'])
+    expect(ps.map((p) => p.id)).toEqual(['apple', 'intelligence', 'rules', 'stt'])
     expect(ps.find((p) => p.id === 'rules')?.available).toBe(true)
+  })
+})
+
+describe('Apple Intelligence fallback', () => {
+  test('classify stays on rules when the on-device model is unavailable', async () => {
+    const r = await classify({ raw: 'um so work thing, ship the settings page by thursday', kind: 'text', projects })
+    expect(r.provider).toBe('rules')
+    expect(r.projectName).toBe('work')
   })
 })

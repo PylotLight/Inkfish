@@ -76,6 +76,8 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
+import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
+import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
 import {
   clearDownload,
   downloadProgress,
@@ -505,6 +507,23 @@ export function registerIpc(): void {
   ipcMain.handle('ai:summarize', (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> =>
     summarize(text)
   )
+  // --- Apple Intelligence (Foundation Models) ----------------------------------------
+  ipcMain.handle('intel:status', (_e: IpcMainInvokeEvent, fresh?: boolean): Promise<IntelStatus> => intelStatus(fresh))
+  ipcMain.handle('intel:prefs', (): IntelPrefs => loadIntelPrefs())
+  ipcMain.handle('intel:set-prefs', (_e: IpcMainInvokeEvent, patch: Partial<IntelPrefs>): IntelPrefs =>
+    saveIntelPrefs(patch)
+  )
+  ipcMain.handle('intel:run', (_e: IpcMainInvokeEvent, input: Omit<IntelRunInput, 'projects'>): Promise<IntelResult> =>
+    intelRun({
+      ...input,
+      projects: vaultConfigured() ? listProjects(requireNotes()).map((p) => p.name) : []
+    })
+  )
+  ipcMain.handle('intel:open-system-settings', (): boolean => {
+    if (process.platform !== 'darwin') return false
+    void shell.openExternal('x-apple.systempreferences:com.apple.Siri-Settings.extension')
+    return true
+  })
   ipcMain.handle('ai:speak', (_e: IpcMainInvokeEvent, text: string): Promise<boolean> => speak(text))
   ipcMain.handle('ai:stop-speak', (): boolean => {
     stopSpeak()
