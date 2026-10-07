@@ -40,7 +40,8 @@
           ],
           "disableIOS": true
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }
