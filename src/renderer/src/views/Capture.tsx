@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 import { LIVE_ENGINE, startLive, type LiveSession } from '../liveCaptions'
-import { startMeeting, type Meeting, type MeetingLine } from '../meeting'
+import { loadLabels, startMeeting, toMarkdown, type Meeting, type MeetingLine } from '../meeting'
 import { isWebEngine, transcribeWeb, warmWeb } from '../webStt'
 
 /**
@@ -205,7 +205,8 @@ export default function Capture(): React.JSX.Element {
       const wav = await toWav(r.audio)
       const rel = await window.api.assets.save('meeting.wav', await blobToDataUrl(wav))
       setAttachments((prev) => [...prev, rel])
-      if (r.markdown) appendText(r.markdown)
+      const md = toMarkdown(r.lines)
+      if (md) appendText(md)
       say(`Meeting transcribed ✓ · ${r.lines.length} lines`)
     } catch (e) {
       say('Meeting capture failed', ipcError(e), 6000)
@@ -337,7 +338,7 @@ export default function Capture(): React.JSX.Element {
         >
           {meetLines.slice(-6).map((l, i) => (
             <p key={i}>
-              <b>{l.who}</b> {l.text}
+              <b>{loadLabels()[l.who]}</b> {l.draft ? `${l.text}…` : l.text}
             </p>
           ))}
         </div>

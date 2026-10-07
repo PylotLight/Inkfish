@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
-import type { InboxItem, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
+import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
 
 /**
  * Vault writer (main process only). Plain `.md` files are the source of
@@ -229,6 +229,22 @@ export function renamePath(rel: string, newName: string, paths: VaultPaths = vau
   const dest = join(dirname(abs), target)
   assertInside(paths.root, dest, target)
   if (existsSync(dest)) throw new Error(`${target} already exists`)
+  renameSync(abs, dest)
+  return relative(paths.root, dest)
+}
+
+/** Move a file or dir into another folder ('' = root). Returns new vaultRel. */
+export function movePath(rel: string, destDirRel: string, paths: VaultPaths = vaultPaths()): string {
+  const abs = join(paths.root, rel)
+  assertInside(paths.root, abs, rel)
+  if (!existsSync(abs)) throw new Error(`${rel} not found`)
+  const destDir = join(paths.root, destDirRel)
+  if (destDirRel) assertInside(paths.root, destDir, destDirRel)
+  if (destDir === abs || destDir.startsWith(`${abs}/`)) throw new Error('cannot move a folder into itself')
+  mkdirSync(destDir, { recursive: true })
+  const dest = join(destDir, basename(abs))
+  if (dest === abs) return rel
+  if (existsSync(dest)) throw new Error(`${basename(abs)} already exists in ${destDirRel || '/'}`)
   renameSync(abs, dest)
   return relative(paths.root, dest)
 }
@@ -849,6 +865,49 @@ export function saveAsset(
 
 export function resolveAsset(vaultRel: string, paths: VaultPaths = vaultPaths()): string {
   return join(paths.root, vaultRel)
+}
+
+// --- live meeting notes ---------------------------------------------------------
+
+const fmtDuration = (sec: number): string => {
+  const m = Math.round(sec / 60)
+  return m < 1 ? `${Math.round(sec)}s` : m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+/**
+ * Write a captured meeting as its own note: `<vault>/<folder>/YYYY-MM-DD HHmm Title.md`
+ * with `kind: meeting`. Re-saving with `replaceRel` re-titles / re-files it.
+ */
+export function writeMeetingNote(input: MeetingSaveInput, paths: VaultPaths = vaultPaths()): string {
+  ensureVault(paths)
+  const folder = input.folder.trim().replace(/^\/+|\/+$/g, '')
+  const dir = join(paths.root, folder)
+  if (folder) assertInside(paths.root, dir, folder)
+  mkdirSync(dir, { recursive: true })
+  const started = new Date(input.startedAt)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const day = `${started.getFullYear()}-${pad(started.getMonth() + 1)}-${pad(started.getDate())}`
+  const title = input.title.trim() || 'Meeting'
+  const base = `${day} ${pad(started.getHours())}${pad(started.getMinutes())} ${title.replace(/[/\\:]+/g, '-')}`.slice(0, 110)
+  const prev = input.replaceRel ? join(paths.root, input.replaceRel) : null
+  if (prev) assertInside(paths.root, prev, input.replaceRel as string)
+  const name = prev && dirname(prev) === dir && basename(prev) === `${base}.md` ? `${base}.md` : uniqueFile(dir, base, '.md')
+  const abs = join(dir, name)
+  const fm = stringifyFrontmatter({
+    kind: 'meeting',
+    created: started.toISOString(),
+    duration: fmtDuration(input.durationSec),
+    speakers: input.speakers,
+    tags: input.tags.map((t) => t.trim().replace(/^#/, '')).filter(Boolean)
+  })
+  const when = started.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const audio = input.audioRel ? `\n![](${input.audioRel})\n` : ''
+  const body =
+    `# ${title}\n\n> ${when} · ${fmtDuration(input.durationSec)} · ${input.speakers.join(', ')}\n${audio}\n` +
+    `## Notes\n\n- \n\n## Actions\n\n- [ ] \n\n## Transcript\n\n${input.transcript.trim() || '_Nothing was transcribed._'}\n`
+  writeFileSync(abs, `${fm}${body}`, 'utf8')
+  if (prev && prev !== abs && existsSync(prev)) unlinkSync(prev)
+  return relative(paths.root, abs)
 }
 
 // --- meeting import --------------------------------------------------------------
