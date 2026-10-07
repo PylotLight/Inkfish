@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChevronDown, ChevronRight, FilePlus, Folder, Plus } from 'lucide-react-native';
 import { useTheme } from '../theme';
+import { Icon } from './Icon';
 import { useStore } from '../lib/store';
 
 const WIDTH = Math.min(340, Dimensions.get('window').width * 0.85);
@@ -79,17 +81,17 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
         }}
       >
         <View style={[ui.row, { justifyContent: 'space-between', marginBottom: 8 }]}>
-          <Text style={[ui.title, { fontSize: 18 }]}>Vault</Text>
-          <Pressable onPress={() => void createIn('')} style={ui.quiet}>
-            <Text style={ui.quietText}>+ New</Text>
+          <Text style={[ui.title, { fontSize: 18 }]}>Inkfish</Text>
+          <Pressable onPress={() => void createIn('')} style={ui.iconBtn} accessibilityLabel="New note">
+            <Icon as={FilePlus} size={20} />
           </Pressable>
         </View>
         <TextInput
           value={q}
           onChangeText={setQ}
-          placeholder="Filter notes…"
+          placeholder="Search files"
           placeholderTextColor={c.faint}
-          style={[ui.search, { marginBottom: 8 }]}
+          style={[ui.search, { marginBottom: 8, borderWidth: 0, borderRadius: 10, paddingVertical: 9 }]}
         />
         <ScrollView keyboardShouldPersistTaps="handled">
           {projects.map((p) => {
@@ -99,17 +101,23 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
             return (
               <View key={p.id}>
                 <View style={[ui.row, { justifyContent: 'space-between' }]}>
-                  <Pressable onPress={() => setCollapsed((m) => ({ ...m, [p.id]: !shut }))} style={[ui.quiet, { flex: 1 }]}>
-                    <Text style={ui.quietMuted}>{shut ? '▸' : '▾'}  {p.name}  ·  {items.length}</Text>
+                  <Pressable
+                    onPress={() => setCollapsed((m) => ({ ...m, [p.id]: !shut }))}
+                    style={[ui.row, { flex: 1, gap: 6, paddingVertical: 8 }]}
+                  >
+                    <Icon as={shut ? ChevronRight : ChevronDown} size={16} color={c.faint} />
+                    <Icon as={Folder} size={17} />
+                    <Text style={[ui.title, { fontWeight: '500' }]}>{p.name}</Text>
+                    <Text style={[ui.meta, { marginTop: 0 }]}>{items.length}</Text>
                   </Pressable>
-                  <Pressable onPress={() => void createIn(p.dir)} style={ui.quiet}>
-                    <Text style={ui.quietText}>+</Text>
+                  <Pressable onPress={() => void createIn(p.dir)} style={ui.iconBtn} accessibilityLabel={`New note in ${p.name}`}>
+                    <Icon as={Plus} size={16} color={c.faint} />
                   </Pressable>
                 </View>
                 {!shut &&
                   items.map((n) => (
-                    <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7, paddingLeft: 20 }}>
-                      <Text style={ui.title} numberOfLines={1}>{n.title}</Text>
+                    <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7, paddingLeft: 45 }}>
+                      <Text style={[ui.title, { fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
                     </Pressable>
                   ))}
               </View>
@@ -117,10 +125,10 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           })}
           {groups.rest.length > 0 && (
             <View>
-              <Text style={[ui.meta, { marginTop: 10, marginBottom: 2 }]}>More · {groups.rest.length}</Text>
+              <Text style={[ui.label, { marginTop: 14 }]}>Other notes</Text>
               {groups.rest.map((n) => (
                 <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7 }}>
-                  <Text style={ui.title} numberOfLines={1}>{n.title}</Text>
+                  <Text style={[ui.title, { fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
                 </Pressable>
               ))}
             </View>

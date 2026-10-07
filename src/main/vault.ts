@@ -369,8 +369,14 @@ export function isStagingRel(rel: string): boolean {
   return rel === 'inbox' || rel.startsWith('inbox/') || rel === 'daily' || rel.startsWith('daily/')
 }
 
+/** Local calendar day (YYYY-MM-DD). A day log follows the wall clock, not UTC —
+ *  in Melbourne `toISOString()` filed everything before 11am under yesterday. */
+export function localDay(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPaths()): { abs: string; vaultRel: string } {
-  const day = date.toISOString().slice(0, 10)
+  const day = localDay(date)
   const abs = join(paths.dailyDir, `${day}.md`)
   // Staging rel namespace (`daily/<day>.md`) — stable even though the file
   // lives in app data, so index rows, tree filters, and open-today all agree.
@@ -390,7 +396,7 @@ export function appendDaily(
   mkdirSync(dirname(abs), { recursive: true })
   const stamp = (opts.date ?? new Date()).toTimeString().slice(0, 5)
   const kind = opts.kind ?? 'text'
-  const header = `# ${new Date().toISOString().slice(0, 10)}\n\n`
+  const header = `# ${localDay(opts.date ?? new Date())}\n\n`
   const section = `## ${stamp}${kind !== 'text' ? ` · ${kind}` : ''}\n\n${text}\n\n`
   if (!existsSync(abs)) {
     const fm = stringifyFrontmatter({ kind: 'daily', created: new Date().toISOString(), source: opts.source ?? 'tray' })

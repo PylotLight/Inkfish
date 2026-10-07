@@ -1,20 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { BookOpen, ChevronLeft, Pencil } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 import type { NoteDoc } from '../lib/format';
 import { Markdown } from '../components/Markdown';
+import { Icon } from '../components/Icon';
+import { folderOf } from '../lib/when';
 
-/** Full editor: raw markdown source + rendered preview, same file as Mac edits. */
+const AUTOSAVE_MS = 700;
+
+/**
+ * Note editor, Obsidian-style: back · folder breadcrumb · read/edit toggle,
+ * then the page. Edits autosave (debounced, and on leave) — no Save button.
+ */
 export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () => void }): React.JSX.Element {
-  const { ui, c: dark } = useTheme();
+  const { ui, c } = useTheme();
   const { openNote, saveNote } = useStore();
   const [doc, setDoc] = useState<NoteDoc | null>(null);
   const [text, setText] = useState('');
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [state, setState] = useState<'clean' | 'dirty' | 'saving' | 'error'>('clean');
+  const saved = useRef('');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -23,8 +32,9 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       if (!live) return;
       setDoc(d);
       setText(d?.markdown ?? '');
-      // Inbox raws open straight into edit; routed notes open in preview.
-      setMode(d && d.path.startsWith('inbox/') ? 'edit' : 'view');
+      saved.current = d?.markdown ?? '';
+      // Inbox raws and empty notes open straight into edit; others in reading view.
+      setMode(d && (d.path.startsWith('inbox/') || !d.markdown.trim()) ? 'edit' : 'view');
       setLoading(false);
     });
     return () => {
@@ -32,65 +42,82 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     };
   }, [noteId, openNote]);
 
-  async function save(): Promise<void> {
-    if (!doc) return;
-    setSaving(true);
+  async function flush(next = text): Promise<void> {
+    if (!doc || next === saved.current) return;
+    setState('saving');
     try {
-      const d = await saveNote(doc.id, text);
-      if (d) {
-        setDoc(d);
-        setMsg('Saved ✓');
-      }
-    } catch (e) {
-      setMsg(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving(false);
+      await saveNote(doc.id, next);
+      saved.current = next;
+      setState('clean');
+    } catch {
+      setState('error');
     }
   }
 
-  if (loading) return <View style={ui.screen}><ActivityIndicator color={dark.accent} /></View>;
-  if (!doc) {
-    return (
-      <View style={ui.screen}>
-        <Text style={ui.sub}>Note not found.</Text>
-        <Pressable onPress={onClose} style={ui.quiet}><Text style={ui.quietText}>Back</Text></Pressable>
-      </View>
-    );
+  function onChange(next: string): void {
+    setText(next);
+    setState('dirty');
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void flush(next), AUTOSAVE_MS);
   }
 
-  return (
-    <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
-      <Pressable onPress={onClose} style={ui.back}>
-        <Text style={ui.backText}>‹ Back</Text>
-      </Pressable>
-      <Text style={ui.h1}>{doc.title}</Text>
-      <Text style={ui.sub}>{doc.path} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}</Text>
+  async function close(): Promise<void> {
+    if (timer.current) clearTimeout(timer.current);
+    await flush();
+    onClose();
+  }
 
-      <View style={ui.segRow}>
-        {(['view', 'edit'] as const).map((m) => (
-          <Pressable key={m} onPress={() => setMode(m)} style={[ui.seg, mode === m && ui.segOn]}>
-            <Text style={[ui.segText, mode === m && ui.segTextOn]}>{m === 'view' ? 'Preview' : 'Edit'}</Text>
+  if (loading) return <View style={ui.center}><ActivityIndicator color={c.accent} /></View>;
+
+  const status = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Edited' : state === 'error' ? 'Not saved' : '';
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <View style={[ui.topBar, { marginHorizontal: 10 }]}>
+        <Pressable onPress={() => void close()} style={ui.iconBtn} accessibilityLabel="Back">
+          <Icon as={ChevronLeft} />
+        </Pressable>
+        <Text style={[ui.meta, { flex: 1, marginTop: 0 }]} numberOfLines={1}>
+          {doc ? folderOf(doc.path) : ''}
+          {status ? `  ·  ${status}` : ''}
+        </Text>
+        {doc && (
+          <Pressable
+            onPress={() => {
+              if (mode === 'edit') void flush();
+              setMode(mode === 'edit' ? 'view' : 'edit');
+            }}
+            style={ui.iconBtn}
+            accessibilityLabel={mode === 'edit' ? 'Reading view' : 'Edit'}
+          >
+            <Icon as={mode === 'edit' ? BookOpen : Pencil} size={20} />
           </Pressable>
-        ))}
+        )}
       </View>
 
-      {mode === 'edit' ? (
+      {!doc ? (
+        <Text style={[ui.meta, { paddingHorizontal: 20 }]}>Note not found.</Text>
+      ) : mode === 'edit' ? (
         <TextInput
-          style={[ui.composer, ui.composerMono]}
+          style={[ui.composer, { flex: 1, paddingHorizontal: 20, paddingBottom: 40 }]}
           value={text}
-          onChangeText={setText}
+          onChangeText={onChange}
           multiline
-          placeholderTextColor={dark.faint}
+          autoFocus
+          placeholder="Start writing…"
+          placeholderTextColor={c.faint}
         />
       ) : (
-        <Markdown text={text || '_Empty note._'} />
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60 }}>
+          <Pressable onPress={() => setMode('edit')}>
+            {!/^#\s/.test(text.trimStart()) && <Text style={[ui.display, { marginBottom: 8 }]}>{doc.title}</Text>}
+            <Markdown text={text || '_Empty note — tap to write._'} />
+            {doc.tags.length > 0 && (
+              <Text style={[ui.meta, { marginTop: 20, color: c.accent }]}>{doc.tags.map((t) => `#${t}`).join('  ')}</Text>
+            )}
+          </Pressable>
+        </ScrollView>
       )}
-
-      {msg && <Text style={[ui.meta, { marginTop: 8 }]}>{msg}</Text>}
-      <Pressable onPress={() => void save()} disabled={saving} style={[ui.btn, saving && ui.btnOff]}>
-        {saving ? <ActivityIndicator color={dark.ink} /> : <Text style={ui.btnText}>Save</Text>}
-      </Pressable>
-      <View style={{ height: 24 }} />
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

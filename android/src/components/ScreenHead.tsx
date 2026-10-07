@@ -1,25 +1,54 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { Menu, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme';
+import { Icon } from './Icon';
 
-/** Screen header with hamburger (opens the file drawer) + title + sub. */
-export function ScreenHead({ title, sub, onMenu }: { title: string; sub: string; onMenu: () => void }): React.JSX.Element {
+export interface HeadAction {
+  icon: LucideIcon;
+  onPress: () => void;
+  label: string;
+  active?: boolean;
+}
+
+/**
+ * Obsidian-mobile top bar: menu (file drawer) · title · actions. One compact
+ * row instead of a 30pt title + subtitle on every screen — the content starts
+ * a third of the way higher.
+ */
+export function ScreenHead({
+  title,
+  onMenu,
+  actions = [],
+  left
+}: {
+  title: string;
+  onMenu?: () => void;
+  actions?: HeadAction[];
+  /** Replaces the menu button (e.g. a close/back action). */
+  left?: HeadAction;
+}): React.JSX.Element {
   const { ui, c } = useTheme();
+  const lead = left ?? (onMenu ? { icon: Menu, onPress: onMenu, label: 'Open files' } : null);
   return (
-    <View style={{ marginBottom: 2 }}>
-      <View style={s.row}>
-        <Pressable onPress={onMenu} style={s.menu} hitSlop={8}>
-          <Text style={[s.glyph, { color: c.muted }]}>☰</Text>
+    <View style={ui.topBar}>
+      {lead ? (
+        <Pressable onPress={lead.onPress} style={ui.iconBtn} hitSlop={6} accessibilityLabel={lead.label}>
+          <Icon as={lead.icon} />
         </Pressable>
-        <Text style={ui.h1}>{title}</Text>
+      ) : (
+        <View style={ui.iconBtn} />
+      )}
+      <Text style={ui.topTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      <View style={ui.row}>
+        {actions.map((a) => (
+          <Pressable key={a.label} onPress={a.onPress} style={ui.iconBtn} hitSlop={6} accessibilityLabel={a.label}>
+            <Icon as={a.icon} color={a.active ? c.accent : undefined} />
+          </Pressable>
+        ))}
       </View>
-      <Text style={[ui.sub, { marginLeft: 44 }]}>{sub}</Text>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center' },
-  menu: { width: 44, paddingVertical: 10, marginLeft: -8, alignItems: 'center' },
-  glyph: { fontSize: 20 }
-});
