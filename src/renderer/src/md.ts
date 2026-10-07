@@ -58,15 +58,7 @@ export function renderMarkdown(md: string, opts?: RenderOptions): string {
     const fence = /^```(\w*)\s*$/.exec(line)
     if (fence) {
       if (inCode) {
-        const body = esc(codeBuf.join('\n'))
-        const n = codeBuf.length
-        if (n > 25) {
-          html.push(
-            `<details class="codeblock"><summary>${esc(codeLang || 'code')} · ${n} lines — expand</summary><pre><code class="lang-${esc(codeLang)}">${body}</code></pre></details>`
-          )
-        } else {
-          html.push(`<pre><code class="lang-${esc(codeLang)}">${body}</code></pre>`)
-        }
+        html.push(codeBlockHtml(codeLang, codeBuf.join('\n')))
         codeBuf = []
         inCode = false
       } else {
@@ -129,10 +121,162 @@ export function renderMarkdown(md: string, opts?: RenderOptions): string {
   }
   closeList()
   closeQuote()
-  if (inCode) html.push(`<pre><code>${esc(codeBuf.join('\n'))}</code></pre>`)
+  if (inCode) html.push(codeBlockHtml(codeLang, codeBuf.join('\n')))
   return html.join('\n')
 }
 
+// --- Code blocks: highlight + copy ------------------------------------------
+// Dependency-free regex highlighter. Covers common language families with a
+// single-pass scan (comments → strings → keys/tags → keywords → numbers) so
+// token boundaries can't overlap. Unknown languages get generic treatment
+// (comments + strings + numbers).
+
+function escRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const C_LIKE_KW = (
+  'break case catch class const continue debugger default delete do else export extends ' +
+  'finally for function if import in instanceof new return super switch this throw try ' +
+  'typeof var void while with yield let static async await enum implements interface ' +
+  'package private protected public type from as func package go map chan defer select ' +
+  'fallthrough fn mut struct trait impl mod use crate pub ref self Self fn let mut ' +
+  'fn def auto bool char double float int long short signed sizeof union unsigned void volatile'
+).split(/\s+/)
+
+const PYTHON_KW =
+  'False None True and as assert async await break class continue def del elif else ' +
+  'except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield'
+
+const BASH_KW =
+  'if then else elif fi for while until in do done case esac function select return exit ' +
+  'export local readonly declare unset alias unalias true false source'
+
+const SQL_KW =
+  'SELECT FROM WHERE AND OR NOT INSERT INTO UPDATE DELETE CREATE TABLE DROP ALTER JOIN ' +
+  'LEFT RIGHT INNER OUTER ON AS BY ORDER GROUP HAVING LIMIT OFFSET DISTINCT NULL IS LIKE ' +
+  'IN BETWEEN UNION ALL VALUES SET PRIMARY KEY REFERENCES INDEX VIEW TRIGGER PROCEDURE'
+
+const CSS_AT = 'import media font-face keyframes supports charset namespace page document'
+
+interface LangSpec {
+  keywords: string[]
+  caseInsensitive?: boolean
+  lineComments?: string[]
+  blockComment?: [string, string]
+  yamlKeys?: boolean
+  cssProps?: boolean
+  htmlTags?: boolean
+  attrKeys?: boolean
+}
+
+function specFor(lang: string): LangSpec {
+  const L = lang.toLowerCase()
+  if (L === 'py' || L === 'python' || L === 'pyi' || L === 'toml' || L === 'ini' || L === 'cfg') {
+    return { keywords: PYTHON_KW.split(/\s+/), lineComments: ['#'] }
+  }
+  if (L === 'yaml' || L === 'yml') {
+    return { keywords: 'true True TRUE false False FALSE null Null NULL ~ yes Yes YES no No NO on On ON off Off OFF'.split(/\s+/), lineComments: ['#'], yamlKeys: true }
+  }
+  if (L === 'json' || L === 'jsonc' || L === 'json5') {
+    return { keywords: ['true', 'false', 'null'], lineComments: ['//'], yamlKeys: true }
+  }
+  if (L === 'sh' || L === 'bash' || L === 'zsh' || L === 'shell' || L === 'dockerfile' || L === 'docker') {
+    return { keywords: BASH_KW.split(/\s+/), lineComments: ['#'] }
+  }
+  if (L === 'sql') {
+    return { keywords: SQL_KW.split(/\s+/), caseInsensitive: true, lineComments: ['--'] }
+  }
+  if (L === 'css' || L === 'scss' || L === 'less') {
+    return { keywords: CSS_AT.split(/\s+/).map((w) => `@${w}`), lineComments: [], blockComment: ['/*', '*/'], cssProps: true }
+  }
+  if (L === 'html' || L === 'xml' || L === 'vue' || L === 'svelte' || L === 'svg' || L === 'md' || L === 'markdown') {
+    return { keywords: [], blockComment: ['<!--', '-->'], htmlTags: true, attrKeys: true }
+  }
+  if (
+    ['js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'java', 'c', 'h', 'cpp', 'hpp', 'cc',
+     'go', 'rs', 'rust', 'rb', 'ruby', 'php', 'swift', 'kt', 'kts', 'scala', 'cs', 'dart'].includes(L)
+  ) {
+    return { keywords: C_LIKE_KW, lineComments: ['//'], blockComment: ['/*', '*/'] }
+  }
+  // Unknown: generic strings + numbers + both common comment styles.
+  return { keywords: [], lineComments: ['#', '//'] }
+}
+
+/** Highlight raw code for `lang`, returning escaped HTML with token spans. */
+export function highlightCode(src: string, lang: string): string {
+  const spec = specFor(lang)
+  const parts: string[] = []
+  if (spec.blockComment) {
+    const [o, c] = spec.blockComment
+    parts.push(`(?<comBlock>${escRe(o)}[\\s\\S]*?(?:${escRe(c)}|$))`)
+  }
+  if (spec.lineComments && spec.lineComments.length > 0) {
+    parts.push(`(?<comLine>(?:${spec.lineComments.map(escRe).join('|')})[^\\n]*)`)
+  }
+  if (spec.htmlTags) {
+    parts.push('(?<tag></?[A-Za-z][^\\s<>/!?=]*|/?>)')
+  }
+  parts.push(`(?<str>'(?:[^'\\\\\\n]|\\\\.)*'|"(?:[^"\\\\\\n]|\\\\.)*"|\`(?:[^\`\\\\]|\\\\.)*\`)`)
+  if (spec.attrKeys) {
+    parts.push(`(?<attr>[A-Za-z_:][\\w:.-]*(?=\\s*=))`)
+  }
+  if (spec.yamlKeys) {
+    parts.push('(?<key>[A-Za-z0-9_.\\-/][A-Za-z0-9_.\\-/ ]*(?=:([ \\t]|$)))')
+  }
+  if (spec.cssProps) {
+    parts.push('(?<key>[A-Za-z-]+(?=\\s*:))')
+  }
+  parts.push('(?<num>\\b(?:0x[\\da-fA-F]+|\\d+(?:\\.\\d+)?)\\b)')
+  if (spec.keywords.length > 0) {
+    const uni = [...new Set(spec.keywords)].map(escRe).join('|')
+    parts.push(`(?<kw>\\b(?:${uni})\\b)`)
+  }
+  const flags = spec.caseInsensitive ? 'gmi' : 'gm'
+  const re = new RegExp(parts.join('|'), flags)
+  let out = ''
+  let last = 0
+  for (let m = re.exec(src); m !== null; m = re.exec(src)) {
+    const idx = m.index ?? 0
+    out += esc(src.slice(last, idx))
+    const g = m.groups ?? {}
+    const tok = (Object.keys(g).find((k) => g[k] !== undefined) ?? '') as string
+    const cls = tok === 'comBlock' || tok === 'comLine' ? 'tok-com'
+      : tok === 'str' ? 'tok-str'
+      : tok === 'num' ? 'tok-num'
+      : tok === 'kw' ? 'tok-kw'
+      : tok === 'key' || tok === 'attr' ? 'tok-key'
+      : tok === 'tag' ? 'tok-tag' : ''
+    out += cls ? `<span class="${cls}">${esc(m[0])}</span>` : esc(m[0])
+    last = idx + m[0].length
+    if (m[0].length === 0) re.lastIndex++
+  }
+  out += esc(src.slice(last))
+  return out
+}
+
+/** Full code block: header (lang + copy, expand when long) + highlighted pre. */
+export function codeBlockHtml(lang: string, src: string): string {
+  const body = highlightCode(src, lang)
+  const label = esc(lang || 'code')
+  const cls = lang ? ` class="lang-${esc(lang)}"` : ''
+  const n = src.split('\n').length
+  if (n > 25) {
+    return (
+      `<div class="codeblock long">` +
+      `<div class="codehead"><span class="codelang">${label} · ${n} lines</span>` +
+      `<span class="codeactions"><button type="button" class="copy-code" title="Copy code to clipboard">Copy</button>` +
+      `<button type="button" class="expand-code" title="Expand code block">Expand</button></span></div>` +
+      `<pre class="collapsed"><code${cls}>${body}</code></pre></div>`
+    )
+  }
+  return (
+    `<div class="codeblock">` +
+    `<div class="codehead"><span class="codelang">${label}</span>` +
+    `<span class="codeactions"><button type="button" class="copy-code" title="Copy code to clipboard">Copy</button></span></div>` +
+    `<pre><code${cls}>${body}</code></pre></div>`
+  )
+}
 // --- Live blocks --------------------------------------------------------------
 // Split source into independently renderable/editable blocks so the Live view
 // can offer click-to-edit reading. Each block tracks its source line range

@@ -20,6 +20,28 @@ function toDataUrl(file: File): Promise<string> {
   })
 }
 
+async function copyText(txt: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(txt)
+    return true
+  } catch {
+    // Clipboard API unavailable (permissions) — legacy fallback.
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = txt
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
 /**
  * Live view: rendered markdown with click-to-edit blocks (Obsidian Live
  * Preview lite). Click a block → it becomes a focused textarea; blur/⌘Enter
@@ -133,6 +155,33 @@ const LiveBlockView = memo(function LiveBlockView({
       title="Click to edit"
       onClick={(e) => {
         const t = e.target as HTMLElement
+        // Code block buttons (copy / expand) — handled here, never edit.
+        const btn = t.closest?.('button')
+        if (btn) {
+          if (btn.classList.contains('copy-code')) {
+            const code = btn.closest('.codeblock')?.querySelector('code')
+            const txt = code?.textContent ?? ''
+            if (txt) {
+              btn.textContent = 'Copying…'
+              void copyText(txt).then((ok) => {
+                btn.textContent = ok ? 'Copied ✓' : 'Failed'
+                window.setTimeout(() => {
+                  btn.textContent = 'Copy'
+                }, 1200)
+              })
+            }
+            return
+          }
+          if (btn.classList.contains('expand-code')) {
+            const wrap = btn.closest('.codeblock')
+            const pre = wrap?.querySelector('pre')
+            if (pre) {
+              const collapsed = pre.classList.toggle('collapsed')
+              btn.textContent = collapsed ? 'Expand' : 'Collapse'
+            }
+            return
+          }
+        }
         // Task checkbox toggles in place — don't open the editor.
         if (t.tagName === 'INPUT' && (t as HTMLInputElement).type === 'checkbox') {
           e.stopPropagation()

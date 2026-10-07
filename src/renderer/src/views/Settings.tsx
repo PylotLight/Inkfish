@@ -19,34 +19,99 @@ const MODES: Array<{ id: EditMode; name: string; hint: string }> = [
   { id: 'raw', name: 'Raw', hint: 'Markdown source.' }
 ]
 
-function FontField({
-  label, hint, value, placeholder, onChange
+const TEXT_FONTS = [
+  'SF Pro Text',
+  'Inter',
+  'Helvetica Neue',
+  'Helvetica',
+  'Arial',
+  'Verdana',
+  'Trebuchet MS',
+  'Gill Sans',
+  'Avenir Next',
+  'Georgia',
+  'Palatino',
+  'Charter',
+  'Times New Roman',
+  'Optima',
+  'Noto Sans'
+]
+
+const MONO_FONTS = [
+  'SF Mono',
+  'Menlo',
+  'Consolas',
+  'Cascadia Code',
+  'JetBrains Mono',
+  'Fira Code',
+  'Source Code Pro',
+  'Roboto Mono',
+  'Andale Mono',
+  'Courier New'
+]
+
+function FontSelect({
+  label, hint, value, options, sample, mono, placeholder, onChange
 }: {
   label: string
   hint: string
   value: string
+  options: string[]
+  /** Sample text rendered in the candidate font for live preview. */
+  sample: string
+  mono?: boolean
   placeholder: string
   onChange: (v: string) => void
 }): React.JSX.Element {
+  const isCustom = value !== '' && !options.includes(value)
+  const selectValue = isCustom ? '__custom__' : value
   return (
     <div className="setting-row stacked">
       <span className="setting-label">{label}</span>
       <div className="row" style={{ marginTop: 0 }}>
-        <input
+        <select
           className="grow"
-          type="text"
-          value={value}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
+          value={selectValue}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v !== '__custom__') onChange(v)
+          }}
           aria-label={label}
-          spellCheck={false}
-        />
+        >
+          <option value="">{placeholder}</option>
+          {options.map((f) => (
+            <option key={f} value={f} style={{ fontFamily: `'${f}', sans-serif` }}>
+              {f}
+            </option>
+          ))}
+          <option value="__custom__">Custom…</option>
+        </select>
         {value !== '' && (
           <button className="btn ghost sm" onClick={() => onChange('')} title="Reset to system default">
             ↺
           </button>
         )}
       </div>
+      {isCustom && (
+        <div className="row" style={{ marginTop: 8 }}>
+          <input
+            className="grow"
+            type="text"
+            value={value}
+            placeholder="Custom font stack, e.g. 'Iowan Old Style', serif"
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={`${label} (custom)`}
+            spellCheck={false}
+          />
+        </div>
+      )}
+      <p
+        className="font-preview"
+        style={value ? { fontFamily: mono ? `'${value}', monospace` : `'${value}', sans-serif` } : undefined}
+        aria-hidden
+      >
+        {sample}
+      </p>
       <p className="muted small setting-hint">{hint}</p>
     </div>
   )
@@ -198,24 +263,31 @@ export default function SettingsView({
 
         <section className="settings-group">
           <h4>Font</h4>
-          <FontField
+          <FontSelect
             label="Interface font"
-            hint="Set base font for all of Inkfish. Empty = system default."
+            hint="Base font for all of Inkfish. Empty = system default."
             value={prefs.interfaceFont}
+            options={TEXT_FONTS}
+            sample="AaBbCc 123 — interface preview"
             placeholder="System default"
             onChange={(v) => set({ interfaceFont: v })}
           />
-          <FontField
+          <FontSelect
             label="Text font"
-            hint="Set font for editing and reading views."
+            hint="Font for editing and reading views."
             value={prefs.textFont}
+            options={TEXT_FONTS}
+            sample="AaBbCc 123 — the quick brown fox jumps"
             placeholder="System default"
             onChange={(v) => set({ textFont: v })}
           />
-          <FontField
+          <FontSelect
             label="Monospace font"
-            hint="Set font for places like code blocks and editor source."
+            hint="Font for code blocks and editor source."
             value={prefs.monoFont}
+            options={MONO_FONTS}
+            sample="const inkfish = 42; // mono preview"
+            mono
             placeholder="System monospace"
             onChange={(v) => set({ monoFont: v })}
           />
