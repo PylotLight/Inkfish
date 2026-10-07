@@ -194,10 +194,15 @@ export async function prepareEngine(
             if (line.startsWith('PROGRESS ')) {
               try {
                 const p = JSON.parse(line.slice(9)) as Partial<DownloadProgress>
+                const phase = p.phase ?? ''
+                const f = Math.min(1, p.fraction ?? 0)
+                // `fraction` is within the current phase (download, then compile).
+                // Monotonic inside a phase: a resumed run re-lists first and must
+                // not dip the bar; listing keeps the last download value.
+                const same = phase === d.progress.phase || phase === 'listing'
                 emit({
-                  // Monotonic: a resumed run re-lists first and must not dip the bar.
-                  fraction: Math.max(d.progress.fraction, Math.min(1, p.fraction ?? 0)),
-                  phase: p.phase ?? '',
+                  fraction: same ? Math.max(d.progress.fraction, f) : f,
+                  phase: phase === 'listing' && d.progress.fraction > 0 ? d.progress.phase : phase,
                   files: p.files ?? 0,
                   total: p.total ?? 0
                 })

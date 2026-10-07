@@ -43,18 +43,32 @@ struct Engine: Encodable {
 }
 
 /// `prepare` progress for the app: one `PROGRESS {json}` line per update on stderr.
-let progressLine: ProgressHandler = { p in
-  var phase = "downloading"
-  var files = 0
-  var total = 0
-  switch p.phase {
-  case .listing: phase = "listing"
-  case .downloading(let done, let all): files = done; total = all
-  case .compiling: phase = "compiling"
+///
+/// FluidAudio's `fractionCompleted` covers the whole operation: repo loads give
+/// the download the first half and Core ML compile the second (weight 0.5),
+/// subdirectory loads (Nemotron) are all download (weight 1.0). The app wants
+/// each phase on its own 0–100% bar, so rescale here: `fraction` is progress
+/// within the current phase.
+func progressLine(downloadWeight w: Double) -> ProgressHandler {
+  return { p in
+    var phase = "downloading"
+    var files = 0
+    var total = 0
+    switch p.phase {
+    case .listing: phase = "listing"
+    case .downloading(let done, let all): files = done; total = all
+    case .compiling: phase = "compiling"
+    }
+    let raw = max(0, min(1, p.fractionCompleted.isFinite ? p.fractionCompleted : 0))
+    let f: Double
+    switch phase {
+    case "downloading": f = w > 0 ? min(1, raw / w) : raw
+    case "compiling": f = w < 1 ? max(0, min(1, (raw - w) / (1 - w))) : 1
+    default: f = 0
+    }
+    let line = "PROGRESS {\"fraction\":\(f),\"overall\":\(raw),\"phase\":\"\(phase)\",\"files\":\(files),\"total\":\(total)}\n"
+    FileHandle.standardError.write(line.data(using: .utf8)!)
   }
-  let f = max(0, min(1, p.fractionCompleted.isFinite ? p.fractionCompleted : 0))
-  let line = "PROGRESS {\"fraction\":\(f),\"phase\":\"\(phase)\",\"files\":\(files),\"total\":\(total)}\n"
-  FileHandle.standardError.write(line.data(using: .utf8)!)
 }
 
 struct Options {
@@ -148,7 +162,8 @@ struct InkfishSTT {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
           throw STTError("nothing to prepare for \(engine)", code: 64)
         }
-        try await Fluid.prepare(model, opts, progress: progressLine)
+        // Nemotron downloads a subdirectory (no compile phase); the rest are repo loads.
+        try await Fluid.prepare(model, opts, progress: progressLine(downloadWeight: model == .nemotron ? 1.0 : 0.5))
         emit(["ok": true])
       case "remove":
         guard let model = Fluid.Model(rawValue: engine) else { throw STTError("nothing to remove for \(engine)", code: 64) }

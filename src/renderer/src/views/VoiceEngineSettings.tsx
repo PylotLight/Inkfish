@@ -58,14 +58,33 @@ function fmtBytes(n: number): string {
 /** Size to compare on: measured on disk when downloaded, else the published estimate. */
 const sizeLabel = (e: SttEngine): string => (e.bytes ? fmtBytes(e.bytes) : e.size ? e.size : '—')
 
-function phaseLabel(p: DownloadProgress): string {
-  if (p.state === 'paused') return `Paused · ${Math.round(p.fraction * 100)}%`
+/** First size in a published label ("~464 MB", "~1.2 GB GPU · 650 MB CPU") in bytes. */
+function estimateBytes(size?: string): number | undefined {
+  const m = /([\d.]+)\s*(GB|MB)/i.exec(size ?? '')
+  if (!m) return undefined
+  return parseFloat(m[1]!) * (m[2]!.toUpperCase() === 'GB' ? 1e9 : 1e6)
+}
+
+function phaseLabel(p: DownloadProgress, e?: SttEngine): string {
+  const pct = `${Math.round(p.fraction * 100)}%`
+  if (p.state === 'paused') return `Paused · ${pct}`
   if (p.state === 'retrying') return `Connection dropped — retrying (attempt ${p.attempt + 1} of 4)…`
   if (p.state === 'error') return p.blocked ? "Couldn't reach the model host" : 'Download failed'
   if (p.phase === 'listing') return 'Finding files…'
-  if (p.phase === 'compiling') return isWebEngine(p.id) ? 'Loading model…' : 'Optimising for the Neural Engine…'
-  const files = p.total ? ` · file ${Math.min(p.files + 1, p.total)} of ${p.total}` : ''
-  return `${Math.round(p.fraction * 100)}%${files}`
+  if (p.phase === 'compiling') {
+    return isWebEngine(p.id) ? 'Loading model…' : `Optimising for the Neural Engine · ${pct}`
+  }
+  // Real byte counts when the downloader gives them, else an estimate from the model's size.
+  let amount = ''
+  if (p.bytes !== undefined && p.totalBytes) amount = ` · ${fmtBytes(p.bytes)} of ${fmtBytes(p.totalBytes)}`
+  else if (p.bytes !== undefined) amount = ` · ${fmtBytes(p.bytes)} downloaded`
+  else {
+    const est = estimateBytes(e?.size)
+    if (est && p.fraction > 0) amount = ` · ~${fmtBytes(p.fraction * est)} of ${fmtBytes(est)}`
+  }
+  const files = p.total > 1 ? ` · file ${Math.min(p.files + 1, p.total)} of ${p.total}` : ''
+  const unknown = p.bytes !== undefined && !p.totalBytes
+  return `${unknown ? 'Downloading' : pct}${amount}${files}`
 }
 
 /**
@@ -156,12 +175,17 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         }))
       await withBusy(e, 'Downloading…', async () => {
         try {
-          show({})
+          show({ phase: 'listing' })
           await prepareWeb(e.id, (p) =>
             show(
               p.phase === 'loading'
-                ? { fraction: 1, phase: 'compiling' }
-                : { fraction: p.total ? Math.min(1, p.loaded / p.total) : 0 }
+                ? { fraction: 1, phase: 'compiling', bytes: undefined, totalBytes: undefined }
+                : {
+                    fraction: p.total ? Math.min(1, p.loaded / p.total) : 0,
+                    bytes: p.loaded,
+                    totalBytes: p.total,
+                    file: p.file
+                  }
             )
           )
         } catch (err) {
@@ -369,11 +393,11 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             <div className={`dl ${dl[e.id]?.state ?? 'downloading'}`}>
               <div className="dl-track" aria-hidden>
                 <div
-                  className={`dl-bar${dl[e.id] ? '' : ' indeterminate'}`}
+                  className={`dl-bar${dl[e.id] && !(dl[e.id]!.bytes !== undefined && !dl[e.id]!.totalBytes) ? '' : ' indeterminate'}`}
                   style={dl[e.id] ? { width: `${Math.max(2, dl[e.id]!.fraction * 100)}%` } : undefined}
                 />
               </div>
-              <span className="muted small">{dl[e.id] ? phaseLabel(dl[e.id]!) : 'Downloading…'}</span>
+              <span className="muted small">{dl[e.id] ? phaseLabel(dl[e.id]!, e) : 'Downloading…'}</span>
               {dl[e.id]?.error && (dl[e.id]!.state === 'error' || dl[e.id]!.state === 'retrying') && (
                 <span className="small error-text dl-error">
                   {dl[e.id]!.blocked
