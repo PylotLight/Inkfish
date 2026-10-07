@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { pickAutoEngine } from '../../../shared/stt'
-import type { SttEngine } from '../../../shared/types'
+import type { DownloadProgress, SttEngine } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, saveAudioPrefs, toWav } from '../audio'
 import benchUrl from '../assets/bench/librispeech-1272.wav?url'
 import { BENCH_CLIP, fmtSpeed, fmtWer, speedFactor, wordErrorRate } from '../../../shared/sttBench'
@@ -29,6 +29,29 @@ const wavSeconds = (wav: Blob): number => Math.max(0, wav.size - 44) / 32000
 
 type Clip = { dataUrl: string; wav: Blob; label: string; seconds: number; reference?: string }
 
+const MIRRORS = [
+  { url: '', label: 'Hugging Face' },
+  { url: 'https://hf-mirror.com', label: 'hf-mirror.com' }
+]
+
+function fmtBytes(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)} GB`
+  return `${Math.max(1, Math.round(n / 1e6))} MB`
+}
+
+/** Size to compare on: measured on disk when downloaded, else the published estimate. */
+const sizeLabel = (e: SttEngine): string => (e.bytes ? fmtBytes(e.bytes) : e.size ? e.size : '—')
+
+function phaseLabel(p: DownloadProgress): string {
+  if (p.state === 'paused') return `Paused · ${Math.round(p.fraction * 100)}%`
+  if (p.state === 'retrying') return `Connection dropped — retrying (attempt ${p.attempt + 1} of 4)…`
+  if (p.state === 'error') return p.blocked ? "Couldn't reach the model host" : 'Download failed'
+  if (p.phase === 'listing') return 'Finding files…'
+  if (p.phase === 'compiling') return 'Optimising for the Neural Engine…'
+  const files = p.total ? ` · file ${Math.min(p.files + 1, p.total)} of ${p.total}` : ''
+  return `${Math.round(p.fraction * 100)}%${files}`
+}
+
 /**
  * Settings › Voice Engine — FluidVoice-style: the active model up top, every
  * other model below with Activate / Download / Delete, and a compare bench
@@ -46,6 +69,10 @@ export default function VoiceEngineSettings(): React.JSX.Element {
   const [recording, setRecording] = useState(false)
   const [comparing, setComparing] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const [dl, setDl] = useState<Record<string, DownloadProgress>>({})
+  const [mirror, setMirror] = useState(loadAudioPrefs().modelMirror)
+  const [benchStep, setBenchStep] = useState<{ done: number; total: number; name: string } | null>(null)
+  const [bulk, setBulk] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = async (): Promise<void> => {
@@ -60,6 +87,16 @@ export default function VoiceEngineSettings(): React.JSX.Element {
 
   useEffect(() => {
     void refresh()
+    void window.api.stt.downloads().then((list) => setDl(Object.fromEntries(list.map((p) => [p.id, p]))))
+    return window.api.stt.onProgress((p) => {
+      setDl((prev) => {
+        if (p.state === 'done') {
+          const { [p.id]: _, ...rest } = prev
+          return rest
+        }
+        return { ...prev, [p.id]: p }
+      })
+    })
   }, [])
 
   const activate = (id: string): void => {
@@ -82,12 +119,56 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     })
   }
 
-  const download = (e: SttEngine): Promise<void> =>
-    withBusy(e, 'Downloading…', async () => {
-      if (isWebEngine(e.id)) await prepareWeb(e.id)
-      else await window.api.stt.prepare(e.id)
-      if (!choice) activate(e.id)
-    })
+  /** Native downloads report progress over IPC; web ones show a busy bar. */
+  const download = async (e: SttEngine): Promise<boolean> => {
+    setNote(null)
+    if (isWebEngine(e.id)) {
+      let ok = true
+      await withBusy(e, 'Downloading…', async () => {
+        try {
+          await prepareWeb(e.id)
+        } catch (err) {
+          ok = false
+          throw err
+        }
+      })
+      if (ok && !choice) activate(e.id)
+      return ok
+    }
+    try {
+      await window.api.stt.prepare(e.id, mirror)
+      const list = await window.api.stt.engines()
+      setEngines([...list, ...webEngines()])
+      const done = list.find((x) => x.id === e.id)?.ready ?? false
+      if (done && !choice) activate(e.id)
+      return done
+    } catch (err) {
+      setNote(`${e.name}: ${ipcError(err)}`)
+      return false
+    }
+  }
+
+  const stopBulk = useRef(false)
+  const pause = (e: SttEngine): void => {
+    stopBulk.current = true
+    void window.api.stt.pause(e.id)
+  }
+  const discard = async (e: SttEngine): Promise<void> => {
+    await window.api.stt.clearDownload(e.id)
+    setDl(({ [e.id]: _, ...rest }) => rest)
+  }
+
+  const downloadAll = async (): Promise<void> => {
+    if (!engines) return
+    setBulk(true)
+    stopBulk.current = false
+    // One at a time: parallel model downloads just split the bandwidth.
+    for (const e of engines.filter((x) => x.downloadable && !x.ready)) {
+      await download(e)
+      if (stopBulk.current) break
+    }
+    setBulk(false)
+  }
 
   const remove = (e: SttEngine): Promise<void> =>
     withBusy(e, 'Removing…', async () => {
@@ -141,7 +222,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     const targets = engines.filter((e) => e.ready)
     setRuns(Object.fromEntries(targets.map((e) => [e.id, { state: 'running' } as Run])))
     // Sequential: engines share the Neural Engine, parallel runs skew timings.
-    for (const e of targets) {
+    for (const [i, e] of targets.entries()) {
+      setBenchStep({ done: i, total: targets.length, name: e.name })
       try {
         const r = isWebEngine(e.id)
           ? await transcribeWeb(e.id, c.wav)
@@ -174,6 +256,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         }))
       }
     }
+    setBenchStep(null)
     setComparing(false)
   }
 
@@ -203,9 +286,13 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <div className="engine-name">{e.name}</div>
           {e.subtitle && <div className="muted small">{e.subtitle}</div>}
           <div className="engine-tags">
-            {e.size && <span className="tag">{e.size}</span>}
+            {(e.bytes || e.size) && (
+              <span className="tag" title={e.bytes ? 'On disk' : 'Approximate download'}>
+                {sizeLabel(e)}
+              </span>
+            )}
             {e.languages && <span className="tag">{e.languages}</span>}
-            {!e.ready && <span className="tag dim">{e.detail}</span>}
+            {!e.ready && !dl[e.id] && !busy[e.id] && <span className="tag dim">{e.detail}</span>}
             {scores[e.id] && (
               <>
                 <span
@@ -224,6 +311,24 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             )}
             {e.ready && e.id.startsWith('apple-speech') && <span className="tag dim">Needs Siri or Dictation</span>}
           </div>
+          {(dl[e.id] || busy[e.id] === 'Downloading…') && (
+            <div className={`dl ${dl[e.id]?.state ?? 'downloading'}`}>
+              <div className="dl-track" aria-hidden>
+                <div
+                  className={`dl-bar${dl[e.id] ? '' : ' indeterminate'}`}
+                  style={dl[e.id] ? { width: `${Math.max(2, dl[e.id]!.fraction * 100)}%` } : undefined}
+                />
+              </div>
+              <span className="muted small">{dl[e.id] ? phaseLabel(dl[e.id]!) : 'Downloading…'}</span>
+              {dl[e.id]?.error && (dl[e.id]!.state === 'error' || dl[e.id]!.state === 'retrying') && (
+                <span className="small error-text dl-error">
+                  {dl[e.id]!.blocked
+                    ? 'Hugging Face looks blocked — a VPN, firewall or network filter is the usual cause. Retry, or switch Download source below.'
+                    : dl[e.id]!.error}
+                </span>
+              )}
+            </div>
+          )}
           {run && (
             <div className={`engine-run ${run.state}`}>
               {run.state === 'running' && <span className="muted small">Transcribing…</span>}
@@ -240,7 +345,25 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           )}
         </div>
         <div className="engine-actions">
-          {busy[e.id] ? (
+          {dl[e.id] && (dl[e.id]!.state === 'downloading' || dl[e.id]!.state === 'retrying') ? (
+            <button className="btn ghost sm" onClick={() => pause(e)}>
+              Pause
+            </button>
+          ) : dl[e.id] && (dl[e.id]!.state === 'paused' || dl[e.id]!.state === 'error') ? (
+            <>
+              <button className="btn ghost sm" onClick={() => void download(e)}>
+                {dl[e.id]!.state === 'paused' ? 'Resume' : 'Retry'}
+              </button>
+              <button
+                className="icon-btn"
+                title="Cancel download"
+                aria-label={`Cancel ${e.name} download`}
+                onClick={() => void discard(e)}
+              >
+                ✕
+              </button>
+            </>
+          ) : busy[e.id] ? (
             <span className="muted small">{busy[e.id]}</span>
           ) : isActive ? (
             <>
@@ -317,6 +440,48 @@ export default function VoiceEngineSettings(): React.JSX.Element {
 
       <div className="setting-row inline" style={{ marginTop: 16 }}>
         <div className="setting-label">
+          Download source
+          <span className="muted small setting-hint">
+            Where native models download from. If a VPN or network blocks Hugging Face, try the mirror. Paused
+            downloads resume where they stopped.
+          </span>
+        </div>
+        <select
+          value={MIRRORS.some((m) => m.url === mirror) ? mirror : '__custom__'}
+          onChange={(ev) => {
+            const v = ev.target.value === '__custom__' ? mirror || 'https://' : ev.target.value
+            setMirror(v)
+            saveAudioPrefs({ modelMirror: v })
+          }}
+          aria-label="Download source"
+        >
+          {MIRRORS.map((m) => (
+            <option key={m.url} value={m.url}>
+              {m.label}
+            </option>
+          ))}
+          <option value="__custom__">Custom…</option>
+        </select>
+      </div>
+      {!MIRRORS.some((m) => m.url === mirror) && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <input
+            className="grow"
+            type="url"
+            value={mirror}
+            placeholder="https://your-mirror.example"
+            onChange={(ev) => {
+              setMirror(ev.target.value)
+              saveAudioPrefs({ modelMirror: ev.target.value })
+            }}
+            aria-label="Custom download source"
+            spellCheck={false}
+          />
+        </div>
+      )}
+
+      <div className="setting-row inline" style={{ marginTop: 16 }}>
+        <div className="setting-label">
           Live transcription while dictating
           <span className="muted small setting-hint">
             Text streams in as you speak. Uses Parakeet Redux once downloaded (and skips the wait after stop when
@@ -337,6 +502,46 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         </button>
       </div>
 
+      {engines && (
+        <div className="setting-row stacked" style={{ marginTop: 16 }}>
+          <span className="setting-label">
+            Model comparison
+            <span className="muted small setting-hint">
+              Size on disk, errors on the benchmark clip (lower is better) and speed on this Mac (higher is faster).
+            </span>
+          </span>
+          <table className="bench-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Size</th>
+                <th>Errors</th>
+                <th>Speed</th>
+                <th>Languages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...engines]
+                .sort((a, b) => (scores[a.id]?.wer ?? 9) - (scores[b.id]?.wer ?? 9) || a.name.localeCompare(b.name))
+                .map((e) => {
+                  const sc = scores[e.id]
+                  return (
+                    <tr key={e.id} className={e.ready ? '' : 'dim'}>
+                      <td>{e.name}</td>
+                      <td>{sizeLabel(e)}</td>
+                      <td className={sc && sc.wer === bestWer ? 'best' : ''}>{sc ? fmtWer(sc.wer) : e.ready ? 'Not run' : '—'}</td>
+                      <td className={sc && sc.speed === bestSpeed ? 'best' : ''}>
+                        {sc ? `${sc.speed >= 10 ? Math.round(sc.speed) : sc.speed.toFixed(1)}×` : '—'}
+                      </td>
+                      <td>{e.languages || '—'}</td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="setting-row stacked" style={{ marginTop: 16 }}>
         <span className="setting-label">
           Compare engines
@@ -354,6 +559,11 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           >
             {comparing ? 'Running…' : `Benchmark ${ready.length} engine${ready.length === 1 ? '' : 's'}`}
           </button>
+          {(engines?.filter((x) => x.downloadable && !x.ready).length ?? 0) > 0 && (
+            <button className="btn ghost sm" disabled={bulk || comparing} onClick={() => void downloadAll()}>
+              {bulk ? 'Downloading…' : `Download all ${engines!.filter((x) => x.downloadable && !x.ready).length}`}
+            </button>
+          )}
           <button className="btn ghost sm" disabled={recording || comparing} onClick={() => void record()}>
             {recording ? `Recording… (${CLIP_SECONDS} s)` : 'Record clip'}
           </button>
@@ -377,6 +587,16 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             }}
           />
         </div>
+        {benchStep && (
+          <div className="dl" style={{ marginTop: 10 }}>
+            <div className="dl-track" aria-hidden>
+              <div className="dl-bar" style={{ width: `${Math.max(2, (benchStep.done / benchStep.total) * 100)}%` }} />
+            </div>
+            <span className="muted small">
+              {benchStep.done + 1} of {benchStep.total} · {benchStep.name}
+            </span>
+          </div>
+        )}
         {clip && clip.reference !== BENCH_CLIP.text && (
           <div className="row" style={{ marginTop: 8 }}>
             <input

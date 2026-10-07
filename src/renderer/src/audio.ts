@@ -12,6 +12,8 @@ export interface AudioPrefs {
   engine: string
   /** Show Moonshine live captions while dictating (English). */
   liveCaptions: boolean
+  /** Model download host; '' = huggingface.co. */
+  modelMirror: string
 }
 
 export function loadAudioPrefs(): AudioPrefs {
@@ -21,10 +23,11 @@ export function loadAudioPrefs(): AudioPrefs {
       inputId: typeof raw.inputId === 'string' ? raw.inputId : '',
       outputId: typeof raw.outputId === 'string' ? raw.outputId : '',
       engine: typeof raw.engine === 'string' ? raw.engine : '',
-      liveCaptions: raw.liveCaptions === true
+      liveCaptions: raw.liveCaptions === true,
+      modelMirror: typeof raw.modelMirror === 'string' ? raw.modelMirror : ''
     }
   } catch {
-    return { inputId: '', outputId: '', engine: '', liveCaptions: false }
+    return { inputId: '', outputId: '', engine: '', liveCaptions: false, modelMirror: '' }
   }
 }
 

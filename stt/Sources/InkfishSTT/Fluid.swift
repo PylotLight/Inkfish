@@ -129,6 +129,25 @@ enum Fluid {
     }
   }
 
+  /// Where a model's files live on disk.
+  static func modelDir(_ m: Model, _ opts: Options) -> URL {
+    if let v = m.asrVersion { return AsrModels.defaultCacheDirectory(for: v) }
+    if m == .nemotron { return nemotronDir(opts) }
+    return modelsRoot.appendingPathComponent(Repo.cohereTranscribeCoreml.folderName)
+  }
+
+  /// Bytes on disk under a directory (0 when missing).
+  static func dirSize(_ url: URL) -> Int64 {
+    let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isRegularFileKey]
+    guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
+    var total: Int64 = 0
+    for case let f as URL in e {
+      guard let v = try? f.resourceValues(forKeys: Set(keys)), v.isRegularFile == true else { continue }
+      total += Int64(v.totalFileAllocatedSize ?? v.fileAllocatedSize ?? 0)
+    }
+    return total
+  }
+
   static func engines(_ opts: Options) -> [Engine] {
     Model.allCases.map { m in
       let ok = m.supported
@@ -137,7 +156,8 @@ enum Fluid {
         id: m.rawValue, name: m.name, available: ok, ready: have,
         detail: !ok ? "Needs macOS 15" : have ? "Downloaded" : "Download to use",
         subtitle: m.subtitle, family: m.family, size: m.size, languages: m.languages,
-        downloadable: ok && !have
+        downloadable: ok && !have,
+        bytes: have ? dirSize(modelDir(m, opts)) : 0
       )
     }
   }
@@ -145,25 +165,25 @@ enum Fluid {
   // MARK: prepare / remove / transcribe
 
   static func remove(_ m: Model, _ opts: Options) throws {
-    let dir: URL
-    if let v = m.asrVersion { dir = AsrModels.defaultCacheDirectory(for: v) }
-    else if m == .nemotron { dir = nemotronDir(opts) }
-    else { dir = modelsRoot.appendingPathComponent(Repo.cohereTranscribeCoreml.folderName) }
+    let dir = modelDir(m, opts)
     if FileManager.default.fileExists(atPath: dir.path) { try FileManager.default.removeItem(at: dir) }
   }
 
-  static func prepare(_ m: Model, _ opts: Options) async throws {
+  /// Downloads resume across runs: FluidAudio streams into `<file>.partial`
+  /// with HTTP Range, so killing this process is a pause and `prepare` again
+  /// continues where it stopped.
+  static func prepare(_ m: Model, _ opts: Options, progress: ProgressHandler? = nil) async throws {
     guard m.supported else { throw STTError("\(m.name) needs macOS 15", code: 3) }
     if let v = m.asrVersion {
-      _ = try await AsrModels.download(version: v)
+      _ = try await AsrModels.download(version: v, progressHandler: progress)
       return
     }
     switch m {
     case .nemotron:
       _ = try await StreamingNemotronMultilingualAsrManager.downloadVariant(
-        languageCode: nemotronLanguage(opts), chunkMs: 2240)
+        languageCode: nemotronLanguage(opts), chunkMs: 2240, progressHandler: progress)
     case .cohere:
-      try await ModelHub.download(.cohereTranscribeCoreml, to: modelsRoot)
+      try await ModelHub.download(.cohereTranscribeCoreml, to: modelsRoot, progressHandler: progress)
       guard cohereDir() != nil else {
         throw STTError("Cohere downloaded but its model files weren't found under \(modelsRoot.path)", code: 4)
       }

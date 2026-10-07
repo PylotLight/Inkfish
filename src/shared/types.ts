@@ -190,4 +190,22 @@ export interface SttEngine {
   languages?: string
   /** Has models to download. */
   downloadable?: boolean
+  /** Bytes on disk once downloaded (native engines). */
+  bytes?: number
 }
+
+export type DownloadState = 'downloading' | 'retrying' | 'paused' | 'error' | 'done'
+export interface DownloadProgress {
+  id: string
+  state: DownloadState
+  /** 0..1 */
+  fraction: number
+  phase: 'listing' | 'downloading' | 'compiling' | ''
+  files: number
+  total: number
+  attempt: number
+  error?: string
+  /** Set when the error looks like Hugging Face is unreachable (VPN, firewall). */
+  blocked?: boolean
+}
+

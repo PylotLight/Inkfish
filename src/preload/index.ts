@@ -13,6 +13,7 @@ import type {
   Project,
   SearchResult,
   SttEngine,
+  DownloadProgress,
   SttResult,
   SysInfo,
   VaultInfo,
@@ -164,7 +165,16 @@ const api = {
       ipcRenderer.invoke('stt:test', wavDataUrl, engine),
     engines: (): Promise<SttEngine[]> => ipcRenderer.invoke('stt:engines'),
     /** Download models / language assets for an engine (can take minutes). */
-    prepare: (engine: string): Promise<void> => ipcRenderer.invoke('stt:prepare', engine),
+    prepare: (engine: string, mirror?: string): Promise<void> => ipcRenderer.invoke('stt:prepare', engine, mirror),
+    /** Pause a download (partial files kept; prepare again resumes). */
+    pause: (engine: string): Promise<void> => ipcRenderer.invoke('stt:pause', engine),
+    clearDownload: (engine: string): Promise<void> => ipcRenderer.invoke('stt:clear-download', engine),
+    downloads: (): Promise<DownloadProgress[]> => ipcRenderer.invoke('stt:downloads'),
+    onProgress: (cb: (p: DownloadProgress) => void): (() => void) => {
+      const h = (_e: Electron.IpcRendererEvent, p: DownloadProgress): void => cb(p)
+      ipcRenderer.on('stt:progress', h)
+      return () => ipcRenderer.removeListener('stt:progress', h)
+    },
     /** Delete an engine's downloaded models. */
     remove: (engine: string): Promise<void> => ipcRenderer.invoke('stt:remove', engine),
     pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>

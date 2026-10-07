@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
@@ -76,7 +76,7 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
-import { listEngines, prepareEngine, removeEngine, transcribe } from './stt'
+import { clearDownload, downloadProgress, listEngines, pauseDownload, prepareEngine, removeEngine, transcribe, type DownloadProgress } from './stt'
 
 const isMac = process.platform === 'darwin'
 
@@ -514,7 +514,17 @@ export function registerIpc(): void {
     transcribe(wavPath, engine || undefined)
   )
   ipcMain.handle('stt:engines', (): Promise<SttEngine[]> => listEngines())
-  ipcMain.handle('stt:prepare', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => prepareEngine(engine))
+  const sendProgress = (p: DownloadProgress): void => {
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('stt:progress', p)
+  }
+  ipcMain.handle(
+    'stt:prepare',
+    (_e: IpcMainInvokeEvent, engine: string, mirror?: string): Promise<void> =>
+      prepareEngine(engine, sendProgress, typeof mirror === 'string' ? mirror : '')
+  )
+  ipcMain.handle('stt:pause', (_e: IpcMainInvokeEvent, engine: string): void => pauseDownload(engine))
+  ipcMain.handle('stt:clear-download', (_e: IpcMainInvokeEvent, engine: string): void => clearDownload(engine))
+  ipcMain.handle('stt:downloads', (): DownloadProgress[] => downloadProgress())
   ipcMain.handle('stt:remove', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => removeEngine(engine))
   ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string, engine?: string): Promise<SttResult> => {
     const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)

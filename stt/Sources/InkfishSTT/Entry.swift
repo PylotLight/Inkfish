@@ -10,6 +10,7 @@
 // macOS 26), and the FluidAudio CoreML/ANE models in Fluid.swift.
 // Errors → stderr + non-zero exit.
 import Foundation
+import FluidAudio
 
 struct Segment: Encodable { let start: Double; let end: Double; let text: String }
 
@@ -37,6 +38,23 @@ struct Engine: Encodable {
   var size: String = ""
   var languages: String = ""
   var downloadable: Bool = false
+  /// Bytes on disk once downloaded (0 otherwise).
+  var bytes: Int64 = 0
+}
+
+/// `prepare` progress for the app: one `PROGRESS {json}` line per update on stderr.
+let progressLine: ProgressHandler = { p in
+  var phase = "downloading"
+  var files = 0
+  var total = 0
+  switch p.phase {
+  case .listing: phase = "listing"
+  case .downloading(let done, let all): files = done; total = all
+  case .compiling: phase = "compiling"
+  }
+  let f = max(0, min(1, p.fractionCompleted.isFinite ? p.fractionCompleted : 0))
+  let line = "PROGRESS {\"fraction\":\(f),\"phase\":\"\(phase)\",\"files\":\(files),\"total\":\(total)}\n"
+  FileHandle.standardError.write(line.data(using: .utf8)!)
 }
 
 struct Options {
@@ -113,7 +131,7 @@ struct InkfishSTT {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
           throw STTError("nothing to prepare for \(engine)", code: 64)
         }
-        try await Fluid.prepare(model, opts)
+        try await Fluid.prepare(model, opts, progress: progressLine)
         emit(["ok": true])
       case "remove":
         guard let model = Fluid.Model(rawValue: engine) else { throw STTError("nothing to remove for \(engine)", code: 64) }
