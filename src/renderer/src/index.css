@@ -3601,3 +3601,24 @@ html[data-density='compact'] .md p {
 .btn.rec-live {
   color: var(--danger);
 }
+.meet-level {
+  grid-column: 2;
+  height: 2px;
+  margin-top: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.meet-level > span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+.meet-ch.ch-mic .meet-level {
+  color: var(--mint);
+}
+.meet-ch.ch-system .meet-level {
+  color: var(--accent);
+}

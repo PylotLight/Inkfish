@@ -67,7 +67,10 @@ export default function Meetings({
   const [state, setState] = useState<'idle' | 'starting' | 'rec' | 'saving'>('idle')
   const [lines, setLines] = useState<MeetingLine[]>([])
   const [elapsed, setElapsed] = useState(0)
-  const [devices, setDevices] = useState<{ mic: string; system: string | null } | null>(null)
+  const [devices, setDevices] = useState<{ mic: string; system: string | null; error: string } | null>(null)
+  const [levels, setLevels] = useState({ mic: 0, system: 0 })
+  /** Seconds of call audio heard so far — tells silence from no capture. */
+  const heardRef = useRef(0)
   const [saved, setSaved] = useState<Saved | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [showImport, setShowImport] = useState(false)
@@ -85,8 +88,18 @@ export default function Meetings({
   useEffect(() => {
     if (state !== 'rec' || !meetingRef.current) return
     const t0 = meetingRef.current.startedAt
+    const m = meetingRef.current
     const id = window.setInterval(() => setElapsed((Date.now() - t0) / 1000), 500)
-    return () => window.clearInterval(id)
+    const lv = window.setInterval(() => {
+      const l = m.levels()
+      if (l.system > 0.02) heardRef.current += 0.1
+      setLevels(l)
+    }, 100)
+    return () => {
+      window.clearInterval(id)
+      window.clearInterval(lv)
+      setLevels({ mic: 0, system: 0 })
+    }
   }, [state])
 
   // Follow the newest words unless you've scrolled up to reread.
@@ -111,10 +124,11 @@ export default function Meetings({
     try {
       const m = await startMeeting(setLines)
       meetingRef.current = m
-      setDevices({ mic: m.micDevice, system: m.systemDevice })
+      heardRef.current = 0
+      setDevices({ mic: m.micDevice, system: m.systemDevice, error: m.systemError })
       setState('rec')
       if (!m.hasSystemAudio)
-        notify('Mic only. Allow Inkfish under Privacy & Security › Screen & System Audio Recording to hear the call')
+        notify(`Mic only: ${m.systemError || 'no call audio'}. Allow it under Privacy & Security › Screen & System Audio Recording, then quit and reopen`)
     } catch (e) {
       notify(`Couldn't start: ${ipcError(e)}`)
       setState('idle')
@@ -256,9 +270,22 @@ export default function Meetings({
                   aria-label={ch === 'mic' ? 'Label for your microphone' : 'Label for call audio'}
                   disabled={state === 'saving'}
                 />
-                <span className="meet-dev muted small">
-                  {off ? 'not shared' : live && dev ? dev : ch === 'mic' ? 'This Mac · microphone' : 'Call · Mac audio'}
+                <span className="meet-dev muted small" title={off ? devices?.error : dev ?? ''}>
+                  {off
+                    ? devices?.error || 'not shared'
+                    : state === 'rec' && ch === 'system' && elapsed > 8 && heardRef.current < 0.3
+                      ? 'connected, but hearing silence'
+                      : live && dev
+                        ? dev
+                        : ch === 'mic'
+                          ? 'This Mac · microphone'
+                          : 'Call · Mac audio'}
                 </span>
+                {state === 'rec' && !off && (
+                  <span className="meet-level" aria-hidden>
+                    <span style={{ transform: `scaleX(${levels[ch]})` }} />
+                  </span>
+                )}
               </div>
             )
           })}
