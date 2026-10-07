@@ -6,6 +6,8 @@
     <string>com.pylotlight.inkfish.stt</string>
     <key>CFBundleName</key>
     <string>inkfish-stt</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Inkfish records the other side of your meetings when you start meeting capture.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Inkfish transcribes your voice notes on this Mac.</string>
   </dict>

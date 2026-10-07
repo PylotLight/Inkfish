@@ -47,18 +47,44 @@ try {
   process.exit(0)
 }
 
+const base = ['swift', 'build', '-c', 'release', '--package-path', pkg]
 const swift = (args: string[]): void => {
-  execFileSync('xcrun', ['swift', 'build', '-c', 'release', '--package-path', pkg, ...args], { stdio: 'inherit' })
+  execFileSync('xcrun', [...base, ...args], { stdio: 'inherit' })
+}
+// Where SwiftPM put the product. Layout moved between toolchains
+// (.build/apple/Products/Release → .build/out/…), so ask it, then probe.
+const binPath = (args: string[]): string | null => {
+  const asked = (() => {
+    try {
+      return execFileSync('xcrun', [...base, ...args, '--show-bin-path'], { encoding: 'utf8' }).trim()
+    } catch {
+      return ''
+    }
+  })()
+  const candidates = [
+    asked,
+    join(pkg, '.build', 'apple', 'Products', 'Release'),
+    join(pkg, '.build', 'out', 'Products', 'Release'),
+    join(pkg, '.build', 'release'),
+    join(pkg, '.build', 'arm64-apple-macosx', 'release')
+  ]
+  return candidates.find((d) => d && existsSync(join(d, 'inkfish-stt'))) ?? null
 }
 
-let productDir: string
+let productDir: string | null = null
 try {
   swift(['--arch', 'arm64', '--arch', 'x86_64'])
-  productDir = join(pkg, '.build', 'apple', 'Products', 'Release')
+  productDir = binPath(['--arch', 'arm64', '--arch', 'x86_64'])
 } catch {
   console.warn('[stt:build] universal build failed — building for this Mac only')
+}
+if (!productDir) {
   swift([])
-  productDir = join(pkg, '.build', 'release')
+  productDir = binPath([])
+}
+if (!productDir) {
+  console.error('[stt:build] built, but could not find the inkfish-stt product under stt/.build')
+  process.exit(process.env['CI'] ? 1 : 0)
 }
 
 rmSync(outDir, { recursive: true, force: true })

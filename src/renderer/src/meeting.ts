@@ -76,8 +76,70 @@ export let systemAudioError = ''
  * stopping it ends the ScreenCaptureKit stream and the loopback audio goes
  * silent with it. Callers get an audio-only stream; `stopAll` ends both.
  */
-async function openSystemAudio(): Promise<{ audio: MediaStream; stopAll: () => void } | null> {
+/**
+ * Preferred path: audio-only Core Audio tap from the helper (macOS 14.2+),
+ * PCM over IPC, replayed into a MediaStream. No screen permission involved.
+ */
+async function openTapAudio(): Promise<{ audio: MediaStream; stopAll: () => void; label: string } | null> {
+  const api = window.api.systap
+  const r = await api.start().catch((e: unknown) => ({ error: String(e) }))
+  if ('error' in r) {
+    systemAudioError = r.error
+    console.warn('[meeting] tap unavailable:', r.error)
+    return null
+  }
+  const ctx = new AudioContext({ sampleRate: r.rate })
+  const queue: Float32Array[] = []
+  let head = 0
+  let queued = 0
+  const offData = api.onData((pcm) => {
+    queue.push(pcm)
+    queued += pcm.length
+    // Cap latency at ~1 s: drop the oldest audio if the renderer falls behind.
+    while (queued > r.rate && queue.length > 1) {
+      const old = queue.shift() as Float32Array
+      queued -= old.length - head
+      head = 0
+    }
+  })
+  const node = ctx.createScriptProcessor(2048, 0, 1)
+  node.onaudioprocess = (ev) => {
+    const out = ev.outputBuffer.getChannelData(0)
+    let i = 0
+    while (i < out.length && queue.length > 0) {
+      const cur = queue[0] as Float32Array
+      const n = Math.min(out.length - i, cur.length - head)
+      out.set(cur.subarray(head, head + n), i)
+      i += n
+      head += n
+      queued -= n
+      if (head >= cur.length) {
+        queue.shift()
+        head = 0
+      }
+    }
+    out.fill(0, i)
+  }
+  const dest = ctx.createMediaStreamDestination()
+  node.connect(dest)
+  await ctx.resume()
+  return {
+    audio: dest.stream,
+    label: 'Mac audio (system tap)',
+    stopAll: () => {
+      offData()
+      node.disconnect()
+      void ctx.close()
+      void api.stop()
+    }
+  }
+}
+
+async function openSystemAudio(): Promise<{ audio: MediaStream; stopAll: () => void; label?: string } | null> {
   systemAudioError = ''
+  const tap = await openTapAudio()
+  if (tap) return tap
+  const tapError = systemAudioError
   try {
     const s = await navigator.mediaDevices.getDisplayMedia({
       video: { width: 2, height: 2, frameRate: 1 },
@@ -97,11 +159,12 @@ async function openSystemAudio(): Promise<{ audio: MediaStream; stopAll: () => v
   } catch (e) {
     const name = e instanceof DOMException ? e.name : ''
     systemAudioError =
-      name === 'NotAllowedError'
+      tapError ||
+      (name === 'NotAllowedError'
         ? 'Screen & System Audio Recording permission is off'
         : e instanceof Error
           ? e.message
-          : String(e)
+          : String(e))
     console.warn('[meeting] system audio unavailable', e)
     return null
   }
@@ -193,7 +256,7 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
   return {
     hasSystemAudio: !!sys,
     micDevice: mic.getAudioTracks()[0]?.label || 'Microphone',
-    systemDevice: sys ? sys.getAudioTracks()[0]?.label || 'Mac audio' : null,
+    systemDevice: sys ? sysCap?.label || sys.getAudioTracks()[0]?.label || 'Mac audio' : null,
     startedAt,
     systemError: systemAudioError,
     levels: () => ({ mic: rms(micMeter), system: rms(sysMeter) }),

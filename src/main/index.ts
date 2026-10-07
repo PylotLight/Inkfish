@@ -2,6 +2,7 @@ import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session,
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
+import { registerSysTap, stopSysTap } from './systap'
 import { createAppTray, destroyTray } from './tray'
 import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
@@ -95,6 +96,7 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  registerSysTap()
   registerAssetProtocol()
   createWindow()
   createPopover()
@@ -131,5 +133,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  stopSysTap()
   destroyTray()
 })

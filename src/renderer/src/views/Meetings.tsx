@@ -128,7 +128,7 @@ export default function Meetings({
       setDevices({ mic: m.micDevice, system: m.systemDevice, error: m.systemError })
       setState('rec')
       if (!m.hasSystemAudio)
-        notify(`Mic only: ${m.systemError || 'no call audio'}. Allow it under Privacy & Security › Screen & System Audio Recording, then quit and reopen`)
+        notify(`Mic only: ${m.systemError || 'no call audio'}. Allow Inkfish (or your terminal in dev) under Privacy & Security › Screen & System Audio Recording › System Audio Recording Only, then reopen`)
     } catch (e) {
       notify(`Couldn't start: ${ipcError(e)}`)
       setState('idle')
