@@ -494,67 +494,215 @@ html[data-theme='paper'] .toast.glass {
   transition: transform 60ms linear;
 }
 
+.settings-body {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 10px 4px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.settings-nav-item.on {
+  background: var(--mint);
+  color: #0b1210;
+  font-weight: 600;
+}
+
+.settings-nav-icon {
+  width: 16px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+@media (max-width: 640px) {
+  .settings-body {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+  }
+
+  .settings-nav-group {
+    flex-direction: row;
+  }
+
+  .settings-nav-label {
+    display: none;
+  }
+}
+
+.engine-heading {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .engine-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
+  gap: 6px;
+}
+
+.engine-empty {
+  padding: 12px;
+  border: 1px dashed var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  margin: 0;
 }
 
 .engine-row {
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 3%, transparent);
 }
 
-.engine-row:first-child {
-  border-top: none;
+.engine-row.active {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 1px var(--mint) inset;
 }
 
 .engine-row.off {
   opacity: 0.55;
 }
 
-.engine-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 26px;
+.engine-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
+.engine-icon.nvidia {
+  background: #76b900;
+  color: #fff;
+}
+
+.engine-icon.cohere {
+  background: #39594d;
+  color: #ff7759;
+}
+
+.engine-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .engine-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 13.5px;
   font-weight: 600;
 }
 
-.engine-name .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
+.engine-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
 }
 
-.engine-name .dot.ok {
-  background: var(--mint);
+.tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
 }
 
-.engine-name .dot.warn {
-  background: #e8b04a;
+.tag.dim {
+  color: var(--muted);
 }
 
-.engine-detail {
-  margin: 2px 0 0 15px;
+.engine-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.pill.active {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mint) 18%, transparent);
+  color: var(--mint);
+}
+
+.icon-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.icon-btn:hover {
+  color: #e5484d;
+  background: color-mix(in srgb, #e5484d 12%, transparent);
 }
 
 .engine-run {
   display: flex;
   gap: 10px;
   align-items: baseline;
-  margin: 8px 0 0 15px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
   font-size: 13px;
 }
 

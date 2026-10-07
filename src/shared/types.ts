@@ -161,5 +161,13 @@ export interface SttEngine {
   available: boolean
   /** Runs now without a download or settings change. */
   ready: boolean
+  /** Status line / fix-it hint. */
   detail: string
+  subtitle?: string
+  /** 'apple' | 'nvidia' | 'cohere' */
+  family?: string
+  size?: string
+  languages?: string
+  /** Has models to download. */
+  downloadable?: boolean
 }

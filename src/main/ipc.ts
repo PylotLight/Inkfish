@@ -73,7 +73,7 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
-import { listEngines, prepareEngine, transcribe } from './stt'
+import { listEngines, prepareEngine, removeEngine, transcribe } from './stt'
 
 const isMac = process.platform === 'darwin'
 
@@ -505,6 +505,7 @@ export function registerIpc(): void {
   )
   ipcMain.handle('stt:engines', (): Promise<SttEngine[]> => listEngines())
   ipcMain.handle('stt:prepare', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => prepareEngine(engine))
+  ipcMain.handle('stt:remove', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => removeEngine(engine))
   ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string, engine?: string): Promise<SttResult> => {
     const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
     if (!m) throw new Error('stt:test needs a data: URL')

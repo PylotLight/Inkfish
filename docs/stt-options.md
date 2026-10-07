@@ -1,59 +1,35 @@
-# STT options (native only — python removed)
+# Speech-to-text options
 
-Constraint (enforced): no pip/python anywhere in install or runtime.
-`transcribe()` (`src/main/ai.ts`) resolves a native engine in order —
-`$INKFISH_STT_BIN` → `parakeet-cli` on `PATH` → `inkfish-stt` Apple Speech
-CLI in app resources — and rejects otherwise (audio kept, manual text
-fallback). The `{ text, segments }` contract is unchanged.
+Rule: native or in-app only — no python/pip, no Homebrew installs, no `.node` addons.
 
-## Option 1 — parakeet-cli sidecar (recommended, smallest diff)
+## Shipped (bundled helper `inkfish-stt`, Settings › Voice Engine)
 
-- `mudler/parakeet.cpp`: C++17 parakeet port on ggml, no Python at inference.
-  Every release ships prebuilt `parakeet-cli` bundles.
-- `parakeet-cli transcribe --model <alias> --input audio.wav --json` →
-  `{"text","words":[{"w","start","end","conf"}],"tokens":[...]}` — exactly our
-  `SttResult` shape, word timestamps + confidence, WER 0 vs NeMo.
-- Same model family as today: `parakeet-tdt-0.6b-v3` (multilingual, 25
-  European langs, CC-BY-4.0) as GGUF from `mudler/parakeet-cpp-gguf`
-  (f16/q8_0/q6_k/q5_k/q4_k; 110m hybrid also available for smaller/faster).
-  CLI auto-downloads models on first run — cache into the vault (`models/`).
-- Alternative binary source: Homebrew's `whisper-cpp` formula now ships
-  `parakeet-cli` (Metal on Apple Silicon), models from `ggml-org/parakeet-GGUF`.
-  Casks support `depends_on formula: "whisper-cpp"`, so
-  `brew install --cask inkfish` pulls it automatically.
-- Input formats include flac/mp3/ogg/wav; our renderer already emits 16 kHz
-  WAV, and file imports can decode via WebAudio — no ffmpeg needed.
-- Tradeoff: quantized 0.6B model is ~400–700 MB vs today's 178 MB ternary;
-  first run downloads it.
+| Engine id | Model | Runs on | Notes |
+|---|---|---|---|
+| `apple-speech` | SFSpeechRecognizer | macOS | built in; needs Siri or Dictation enabled |
+| `apple-analyzer` | SpeechAnalyzer / SpeechTranscriber | macOS 26 | built in; language assets via AssetInventory |
+| `parakeet-v2` | Parakeet TDT 0.6B v2 | ANE | English, ~440 MB |
+| `parakeet-v3` | Parakeet TDT 0.6B v3 | ANE | 25 langs, ~480 MB |
+| `parakeet-ultra` | Moondream post-trained v3 | ANE | 25 langs, ~630 MB |
+| `parakeet-redux` | Moondream 1.58-bit v3 | ANE | 25 langs, ~220 MB, macOS 15 |
+| `phonon-2` | Fermion five-value v3 | ANE | English, ~360 MB, macOS 15 |
+| `parakeet-flash` | Parakeet TDT-CTC 110M | ANE | English, tiny |
+| `nemotron-multilingual` | Nemotron 3.5 streaming 0.6B | ANE | ~40 langs |
+| `cohere-transcribe` | Cohere Transcribe 03-2026 q8 | ANE | 14 langs, ~2 GB, slow, macOS 15 |
 
-## Option 2 — own Swift Apple Speech CLI (Apple-first, zero downloads) — SHIPPED (`stt/inkfish-stt.swift`)
+All FluidAudio (Apache-2.0) models download once to
+`~/Library/Application Support/FluidAudio/Models`. Removed: `parakeet-cli`
+(Homebrew whisper-cpp) — no external dependency remains.
 
-- ~150-line Swift tool: `SFSpeechURLRecognitionRequest` + JSON stdout,
-  compiled by `swiftc` in the release workflow, shipped in app resources.
-  Precedent: `maclisten`, `georgemandis/stenographer`, `finnvoor/yap`,
-  `Arthur-Ficial/ohr`.
-- No models, no downloads; `requiresOnDeviceRecognition` keeps audio on-device.
-- Chain becomes Apple CLI → parakeet-cli (Option 1) → manual text.
-- Tradeoffs: accuracy below parakeet/whisper on meetings; needs
-  `NSSpeechRecognitionUsageDescription` + permission UX verified on a real Mac
-  (TCC attributes prompts to the app bundle — fine for us, but untested);
-  Linux dev falls back to Option 1. `yap`/`ohr` require macOS 26 — our own
-  CLI targets macOS 12+ APIs instead.
+## WASM / pure-JS review (2026-10)
 
-## Option 3 — sherpa-onnx-node (in-process npm)
+| Option | Verdict |
+|---|---|
+| Parakeet Redux WASM | Redundant — the same Redux weights run natively on the ANE via FluidAudio, much faster than WASM CPU. |
+| Transformers.js (Whisper, WebGPU) | Only worth it as a Windows/Linux/Intel fallback. Costs onnxruntime-web (~20 MB), CSP `wasm-unsafe-eval`, and a renderer-side engine. Later. |
+| Moonshine WASM (`@moonshine-ai/moonshine-wasm` 0.1.x) | The one new capability: true streaming English for live captions while recording. Young package — try as a live-preview layer, keep the batch engine for the saved transcript. |
+| Moonshine JS | Superseded by moonshine-wasm. |
+| Transcribe.js / shout (whisper.cpp WASM) | CPU-only Whisper; slower than Transformers.js WebGPU. Skip. |
+| vosk-browser | Low accuracy; command words only. Skip. |
 
-- Apache-2.0, prebuilt per-platform NAPI binaries (`darwin-arm64/x64`,
-  `linux`, `win`), whisper/zipformer/paraformer/nemo/moonshine models with
-  token timestamps + VAD + diarization. No sidecar process.
-- Tradeoffs: prebuilts target Node ABI, so Electron needs an
-  `electron-rebuild` step in packaging and dev (`bun run dev` loads the real
-  Electron binary — stale ABI = crash); ~100–500 MB model downloads.
-  Most moving parts of the three.
-
-## Dismissed
-
-- **EchoGarden** (TS/ONNX, no python): GPLv3 — would force-relicense the MIT app.
-- **nodejs-whisper**: compiles whisper.cpp from source at `npm install`
-  (needs Xcode CLT + cmake + make on every user machine) — worse than brew.
-- **transformers.js / ONNX-in-JS**: CPU-only, slow next to Metal/ANE.
-- **Web Speech API**: cloud recognition, breaks the offline default.
+"SpeechAnalyzer needs a Swift helper" no longer counts against it — the helper ships already.

@@ -3,11 +3,12 @@
 //   inkfish-stt engines                         → [Engine] JSON
 //   inkfish-stt transcribe <audio> --engine ID  → {text, segments, engine, ms}
 //   inkfish-stt prepare --engine ID             → downloads models, {ok}
+//   inkfish-stt remove --engine ID              → deletes downloaded models, {ok}
 //   options: --locale en-AU, --allow-network (apple-speech only)
 //
 // Engines: apple-speech (SFSpeechRecognizer), apple-analyzer (SpeechAnalyzer,
-// macOS 26), parakeet-v3 / parakeet-redux / parakeet-ultra / parakeet-v2
-// (FluidAudio, CoreML on the Neural Engine). Errors → stderr + non-zero exit.
+// macOS 26), and the FluidAudio CoreML/ANE models in Fluid.swift.
+// Errors → stderr + non-zero exit.
 import Foundation
 
 struct Segment: Encodable { let start: Double; let end: Double; let text: String }
@@ -26,7 +27,14 @@ struct Engine: Encodable {
   let available: Bool
   /// Runs now without a download / settings change.
   let ready: Bool
+  /// Current status line ("Downloaded", "Needs macOS 26", fix-it hints).
   let detail: String
+  var subtitle: String = ""
+  /// "apple" | "nvidia" | "cohere" — drives the badge.
+  var family: String = "apple"
+  var size: String = ""
+  var languages: String = ""
+  var downloadable: Bool = false
 }
 
 struct Options {
@@ -54,7 +62,7 @@ func fail(_ msg: String, _ code: Int32) -> Never {
 func listEngines(_ opts: Options) async -> [Engine] {
   var out = [AppleSpeech.engine(opts)]
   out.append(await AppleAnalyzer.engine(opts))
-  out.append(contentsOf: Parakeet.engines())
+  out.append(contentsOf: Fluid.engines(opts))
   return out
 }
 
@@ -65,8 +73,8 @@ func transcribe(_ url: URL, engine: String, _ opts: Options) async throws -> Tra
   case "apple-speech": r = try await AppleSpeech.transcribe(url, opts)
   case "apple-analyzer": r = try await AppleAnalyzer.transcribe(url, opts)
   default:
-    guard let variant = Parakeet.Variant(rawValue: engine) else { throw STTError("unknown engine \(engine)", code: 64) }
-    r = try await Parakeet.transcribe(url, variant)
+    guard let model = Fluid.Model(rawValue: engine) else { throw STTError("unknown engine \(engine)", code: 64) }
+    r = try await Fluid.transcribe(url, model, opts)
   }
   r.engine = engine
   r.ms = Int(Date().timeIntervalSince(t0) * 1000)
@@ -96,11 +104,15 @@ struct InkfishSTT {
       case "engines":
         emit(await listEngines(opts))
       case "prepare":
-        guard let variant = Parakeet.Variant(rawValue: engine) else {
+        guard let model = Fluid.Model(rawValue: engine) else {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
           throw STTError("nothing to prepare for \(engine)", code: 64)
         }
-        try await Parakeet.prepare(variant)
+        try await Fluid.prepare(model, opts)
+        emit(["ok": true])
+      case "remove":
+        guard let model = Fluid.Model(rawValue: engine) else { throw STTError("nothing to remove for \(engine)", code: 64) }
+        try Fluid.remove(model, opts)
         emit(["ok": true])
       case "transcribe":
         guard positional.count > 1 else { fail("usage: inkfish-stt transcribe <audio> --engine ID", 64) }
