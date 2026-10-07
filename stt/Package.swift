@@ -6,6 +6,16 @@ import PackageDescription
 
 let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 
+// Embed Info.plist so TCC has usage strings even outside the app bundle.
+var linkerFlags = ["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+                   "-Xlinker", "\(here)/Info.plist"]
+#if compiler(>=6.2)
+// Apple Intelligence (FoundationModels, macOS 26 SDK): weak-link so the helper
+// still launches on macOS 14/15, where the framework doesn't exist.
+linkerFlags += ["-Xlinker", "-weak_framework", "-Xlinker", "FoundationModels"]
+#endif
+let linker: [LinkerSetting] = [.unsafeFlags(linkerFlags)]
+
 let package = Package(
   name: "InkfishSTT",
   platforms: [.macOS(.v14)],
@@ -18,11 +28,7 @@ let package = Package(
       name: "inkfish-stt",
       dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
       path: "Sources/InkfishSTT",
-      linkerSettings: [
-        // Embed Info.plist so TCC has usage strings even outside the app bundle.
-        .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
-                      "-Xlinker", "\(here)/Info.plist"])
-      ]
+      linkerSettings: linker
     )
   ]
 )

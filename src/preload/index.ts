@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type {
   ClassifyResult,
   GlassState,
@@ -140,6 +141,16 @@ const api = {
     summarize: (text: string): Promise<{ text: string; provider: string }> => ipcRenderer.invoke('ai:summarize', text),
     speak: (text: string): Promise<boolean> => ipcRenderer.invoke('ai:speak', text),
     stopSpeak: (): Promise<boolean> => ipcRenderer.invoke('ai:stop-speak')
+  },
+  intel: {
+    /** Apple Intelligence availability; `fresh` skips the 1-minute cache. */
+    status: (fresh?: boolean): Promise<IntelStatus> => ipcRenderer.invoke('intel:status', fresh),
+    prefs: (): Promise<IntelPrefs> => ipcRenderer.invoke('intel:prefs'),
+    setPrefs: (patch: Partial<IntelPrefs>): Promise<IntelPrefs> => ipcRenderer.invoke('intel:set-prefs', patch),
+    /** Playground run; `prefs` overrides saved settings for this call only. */
+    run: (input: { task: IntelTask; text: string; prefs?: Partial<IntelPrefs> }): Promise<IntelResult> =>
+      ipcRenderer.invoke('intel:run', input),
+    openSystemSettings: (): Promise<boolean> => ipcRenderer.invoke('intel:open-system-settings')
   },
   stt: {
     /** engine '' / undefined = best ready engine. */
