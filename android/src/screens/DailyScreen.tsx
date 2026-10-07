@@ -34,26 +34,26 @@ export function DailyScreen(): React.JSX.Element {
     }
   }
 
+  const canAppend = !!draft.trim();
+
   return (
     <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
       <Text style={ui.h1}>Today</Text>
       <Text style={ui.sub}>{rel || 'daily log'}</Text>
       <TextInput
-        style={ui.input}
+        style={[ui.composer, { minHeight: 90 }]}
         value={draft}
         onChangeText={setDraft}
         placeholder="Add to today…"
-        placeholderTextColor={dark.muted}
+        placeholderTextColor={dark.faint}
         multiline
       />
-      <Pressable onPress={() => void append()} style={ui.btn}>
+      <Pressable onPress={() => void append()} disabled={!canAppend} style={[ui.btn, !canAppend && ui.btnOff]}>
         <Text style={ui.btnText}>Append</Text>
       </Pressable>
       {msg && <Text style={[ui.meta, { marginTop: 8 }]}>{msg}</Text>}
-      <View style={{ height: 12 }} />
-      <View style={ui.card}>
-        <Markdown text={body || '_Nothing logged yet today._'} />
-      </View>
+      <View style={{ height: 16 }} />
+      <Markdown text={body || '_Nothing logged yet today._'} />
     </ScrollView>
   );
 }

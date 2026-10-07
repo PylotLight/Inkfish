@@ -19,6 +19,9 @@ interface Props {
  * memo, Inbox/Today destination, project hint. Voice V1 records an `.m4a`
  * asset and attaches it; transcription happens on Mac after sync (or a
  * future on-device engine) — the audio is never lost.
+ *
+ * Styled like the Mac capture popover: one surface, underline destinations,
+ * borderless composer, accent only on Save and the live recording state.
  */
 export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): React.JSX.Element {
   const { projects, capture, captureDaily } = useStore();
@@ -125,81 +128,81 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
     }
   }
 
+  const canSave = !saving && (!!raw.trim() || assets.length > 0 || pendingImages.length > 0);
+
   return (
     <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
       <Text style={ui.h1}>Capture</Text>
       <Text style={ui.sub}>Fast now, sorted later — same inbox as Mac.</Text>
 
       {shared && (
-        <View style={[ui.card, { borderColor: dark.accent }]}>
-          <Text style={[ui.meta, { color: dark.accent }]}>📤 Shared from another app{shared.label ? ` · ${shared.label}` : ''}</Text>
+        <View style={{ marginBottom: 12 }}>
+          <Text style={ui.notice}>Shared from another app{shared.label ? ` · ${shared.label}` : ''}</Text>
           <Pressable
             onPress={() => {
               setPendingImages([]);
               onSharedConsumed();
               setMsg('Share dismissed — nothing saved.');
             }}
-            style={{ marginTop: 6 }}
           >
-            <Text style={[ui.meta, { textDecorationLine: 'underline' }]}>Dismiss share</Text>
+            <Text style={ui.dismiss}>Dismiss share</Text>
           </Pressable>
         </View>
       )}
 
-      <View style={[ui.row, { marginBottom: 10 }]}>
+      <View style={ui.segRow}>
         {(['inbox', 'today'] as const).map((d) => (
-          <Pressable key={d} onPress={() => setDest(d)} style={[ui.chip, dest === d && ui.chipOn]}>
-            <Text style={[ui.chipText, dest === d && ui.chipTextOn]}>{d === 'inbox' ? 'Inbox' : 'Today'}</Text>
+          <Pressable key={d} onPress={() => setDest(d)} style={[ui.seg, dest === d && ui.segOn]}>
+            <Text style={[ui.segText, dest === d && ui.segTextOn]}>{d === 'inbox' ? 'Inbox' : 'Today'}</Text>
           </Pressable>
         ))}
       </View>
 
       {dest === 'inbox' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-          <Pressable onPress={() => setHint('auto')} style={[ui.chip, hint === 'auto' && ui.chipOn]}>
-            <Text style={[ui.chipText, hint === 'auto' && ui.chipTextOn]}>Auto-route</Text>
-          </Pressable>
-          {projects.map((p) => (
-            <Pressable key={p.id} onPress={() => setHint(p.id)} style={[ui.chip, hint === p.id && ui.chipOn]}>
-              <Text style={[ui.chipText, hint === p.id && ui.chipTextOn]}>{p.name}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+          <View style={[ui.segRow, { marginBottom: 0 }]}>
+            <Pressable onPress={() => setHint('auto')} style={[ui.seg, hint === 'auto' && ui.segOn]}>
+              <Text style={[ui.segText, hint === 'auto' && ui.segTextOn]}>Auto-route</Text>
             </Pressable>
-          ))}
+            {projects.map((p) => (
+              <Pressable key={p.id} onPress={() => setHint(p.id)} style={[ui.seg, hint === p.id && ui.segOn]}>
+                <Text style={[ui.segText, hint === p.id && ui.segTextOn]}>{p.name}</Text>
+              </Pressable>
+            ))}
+          </View>
         </ScrollView>
       )}
 
       <TextInput
-        style={ui.input}
+        style={ui.composer}
         value={raw}
         onChangeText={setRaw}
         placeholder={dest === 'today' ? 'Add to today…' : 'Capture a thought…'}
-        placeholderTextColor={dark.muted}
+        placeholderTextColor={dark.faint}
         multiline
         autoFocus
       />
 
-      {assets.length > 0 && (
-        <View style={[ui.card, { marginTop: 10 }]}>
-          {assets.map((a) => (
-            <Text key={a} style={ui.meta}>🎙 {a}</Text>
-          ))}
-        </View>
-      )}
+      {assets.map((a) => (
+        <Text key={a} style={ui.meta}>● {a}</Text>
+      ))}
       {pendingImages.length > 0 && (
-        <View style={[ui.card, { marginTop: 10 }]}>
-          <Text style={ui.meta}>🖼 {pendingImages.length} shared image{pendingImages.length > 1 ? 's' : ''} — copied on save</Text>
-        </View>
+        <Text style={ui.meta}>{pendingImages.length} shared image{pendingImages.length > 1 ? 's' : ''} — copied on save</Text>
       )}
 
-      <View style={[ui.row, { marginTop: 4 }]}>
-        <Pressable onPress={() => void toggleRec()} style={[ui.chip, recording ? ui.chipOn : null]}>
-          <Text style={[ui.chipText, recording ? ui.chipTextOn : null]}>{recording ? '■ Stop' : '🎙 Dictate'}</Text>
+      <View style={[ui.row, { marginTop: 10 }]}>
+        <Pressable onPress={() => void toggleRec()} style={ui.quiet}>
+          <Text style={[ui.quietMuted, recording && { color: dark.danger, fontWeight: '700' }]}>
+            <Text style={{ color: recording ? dark.danger : dark.muted }}>● </Text>
+            {recording ? 'Stop' : 'Dictate'}
+          </Text>
         </Pressable>
       </View>
 
       {msg && <Text style={[ui.meta, { marginTop: 8 }]}>{msg}</Text>}
 
-      <Pressable onPress={() => void save()} disabled={saving || (!raw.trim() && assets.length === 0 && pendingImages.length === 0)} style={ui.btn}>
-        {saving ? <ActivityIndicator color="#0b0b10" /> : <Text style={ui.btnText}>{dest === 'today' ? 'Append' : 'Save'}</Text>}
+      <Pressable onPress={() => void save()} disabled={!canSave} style={[ui.btn, !canSave && ui.btnOff]}>
+        {saving ? <ActivityIndicator color={dark.ink} /> : <Text style={ui.btnText}>{dest === 'today' ? 'Append' : 'Save'}</Text>}
       </Pressable>
     </ScrollView>
   );

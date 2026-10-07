@@ -27,30 +27,32 @@ export function NotesScreen({ onOpen }: { onOpen: (noteId: string) => void }): R
         value={q}
         onChangeText={setQ}
         placeholder="Search…"
-        placeholderTextColor={dark.muted}
+        placeholderTextColor={dark.faint}
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-        <Pressable onPress={() => setProj(null)} style={[ui.chip, proj === null && ui.chipOn]}>
-          <Text style={[ui.chipText, proj === null && ui.chipTextOn]}>All</Text>
-        </Pressable>
-        {projects.map((p) => (
-          <Pressable key={p.id} onPress={() => setProj(proj === p.id ? null : p.id)} style={[ui.chip, proj === p.id && ui.chipOn]}>
-            <Text style={[ui.chipText, proj === p.id && ui.chipTextOn]}>{p.name}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+        <View style={[ui.segRow, { marginBottom: 0 }]}>
+          <Pressable onPress={() => setProj(null)} style={[ui.seg, proj === null && ui.segOn]}>
+            <Text style={[ui.segText, proj === null && ui.segTextOn]}>All</Text>
           </Pressable>
-        ))}
+          {projects.map((p) => (
+            <Pressable key={p.id} onPress={() => setProj(proj === p.id ? null : p.id)} style={[ui.seg, proj === p.id && ui.segOn]}>
+              <Text style={[ui.segText, proj === p.id && ui.segTextOn]}>{p.name}</Text>
+            </Pressable>
+          ))}
+        </View>
       </ScrollView>
       <Pressable
         onPress={() => void newNote(proj ? (projects.find((p) => p.id === proj)?.dir ?? '') : '').then(() => {})}
-        style={ui.ghostBtn}
+        style={ui.quiet}
       >
-        <Text style={ui.ghostText}>+ New note{proj ? ` in ${projects.find((p) => p.id === proj)?.name}` : ''}</Text>
+        <Text style={ui.quietText}>+ New note{proj ? ` in ${projects.find((p) => p.id === proj)?.name}` : ''}</Text>
       </Pressable>
-      <View style={{ height: 10 }} />
+      <View style={{ height: 6 }} />
       {shown.map((n) => (
-        <Pressable key={n.id} onPress={() => onOpen(n.id)} style={ui.card}>
+        <Pressable key={n.id} onPress={() => onOpen(n.id)} style={ui.rowItem}>
           <Text style={ui.title} numberOfLines={1}>{n.title}</Text>
           <Text style={ui.meta}>{n.path} · {n.tags.map((t) => `#${t}`).join(' ') || 'no tags'}</Text>
-          {n.snippet ? <Text style={[ui.meta, { marginTop: 4 }]} numberOfLines={2}>{n.snippet}</Text> : null}
+          {n.snippet ? <Text style={ui.meta} numberOfLines={2}>{n.snippet}</Text> : null}
         </Pressable>
       ))}
       {shown.length === 0 && <Text style={ui.sub}>No notes match.</Text>}

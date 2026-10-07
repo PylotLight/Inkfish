@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ui } from '../theme';
-import { dark } from '../theme';
+import { dark, ui } from '../theme';
 import { useStore } from '../lib/store';
 import type { NoteDoc } from '../lib/format';
 import { Markdown } from '../components/Markdown';
@@ -53,44 +52,42 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     return (
       <View style={ui.screen}>
         <Text style={ui.sub}>Note not found.</Text>
-        <Pressable onPress={onClose} style={ui.ghostBtn}><Text style={ui.ghostText}>Back</Text></Pressable>
+        <Pressable onPress={onClose} style={ui.quiet}><Text style={ui.quietText}>Back</Text></Pressable>
       </View>
     );
   }
 
   return (
     <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
-      <Pressable onPress={onClose} style={[ui.chip, { alignSelf: 'flex-start', marginBottom: 10 }]}>
-        <Text style={ui.chipText}>← Back</Text>
+      <Pressable onPress={onClose} style={ui.back}>
+        <Text style={ui.backText}>‹ Back</Text>
       </Pressable>
       <Text style={ui.h1}>{doc.title}</Text>
       <Text style={ui.sub}>{doc.path} · {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}</Text>
 
-      <View style={[ui.row, { marginBottom: 10 }]}>
+      <View style={ui.segRow}>
         {(['view', 'edit'] as const).map((m) => (
-          <Pressable key={m} onPress={() => setMode(m)} style={[ui.chip, mode === m && ui.chipOn]}>
-            <Text style={[ui.chipText, mode === m && ui.chipTextOn]}>{m === 'view' ? 'Preview' : 'Edit'}</Text>
+          <Pressable key={m} onPress={() => setMode(m)} style={[ui.seg, mode === m && ui.segOn]}>
+            <Text style={[ui.segText, mode === m && ui.segTextOn]}>{m === 'view' ? 'Preview' : 'Edit'}</Text>
           </Pressable>
         ))}
       </View>
 
       {mode === 'edit' ? (
         <TextInput
-          style={[ui.input, { minHeight: 320, fontFamily: 'monospace' }]}
+          style={[ui.composer, ui.composerMono]}
           value={text}
           onChangeText={setText}
           multiline
-          placeholderTextColor={dark.muted}
+          placeholderTextColor={dark.faint}
         />
       ) : (
-        <View style={ui.card}>
-          <Markdown text={text || '_Empty note._'} />
-        </View>
+        <Markdown text={text || '_Empty note._'} />
       )}
 
       {msg && <Text style={[ui.meta, { marginTop: 8 }]}>{msg}</Text>}
-      <Pressable onPress={() => void save()} disabled={saving} style={ui.btn}>
-        {saving ? <ActivityIndicator color="#0b0b10" /> : <Text style={ui.btnText}>Save</Text>}
+      <Pressable onPress={() => void save()} disabled={saving} style={[ui.btn, saving && ui.btnOff]}>
+        {saving ? <ActivityIndicator color={dark.ink} /> : <Text style={ui.btnText}>Save</Text>}
       </Pressable>
       <View style={{ height: 24 }} />
     </ScrollView>

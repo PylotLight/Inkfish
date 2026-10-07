@@ -91,7 +91,12 @@ function Block({ block }: { block: Block }): React.JSX.Element | null {
         </Text>
       );
     case 'li':
-      return <Text style={styles.p}>  {'•  '}{runs(block.text.replace(/^• /, ''), {})}</Text>;
+      return (
+        <Text style={styles.p}>
+          <Text style={styles.bullet}>•  </Text>
+          {runs(block.text.replace(/^• /, ''), {})}
+        </Text>
+      );
     case 'code':
       return (
         <View style={styles.codeBox}>
@@ -106,15 +111,16 @@ function Block({ block }: { block: Block }): React.JSX.Element | null {
 }
 
 const styles = StyleSheet.create({
-  h: { color: dark.text, fontWeight: '700', marginTop: 12, marginBottom: 4 },
-  h1: { fontSize: 22 },
-  h2: { fontSize: 18 },
-  h3: { fontSize: 15 },
-  p: { color: dark.text, fontSize: 15, lineHeight: 22, marginVertical: 2 },
+  h: { color: dark.text, fontWeight: '700', letterSpacing: -0.3, marginTop: 14, marginBottom: 6 },
+  h1: { fontSize: 26 },
+  h2: { fontSize: 20 },
+  h3: { fontSize: 16 },
+  p: { color: dark.text, fontSize: 16.5, lineHeight: 26, marginVertical: 3 },
+  bullet: { color: dark.muted },
   bold: { fontWeight: '700' },
-  mono: { fontFamily: 'monospace', backgroundColor: dark.card, borderRadius: 4 },
+  mono: { fontFamily: 'monospace', backgroundColor: dark.inset, borderRadius: 4 },
   link: { color: dark.accent, textDecorationLine: 'underline' },
-  codeBox: { backgroundColor: dark.card, borderRadius: 8, padding: 10, marginVertical: 6 },
-  code: { color: dark.text, fontFamily: 'monospace', fontSize: 13 },
+  codeBox: { backgroundColor: dark.inset, borderRadius: 10, padding: 12, marginVertical: 8 },
+  code: { color: dark.text, fontFamily: 'monospace', fontSize: 13.5, lineHeight: 20 },
   imgRef: { color: dark.muted, fontSize: 13, marginVertical: 4 }
 });
