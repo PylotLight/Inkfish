@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme';
+import { ScreenHead } from '../components/ScreenHead';
 import { useStore } from '../lib/store';
 import { Markdown } from '../components/Markdown';
 
 /** Today log — appends timestamped sections to `daily/YYYY-MM-DD.md`, like Mac. */
-export function DailyScreen(): React.JSX.Element {
+export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Element {
   const { ui, c: dark } = useTheme();
   const { readDaily, appendDaily } = useStore();
   const [body, setBody] = useState('');
@@ -39,8 +40,7 @@ export function DailyScreen(): React.JSX.Element {
 
   return (
     <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
-      <Text style={ui.h1}>Today</Text>
-      <Text style={ui.sub}>{rel || 'daily log'}</Text>
+      <ScreenHead title="Today" sub={rel || 'daily log'} onMenu={onMenu} />
       <TextInput
         style={[ui.composer, { minHeight: 90 }]}
         value={draft}

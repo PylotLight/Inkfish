@@ -10,18 +10,18 @@ import { toPendingShare, type PendingShare } from './src/lib/share';
 import { useTheme } from './src/theme';
 import { CaptureScreen } from './src/screens/CaptureScreen';
 import { InboxScreen } from './src/screens/InboxScreen';
-import { NotesScreen } from './src/screens/NotesScreen';
+import { Drawer } from './src/components/Drawer';
 import { EditorScreen } from './src/screens/EditorScreen';
 import { DailyScreen } from './src/screens/DailyScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 
-type Tab = 'capture' | 'inbox' | 'notes' | 'today' | 'settings';
+type Tab = 'capture' | 'inbox' | 'today' | 'settings';
 
 // Monochrome text glyphs (no emoji): quiet like Obsidian's icon bar.
+// Notes live in the file drawer, not the toolbar.
 const TABS: Array<{ id: Tab; glyph: string }> = [
   { id: 'capture', glyph: '✎' },
   { id: 'inbox', glyph: '▤' },
-  { id: 'notes', glyph: '☰' },
   { id: 'today', glyph: '◷' },
   { id: 'settings', glyph: '⚙' }
 ];
@@ -35,6 +35,7 @@ function Shell(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('capture');
   // Selected doc id: a routed note id OR an inbox item id (editor handles both).
   const [openId, setOpenId] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState(false);
   const [shared, setShared] = useState<PendingShare | null>(null);
   const shareSeen = useRef(false);
 
@@ -99,15 +100,13 @@ function Shell(): React.JSX.Element {
         {openId ? (
           <EditorScreen noteId={openId} onClose={() => setOpenId(null)} />
         ) : tab === 'capture' ? (
-          <CaptureScreen onSaved={() => setTab('inbox')} shared={shared} onSharedConsumed={consumeShared} />
+          <CaptureScreen onSaved={() => setTab('inbox')} shared={shared} onSharedConsumed={consumeShared} onMenu={() => setDrawer(true)} />
         ) : tab === 'inbox' ? (
-          <InboxScreen onOpen={(id) => setOpenId(id)} />
-        ) : tab === 'notes' ? (
-          <NotesScreen onOpen={(id) => setOpenId(id)} />
+          <InboxScreen onOpen={(id) => setOpenId(id)} onMenu={() => setDrawer(true)} />
         ) : tab === 'today' ? (
-          <DailyScreen />
+          <DailyScreen onMenu={() => setDrawer(true)} />
         ) : (
-          <SettingsScreen />
+          <SettingsScreen onMenu={() => setDrawer(true)} />
         )}
       </View>
       {/* Floating glass toolbar (Obsidian-style). Hidden in the editor for
@@ -123,6 +122,14 @@ function Shell(): React.JSX.Element {
           )}
         </View>
       )}
+      <Drawer
+        open={drawer}
+        onClose={() => setDrawer(false)}
+        onOpenNote={(id) => {
+          setDrawer(false);
+          setOpenId(id);
+        }}
+      />
     </View>
   );
 }

@@ -1,17 +1,17 @@
 import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme } from '../theme';
+import { ScreenHead } from '../components/ScreenHead';
 import { useStore } from '../lib/store';
 
-export function InboxScreen({ onOpen }: { onOpen: (inboxId: string) => void }): React.JSX.Element {
+export function InboxScreen({ onOpen, onMenu }: { onOpen: (inboxId: string) => void; onMenu: () => void }): React.JSX.Element {
   const { ui } = useTheme();
   const { inbox, projects, routeInbox, undoInbox, refresh } = useStore();
   const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing');
 
   return (
     <ScrollView style={ui.screen}>
-      <Text style={ui.h1}>Inbox</Text>
-      <Text style={ui.sub}>{pending.length > 0 ? `${pending.length} waiting` : 'Inbox zero'}</Text>
+      <ScreenHead title="Inbox" sub={pending.length > 0 ? `${pending.length} waiting` : 'Inbox zero'} onMenu={onMenu} />
       {inbox.length === 0 && <Text style={ui.sub}>Nothing yet — capture something.</Text>}
       {inbox.map((item) => {
         const routing = item.status === 'processing';

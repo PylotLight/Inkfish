@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme } from '../theme';
+import { ScreenHead } from '../components/ScreenHead';
 import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
 import { useStore } from '../lib/store';
 import { stagingUri, vaultRootUri } from '../lib/vault';
 
-export function SettingsScreen(): React.JSX.Element {
+export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.Element {
   const { ui } = useTheme();
   const { prefs, update } = usePrefs();
   const { inbox, notes, projects, refresh, error } = useStore();
@@ -13,8 +14,7 @@ export function SettingsScreen(): React.JSX.Element {
 
   return (
     <ScrollView style={ui.screen}>
-      <Text style={ui.h1}>Settings</Text>
-      <Text style={ui.sub}>Local-only V1 · sync comes later</Text>
+      <ScreenHead title="Settings" sub="Local-only V1 · sync comes later" onMenu={onMenu} />
       {error && <Text style={ui.err}>{error}</Text>}
 
       <Text style={ui.section}>Appearance · theme</Text>

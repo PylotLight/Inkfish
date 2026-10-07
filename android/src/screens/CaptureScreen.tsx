@@ -6,9 +6,11 @@ import { useStore } from '../lib/store';
 import { saveAssetCopy } from '../lib/vault';
 import type { PendingShare } from '../lib/share';
 import type { NoteKind } from '../lib/format';
+import { ScreenHead } from '../components/ScreenHead';
 
 interface Props {
   onSaved: (noteId: string | null) => void;
+  onMenu: () => void;
   /** A share-target payload waiting to be captured (null = normal capture). */
   shared: PendingShare | null;
   onSharedConsumed: () => void;
@@ -23,7 +25,7 @@ interface Props {
  * Styled like the Mac capture popover: one surface, underline destinations,
  * borderless composer, accent only on Save and the live recording state.
  */
-export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): React.JSX.Element {
+export function CaptureScreen({ onSaved, shared, onSharedConsumed, onMenu }: Props): React.JSX.Element {
   const { ui, c: dark } = useTheme();
   const { projects, capture, captureDaily } = useStore();
   const [raw, setRaw] = useState('');
@@ -133,8 +135,7 @@ export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): Rea
 
   return (
     <ScrollView style={ui.screen} keyboardShouldPersistTaps="handled">
-      <Text style={ui.h1}>Capture</Text>
-      <Text style={ui.sub}>Fast now, sorted later — same inbox as Mac.</Text>
+      <ScreenHead title="Capture" sub="Fast now, sorted later — same inbox as Mac." onMenu={onMenu} />
 
       {shared && (
         <View style={{ marginBottom: 12 }}>
