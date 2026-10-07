@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { pickAutoEngine } from '../../../shared/stt'
-import type { DownloadProgress, SttEngine } from '../../../shared/types'
+import type { DownloadProgress, SttEngine, SttResult } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, saveAudioPrefs, toWav } from '../audio'
 import benchUrl from '../assets/bench/librispeech-1272.wav?url'
 import { BENCH_CLIP, fmtSpeed, fmtWer, speedFactor, wordErrorRate } from '../../../shared/sttBench'
-import { isWebEngine, prepareWeb, removeWeb, transcribeWeb, webEngines } from '../webStt'
+import { isWebEngine, prepareWeb, removeWeb, resetWeb, transcribeWeb, webEngines } from '../webStt'
 
 type Run =
   | { state: 'running' }
@@ -18,10 +18,26 @@ const SCORES_KEY = 'inkfish.sttScores'
 type Score = { wer: number; speed: number; at: number }
 function loadScores(): Record<string, Score> {
   try {
-    return JSON.parse(localStorage.getItem(SCORES_KEY) || '{}') as Record<string, Score>
+    const all = JSON.parse(localStorage.getItem(SCORES_KEY) || '{}') as Record<string, Score>
+    // Scores over 100% came from a parsing bug (raw JSON scored as the
+    // transcript) or a wedged run, not the model — drop them so a rerun replaces them.
+    return Object.fromEntries(Object.entries(all).filter(([, v]) => v && v.wer <= 1))
   } catch {
     return {}
   }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, name: string, onTimeout?: () => void): Promise<T> {
+  let t = 0
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => {
+      t = window.setTimeout(() => {
+        onTimeout?.()
+        reject(new Error(`${name} timed out after ${Math.round(ms / 1000)} s — skipped`))
+      }, ms)
+    })
+  ]).finally(() => window.clearTimeout(t))
 }
 
 /** Duration of a 16 kHz mono 16-bit wav from toWav(). */
@@ -47,7 +63,7 @@ function phaseLabel(p: DownloadProgress): string {
   if (p.state === 'retrying') return `Connection dropped — retrying (attempt ${p.attempt + 1} of 4)…`
   if (p.state === 'error') return p.blocked ? "Couldn't reach the model host" : 'Download failed'
   if (p.phase === 'listing') return 'Finding files…'
-  if (p.phase === 'compiling') return 'Optimising for the Neural Engine…'
+  if (p.phase === 'compiling') return isWebEngine(p.id) ? 'Loading model…' : 'Optimising for the Neural Engine…'
   const files = p.total ? ` · file ${Math.min(p.files + 1, p.total)} of ${p.total}` : ''
   return `${Math.round(p.fraction * 100)}%${files}`
 }
@@ -124,12 +140,35 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     setNote(null)
     if (isWebEngine(e.id)) {
       let ok = true
+      const show = (p: Partial<DownloadProgress>): void =>
+        setDl((prev) => ({
+          ...prev,
+          [e.id]: {
+            id: e.id,
+            state: 'downloading',
+            fraction: 0,
+            phase: 'downloading',
+            files: 0,
+            total: 0,
+            attempt: 0,
+            ...p
+          }
+        }))
       await withBusy(e, 'Downloading…', async () => {
         try {
-          await prepareWeb(e.id)
+          show({})
+          await prepareWeb(e.id, (p) =>
+            show(
+              p.phase === 'loading'
+                ? { fraction: 1, phase: 'compiling' }
+                : { fraction: p.total ? Math.min(1, p.loaded / p.total) : 0 }
+            )
+          )
         } catch (err) {
           ok = false
           throw err
+        } finally {
+          setDl(({ [e.id]: _, ...rest }) => rest)
         }
       })
       if (ok && !choice) activate(e.id)
@@ -188,7 +227,11 @@ export default function VoiceEngineSettings(): React.JSX.Element {
 
   const benchClip = async (): Promise<Clip> => {
     const blob = await (await fetch(benchUrl)).blob()
-    return useClip(blob, `Benchmark · ${Math.round(BENCH_CLIP.seconds)} s of read English (LibriSpeech)`, BENCH_CLIP.text)
+    return useClip(
+      blob,
+      `Benchmark · ${Math.round(BENCH_CLIP.seconds)} s of read English (LibriSpeech)`,
+      BENCH_CLIP.text
+    )
   }
 
   const record = async (): Promise<void> => {
@@ -224,10 +267,21 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     // Sequential: engines share the Neural Engine, parallel runs skew timings.
     for (const [i, e] of targets.entries()) {
       setBenchStep({ done: i, total: targets.length, name: e.name })
+      // One wedged engine must not stall the whole run: cap each at 1 min + 2× the clip.
+      const limit = Math.round(60_000 + c.seconds * 2_000)
+      const once = (): Promise<SttResult> =>
+        isWebEngine(e.id)
+          ? withTimeout(transcribeWeb(e.id, c.wav), limit, e.name, () => resetWeb(e.id))
+          : window.api.stt.test(c.dataUrl, e.id, limit)
       try {
-        const r = isWebEngine(e.id)
-          ? await transcribeWeb(e.id, c.wav)
-          : await window.api.stt.test(c.dataUrl, e.id)
+        // Benchmark only: an untimed warm-up first (model load, Core ML / WebGPU
+        // compile), same as `bun run bench:stt`, so in-app and CLI speeds compare.
+        if (isBench) {
+          setBenchStep({ done: i, total: targets.length, name: `${e.name} · warming up` })
+          await once()
+          setBenchStep({ done: i, total: targets.length, name: e.name })
+        }
+        const r = await once()
         const ms = r.ms ?? 0
         const wer = ref ? wordErrorRate(ref, r.text).wer : undefined
         const speed = speedFactor(c.seconds, ms) || undefined
@@ -442,8 +496,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         <div className="setting-label">
           Download source
           <span className="muted small setting-hint">
-            Where native models download from. If a VPN or network blocks Hugging Face, try the mirror. Paused
-            downloads resume where they stopped.
+            Where native models download from. If a VPN or network blocks Hugging Face, try the mirror. Paused downloads
+            resume where they stopped.
           </span>
         </div>
         <select
@@ -484,8 +538,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         <div className="setting-label">
           Live transcription while dictating
           <span className="muted small setting-hint">
-            Text streams in as you speak. Uses Parakeet Redux once downloaded (and skips the wait after stop when
-            Redux is your engine); otherwise Moonshine previews in English.
+            Text streams in as you speak. Uses Parakeet Redux once downloaded (and skips the wait after stop when Redux
+            is your engine); otherwise Moonshine previews in English.
           </span>
         </div>
         <button
@@ -529,7 +583,9 @@ export default function VoiceEngineSettings(): React.JSX.Element {
                     <tr key={e.id} className={e.ready ? '' : 'dim'}>
                       <td>{e.name}</td>
                       <td>{sizeLabel(e)}</td>
-                      <td className={sc && sc.wer === bestWer ? 'best' : ''}>{sc ? fmtWer(sc.wer) : e.ready ? 'Not run' : '—'}</td>
+                      <td className={sc && sc.wer === bestWer ? 'best' : ''}>
+                        {sc ? fmtWer(sc.wer) : e.ready ? 'Not run' : '—'}
+                      </td>
                       <td className={sc && sc.speed === bestSpeed ? 'best' : ''}>
                         {sc ? `${sc.speed >= 10 ? Math.round(sc.speed) : sc.speed.toFixed(1)}×` : '—'}
                       </td>

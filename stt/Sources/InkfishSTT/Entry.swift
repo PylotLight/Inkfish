@@ -68,10 +68,25 @@ struct STTError: Error, CustomStringConvertible {
   init(_ d: String, code: Int32 = 4) { description = d; self.code = code }
 }
 
+/// Where JSON replies go. `quietStdout()` repoints fd 1 at stderr so library
+/// chatter (FluidAudio/Core ML `print`s, os logs) can't land in the reply and
+/// break the app's JSON.parse — which used to make it treat the whole raw
+/// output as the transcript.
+var replyOut = FileHandle.standardOutput
+
+func quietStdout() {
+  fflush(stdout)
+  let saved = dup(STDOUT_FILENO)
+  guard saved >= 0 else { return }
+  dup2(STDERR_FILENO, STDOUT_FILENO)
+  replyOut = FileHandle(fileDescriptor: saved, closeOnDealloc: false)
+}
+
 func emit<T: Encodable>(_ value: T) {
   let data = (try? JSONEncoder().encode(value)) ?? Data("{}".utf8)
-  FileHandle.standardOutput.write(data)
-  FileHandle.standardOutput.write(Data("\n".utf8))
+  fflush(stdout)
+  replyOut.write(data)
+  replyOut.write(Data("\n".utf8))
 }
 
 func fail(_ msg: String, _ code: Int32) -> Never {
@@ -119,6 +134,8 @@ struct InkfishSTT {
       }
     }
     let cmd = positional.first ?? ""
+    // `tap` streams raw PCM on stdout; every other command replies with one JSON line.
+    if cmd != "tap" { quietStdout() }
     do {
       switch cmd {
       case "engines":

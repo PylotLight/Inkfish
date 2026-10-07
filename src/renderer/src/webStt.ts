@@ -13,6 +13,15 @@ interface Heard {
 }
 type Loaded = (pcm: Float32Array) => Promise<Heard>
 
+/** Download progress for a Web model: bytes so far / expected (total may be unknown). */
+export interface WebProgress {
+  loaded: number
+  total?: number
+  file?: string
+  phase: 'downloading' | 'loading'
+}
+type OnProgress = (p: WebProgress) => void
+
 interface WebEngine {
   id: string
   name: string
@@ -23,7 +32,7 @@ interface WebEngine {
   /** Cache Storage buckets / IndexedDB databases the model lives in. */
   caches: string[]
   dbs?: string[]
-  load: (gpu: Gpu) => Promise<Loaded>
+  load: (gpu: Gpu, onProgress: OnProgress) => Promise<Loaded>
 }
 
 /** A real WebGPU adapter (not just the API existing), with its name for the runtime label. */
@@ -53,15 +62,21 @@ export const WEB_ENGINES: WebEngine[] = [
     size: '~178 MB',
     languages: '25 languages',
     caches: ['vocule-verified-weights-v1'],
-    load: async () => {
-      const speech = await reduxSpeech()
+    load: async (_gpu, onProgress) => {
+      reduxProgress = onProgress
+      const speech = await reduxSpeech().finally(() => (reduxProgress = null))
       return async (pcm) => {
-        const t = await speech.transcribe({ samples: pcm, sampleRate: 16_000 })
-        const rt = t.metrics.realtimeFactor
-        return {
-          text: t.text,
-          runtime: `WebGPU+WASM · ${t.model.id}${t.verified ? ' (verified)' : ''} · ${rt.toFixed(0)}× realtime`
+        // One long clip in a single pass could stall the worker (the 79 s
+        // benchmark hung); feed it in short windows cut at quiet moments.
+        const max = Math.min(REDUX_WINDOW_S, speech.capabilities.maxAudioSeconds ?? REDUX_WINDOW_S)
+        const parts: string[] = []
+        let label = ''
+        for (const win of splitAtQuiet(pcm, 16_000, max)) {
+          const t = await speech.transcribe({ samples: win, sampleRate: 16_000 })
+          if (t.text.trim()) parts.push(t.text.trim())
+          label ||= `${t.model.id}${t.verified ? ' (verified)' : ''}`
         }
+        return { text: parts.join(' '), runtime: `WebGPU+WASM · ${label || 'Parakeet Redux'}` }
       }
     }
   },
@@ -77,10 +92,12 @@ export const WEB_ENGINES: WebEngine[] = [
     languages: 'English',
     caches: [],
     dbs: ['parakeet-cache-db'],
-    load: async (gpu) => {
+    load: async (gpu, onProgress) => {
       const { fromHub } = await import('parakeet.js')
       const encoderQuant = gpu.ok ? 'fp16' : 'int8'
       const model = await fromHub('parakeet-tdt-0.6b-v2', {
+        progress: (p: { loaded: number; total: number; file: string }) =>
+          onProgress({ loaded: p.loaded, total: p.total, file: p.file, phase: 'downloading' }),
         backend: gpu.ok ? 'webgpu-hybrid' : 'wasm',
         encoderQuant,
         decoderQuant: 'int8',
@@ -97,16 +114,19 @@ export const WEB_ENGINES: WebEngine[] = [
     name: 'Moonshine Base · Web',
     subtitle: 'Moonshine — tiny English model, also powers live captions',
     family: 'moonshine',
-    size: '~60 MB',
+    // encoder 31 MB + decoder 109 MB + tokenizer (the old "~60 MB" was wrong).
+    size: '~141 MB',
     languages: 'English',
     caches: ['moonshine-models-v1'],
-    load: async () => {
+    load: async (_gpu, onProgress) => {
       const { Transcriber, ModelArch } = await import('@moonshine-ai/moonshine-wasm')
       const t = await Transcriber.load({
         language: 'en',
         modelArch: ModelArch.Base,
-        moduleOptions: await moonshineModule()
+        moduleOptions: await moonshineModule(),
+        downloader: await moonshineDownloader(onProgress)
       })
+      onProgress({ loaded: 1, total: 1, phase: 'loading' })
       return async (pcm) => ({
         text: t
           .transcribe(pcm, { sampleRate: 16_000 })
@@ -125,6 +145,117 @@ export async function moonshineModule(): Promise<{
 }> {
   const wasmUrl = (await import('@moonshine-ai/moonshine-wasm/moonshine.wasm?url')).default
   return { locateFile: (p, dir) => (p.endsWith('.wasm') ? wasmUrl : dir + p) }
+}
+
+/**
+ * Moonshine's stock downloader awaits `cache.put(response.clone())` before it
+ * reads the body, so the whole file arrives with no progress and the bar sat
+ * at 0% until the end (looked stuck). This one streams with live progress,
+ * fails on a 45 s stall instead of hanging, then caches the finished bytes.
+ */
+const STALL_MS = 45_000
+export async function moonshineDownloader(
+  onProgress?: OnProgress
+): Promise<import('@moonshine-ai/moonshine-wasm').AssetDownloader> {
+  const { AssetDownloader } = await import('@moonshine-ai/moonshine-wasm')
+  class Streaming extends AssetDownloader {
+    private done = 0
+    private expected?: number
+    override async downloadManifest(manifestJson: string): Promise<Map<string, Uint8Array>> {
+      try {
+        const m = JSON.parse(manifestJson) as { groups?: { files?: { size?: number }[] }[] }
+        const sizes = (m.groups ?? []).flatMap((g) => (g.files ?? []).map((f) => f.size))
+        this.expected = sizes.every((x) => typeof x === 'number')
+          ? (sizes as number[]).reduce((a, b) => a + b, 0)
+          : undefined
+      } catch {
+        this.expected = undefined
+      }
+      return super.downloadManifest(manifestJson)
+    }
+    override async fetchFile(url: string): Promise<Uint8Array> {
+      const file = url.split(/[?#]/)[0]!.split('/').pop() ?? url
+      const cache = await caches.open('moonshine-models-v1').catch(() => undefined)
+      const hit = await cache?.match(url)
+      if (hit) {
+        const buf = new Uint8Array(await hit.arrayBuffer())
+        this.done += buf.byteLength
+        onProgress?.({ loaded: this.done, total: this.expected, file, phase: 'downloading' })
+        return buf
+      }
+      const ctrl = new AbortController()
+      let timer = window.setTimeout(() => ctrl.abort(), STALL_MS)
+      const bump = (): void => {
+        window.clearTimeout(timer)
+        timer = window.setTimeout(() => ctrl.abort(), STALL_MS)
+      }
+      try {
+        const res = await fetch(url, { signal: ctrl.signal })
+        if (!res.ok) throw new Error(`Couldn't download ${file}: HTTP ${res.status}`)
+        const reader = res.body!.getReader()
+        const chunks: Uint8Array[] = []
+        let n = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          bump()
+          chunks.push(value)
+          n += value.byteLength
+          onProgress?.({ loaded: this.done + n, total: this.expected, file, phase: 'downloading' })
+        }
+        const out = new Uint8Array(n)
+        let off = 0
+        for (const c of chunks) {
+          out.set(c, off)
+          off += c.byteLength
+        }
+        this.done += n
+        await cache
+          ?.put(url, new Response(out, { headers: { 'content-type': 'application/octet-stream' } }))
+          .catch(() => undefined)
+        return out
+      } catch (err) {
+        if (ctrl.signal.aborted) {
+          throw new Error(
+            `Download of ${file} stalled — no data for ${STALL_MS / 1000} s. Check your connection or VPN and retry.`
+          )
+        }
+        throw err
+      } finally {
+        window.clearTimeout(timer)
+      }
+    }
+  }
+  return new Streaming()
+}
+
+/** Longest window fed to Redux in one call. */
+const REDUX_WINDOW_S = 20
+
+/** Split PCM into ≤maxS windows, cutting at the quietest 50 ms in each window's last 4 s. */
+export function splitAtQuiet(pcm: Float32Array, rate: number, maxS: number): Float32Array[] {
+  const max = Math.floor(maxS * rate)
+  if (pcm.length <= max) return [pcm]
+  const hop = Math.floor(rate * 0.05)
+  const out: Float32Array[] = []
+  let start = 0
+  while (pcm.length - start > max) {
+    const end = start + max
+    let best = end
+    let bestE = Infinity
+    for (let i = Math.max(start + hop, end - 4 * rate); i + hop <= end; i += hop) {
+      let e = 0
+      for (let j = i; j < i + hop; j++) e += pcm[j]! * pcm[j]!
+      if (e < bestE) {
+        bestE = e
+        best = i + Math.floor(hop / 2)
+      }
+    }
+    out.push(pcm.subarray(start, best))
+    start = best
+  }
+  out.push(pcm.subarray(start))
+  return out
 }
 
 export const isWebEngine = (id: string | undefined): boolean => !!id && id.startsWith('web-')
@@ -163,23 +294,33 @@ export function webEngines(): SttEngine[] {
 
 const loaded = new Map<string, Promise<Loaded>>()
 
-function get(id: string): Promise<Loaded> {
+function get(id: string, onProgress: OnProgress = () => undefined): Promise<Loaded> {
   const e = WEB_ENGINES.find((x) => x.id === id)
   if (!e) return Promise.reject(new Error(`Unknown engine ${id}`))
   let p = loaded.get(id)
   if (!p) {
-    p = probeGpu().then((g) => e.load(g))
+    p = probeGpu().then((g) => e.load(g, onProgress))
     loaded.set(id, p)
     p.catch(() => loaded.delete(id))
   }
   return p
 }
 
-export async function prepareWeb(id: string): Promise<void> {
-  await get(id)
+export async function prepareWeb(id: string, onProgress?: OnProgress): Promise<void> {
+  await get(id, onProgress)
   const s = readySet()
   s.add(id)
   saveReady(s)
+}
+
+/** Drop a wedged in-memory engine (e.g. after a timeout) so the next use starts fresh. */
+export function resetWeb(id: string): void {
+  loaded.delete(id)
+  if (id === 'web-parakeet-redux' && redux) {
+    const r = redux
+    redux = null
+    void r.then((s) => s.dispose()).catch(() => undefined)
+  }
 }
 
 export async function removeWeb(id: string): Promise<void> {
@@ -239,9 +380,20 @@ export async function transcribeWeb(id: string, audio: Blob): Promise<SttResult>
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let redux: Promise<any> | null = null
+/** Set while Settings is downloading Redux, so the shared instance can report bytes. */
+let reduxProgress: OnProgress | null = null
 export function reduxSpeech(): Promise<import('@karanganesan/vocule').Speech> {
   redux ??= import('@karanganesan/vocule').then(async ({ createSpeech }) => {
-    const speech = createSpeech()
+    const speech = createSpeech({
+      onProgress: (p) => {
+        if (!reduxProgress) return
+        if (p.phase === 'download' && p.completed !== undefined) {
+          reduxProgress({ loaded: p.completed, total: p.total, file: p.detail, phase: 'downloading' })
+        } else if (p.phase === 'verify' || p.phase === 'load') {
+          reduxProgress({ loaded: 1, total: 1, phase: 'loading' })
+        }
+      }
+    })
     await speech.prepare()
     return speech
   })

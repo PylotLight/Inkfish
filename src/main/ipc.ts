@@ -76,7 +76,16 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
-import { clearDownload, downloadProgress, listEngines, pauseDownload, prepareEngine, removeEngine, transcribe, type DownloadProgress } from './stt'
+import {
+  clearDownload,
+  downloadProgress,
+  listEngines,
+  pauseDownload,
+  prepareEngine,
+  removeEngine,
+  transcribe,
+  type DownloadProgress
+} from './stt'
 
 const isMac = process.platform === 'darwin'
 
@@ -112,7 +121,9 @@ function info(): VaultInfo {
 }
 
 /** Background worker: classify + route one inbox item, never deleting raw. */
-async function processInboxItem(id: string): Promise<{ note: NoteEntry; classify: ClassifyResult } | { error: string }> {
+async function processInboxItem(
+  id: string
+): Promise<{ note: NoteEntry; classify: ClassifyResult } | { error: string }> {
   let paths: VaultPaths
   try {
     paths = requireNotes()
@@ -143,10 +154,18 @@ async function processInboxItem(id: string): Promise<{ note: NoteEntry; classify
     const entry = indexFile(routed.path, routed.vaultRel)
     return {
       note: entry ?? {
-        id: routed.noteId, path: routed.vaultRel, title: result.title, kind: item.kind,
-        status: 'ready' as NoteStatus, projectId: result.projectId, inboxId: id,
-        tags: result.tags, snippet: result.markdown.slice(0, 220),
-        createdAt: Date.now(), updatedAt: Date.now(), size: result.markdown.length
+        id: routed.noteId,
+        path: routed.vaultRel,
+        title: result.title,
+        kind: item.kind,
+        status: 'ready' as NoteStatus,
+        projectId: result.projectId,
+        inboxId: id,
+        tags: result.tags,
+        snippet: result.markdown.slice(0, 220),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        size: result.markdown.length
       },
       classify: result
     }
@@ -177,10 +196,8 @@ export function registerIpc(): void {
     }
   })
 
-  ipcMain.handle(
-    'notify:send',
-    (_event: IpcMainInvokeEvent, payload: { title: string; body: string }): boolean =>
-      notify(payload.title, payload.body)
+  ipcMain.handle('notify:send', (_event: IpcMainInvokeEvent, payload: { title: string; body: string }): boolean =>
+    notify(payload.title, payload.body)
   )
 
   ipcMain.handle('dock:set-badge', (_event: IpcMainInvokeEvent, count: number): boolean => {
@@ -211,13 +228,10 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('glass:get', (): GlassState => getGlassState())
-  ipcMain.handle(
-    'glass:set',
-    (_event: IpcMainInvokeEvent, name: VibrancyName | null): GlassState => {
-      if (name !== null && !VIBRANCY_OPTIONS.includes(name)) return getGlassState()
-      return setGlassVibrancy(name)
-    }
-  )
+  ipcMain.handle('glass:set', (_event: IpcMainInvokeEvent, name: VibrancyName | null): GlassState => {
+    if (name !== null && !VIBRANCY_OPTIONS.includes(name)) return getGlassState()
+    return setGlassVibrancy(name)
+  })
   ipcMain.handle('glass:options', (): readonly VibrancyName[] => VIBRANCY_OPTIONS)
 
   ipcMain.handle('shell:open', (_event: IpcMainInvokeEvent, url: string): boolean => {
@@ -266,20 +280,17 @@ export function registerIpc(): void {
       }
     }
   )
-  ipcMain.handle(
-    'vault:pick',
-    async (): Promise<{ path: string } | { error: string }> => {
-      const win = getMainWindow()
-      const opts = {
-        title: 'Choose your Inkfish vault folder',
-        properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
-        defaultPath: os.homedir()
-      }
-      const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
-      if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
-      return { path: picked.filePaths[0] as string }
+  ipcMain.handle('vault:pick', async (): Promise<{ path: string } | { error: string }> => {
+    const win = getMainWindow()
+    const opts = {
+      title: 'Choose your Inkfish vault folder',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+      defaultPath: os.homedir()
     }
-  )
+    const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
+    return { path: picked.filePaths[0] as string }
+  })
 
   // --- projects ----------------------------------------------------------------
   ipcMain.handle('projects:list', (): Project[] => {
@@ -315,10 +326,8 @@ export function registerIpc(): void {
   })
   ipcMain.handle('inbox:count', (): number => countInbox())
 
-  ipcMain.handle(
-    'inbox:process',
-    (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
-      processInboxItem(id)
+  ipcMain.handle('inbox:process', (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
+    processInboxItem(id)
   )
 
   ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
@@ -331,7 +340,14 @@ export function registerIpc(): void {
     const projects = listProjects(paths)
     const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: projectName })
     const routed = routeToProject(
-      { inboxId: id, projectName: result.projectName, title: result.title, tags: result.tags, markdown: result.markdown, kind: item.kind },
+      {
+        inboxId: id,
+        projectName: result.projectName,
+        title: result.title,
+        tags: result.tags,
+        markdown: result.markdown,
+        kind: item.kind
+      },
       paths
     )
     setInboxStatus(id, 'ready', paths)
@@ -353,15 +369,12 @@ export function registerIpc(): void {
   )
 
   // --- daily (day-log append + open-today; EOD source) -------------------------------
-  ipcMain.handle(
-    'daily:append',
-    (_e: IpcMainInvokeEvent, raw: string, kind?: NoteKind): { vaultRel: string } => {
-      const paths = requireNotes()
-      const out = appendDaily(raw, { kind: kind ?? 'text', source: 'tray' }, paths)
-      indexFile(out.path, out.vaultRel)
-      return { vaultRel: out.vaultRel }
-    }
-  )
+  ipcMain.handle('daily:append', (_e: IpcMainInvokeEvent, raw: string, kind?: NoteKind): { vaultRel: string } => {
+    const paths = requireNotes()
+    const out = appendDaily(raw, { kind: kind ?? 'text', source: 'tray' }, paths)
+    indexFile(out.path, out.vaultRel)
+    return { vaultRel: out.vaultRel }
+  })
   ipcMain.handle('daily:today', (): { vaultRel: string } => {
     const paths = requireNotes()
     const { abs, vaultRel } = dailyFile(new Date(), paths)
@@ -410,20 +423,17 @@ export function registerIpc(): void {
     if (!vaultConfigured()) return []
     return relatedNotes(id)
   })
-  ipcMain.handle(
-    'notes:save',
-    (_e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null => {
-      const paths = requireNotes()
-      const doc = getNote(id, paths.root)
-      if (!doc) return null
-      const abs = resolveNoteAbs(doc.path, paths)
-      if (!existsSync(abs)) return null
-      writeFileSync(abs, markdown, 'utf8')
-      removeNote(id)
-      indexFile(abs, doc.path)
-      return getNote(id, paths.root)
-    }
-  )
+  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null => {
+    const paths = requireNotes()
+    const doc = getNote(id, paths.root)
+    if (!doc) return null
+    const abs = resolveNoteAbs(doc.path, paths)
+    if (!existsSync(abs)) return null
+    writeFileSync(abs, markdown, 'utf8')
+    removeNote(id)
+    indexFile(abs, doc.path)
+    return getNote(id, paths.root)
+  })
   ipcMain.handle('notes:reveal', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()
     const doc = getNote(id, paths.root)
@@ -433,10 +443,8 @@ export function registerIpc(): void {
   })
   // --- custom display titles (app-data `titles.json`, never in the notes) -------
   ipcMain.handle('notes:titles', (): Record<string, string> => loadTitles())
-  ipcMain.handle(
-    'notes:set-title',
-    (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> =>
-      setTitleOverride(id, title)
+  ipcMain.handle('notes:set-title', (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> =>
+    setTitleOverride(id, title)
   )
 
   // --- file management (tree CRUD; fs op then renderer reindexes) ------------------
@@ -479,29 +487,23 @@ export function registerIpc(): void {
   })
 
   // --- assets (image paste / drop → assets/) ----------------------------------------
-  ipcMain.handle(
-    'assets:save',
-    (_e: IpcMainInvokeEvent, fileName: string, dataUrl: string): string => {
-      const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
-      if (!m) throw new Error('assets:save needs a data: URL')
-      const buf = Buffer.from(m[2] ?? '', 'base64')
-      return saveAsset(fileName, buf, requireNotes())
-    }
-  )
+  ipcMain.handle('assets:save', (_e: IpcMainInvokeEvent, fileName: string, dataUrl: string): string => {
+    const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
+    if (!m) throw new Error('assets:save needs a data: URL')
+    const buf = Buffer.from(m[2] ?? '', 'base64')
+    return saveAsset(fileName, buf, requireNotes())
+  })
   ipcMain.handle('assets:path', (_e: IpcMainInvokeEvent, vaultRel: string): string =>
     resolveAsset(vaultRel, requireNotes())
   )
 
   // --- AI --------------------------------------------------------------------------
   ipcMain.handle('ai:providers', () => providerStatus())
-  ipcMain.handle(
-    'ai:classify',
-    (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind): Promise<ClassifyResult> =>
-      classify({ raw, kind, projects: vaultConfigured() ? listProjects(requireNotes()) : [] })
+  ipcMain.handle('ai:classify', (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind): Promise<ClassifyResult> =>
+    classify({ raw, kind, projects: vaultConfigured() ? listProjects(requireNotes()) : [] })
   )
-  ipcMain.handle(
-    'ai:summarize',
-    (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> => summarize(text)
+  ipcMain.handle('ai:summarize', (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> =>
+    summarize(text)
   )
   ipcMain.handle('ai:speak', (_e: IpcMainInvokeEvent, text: string): Promise<boolean> => speak(text))
   ipcMain.handle('ai:stop-speak', (): boolean => {
@@ -517,65 +519,58 @@ export function registerIpc(): void {
   const sendProgress = (p: DownloadProgress): void => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('stt:progress', p)
   }
-  ipcMain.handle(
-    'stt:prepare',
-    (_e: IpcMainInvokeEvent, engine: string, mirror?: string): Promise<void> =>
-      prepareEngine(engine, sendProgress, typeof mirror === 'string' ? mirror : '')
+  ipcMain.handle('stt:prepare', (_e: IpcMainInvokeEvent, engine: string, mirror?: string): Promise<void> =>
+    prepareEngine(engine, sendProgress, typeof mirror === 'string' ? mirror : '')
   )
   ipcMain.handle('stt:pause', (_e: IpcMainInvokeEvent, engine: string): void => pauseDownload(engine))
   ipcMain.handle('stt:clear-download', (_e: IpcMainInvokeEvent, engine: string): void => clearDownload(engine))
   ipcMain.handle('stt:downloads', (): DownloadProgress[] => downloadProgress())
   ipcMain.handle('stt:remove', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => removeEngine(engine))
-  ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string, engine?: string): Promise<SttResult> => {
-    const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
-    if (!m) throw new Error('stt:test needs a data: URL')
-    const tmp = join(os.tmpdir(), `inkfish-stt-test-${Date.now()}.wav`)
-    writeFileSync(tmp, Buffer.from(m[2] ?? '', 'base64'))
+  ipcMain.handle(
+    'stt:test',
+    async (_e: IpcMainInvokeEvent, dataUrl: string, engine?: string, timeoutMs?: number): Promise<SttResult> => {
+      const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
+      if (!m) throw new Error('stt:test needs a data: URL')
+      const tmp = join(os.tmpdir(), `inkfish-stt-test-${Date.now()}.wav`)
+      writeFileSync(tmp, Buffer.from(m[2] ?? '', 'base64'))
+      try {
+        return await transcribe(tmp, engine || undefined, timeoutMs || undefined)
+      } finally {
+        rmSync(tmp, { force: true })
+      }
+    }
+  )
+  ipcMain.handle('stt:pick-audio', async (): Promise<{ path: string; transcript: SttResult } | { error: string }> => {
+    const win = getMainWindow()
+    const opts = {
+      title: 'Import audio for transcription',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }]
+    }
+    const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
+    const wav = picked.filePaths[0] as string
     try {
-      return await transcribe(tmp, engine || undefined)
-    } finally {
-      rmSync(tmp, { force: true })
+      return { path: wav, transcript: await transcribe(wav) }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
     }
   })
-  ipcMain.handle(
-    'stt:pick-audio',
-    async (): Promise<{ path: string; transcript: SttResult } | { error: string }> => {
-      const win = getMainWindow()
-      const opts = {
-        title: 'Import audio for transcription',
-        properties: ['openFile'] as Array<'openFile'>,
-        filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }]
-      }
-      const picked = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
-      if (picked.canceled || picked.filePaths.length === 0) return { error: 'cancelled' }
-      const wav = picked.filePaths[0] as string
-      try {
-        return { path: wav, transcript: await transcribe(wav) }
-      } catch (err) {
-        return { error: err instanceof Error ? err.message : String(err) }
-      }
-    }
-  )
 
   // --- meeting import (manual recording + Teams .vtt) ----------------------------------
-  ipcMain.handle(
-    'meeting:import',
-    (_e: IpcMainInvokeEvent, input: MeetingImportInput): InboxItem => {
-      const paths = requireNotes()
-      const cues = input.format === 'vtt' ? parseVtt(input.text) : null
-      const raw =
-        input.format === 'vtt' && cues
-          ? meetingToMarkdown(cues, input.title ?? 'Meeting notes')
-          : input.text.trim()
-      const { item, path } = writeInboxItem(
-        { kind: 'meeting', raw, projectHint: 'auto', source: input.source ?? 'meeting' },
-        paths
-      )
-      indexFile(path, `inbox/${item.id}.md`)
-      void processInboxItem(item.id).catch((err) => console.error('[meeting] route failed:', err))
-      return item
-    }
-  )
+  ipcMain.handle('meeting:import', (_e: IpcMainInvokeEvent, input: MeetingImportInput): InboxItem => {
+    const paths = requireNotes()
+    const cues = input.format === 'vtt' ? parseVtt(input.text) : null
+    const raw =
+      input.format === 'vtt' && cues ? meetingToMarkdown(cues, input.title ?? 'Meeting notes') : input.text.trim()
+    const { item, path } = writeInboxItem(
+      { kind: 'meeting', raw, projectHint: 'auto', source: input.source ?? 'meeting' },
+      paths
+    )
+    indexFile(path, `inbox/${item.id}.md`)
+    void processInboxItem(item.id).catch((err) => console.error('[meeting] route failed:', err))
+    return item
+  })
   ipcMain.handle('meeting:save', (_e: IpcMainInvokeEvent, input: MeetingSaveInput): string => {
     const paths = requireNotes()
     const rel = writeMeetingNote(input, paths)
