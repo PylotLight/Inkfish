@@ -18,6 +18,8 @@ struct Transcript: Encodable {
   var segments: [Segment]
   var engine: String = ""
   var ms: Int = 0
+  /// What actually ran (framework, compute units, model) — shown in the app to validate the engine.
+  var runtime: String = ""
 }
 
 struct Engine: Encodable {

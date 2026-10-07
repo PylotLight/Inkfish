@@ -111,13 +111,15 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
       text?: string
       segments?: SttResult['segments']
       ms?: number
+      runtime?: string
     }
     return {
       text: p.text ?? '',
       provider: engine.id,
       engine: engine.name,
       segments: p.segments ?? [],
-      ms: p.ms ?? ms
+      ms: p.ms ?? ms,
+      runtime: p.runtime || undefined
     }
   } catch {
     const text = out.trim()

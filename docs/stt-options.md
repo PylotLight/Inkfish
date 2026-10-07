@@ -26,10 +26,8 @@ All FluidAudio (Apache-2.0) models download once to
 | Engine id | Package | Notes |
 |---|---|---|
 | `web-parakeet-redux` | `@karanganesan/vocule` | Redux in a worker; ~178 MB; closed-source engine, MIT package |
-| `web-parakeet-v2` | `parakeet.js` | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (~1.2 GB) |
+| `web-parakeet-v2` | `parakeet.js` | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (1.24 GB; WebGPU can't run int8), int8 on CPU (652 MB). Native Core ML v2 is ~442 MB |
 | `web-moonshine` | `@moonshine-ai/moonshine-wasm` | Base, English; SmallStreaming powers live captions |
-| `web-whisper-turbo` | `@huggingface/transformers` | whisper-large-v3-turbo, WebGPU |
-| `web-whisper-base` | `@huggingface/transformers` | whisper-base q8 |
 
 Bundled as devDependencies (Vite bundles them into the renderer; native
 `onnxruntime-node`/`sharp` deps are never loaded or shipped). Needs CSP
