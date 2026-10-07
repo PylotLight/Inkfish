@@ -694,6 +694,84 @@ html[data-theme='paper'] .toast.glass {
   color: var(--muted);
 }
 
+.dl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.dl-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.dl-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.dl.paused .dl-bar {
+  background: var(--muted);
+}
+
+.dl.error .dl-bar,
+.dl.retrying .dl-bar {
+  background: #e5a84b;
+}
+
+.dl-bar.indeterminate {
+  width: 30%;
+  animation: dl-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes dl-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.dl-error {
+  overflow-wrap: anywhere;
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.bench-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 4px 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.bench-table td {
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.bench-table tr.dim td {
+  color: var(--muted);
+}
+
+.bench-table td.best {
+  color: var(--mint);
+  font-weight: 600;
+}
+
 .tag.score {
   border-color: transparent;
   background: var(--panel);

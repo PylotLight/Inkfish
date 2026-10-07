@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pickAutoEngine } from '../shared/stt'
-import type { SttEngine, SttResult } from '../shared/types'
+import type { DownloadProgress, DownloadState, SttEngine, SttResult } from '../shared/types'
+export type { DownloadProgress } from '../shared/types'
 
 /**
  * Speech-to-text engines. Native only — never python/pip.
@@ -128,15 +129,139 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
   }
 }
 
-/** Download an engine's models (Parakeet) or language assets (SpeechAnalyzer). */
-export async function prepareEngine(engineId: string): Promise<void> {
+// MARK: downloads — progress, pause/resume, retry
+
+const MAX_ATTEMPTS = 4
+const BACKOFF_MS = [3_000, 10_000, 30_000]
+const active = new Map<string, { child?: ChildProcess; paused: boolean; progress: DownloadProgress }>()
+
+const BLOCKED_RE =
+  /offline|timed? ?out|could not connect|cannot connect|network|connection|resolve|host|ssl|tls|certificate|proxy|forbidden|\b40[13]\b|\b429\b|\b5\d\d\b|-10(0[1-9]|20)|-1200|stall/i
+
+export function downloadProgress(): DownloadProgress[] {
+  return [...active.values()].map((d) => d.progress)
+}
+
+/**
+ * Download an engine's models with live progress. Resolves when done or
+ * paused; rejects after the last retry. FluidAudio resumes partial files with
+ * HTTP Range, so pausing is just killing the helper and resuming re-runs it.
+ * `mirror` repoints the Hugging Face host (e.g. https://hf-mirror.com).
+ */
+export async function prepareEngine(
+  engineId: string,
+  onProgress: (p: DownloadProgress) => void = () => {},
+  mirror = ''
+): Promise<void> {
   const helper = helperPath()
   if (!helper) throw new Error('Transcription helper not built')
-  await run(helper, ['prepare', '--engine', engineId], 30 * 60_000)
+  const existing = active.get(engineId)
+  if (existing && !existing.paused && existing.child) return // already running
+  const d = {
+    child: undefined as ChildProcess | undefined,
+    paused: false,
+    progress: {
+      id: engineId,
+      state: 'downloading' as DownloadState,
+      fraction: existing?.progress.fraction ?? 0,
+      phase: '' as DownloadProgress['phase'],
+      files: 0,
+      total: 0,
+      attempt: 1
+    } as DownloadProgress
+  }
+  active.set(engineId, d)
+  const emit = (patch: Partial<DownloadProgress>): void => {
+    d.progress = { ...d.progress, ...patch }
+    onProgress(d.progress)
+  }
+  emit({})
+  const env = { ...process.env }
+  if (mirror.trim()) env['REGISTRY_URL'] = mirror.trim().replace(/\/+$/, '')
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    emit({ state: 'downloading', attempt, error: undefined, blocked: undefined })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(helper, ['prepare', '--engine', engineId], { env })
+        d.child = child
+        let err = ''
+        let buf = ''
+        child.stderr.on('data', (chunk: Buffer) => {
+          buf += chunk.toString()
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (line.startsWith('PROGRESS ')) {
+              try {
+                const p = JSON.parse(line.slice(9)) as Partial<DownloadProgress>
+                emit({
+                  // Monotonic: a resumed run re-lists first and must not dip the bar.
+                  fraction: Math.max(d.progress.fraction, Math.min(1, p.fraction ?? 0)),
+                  phase: p.phase ?? '',
+                  files: p.files ?? 0,
+                  total: p.total ?? 0
+                })
+              } catch {
+                // malformed line — ignore
+              }
+            } else if (line.trim()) err += line + '\n'
+          }
+        })
+        child.on('error', (e) => reject(new Error(`download helper failed to start: ${e.message}`)))
+        child.on('close', (code) => {
+          d.child = undefined
+          if (d.paused) resolve()
+          else if (code === 0) resolve()
+          else reject(new Error(lastLine(err) || `download exited ${code}`))
+        })
+      })
+      if (d.paused) {
+        emit({ state: 'paused' })
+        return
+      }
+      emit({ state: 'done', fraction: 1 })
+      active.delete(engineId)
+      return
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const blocked = BLOCKED_RE.test(msg)
+      if (attempt < MAX_ATTEMPTS) {
+        emit({ state: 'retrying', error: msg, blocked })
+        await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] ?? 30_000))
+        if (d.paused) {
+          emit({ state: 'paused' })
+          return
+        }
+        continue
+      }
+      emit({ state: 'error', error: msg, blocked })
+      throw new Error(
+        blocked
+          ? `Couldn't reach Hugging Face (${msg}). A VPN, firewall or network filter may be blocking it — retry, or switch the download source.`
+          : msg
+      )
+    }
+  }
+}
+
+/** Pause a running download; partial files stay on disk for resume. */
+export function pauseDownload(engineId: string): void {
+  const d = active.get(engineId)
+  if (!d) return
+  d.paused = true
+  d.child?.kill('SIGTERM')
+}
+
+/** Forget a paused or failed download (its partial files go with `removeEngine`). */
+export function clearDownload(engineId: string): void {
+  pauseDownload(engineId)
+  active.delete(engineId)
 }
 
 /** Delete an engine's downloaded models. */
 export async function removeEngine(engineId: string): Promise<void> {
+  clearDownload(engineId)
   const helper = helperPath()
   if (!helper) throw new Error('Transcription helper not built')
   await run(helper, ['remove', '--engine', engineId], 60_000)
