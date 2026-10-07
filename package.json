@@ -84,7 +84,7 @@
           "from": "stt/bin",
           "to": "bin",
           "filter": [
-            "inkfish-stt"
+            "**/*"
           ]
         }
       ]

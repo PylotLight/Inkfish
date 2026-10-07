@@ -1,8 +1,7 @@
-import { spawn, execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { promisify } from 'node:util'
+import { spawn } from 'node:child_process'
 import { basename, join } from 'node:path'
-import type { ClassifyResult, NoteKind, Project, SttResult } from '../shared/types'
+import type { ClassifyResult, NoteKind, Project } from '../shared/types'
+import { listEngines } from './stt'
 
 /**
  * AI abstraction: `transcribe()` / `classify()` / `summarize()` / `speak()`.
@@ -25,67 +24,23 @@ export interface ProviderStatus {
   detail: string
 }
 
-/** Where a GUI-launched Mac app can find Homebrew binaries (PATH is minimal from Finder). */
-const EXTRA_BIN_DIRS = ['/opt/homebrew/bin', '/usr/local/bin']
-
-/** Bundled Apple Speech CLI: app resources when packaged, `stt/bin` in a dev checkout. */
-function bundledAppleStt(): string | null {
-  if (process.platform !== 'darwin') return null
-  const res = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
-  const candidates = [
-    res ? join(res, 'bin', 'inkfish-stt') : '',
-    join(process.cwd(), 'stt', 'bin', 'inkfish-stt')
-  ].filter(Boolean)
-  return candidates.find((p) => existsSync(p)) ?? null
-}
-
-async function onPath(bin: string): Promise<string | null> {
-  for (const dir of EXTRA_BIN_DIRS) {
-    const p = join(dir, bin)
-    if (existsSync(p)) return p
-  }
-  try {
-    const cmd = process.platform === 'win32' ? 'where' : 'which'
-    const { stdout } = await promisify(execFile)(cmd, [bin])
-    return stdout.split('\n').map((l) => l.trim()).find(Boolean) ?? null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Resolve a native STT engine (absolute path), in order:
- * `$INKFISH_STT_BIN` → `parakeet-cli` (if installed) → bundled Apple Speech
- * `inkfish-stt` → `inkfish-stt` on PATH.
- */
-async function nativeSttBin(): Promise<string | null> {
-  const override = process.env['INKFISH_STT_BIN']?.trim()
-  if (override && existsSync(override)) return override
-  return (await onPath('parakeet-cli')) ?? bundledAppleStt() ?? (await onPath('inkfish-stt'))
-}
-
-const isParakeet = (bin: string): boolean => basename(bin).startsWith('parakeet')
-
 export async function providerStatus(): Promise<ProviderStatus[]> {
-  const stt = await nativeSttBin()
+  const engines = await listEngines()
+  const ready = engines.filter((e) => e.ready)
+  const apple = engines.find((e) => e.id === 'apple-analyzer' && e.available) ?? engines.find((e) => e.id === 'apple-speech')
   return [
     {
       id: 'apple',
-      available: bundledAppleStt() !== null,
-      detail:
-        process.platform !== 'darwin'
-          ? 'Apple Speech needs macOS'
-          : bundledAppleStt()
-            ? 'Apple Speech on-device transcription bundled (inkfish-stt)'
-            : 'Apple Speech engine not built — needs Xcode tools (`xcode-select --install`)'
+      available: apple?.available ?? false,
+      detail: process.platform !== 'darwin' ? 'Apple Speech needs macOS' : apple ? `${apple.name}: ${apple.detail}` : 'not built'
     },
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
     {
       id: 'stt',
-      available: stt !== null,
-      detail: stt
-        ? `native STT ready (${basename(stt)}) — no python`
-        : 'no native STT binary (parakeet-cli / inkfish-stt) — voice falls back to manual text'
+      available: ready.length > 0,
+      detail: ready.length
+        ? `ready: ${ready.map((e) => e.name).join(', ')}`
+        : 'no transcription engine ready — Settings › Transcription'
     }
   ]
 }
@@ -183,52 +138,9 @@ export function summarize(text: string, maxSentences = 3): Promise<{ text: strin
   return Promise.resolve({ text: summarizeExtractive(text, maxSentences), provider: 'rules' })
 }
 
-// --- transcribe (native STT binaries only — never python) -------------------------------
+// --- transcribe: see ./stt.ts ------------------------------------------------
 
-/** wav → `{ text, segments }` via a native STT binary. Rejects when unavailable. */
-export async function transcribe(wavPath: string, timeoutMs = 120_000): Promise<SttResult> {
-  const bin = await nativeSttBin()
-  if (!bin) {
-    throw new Error(
-      process.platform === 'darwin'
-        ? 'Apple Speech engine not built — run `xcode-select --install`, then restart `bun run dev`'
-        : 'STT unavailable (no native engine — install parakeet-cli or import transcript text instead)'
-    )
-  }
-  return new Promise((resolve, reject) => {
-    // Contract: binary takes the wav path and prints
-    // `{"text": "...", "segments": [{"start": 0, "end": 1.2, "text": "..."}]}`
-    // on stdout. Both `parakeet-cli --json` and the Apple `inkfish-stt` CLI
-    // follow it; anything else is surfaced as plain text when parseable.
-    const provider = isParakeet(bin) ? 'stt' : 'apple'
-    const args = isParakeet(bin)
-      ? ['transcribe', '--input', wavPath, '--json']
-      : [wavPath, '--json']
-    const child = spawn(bin, args, { timeout: timeoutMs })
-    let out = ''
-    let err = ''
-    child.stdout.on('data', (d: Buffer) => (out += d.toString()))
-    child.stderr.on('data', (d: Buffer) => (err += d.toString()))
-    child.on('error', (e) => reject(new Error(`STT engine failed to start (${basename(bin)}): ${e.message}`)))
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error((err.trim() || out.trim()).slice(0, 300) || `STT engine exited ${code}`))
-        return
-      }
-      try {
-        const parsed = JSON.parse(out) as { text: string; segments?: SttResult['segments'] }
-        resolve({ text: parsed.text ?? '', provider, segments: parsed.segments ?? [] })
-      } catch {
-        const text = out.trim()
-        if (!text) {
-          reject(new Error(`STT engine returned no transcript (${bin})`))
-          return
-        }
-        resolve({ text, provider, segments: [] })
-      }
-    })
-  })
-}
+export { transcribe } from './stt'
 
 // --- speak (TTS later; `say`/espeak first) ---------------------------------------------
 

@@ -16,6 +16,7 @@ import type {
   NoteStatus,
   Project,
   SearchResult,
+  SttEngine,
   SttResult,
   SysInfo,
   VaultInfo,
@@ -71,7 +72,8 @@ import {
   removeNote,
   searchNotes
 } from './db'
-import { classify, providerStatus, speak, stopSpeak, summarize, transcribe } from './ai'
+import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
+import { listEngines, prepareEngine, transcribe } from './stt'
 
 const isMac = process.platform === 'darwin'
 
@@ -498,16 +500,18 @@ export function registerIpc(): void {
   })
 
   // --- voice / STT -------------------------------------------------------------------
-  ipcMain.handle('stt:transcribe', (_e: IpcMainInvokeEvent, wavPath: string): Promise<SttResult> =>
-    transcribe(wavPath)
+  ipcMain.handle('stt:transcribe', (_e: IpcMainInvokeEvent, wavPath: string, engine?: string): Promise<SttResult> =>
+    transcribe(wavPath, engine || undefined)
   )
-  ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string): Promise<SttResult> => {
+  ipcMain.handle('stt:engines', (): Promise<SttEngine[]> => listEngines())
+  ipcMain.handle('stt:prepare', (_e: IpcMainInvokeEvent, engine: string): Promise<void> => prepareEngine(engine))
+  ipcMain.handle('stt:test', async (_e: IpcMainInvokeEvent, dataUrl: string, engine?: string): Promise<SttResult> => {
     const m = /^data:(.+?);base64,(.+)$/.exec(dataUrl)
     if (!m) throw new Error('stt:test needs a data: URL')
     const tmp = join(os.tmpdir(), `inkfish-stt-test-${Date.now()}.wav`)
     writeFileSync(tmp, Buffer.from(m[2] ?? '', 'base64'))
     try {
-      return await transcribe(tmp)
+      return await transcribe(tmp, engine || undefined)
     } finally {
       rmSync(tmp, { force: true })
     }

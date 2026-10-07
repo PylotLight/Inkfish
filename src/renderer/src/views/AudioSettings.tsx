@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  blobToDataUrl,
   listDevices,
   loadAudioPrefs,
   openMic,
   routeOutput,
   saveAudioPrefs,
-  toWav,
   type AudioPrefs
 } from '../audio'
 
-type TestState = 'idle' | 'recording' | 'transcribing'
+type TestState = 'idle' | 'recording'
 
 /** Settings › Audio: pick mic + speaker, watch the level, record/play/transcribe a test. */
 export default function AudioSettings(): React.JSX.Element {
@@ -22,7 +20,6 @@ export default function AudioSettings(): React.JSX.Element {
   const [monitoring, setMonitoring] = useState(false)
   const [test, setTest] = useState<TestState>('idle')
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
-  const [engine, setEngine] = useState<{ available: boolean; detail: string } | null>(null)
   const meter = useRef<{ stream: MediaStream; ctx: AudioContext; raf: number } | null>(null)
   const lastTake = useRef<string | null>(null)
 
@@ -36,10 +33,6 @@ export default function AudioSettings(): React.JSX.Element {
 
   useEffect(() => {
     void refresh()
-    window.api.ai
-      .providers()
-      .then((ps) => setEngine(ps.find((p) => p.id === 'stt') ?? null))
-      .catch(() => undefined)
     const onChange = (): void => void refresh()
     navigator.mediaDevices.addEventListener('devicechange', onChange)
     return () => {
@@ -116,21 +109,13 @@ export default function AudioSettings(): React.JSX.Element {
     const rec = new MediaRecorder(stream)
     const chunks: Blob[] = []
     rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data)
-    rec.onstop = async () => {
+    rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop())
       const blob = new Blob(chunks, { type: rec.mimeType })
       if (lastTake.current) URL.revokeObjectURL(lastTake.current)
       lastTake.current = URL.createObjectURL(blob)
-      setTest('transcribing')
-      try {
-        const wav = await toWav(blob)
-        const r = await window.api.stt.test(await blobToDataUrl(wav))
-        setResult({ ok: true, text: r.text.trim() ? `“${r.text.trim()}” · ${r.provider}` : 'No speech heard.' })
-      } catch (e) {
-        const why = (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-        setResult({ ok: false, text: why })
-      }
       setTest('idle')
+      void play(lastTake.current)
     }
     rec.start()
     setTest('recording')
@@ -232,12 +217,12 @@ export default function AudioSettings(): React.JSX.Element {
 
       <div className="setting-row stacked">
         <span className="setting-label">
-          Transcription
-          <span className="muted small setting-hint">{engine?.detail ?? 'Checking engine…'}</span>
+          Mic test
+          <span className="muted small setting-hint">Record 4 seconds, then play it back on the chosen speaker.</span>
         </span>
         <div className="row" style={{ marginTop: 0 }}>
           <button className="btn ghost sm" disabled={test !== 'idle'} onClick={() => void recordTest()}>
-            {test === 'recording' ? 'Listening… (4 s)' : test === 'transcribing' ? 'Transcribing…' : 'Record 4 s test'}
+            {test === 'recording' ? 'Listening… (4 s)' : 'Record 4 s'}
           </button>
           <button
             className="btn ghost sm"

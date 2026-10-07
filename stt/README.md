@@ -1,28 +1,25 @@
-# local STT (native binaries only — no python)
+# Transcription helper (native only — no python)
 
-Inkfish never spawns `python3` / `pip`. Voice transcription goes through
-native sidecars behind the `transcribe()` abstraction (`src/main/ai.ts`):
+`stt/` is a SwiftPM package that builds `inkfish-stt`, an internal helper the
+app spawns (bundled as `Inkfish.app/Contents/Resources/bin/inkfish-stt`).
+Users never run it; everything is driven from Settings › Transcription.
 
-1. `$INKFISH_STT_BIN` (explicit override, must emit `{text, segments}` JSON),
-2. `parakeet-cli` on `PATH` or in `/opt/homebrew/bin` / `/usr/local/bin`
-   (Homebrew `whisper-cpp` formula ships it, Metal on Apple Silicon; models
-   from `ggml-org/parakeet-GGUF`),
-3. `inkfish-stt` Apple Speech CLI — `stt/inkfish-stt.swift`, built by
-   `bun run stt:build` (release workflow does it) into `stt/bin/`, bundled as
-   `Inkfish.app/Contents/Resources/bin/inkfish-stt`. On-device
-   `SFSpeechRecognizer`, macOS 12+, zero downloads. First use prompts for
-   Speech Recognition permission. If the locale has no on-device model, turn
-   on Dictation (System Settings › Keyboard) or set
-   `INKFISH_STT_ALLOW_NETWORK=1`. `inkfish-stt --check` prints status.
+Engines (`src/main/stt.ts` lists and runs them):
 
-Mic capture needs `NSMicrophoneUsageDescription` (set via
-`build.mac.extendInfo`); main routes `getUserMedia` through
-`systemPreferences.askForMediaAccess`.
+| id | engine | notes |
+|---|---|---|
+| `apple-speech` | SFSpeechRecognizer | built in; macOS needs Siri or Dictation enabled |
+| `apple-analyzer` | SpeechAnalyzer / SpeechTranscriber | macOS 26 + built with the macOS 26 SDK; assets via AssetInventory |
+| `parakeet-v3` | Parakeet TDT 0.6B v3 (FluidAudio, CoreML/ANE) | 25 langs, ~480 MB download |
+| `parakeet-redux` | Moondream 1.58-bit Parakeet (FluidAudio) | ~220 MB, macOS 15+ |
+| `parakeet-ultra` | Moondream post-trained v3 (FluidAudio) | most accurate |
+| `parakeet-v2` | Parakeet v2 English (FluidAudio) | English only |
+| `parakeet-cli` | parakeet.cpp via Homebrew `whisper-cpp` | optional, picked up if installed |
 
-Input is the 16 kHz mono WAV the renderer already produces
-(`Capture.tsx → toWav()`); audio file imports decode via WebAudio.
-Any failure rejects — the UI keeps the audio asset and asks for typed text,
-nothing is lost.
+Helper commands: `engines`, `transcribe <audio> --engine ID`, `prepare --engine ID`.
+FluidAudio caches models in `~/Library/Application Support/FluidAudio/Models`.
+`$INKFISH_STT_BIN` overrides everything (must print `{text, segments}`).
 
-Manual transcript paste and Teams `.vtt` import always work offline
-(main window → Meeting → Import).
+Build: `bun run dev` / `bun run build` run `scripts/build-stt.ts` (needs Xcode
+or the command line tools with Swift 6; first build fetches FluidAudio).
+Package targets macOS 14+.

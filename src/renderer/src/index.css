@@ -494,6 +494,86 @@ html[data-theme='paper'] .toast.glass {
   transition: transform 60ms linear;
 }
 
+.engine-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.engine-row {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.engine-row:first-child {
+  border-top: none;
+}
+
+.engine-row.off {
+  opacity: 0.55;
+}
+
+.engine-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.engine-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.engine-name .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.engine-name .dot.ok {
+  background: var(--mint);
+}
+
+.engine-name .dot.warn {
+  background: #e8b04a;
+}
+
+.engine-detail {
+  margin: 2px 0 0 15px;
+}
+
+.engine-run {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 8px 0 0 15px;
+  font-size: 13px;
+}
+
+.engine-ms {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 52px;
+}
+
+.engine-ms.best {
+  color: var(--mint);
+  font-weight: 600;
+}
+
+.engine-text {
+  overflow-wrap: anywhere;
+}
+
 .error-text {
   color: var(--danger, #ff8a80);
 }

@@ -11,6 +11,7 @@ import type {
   NoteStatus,
   Project,
   SearchResult,
+  SttEngine,
   SttResult,
   SysInfo,
   VaultInfo,
@@ -153,10 +154,15 @@ const api = {
     stopSpeak: (): Promise<boolean> => ipcRenderer.invoke('ai:stop-speak')
   },
   stt: {
-    transcribe: (wavPath: string): Promise<SttResult> =>
-      ipcRenderer.invoke('stt:transcribe', wavPath),
+    /** engine '' / undefined = best ready engine. */
+    transcribe: (wavPath: string, engine?: string): Promise<SttResult> =>
+      ipcRenderer.invoke('stt:transcribe', wavPath, engine),
     /** Transcribe a WAV data: URL via a temp file (Settings test; nothing saved). */
-    test: (wavDataUrl: string): Promise<SttResult> => ipcRenderer.invoke('stt:test', wavDataUrl),
+    test: (wavDataUrl: string, engine?: string): Promise<SttResult> =>
+      ipcRenderer.invoke('stt:test', wavDataUrl, engine),
+    engines: (): Promise<SttEngine[]> => ipcRenderer.invoke('stt:engines'),
+    /** Download models / language assets for an engine (can take minutes). */
+    prepare: (engine: string): Promise<void> => ipcRenderer.invoke('stt:prepare', engine),
     pickAudio: (): Promise<{ path: string; transcript: SttResult } | { error: string }> =>
       ipcRenderer.invoke('stt:pick-audio')
   },
