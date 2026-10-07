@@ -120,7 +120,11 @@ function phaseLabel(p: DownloadProgress, e?: SttEngine): string {
   if (p.state === 'error') return p.blocked ? "Couldn't reach the model host" : 'Download failed'
   if (p.phase === 'listing') return 'Finding files…'
   if (p.phase === 'compiling') {
-    return isWebEngine(p.id) ? 'Loading model…' : `Optimising for the Neural Engine · ${pct}`
+    return isWebEngine(p.id)
+      ? 'Loading model…'
+      : p.id === 'parakeet-redux'
+        ? `Preparing on the GPU · ${pct}`
+        : `Optimising for the Neural Engine · ${pct}`
   }
   // Real byte counts when the downloader gives them, else an estimate from the model's size.
   let amount = ''
