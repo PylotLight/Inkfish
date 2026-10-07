@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Inkfish",
+    "slug": "inkfish",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "inkfish",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.pylotlight.inkfish",
+      "versionCode": 1,
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Inkfish records voice notes when you press the mic button."
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*", "image/*"],
+          "disableIOS": true
+        }
+      ]
+    ]
+  }
+}
