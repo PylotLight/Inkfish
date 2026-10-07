@@ -77,7 +77,7 @@ export async function providerStatus(): Promise<ProviderStatus[]> {
           ? 'Apple Speech needs macOS'
           : bundledAppleStt()
             ? 'Apple Speech on-device transcription bundled (inkfish-stt)'
-            : 'Apple Speech CLI not built — run `bun run stt:build`'
+            : 'Apple Speech engine not built — needs Xcode tools (`xcode-select --install`)'
     },
     { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
     {
@@ -191,7 +191,7 @@ export async function transcribe(wavPath: string, timeoutMs = 120_000): Promise<
   if (!bin) {
     throw new Error(
       process.platform === 'darwin'
-        ? 'STT unavailable (Apple Speech CLI missing from this build — reinstall, or `brew install whisper-cpp` for parakeet-cli)'
+        ? 'Apple Speech engine not built — run `xcode-select --install`, then restart `bun run dev`'
         : 'STT unavailable (no native engine — install parakeet-cli or import transcript text instead)'
     )
   }
