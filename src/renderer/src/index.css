@@ -3346,3 +3346,25 @@ html[data-density='compact'] .md p {
   text-align: center;
   cursor: text;
 }
+
+.cap-caption {
+  margin: 0 12px 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-style: italic;
+  max-height: 3.6em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.engine-icon.moonshine {
+  background: #1d1b3a;
+  color: #f5d76e;
+}
+
+.engine-icon.openai {
+  background: #10a37f;
+  color: #fff;
+}

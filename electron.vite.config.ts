@@ -10,6 +10,12 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
-    plugins: [react()]
+    plugins: [react()],
+    // In-app speech engines spawn module workers and use top-level await.
+    worker: { format: 'es' },
+    build: { target: 'esnext' },
+    optimizeDeps: {
+      exclude: ['@moonshine-ai/moonshine-wasm', '@karanganesan/vocule', 'parakeet.js', '@huggingface/transformers']
+    }
   }
 })

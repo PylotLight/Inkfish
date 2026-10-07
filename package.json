@@ -1,7 +1,7 @@
 {
   "name": "inkfish",
   "version": "0.1.0",
-  "description": "Inkfish \u2014 menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
+  "description": "Inkfish — menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
   "license": "MIT",
   "author": "PylotLight <lochois@gmail.com>",
   "type": "module",
@@ -99,17 +99,21 @@
     }
   },
   "devDependencies": {
+    "@codemirror/lang-markdown": "^6.5.0",
     "@electron-toolkit/utils": "^4.0.0",
+    "@huggingface/transformers": "^4.3.1",
+    "@karanganesan/vocule": "^1.0.0",
+    "@moonshine-ai/moonshine-wasm": "^0.1.5",
     "@types/bun": "latest",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "codemirror": "^6.0.2",
-    "@codemirror/lang-markdown": "^6.5.0",
     "electron": "^44.5.1",
     "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
+    "parakeet.js": "^1.4.4",
     "typescript": "~5.9.2",
     "vite": "^8.3.2"
   },
