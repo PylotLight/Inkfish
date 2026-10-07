@@ -1,6 +1,7 @@
 import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type EditMode, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
+import TranscriptionSettings from './TranscriptionSettings'
 
 interface Props {
   prefs: Prefs
@@ -380,6 +381,8 @@ export default function SettingsView({
         </section>
 
         <AudioSettings />
+
+        <TranscriptionSettings />
 
         <section className="settings-group">
           <h4>Notes home</h4>

@@ -30,7 +30,7 @@ jobs:
           #     target: --linux
           # (plus a libfuse apt step for AppImage — see git history).
           - name: macos
-            os: macos-14
+            os: macos-15
             target: --mac
     runs-on: ${{ matrix.os }}
     steps:
@@ -40,8 +40,17 @@ jobs:
         with:
           bun-version: latest
 
+      # Newest Xcode on the image: Swift 6.2 + macOS 26 SDK enables the
+      # SpeechAnalyzer engine (older SDKs build a stub). FluidAudio needs Swift 6.
+      - name: select xcode
+        if: matrix.name == 'macos'
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcrun swift --version
+
       - run: bun install --frozen-lockfile
-      # Also builds the Apple Speech CLI (stt/bin/inkfish-stt), bundled as
+      # Also builds the transcription helper (stt/bin/inkfish-stt), bundled as
       # Contents/Resources/bin/inkfish-stt via build.mac.extraResources.
       - run: bun run build
 

@@ -8,6 +8,8 @@ export interface AudioPrefs {
   /** MediaDeviceInfo.deviceId; '' = system default. */
   inputId: string
   outputId: string
+  /** Transcription engine id; '' = best ready engine. */
+  engine: string
 }
 
 export function loadAudioPrefs(): AudioPrefs {
@@ -15,16 +17,17 @@ export function loadAudioPrefs(): AudioPrefs {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<AudioPrefs>
     return {
       inputId: typeof raw.inputId === 'string' ? raw.inputId : '',
-      outputId: typeof raw.outputId === 'string' ? raw.outputId : ''
+      outputId: typeof raw.outputId === 'string' ? raw.outputId : '',
+      engine: typeof raw.engine === 'string' ? raw.engine : ''
     }
   } catch {
-    return { inputId: '', outputId: '' }
+    return { inputId: '', outputId: '', engine: '' }
   }
 }
 
-export function saveAudioPrefs(p: AudioPrefs): void {
+export function saveAudioPrefs(p: Partial<AudioPrefs>): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(p))
+    localStorage.setItem(KEY, JSON.stringify({ ...loadAudioPrefs(), ...p }))
   } catch {
     // not persisted
   }
@@ -106,4 +109,9 @@ export async function toWav(blob: Blob): Promise<Blob> {
   } finally {
     void ctx.close()
   }
+}
+
+/** Strip Electron's "Error invoking remote method 'x': Error: " prefix. */
+export function ipcError(e: unknown): string {
+  return (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }

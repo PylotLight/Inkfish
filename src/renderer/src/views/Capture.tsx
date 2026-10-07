@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
-import { blobToDataUrl, openMic, toWav } from '../audio'
+import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 
 /**
  * Capture popover (380×300): one borderless composer on the window's own
@@ -123,12 +123,11 @@ export default function Capture(): React.JSX.Element {
       say('Transcribing…')
       try {
         const abs = await window.api.assets.path(rel)
-        const stt = await window.api.stt.transcribe(abs)
+        const stt = await window.api.stt.transcribe(abs, loadAudioPrefs().engine)
         appendText(stt.text)
-        say(`Transcribed (${stt.provider}) ✓`)
+        say(`Transcribed ✓ · ${stt.engine ?? stt.provider}`)
       } catch (e) {
-        const why = (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-        say("Couldn't transcribe — audio saved", why, 6000)
+        say("Couldn't transcribe — audio saved", ipcError(e), 6000)
       }
     } catch {
       say('Recording failed — type instead.')

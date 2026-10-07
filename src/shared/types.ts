@@ -145,7 +145,21 @@ export interface MeetingImportInput {
 
 export interface SttResult {
   text: string
-  /** 'stt' (native binary) | 'apple' | 'unavailable' */
+  /** Engine id that produced it (e.g. 'parakeet-v3', 'apple-speech'). */
   provider: string
+  /** Engine display name. */
+  engine?: string
+  /** Wall-clock transcription time. */
+  ms?: number
   segments?: Array<{ start: number; end: number; text: string }>
+}
+
+export interface SttEngine {
+  id: string
+  name: string
+  /** Can run on this Mac at all. */
+  available: boolean
+  /** Runs now without a download or settings change. */
+  ready: boolean
+  detail: string
 }
