@@ -26,7 +26,7 @@ fallback). The `{ text, segments }` contract is unchanged.
 - Tradeoff: quantized 0.6B model is ~400–700 MB vs today's 178 MB ternary;
   first run downloads it.
 
-## Option 2 — own Swift Apple Speech CLI (Apple-first, zero downloads)
+## Option 2 — own Swift Apple Speech CLI (Apple-first, zero downloads) — SHIPPED (`stt/inkfish-stt.swift`)
 
 - ~150-line Swift tool: `SFSpeechURLRecognitionRequest` + JSON stdout,
   compiled by `swiftc` in the release workflow, shipped in app resources.

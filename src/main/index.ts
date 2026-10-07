@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, protocol } from 'electron'
+import { app, BrowserWindow, globalShortcut, protocol, session, systemPreferences } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
@@ -36,6 +36,26 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // Mic: route renderer getUserMedia through the macOS TCC prompt (needs
+  // NSMicrophoneUsageDescription in Info.plist — see package.json extendInfo).
+  // Every other permission keeps Electron's default (granted).
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    if (permission !== 'media' || process.platform !== 'darwin') {
+      callback(true)
+      return
+    }
+    const types = (details as { mediaTypes?: string[] }).mediaTypes ?? []
+    if (types.includes('video')) {
+      callback(false)
+      return
+    }
+    const status = systemPreferences.getMediaAccessStatus('microphone')
+    if (status === 'granted') callback(true)
+    else if (status === 'not-determined') {
+      systemPreferences.askForMediaAccess('microphone').then(callback, () => callback(false))
+    } else callback(false)
   })
 
   setConfigDir(app.getPath('userData'))

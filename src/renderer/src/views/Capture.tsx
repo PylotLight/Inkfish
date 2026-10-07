@@ -106,7 +106,7 @@ export default function Capture(): React.JSX.Element {
       rec.start()
       setRecState('rec')
     } catch {
-      say('Mic blocked — check permission, or type instead.')
+      say('Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.')
     }
   }
 
@@ -122,8 +122,9 @@ export default function Capture(): React.JSX.Element {
         const stt = await window.api.stt.transcribe(abs)
         appendText(stt.text)
         say(`Transcribed (${stt.provider}) ✓`)
-      } catch {
-        say('STT unavailable — audio kept, describe it in text.')
+      } catch (e) {
+        const why = (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        say(`STT failed — audio kept. ${why}`)
       }
     } catch {
       say('Recording failed — type instead.')

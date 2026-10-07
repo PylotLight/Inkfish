@@ -1,7 +1,7 @@
 {
   "name": "inkfish",
   "version": "0.1.0",
-  "description": "Inkfish — menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
+  "description": "Inkfish \u2014 menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
   "license": "MIT",
   "author": "PylotLight <lochois@gmail.com>",
   "type": "module",
@@ -32,11 +32,12 @@
     "icon": "bun scripts/make-app-icon.ts",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "bun run stt:build && electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "dist:ci": "electron-builder --publish never",
     "release": "bun scripts/release.ts",
-    "postinstall": "install-electron"
+    "postinstall": "install-electron",
+    "stt:build": "bun scripts/build-stt.ts"
   },
   "build": {
     "appId": "com.pylotlight.inkfish",
@@ -71,6 +72,19 @@
           "arch": [
             "arm64",
             "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Inkfish records voice notes when you press the mic button.",
+        "NSSpeechRecognitionUsageDescription": "Inkfish transcribes your voice notes on this Mac."
+      },
+      "extraResources": [
+        {
+          "from": "stt/bin",
+          "to": "bin",
+          "filter": [
+            "inkfish-stt"
           ]
         }
       ]
