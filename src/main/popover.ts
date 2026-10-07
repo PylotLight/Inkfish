@@ -14,14 +14,14 @@ function resolvePreload(): string {
   return `${base}.mjs`
 }
 
-/** 380×~500 capture popover: vibrancy `popover`, frameless, floats, hides on blur. */
+/** 380×300 capture popover: vibrancy `popover`, frameless, floats, hides on blur. */
 export function createPopover(): BrowserWindow {
   if (popover) return popover
   const win = new BrowserWindow({
     width: 380,
-    height: 520,
+    height: 300,
     minWidth: 340,
-    minHeight: 420,
+    minHeight: 240,
     maxWidth: 420,
     show: false,
     frame: false,

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { NoteKind, Project } from '../../../shared/types'
 
 /**
- * Capture popover (380px): one combined composer. Type, and/or drop/paste an
+ * Capture popover (380×300): one borderless composer on the window's own
+ * vibrancy — no nested cards. Type, and/or drop/paste an
  * image, and/or dictate — everything lands in the same box, Cmd-Enter saves.
  */
 export default function Capture(): React.JSX.Element {
@@ -174,9 +175,11 @@ export default function Capture(): React.JSX.Element {
 
   const canSave = raw.trim().length > 0 || attachments.length > 0
 
+  const recLabel = recState === 'rec' ? 'Stop dictation' : recState === 'working' ? 'Transcribing…' : 'Dictate'
+
   return (
     <div
-      className={`capture glass${saved ? ' pop' : ''}`}
+      className={`capture${saved ? ' pop' : ''}`}
       onKeyDown={onKey}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -191,13 +194,33 @@ export default function Capture(): React.JSX.Element {
         }
       }}
     >
+      <div className="cap-top">
+        <div className="cap-dest" role="tablist" aria-label="Destination">
+          <button role="tab" aria-selected={dest === 'inbox'} className={dest === 'inbox' ? 'on' : ''} onClick={() => setDest('inbox')}>
+            Inbox
+          </button>
+          <button role="tab" aria-selected={dest === 'today'} className={dest === 'today' ? 'on' : ''} onClick={() => setDest('today')}>
+            Today
+          </button>
+        </div>
+        {dest === 'inbox' && (
+          <select className="cap-project" value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
+            <option value="auto">Auto-route</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
       <textarea
         ref={inputRef}
         className="cap-input"
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
-        placeholder="Type, drop an image, or dictate… (⌘↵ saves to inbox)"
-        rows={8}
+        placeholder={dest === 'today' ? 'Add to today…' : 'Capture a thought…'}
       />
 
       {attachments.length > 0 && (
@@ -224,44 +247,37 @@ export default function Capture(): React.JSX.Element {
         </ul>
       )}
 
-      <div className="cap-tools">
+      <div className="cap-bar">
         <button
-          className={`btn ghost sm${recState === 'rec' ? ' danger' : ''}`}
-          title="Dictate (transcript is appended here)"
+          className={`cap-icon${recState === 'rec' ? ' rec' : ''}`}
+          title={recLabel}
+          aria-label={recLabel}
           disabled={recState === 'working'}
           onClick={toggleRec}
         >
-          {recState === 'rec' ? '● Stop' : recState === 'working' ? '…' : '◉ Dictate'}
+          {recState === 'rec' ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" /></svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+              <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
+              <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
+            </svg>
+          )}
         </button>
-        <button className="btn ghost sm" title="Attach image or audio" onClick={pickFile}>
-          📎 Attach
+        <button className="cap-icon" title="Attach image or audio" aria-label="Attach image or audio" onClick={pickFile}>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M13.5 7.5 8 13a3.5 3.5 0 0 1-5-5l5.8-5.8a2.3 2.3 0 0 1 3.3 3.3L6.3 11.3a1.1 1.1 0 0 1-1.6-1.6L10 4.5" />
+          </svg>
         </button>
-        <button className="btn ghost sm" title="Transcribe an audio file" onClick={importAudio}>
-          Import audio…
+        <button className="cap-icon" title="Transcribe an audio file" aria-label="Transcribe an audio file" onClick={importAudio}>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+            <path d="M2 8h1M5 5v6M8 2.5v11M11 5v6M14 8h-1" />
+          </svg>
         </button>
-      </div>
-
-      <div className="cap-foot">
-        <div className="seg sm" role="group" aria-label="Destination">
-          <button className={dest === 'inbox' ? 'on' : ''} onClick={() => setDest('inbox')}>
-            Inbox
-          </button>
-          <button className={dest === 'today' ? 'on' : ''} onClick={() => setDest('today')}>
-            Today
-          </button>
-        </div>
-        {dest === 'inbox' && (
-          <select value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
-            <option value="auto">✨ Auto</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <button className="btn mint" disabled={!canSave || saving} onClick={() => void save()}>
-          {saving ? '…' : dest === 'today' ? 'Append ⌘↵' : 'Save ⌘↵'}
+        <span className="flex-sp" />
+        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()}>
+          {saving ? 'Saving…' : dest === 'today' ? 'Append' : 'Save'}
+          <kbd>⌘↵</kbd>
         </button>
       </div>
       {note && <div className="toast glass">{note}</div>}

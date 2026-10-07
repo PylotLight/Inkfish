@@ -736,20 +736,22 @@ input[type='range'] {
   word-break: break-word;
 }
 
-/* ---------- Inkfish: capture popover (380px, vibrancy popover) ---------- */
+/* ---------- Inkfish: capture popover ----------
+ * One surface: the window's own vibrancy. No inner glass card, no boxed
+ * textarea, no pill buttons. Accent appears only on the Save action and the
+ * live recording state.
+ */
 
 .capture-shell {
   height: 100vh;
   background: transparent;
-  padding: 12px;
 }
 
 .capture {
-  border-radius: 16px;
-  padding: 14px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  padding: 12px 14px 10px;
   -webkit-app-region: drag;
 }
 
@@ -765,30 +767,161 @@ input[type='range'] {
 
 @keyframes pop {
   0% { transform: scale(1); }
-  35% { transform: scale(0.96) rotate(-0.6deg); }
+  35% { transform: scale(0.97); }
   100% { transform: scale(1); }
 }
 
-.cap-input {
-  width: 100%;
-  background: var(--inset);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 14.5px;
-  line-height: 1.5;
-  resize: vertical;
-  font-family: inherit;
-}
-
-.cap-foot {
+.cap-top {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
 }
 
-.cap-foot select {
+.cap-dest {
+  display: flex;
+  gap: 14px;
+}
+
+.cap-dest button {
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: inset 0 -1.5px 0 transparent;
+  transition: color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.cap-dest button:hover {
+  color: var(--text);
+}
+
+.cap-dest button.on {
+  color: var(--text);
+  box-shadow: inset 0 -1.5px 0 var(--text);
+}
+
+.cap-project {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 4px 16px 4px 6px;
+  border-radius: 6px;
+  text-align: right;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 6px center, right 2px center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  max-width: 55%;
+}
+
+.cap-project:hover {
+  color: var(--text);
+  background-color: var(--panel);
+}
+
+.cap-input {
   flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 0;
+  font-family: var(--text-font);
+  font-size: 15.5px;
+  line-height: 1.55;
+  resize: none;
+}
+
+.cap-input::placeholder {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+
+.cap-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cap-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.cap-icon:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.cap-icon:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cap-icon.rec {
+  color: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.cap-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px 6px 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: filter 0.12s ease, opacity 0.12s ease;
+}
+
+.cap-save:hover {
+  filter: brightness(1.06);
+}
+
+.cap-save:disabled {
+  background: var(--panel);
+  color: var(--muted);
+  cursor: default;
+  filter: none;
+}
+
+.cap-save kbd {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 /* ---------- Inkfish: main 3-pane ---------- */
@@ -1309,10 +1442,6 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-/* Recording indicator. */
-.cap-tools .danger {
-  animation: pulse 1s ease-in-out infinite;
-}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1325,19 +1454,13 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
 
 /* ---------- Inkfish: combined composer ---------- */
 
-.cap-tools {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .cap-files {
   list-style: none;
-  margin: 0;
+  margin: 0 0 8px;
   padding: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .cap-files li {
@@ -1346,10 +1469,10 @@ html[data-theme='paper'] .md .tok-tag { color: #c0454f; }
   justify-content: space-between;
   font-size: 12.5px;
   color: var(--muted);
-  background: var(--inset-soft);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 5px 6px 5px 12px;
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 3px 4px 3px 9px;
+  max-width: 100%;
   animation: rise 0.16s ease both;
 }
 
@@ -1656,7 +1779,8 @@ html[data-motion='reduced'] *::after {
 }
 
 .topbar .flex-sp,
-.inboxbar .flex-sp {
+.inboxbar .flex-sp,
+.cap-bar .flex-sp {
   flex: 1;
 }
 
