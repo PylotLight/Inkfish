@@ -169,6 +169,8 @@ export interface SttResult {
   engine?: string
   /** Wall-clock transcription time. */
   ms?: number
+  /** Of `ms`, time spent loading the model before decoding (native helper loads per run). */
+  loadMs?: number
   /** What actually ran (backend, precision, device) — for validating the engine. */
   runtime?: string
   segments?: Array<{ start: number; end: number; text: string }>

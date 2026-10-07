@@ -83,6 +83,16 @@ enum Fluid {
       }
     }
 
+    /// Encoder placement. Redux's 2-bit encoder takes 5–25 min to compile for
+    /// the Neural Engine on first load (FluidAudio docs: 320–1585 s), longer
+    /// than any sane timeout, so the compile never finished and cached — the
+    /// "stuck warming up" / "transcription timed out" bug. On the GPU it
+    /// decompresses in-kernel: loads in ~1 s and runs faster per window.
+    /// Everything else keeps FluidAudio's default (ANE).
+    var encoderUnits: MLComputeUnits? { self == .redux ? .cpuAndGPU : nil }
+
+    var placement: String { self == .redux ? "GPU" : "Neural Engine" }
+
     /// Redux / Phonon-2 / Cohere q8 use macOS 15 Core ML ops.
     var minMacOS15: Bool { self == .redux || self == .phonon2 || self == .cohere }
 
@@ -176,6 +186,9 @@ enum Fluid {
     guard m.supported else { throw STTError("\(m.name) needs macOS 15", code: 3) }
     if let v = m.asrVersion {
       _ = try await AsrModels.download(version: v, progressHandler: progress)
+      // Load once now so any Core ML compile happens during the download
+      // (no timeout) instead of on the first transcription; it's cached after.
+      _ = try await AsrModels.downloadAndLoad(version: v, encoderComputeUnits: m.encoderUnits)
       return
     }
     switch m {
@@ -198,10 +211,14 @@ enum Fluid {
     }
     let text: String
     var duration = 0.0
+    let t0 = Date()
+    var loadMs = 0
     if let v = m.asrVersion {
-      let models = try await AsrModels.downloadAndLoad(version: v) // cached → load only
+      // cached → load only
+      let models = try await AsrModels.downloadAndLoad(version: v, encoderComputeUnits: m.encoderUnits)
       let asr = AsrManager()
       try await asr.loadModels(models)
+      loadMs = Int(Date().timeIntervalSince(t0) * 1000)
       var state = TdtDecoderState.make(decoderLayers: await asr.decoderLayerCount)
       let r = try await asr.transcribe(url, decoderState: &state)
       text = r.text
@@ -211,6 +228,7 @@ enum Fluid {
       duration = Double(samples.count) / 16_000
       let mgr = StreamingNemotronMultilingualAsrManager()
       try await mgr.loadModels(from: nemotronDir(opts))
+      loadMs = Int(Date().timeIntervalSince(t0) * 1000)
       _ = try await mgr.process(samples: samples)
       text = try await mgr.finish()
     } else {
@@ -220,6 +238,7 @@ enum Fluid {
       let code = opts.locale.language.languageCode?.identifier ?? "en"
       let lang = CohereAsrConfig.Language(rawValue: code) ?? .english
       let models = try await CoherePipeline.loadModels(encoderDir: dir, decoderDir: dir, vocabDir: dir)
+      loadMs = Int(Date().timeIntervalSince(t0) * 1000)
       let r = try await CoherePipeline().transcribeLong(audio: samples, models: models, language: lang)
       text = r.text
     }
@@ -227,7 +246,8 @@ enum Fluid {
     return Transcript(
       text: t,
       segments: t.isEmpty ? [] : [Segment(start: 0, end: duration, text: t)],
-      runtime: "Core ML (FluidAudio, Neural Engine) · \(m.name)"
+      loadMs: loadMs,
+      runtime: "Core ML (FluidAudio, \(m.placement)) · \(m.name)"
     )
   }
 }

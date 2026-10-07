@@ -15,7 +15,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ])
 
-// In-app WASM speech engines (Moonshine, ONNX Runtime Web) use threads, which
+// In-app WASM speech engines (Redux · Web, ONNX Runtime Web) use threads, which
 // need SharedArrayBuffer; file:// pages can't send COOP/COEP headers.
 // On macOS, Chromium's ScreenCaptureKit loopback gives getDisplayMedia the
 // Mac's output audio — the "Them" side of meeting capture (macOS 13+).

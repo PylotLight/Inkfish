@@ -3,22 +3,62 @@ import { pickAutoEngine } from '../../../shared/stt'
 import type { DownloadProgress, SttEngine, SttResult } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, saveAudioPrefs, toWav } from '../audio'
 import benchUrl from '../assets/bench/librispeech-1272.wav?url'
-import { BENCH_CLIP, fmtSpeed, fmtWer, speedFactor, wordErrorRate } from '../../../shared/sttBench'
+import ausPilbaraUrl from '../assets/bench/aus-pilbara.flac?url'
+import ausSyrahUrl from '../assets/bench/aus-syrah.flac?url'
+import ausGoldroadUrl from '../assets/bench/aus-goldroad.flac?url'
+import lsOtherUrl from '../assets/bench/librispeech-other.flac?url'
+import {
+  BENCH_CLIP,
+  BENCH_MODES,
+  corpusWer,
+  fmtMsShort,
+  fmtSpeed,
+  fmtWer,
+  modeSeconds,
+  speedFactor,
+  wordErrorRate,
+  type BenchClip,
+  type BenchMode
+} from '../../../shared/sttBench'
 import { isWebEngine, prepareWeb, removeWeb, resetWeb, transcribeWeb, webEngines } from '../webStt'
 
 type Run =
   | { state: 'running' }
-  | { state: 'done'; text: string; ms: number; runtime?: string; wer?: number; speed?: number }
+  | { state: 'done'; text: string; ms: number; runtime?: string; wer?: number; speed?: number; detail?: string }
   | { state: 'error'; text: string }
 
 const CLIP_SECONDS = 6
 const SCORES_KEY = 'inkfish.sttScores'
+const HIDDEN_KEY = 'inkfish.sttHidden'
 
-/** Last benchmark-clip result per engine, kept so the list stays comparable. */
-type Score = { wer: number; speed: number; at: number }
-function loadScores(): Record<string, Score> {
+const CLIP_URLS: Record<string, string> = {
+  quick: benchUrl,
+  'aus-pilbara': ausPilbaraUrl,
+  'aus-syrah': ausSyrahUrl,
+  'aus-goldroad': ausGoldroadUrl,
+  'ls-other': lsOtherUrl
+}
+
+/** Last benchmark result per engine and mode, kept so the list stays comparable. */
+type Score = {
+  wer: number
+  /** Seconds of audio per second of decoding (model load excluded). */
+  speed: number
+  at: number
+  /** Cold first run: model load, Core ML / WebGPU compile, first decode. */
+  warmMs?: number
+  /** Model load per run (native engines load in a fresh helper each run). */
+  loadMs?: number
+  subs?: number
+  dels?: number
+  ins?: number
+  /** Per-clip WER (Deep). */
+  clips?: Record<string, { wer: number; errors: number; words: number }>
+}
+const scoresKey = (m: BenchMode): string => (m === 'quick' ? SCORES_KEY : `${SCORES_KEY}.${m}`)
+function loadScores(m: BenchMode = 'quick'): Record<string, Score> {
   try {
-    const all = JSON.parse(localStorage.getItem(SCORES_KEY) || '{}') as Record<string, Score>
+    const all = JSON.parse(localStorage.getItem(scoresKey(m)) || '{}') as Record<string, Score>
     // Scores over 100% came from a parsing bug (raw JSON scored as the
     // transcript) or a wedged run, not the model — drop them so a rerun replaces them.
     return Object.fromEntries(Object.entries(all).filter(([, v]) => v && v.wer <= 1))
@@ -38,6 +78,14 @@ function withTimeout<T>(p: Promise<T>, ms: number, name: string, onTimeout?: () 
       }, ms)
     })
   ]).finally(() => window.clearTimeout(t))
+}
+
+function loadHidden(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') as string[])
+  } catch {
+    return new Set()
+  }
 }
 
 /** Duration of a 16 kHz mono 16-bit wav from toWav(). */
@@ -99,7 +147,11 @@ export default function VoiceEngineSettings(): React.JSX.Element {
   const [runs, setRuns] = useState<Record<string, Run>>({})
   const [clip, setClip] = useState<Clip | null>(null)
   const [reference, setReference] = useState('')
-  const [scores, setScores] = useState<Record<string, Score>>(loadScores)
+  const [scores, setScores] = useState<Record<string, Score>>(() => loadScores('quick'))
+  const [deepScores, setDeepScores] = useState<Record<string, Score>>(() => loadScores('deep'))
+  const [mode, setMode] = useState<BenchMode>('quick')
+  const [hidden, setHidden] = useState<Set<string>>(loadHidden)
+  const [showHidden, setShowHidden] = useState(false)
   const [captions, setCaptions] = useState(loadAudioPrefs().liveCaptions)
   const [recording, setRecording] = useState(false)
   const [comparing, setComparing] = useState(false)
@@ -226,7 +278,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     setBulk(true)
     stopBulk.current = false
     // One at a time: parallel model downloads just split the bandwidth.
-    for (const e of engines.filter((x) => x.downloadable && !x.ready)) {
+    for (const e of engines.filter((x) => x.downloadable && !x.ready && !hidden.has(x.id))) {
       await download(e)
       if (stopBulk.current) break
     }
@@ -249,13 +301,14 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     return c
   }
 
-  const benchClip = async (): Promise<Clip> => {
-    const blob = await (await fetch(benchUrl)).blob()
-    return useClip(
-      blob,
-      `Benchmark · ${Math.round(BENCH_CLIP.seconds)} s of read English (LibriSpeech)`,
-      BENCH_CLIP.text
-    )
+  const toggleHidden = (id: string): void => {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]))
+      return next
+    })
   }
 
   const record = async (): Promise<void> => {
@@ -284,9 +337,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     const c = given ?? clip
     if (!c || !engines) return
     const ref = (given ? c.reference : reference)?.trim() || ''
-    const isBench = ref === BENCH_CLIP.text
     setComparing(true)
-    const targets = engines.filter((e) => e.ready)
+    const targets = engines.filter((e) => e.ready && !hidden.has(e.id))
     setRuns(Object.fromEntries(targets.map((e) => [e.id, { state: 'running' } as Run])))
     // Sequential: engines share the Neural Engine, parallel runs skew timings.
     for (const [i, e] of targets.entries()) {
@@ -298,24 +350,10 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           ? withTimeout(transcribeWeb(e.id, c.wav), limit, e.name, () => resetWeb(e.id))
           : window.api.stt.test(c.dataUrl, e.id, limit)
       try {
-        // Benchmark only: an untimed warm-up first (model load, Core ML / WebGPU
-        // compile), same as `bun run bench:stt`, so in-app and CLI speeds compare.
-        if (isBench) {
-          setBenchStep({ done: i, total: targets.length, name: `${e.name} · warming up` })
-          await once()
-          setBenchStep({ done: i, total: targets.length, name: e.name })
-        }
         const r = await once()
         const ms = r.ms ?? 0
         const wer = ref ? wordErrorRate(ref, r.text).wer : undefined
         const speed = speedFactor(c.seconds, ms) || undefined
-        if (isBench && wer !== undefined && speed) {
-          setScores((prev) => {
-            const next = { ...prev, [e.id]: { wer, speed, at: Date.now() } }
-            localStorage.setItem(SCORES_KEY, JSON.stringify(next))
-            return next
-          })
-        }
         setRuns((p) => ({
           ...p,
           [e.id]: {
@@ -338,27 +376,131 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     setComparing(false)
   }
 
+  /** Load a bundled benchmark clip as 16 kHz wav (for native) + data URL. */
+  const loadBenchClip = async (b: BenchClip): Promise<Clip> => {
+    const wav = await toWav(await (await fetch(CLIP_URLS[b.id]!)).blob())
+    return { dataUrl: await blobToDataUrl(wav), wav, label: b.label, seconds: wavSeconds(wav), reference: b.text }
+  }
+
+  /**
+   * Quick: one clip. Deep: every Deep clip, scored per clip and corpus-wide.
+   * Per engine: one cold warm-up run (timed — that's the warm-up figure), then
+   * each clip timed; speed excludes model load so native (fresh helper per run)
+   * and Web (kept warm) compare fairly, and load time is shown on its own.
+   */
+  const benchmark = async (m: BenchMode): Promise<void> => {
+    if (!engines) return
+    setNote(null)
+    setComparing(true)
+    setClip(null)
+    let clips: { b: BenchClip; c: Clip }[]
+    try {
+      clips = await Promise.all(BENCH_MODES[m].clips.map(async (b) => ({ b, c: await loadBenchClip(b) })))
+    } catch (err) {
+      setNote(`Benchmark clips: ${ipcError(err)}`)
+      setComparing(false)
+      return
+    }
+    const targets = engines.filter((e) => e.ready && !hidden.has(e.id))
+    setRuns(Object.fromEntries(targets.map((e) => [e.id, { state: 'running' } as Run])))
+    for (const [i, e] of targets.entries()) {
+      const step = (what: string): void => setBenchStep({ done: i, total: targets.length, name: `${e.name} · ${what}` })
+      const run = (c: Clip, limit: number): Promise<SttResult> =>
+        isWebEngine(e.id)
+          ? withTimeout(transcribeWeb(e.id, c.wav), limit, e.name, () => resetWeb(e.id))
+          : window.api.stt.test(c.dataUrl, e.id, limit)
+      try {
+        // First load can compile for the Neural Engine / WebGPU: allow 10 min.
+        step('warming up')
+        const w0 = performance.now()
+        await run(clips[0]!.c, 600_000)
+        const warmMs = Math.round(performance.now() - w0)
+        const per: { b: BenchClip; r: SttResult; w: ReturnType<typeof wordErrorRate> }[] = []
+        for (const [k, { b, c }] of clips.entries()) {
+          step(clips.length > 1 ? `${b.label} (${k + 1} of ${clips.length})` : 'timing')
+          const r = await run(c, Math.round(60_000 + c.seconds * 2_000))
+          per.push({ b, r, w: wordErrorRate(b.text, r.text) })
+        }
+        const audio = per.reduce((a, p) => a + p.b.seconds, 0)
+        const decodeMs = per.reduce((a, p) => a + Math.max(1, (p.r.ms ?? 0) - (p.r.loadMs ?? 0)), 0)
+        const loads = per.map((p) => p.r.loadMs ?? 0).filter((x) => x > 0)
+        const score: Score = {
+          wer: corpusWer(per.map((p) => p.w)),
+          speed: speedFactor(audio, decodeMs),
+          at: Date.now(),
+          warmMs,
+          loadMs: loads.length ? Math.round(loads.reduce((a, b) => a + b, 0) / loads.length) : undefined,
+          subs: per.reduce((a, p) => a + p.w.subs, 0),
+          dels: per.reduce((a, p) => a + p.w.dels, 0),
+          ins: per.reduce((a, p) => a + p.w.ins, 0),
+          clips: Object.fromEntries(per.map((p) => [p.b.id, { wer: p.w.wer, errors: p.w.errors, words: p.w.words }]))
+        }
+        const set = m === 'quick' ? setScores : setDeepScores
+        set((prev) => {
+          const next = { ...prev, [e.id]: score }
+          localStorage.setItem(scoresKey(m), JSON.stringify(next))
+          return next
+        })
+        const confusions = [...new Set(per.flatMap((p) => p.w.confusions))].slice(0, 5)
+        const detail = [
+          per.length > 1 ? per.map((p) => `${p.b.label} ${fmtWer(p.w.wer)}`).join(' · ') : '',
+          `${score.subs} wrong · ${score.dels} missed · ${score.ins} extra`,
+          `warm-up ${fmtMsShort(warmMs)}${score.loadMs ? ` · load ${fmtMsShort(score.loadMs)} per run` : ''}`,
+          confusions.length ? `e.g. ${confusions.join(', ')}` : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
+        setRuns((p) => ({
+          ...p,
+          [e.id]: {
+            state: 'done',
+            text: per[0]!.r.text.trim() || '(no speech heard)',
+            ms: decodeMs,
+            runtime: per[0]!.r.runtime,
+            wer: score.wer,
+            speed: score.speed,
+            detail
+          }
+        }))
+      } catch (err) {
+        setRuns((p) => ({ ...p, [e.id]: { state: 'error', text: ipcError(err) } }))
+      }
+    }
+    setBenchStep(null)
+    setComparing(false)
+  }
+
   const ready = engines?.filter((e) => e.ready) ?? []
+  const benchable = ready.filter((e) => !hidden.has(e.id))
   const chosen = engines?.find((e) => e.id === choice && e.ready)
   const active = chosen ?? (engines ? pickAutoEngine(engines) : undefined)
   const others = engines?.filter((e) => e.id !== active?.id) ?? []
+  const visibleOthers = others.filter((e) => showHidden || !hidden.has(e.id))
+  const hiddenCount = others.filter((e) => hidden.has(e.id)).length
   const scored = Object.entries(scores).filter(([id]) => engines?.some((e) => e.id === id))
   const bestWer = Math.min(...scored.map(([, v]) => v.wer))
-  const bestSpeed = Math.max(...scored.map(([, v]) => v.speed))
-  const benchAll = async (): Promise<void> => {
-    setNote(null)
-    try {
-      await compare(await benchClip())
-    } catch (err) {
-      setNote(`Benchmark clip: ${ipcError(err)}`)
-    }
+  const bestSpeed = Math.max(
+    ...Object.entries({ ...scores, ...deepScores })
+      .filter(([id]) => engines?.some((e) => e.id === id))
+      .map(([, v]) => v.speed)
+  )
+  const deepScored = Object.entries(deepScores).filter(([id]) => engines?.some((e) => e.id === id))
+  const bestDeep = Math.min(...deepScored.map(([, v]) => v.wer))
+  const ausWer = (sc?: Score): number | undefined => {
+    const a = Object.entries(sc?.clips ?? {}).filter(([k]) => k.startsWith('aus-'))
+    return a.length ? corpusWer(a.map(([, v]) => v)) : undefined
   }
+  const bestAus = Math.min(...deepScored.flatMap(([, v]) => (ausWer(v) === undefined ? [] : [ausWer(v)!])))
   const fastest = Math.min(...Object.values(runs).flatMap((r) => (r.state === 'done' && r.ms > 0 ? [r.ms] : [])))
 
   const row = (e: SttEngine, isActive: boolean): React.JSX.Element => {
     const run = runs[e.id]
     return (
-      <div key={e.id} className={`engine-row${isActive ? ' active' : ''}${e.available ? '' : ' off'}`} role="listitem">
+      <div
+        key={e.id}
+        className={`engine-row${isActive ? ' active' : ''}${e.available ? '' : ' off'}${hidden.has(e.id) ? ' is-hidden' : ''}`}
+        role="listitem"
+      >
         <EngineIcon family={e.family} />
         <div className="engine-main">
           <div className="engine-name">{e.name}</div>
@@ -387,6 +529,14 @@ export default function VoiceEngineSettings(): React.JSX.Element {
                 </span>
               </>
             )}
+            {deepScores[e.id] && (
+              <span
+                className={`tag score${deepScores[e.id]!.wer === bestDeep ? ' best' : ''}`}
+                title="Word error rate on the Deep benchmark (Australian calls + hard read speech)"
+              >
+                Deep {fmtWer(deepScores[e.id]!.wer)}
+              </span>
+            )}
             {e.ready && e.id.startsWith('apple-speech') && <span className="tag dim">Needs Siri or Dictation</span>}
           </div>
           {(dl[e.id] || busy[e.id] === 'Downloading…') && (
@@ -414,6 +564,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
                 <>
                   <span className={`engine-ms${run.ms === fastest ? ' best' : ''}`}>{fmtMs(run.ms)}</span>
                   {run.wer !== undefined && <span className="engine-ms">{fmtWer(run.wer)} WER</span>}
+                  {run.detail && <span className="engine-detail small">{run.detail}</span>}
                   <span className="engine-text">{run.text}</span>
                   {run.runtime && <span className="muted small engine-runtime">{run.runtime}</span>}
                 </>
@@ -462,6 +613,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
               <button className="btn sm mint" onClick={() => activate(e.id)}>
                 Activate
               </button>
+              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
               {e.family !== 'apple' && (
                 <button
                   className="icon-btn"
@@ -474,11 +626,17 @@ export default function VoiceEngineSettings(): React.JSX.Element {
               )}
             </>
           ) : e.downloadable ? (
-            <button className="btn ghost sm" onClick={() => void download(e)}>
-              Download
-            </button>
+            <>
+              <button className="btn ghost sm" onClick={() => void download(e)}>
+                Download
+              </button>
+              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
+            </>
           ) : (
-            <span className="muted small">Unavailable</span>
+            <>
+              <span className="muted small">Unavailable</span>
+              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
+            </>
           )}
         </div>
       </div>
@@ -509,9 +667,16 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             <p className="muted small setting-hint">Your chosen engine isn't ready, so Auto is filling in.</p>
           )}
 
-          <h5 className="engine-heading">Other models</h5>
+          <h5 className="engine-heading">
+            Other models
+            {hiddenCount > 0 && (
+              <button className="link-btn small" onClick={() => setShowHidden(!showHidden)}>
+                {showHidden ? 'Hide hidden' : `Show ${hiddenCount} hidden`}
+              </button>
+            )}
+          </h5>
           <div className="engine-list" role="list">
-            {others.map((e) => row(e, false))}
+            {visibleOthers.map((e) => row(e, false))}
           </div>
         </>
       )}
@@ -562,8 +727,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         <div className="setting-label">
           Live transcription while dictating
           <span className="muted small setting-hint">
-            Text streams in as you speak. Uses Parakeet Redux once downloaded (and skips the wait after stop when Redux
-            is your engine); otherwise Moonshine previews in English.
+            Text streams in as you speak. Needs Parakeet Redux · Web downloaded (and skips the wait after stop when
+            Redux is your engine).
           </span>
         </div>
         <button
@@ -585,40 +750,72 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <span className="setting-label">
             Model comparison
             <span className="muted small setting-hint">
-              Size on disk, errors on the benchmark clip (lower is better) and speed on this Mac (higher is faster).
+              Errors are word error rate (lower is better): Quick is clean read English; Deep adds Australian earnings
+              calls and harder read speech. Speed is decoding only (higher is faster); warm-up is the cold first run;
+              load is model load per run for native engines. Hidden models are left out.
             </span>
           </span>
-          <table className="bench-table">
-            <thead>
-              <tr>
-                <th>Model</th>
-                <th>Size</th>
-                <th>Errors</th>
-                <th>Speed</th>
-                <th>Languages</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...engines]
-                .sort((a, b) => (scores[a.id]?.wer ?? 9) - (scores[b.id]?.wer ?? 9) || a.name.localeCompare(b.name))
-                .map((e) => {
-                  const sc = scores[e.id]
-                  return (
-                    <tr key={e.id} className={e.ready ? '' : 'dim'}>
-                      <td>{e.name}</td>
-                      <td>{sizeLabel(e)}</td>
-                      <td className={sc && sc.wer === bestWer ? 'best' : ''}>
-                        {sc ? fmtWer(sc.wer) : e.ready ? 'Not run' : '—'}
-                      </td>
-                      <td className={sc && sc.speed === bestSpeed ? 'best' : ''}>
-                        {sc ? `${sc.speed >= 10 ? Math.round(sc.speed) : sc.speed.toFixed(1)}×` : '—'}
-                      </td>
-                      <td>{e.languages || '—'}</td>
-                    </tr>
+          <div className="bench-scroll">
+            <table className="bench-table">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Size</th>
+                  <th>Quick</th>
+                  <th>Deep</th>
+                  <th>Aussie</th>
+                  {BENCH_MODES.deep.clips.map((c) => (
+                    <th key={c.id} title={`${c.kind} · ${Math.round(c.seconds)} s`}>
+                      {c.label}
+                    </th>
+                  ))}
+                  <th>Speed</th>
+                  <th>Warm-up</th>
+                  <th>Load</th>
+                  <th>Languages</th>
+                </tr>
+              </thead>
+              <tbody>
+                {engines
+                  .filter((e) => !hidden.has(e.id))
+                  .sort(
+                    (a, b) =>
+                      (deepScores[a.id]?.wer ?? 9) - (deepScores[b.id]?.wer ?? 9) ||
+                      (scores[a.id]?.wer ?? 9) - (scores[b.id]?.wer ?? 9) ||
+                      a.name.localeCompare(b.name)
                   )
-                })}
-            </tbody>
-          </table>
+                  .map((e) => {
+                    const sc = scores[e.id]
+                    const dp = deepScores[e.id]
+                    const au = ausWer(dp)
+                    const sp = dp?.speed ?? sc?.speed
+                    const warm = dp?.warmMs ?? sc?.warmMs
+                    const load = dp?.loadMs ?? sc?.loadMs
+                    const none = e.ready ? 'Not run' : '—'
+                    return (
+                      <tr key={e.id} className={e.ready ? '' : 'dim'}>
+                        <td>{e.name}</td>
+                        <td>{sizeLabel(e)}</td>
+                        <td className={sc && sc.wer === bestWer ? 'best' : ''}>{sc ? fmtWer(sc.wer) : none}</td>
+                        <td className={dp && dp.wer === bestDeep ? 'best' : ''}>{dp ? fmtWer(dp.wer) : none}</td>
+                        <td className={au !== undefined && au === bestAus ? 'best' : ''}>
+                          {au !== undefined ? fmtWer(au) : '—'}
+                        </td>
+                        {BENCH_MODES.deep.clips.map((c) => (
+                          <td key={c.id}>{dp?.clips?.[c.id] ? fmtWer(dp.clips[c.id]!.wer) : '—'}</td>
+                        ))}
+                        <td className={sp !== undefined && sp === bestSpeed ? 'best' : ''}>
+                          {sp ? `${sp >= 10 ? Math.round(sp) : sp.toFixed(1)}×` : '—'}
+                        </td>
+                        <td>{warm ? fmtMsShort(warm) : '—'}</td>
+                        <td>{load ? fmtMsShort(load) : '—'}</td>
+                        <td>{e.languages || '—'}</td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -628,20 +825,38 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <span className="muted small setting-hint">
             {clip
               ? `Clip: ${clip.label}`
-              : `Benchmark runs every downloaded engine on a ${Math.round(BENCH_CLIP.seconds)} s clip with a known transcript and scores accuracy (word error rate, lower is better) and speed on this Mac. Or try your own recording or file.`}
+              : mode === 'quick'
+                ? `Quick: every downloaded, visible engine on one ${Math.round(BENCH_CLIP.seconds)} s clip of clean read English. Same yardstick each time.`
+                : `Deep: ${BENCH_MODES.deep.clips.length} clips, ~${Math.round(modeSeconds('deep') / 60)} min per engine — three Australian earnings calls (numbers, names, jargon, ums) and harder read speech from 13 speakers. Scored per clip, with wrong / missed / extra words and warm-up time.`}
           </span>
         </span>
         <div className="row" style={{ marginTop: 0 }}>
+          <div className="seg sm" role="radiogroup" aria-label="Benchmark mode">
+            {(['quick', 'deep'] as BenchMode[]).map((m) => (
+              <button
+                key={m}
+                role="radio"
+                aria-checked={mode === m}
+                className={mode === m ? 'on' : ''}
+                disabled={comparing}
+                onClick={() => setMode(m)}
+              >
+                {BENCH_MODES[m].label} · {fmtMsShort(modeSeconds(m) * 1000)}
+              </button>
+            ))}
+          </div>
           <button
             className="btn sm mint"
-            disabled={recording || comparing || ready.length === 0}
-            onClick={() => void benchAll()}
+            disabled={recording || comparing || benchable.length === 0}
+            onClick={() => void benchmark(mode)}
           >
-            {comparing ? 'Running…' : `Benchmark ${ready.length} engine${ready.length === 1 ? '' : 's'}`}
+            {comparing ? 'Running…' : `Benchmark ${benchable.length} engine${benchable.length === 1 ? '' : 's'}`}
           </button>
-          {(engines?.filter((x) => x.downloadable && !x.ready).length ?? 0) > 0 && (
+          {(engines?.filter((x) => x.downloadable && !x.ready && !hidden.has(x.id)).length ?? 0) > 0 && (
             <button className="btn ghost sm" disabled={bulk || comparing} onClick={() => void downloadAll()}>
-              {bulk ? 'Downloading…' : `Download all ${engines!.filter((x) => x.downloadable && !x.ready).length}`}
+              {bulk
+                ? 'Downloading…'
+                : `Download all ${engines!.filter((x) => x.downloadable && !x.ready && !hidden.has(x.id)).length}`}
             </button>
           )}
           <button className="btn ghost sm" disabled={recording || comparing} onClick={() => void record()}>
@@ -650,8 +865,12 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <button className="btn ghost sm" disabled={recording || comparing} onClick={() => fileRef.current?.click()}>
             Use audio file…
           </button>
-          {clip && clip.reference !== BENCH_CLIP.text && (
-            <button className="btn ghost sm" disabled={comparing || ready.length === 0} onClick={() => void compare()}>
+          {clip && (
+            <button
+              className="btn ghost sm"
+              disabled={comparing || benchable.length === 0}
+              onClick={() => void compare()}
+            >
               {comparing ? 'Comparing…' : 'Compare on this clip'}
             </button>
           )}
@@ -677,7 +896,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             </span>
           </div>
         )}
-        {clip && clip.reference !== BENCH_CLIP.text && (
+        {clip && (
           <div className="row" style={{ marginTop: 8 }}>
             <input
               className="grow"
@@ -689,10 +908,10 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             />
           </div>
         )}
-        {scored.length > 0 && (
+        {(scored.length > 0 || deepScored.length > 0) && (
           <p className="muted small setting-hint">
-            Scores on each model are from the last benchmark on this Mac. Accuracy is on clean read English; noisy calls
-            and accents will score worse for every model.
+            Scores are from the last Quick and Deep runs on this Mac. Numbers are spelled out and ums ignored before
+            scoring, so “$30 million” and “thirty million dollars” match.
           </p>
         )}
         {note && (
@@ -702,6 +921,32 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         )}
       </div>
     </section>
+  )
+}
+
+function HideButton({
+  e,
+  hidden,
+  onToggle
+}: {
+  e: SttEngine
+  hidden: boolean
+  onToggle: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <button
+      className="icon-btn"
+      title={hidden ? 'Show in lists and benchmarks' : 'Hide from lists and benchmarks'}
+      aria-label={`${hidden ? 'Show' : 'Hide'} ${e.name}`}
+      aria-pressed={hidden}
+      onClick={() => onToggle(e.id)}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+        {!hidden && <path d="M3 3l18 18" />}
+      </svg>
+    </button>
   )
 }
 

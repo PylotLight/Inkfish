@@ -102,7 +102,6 @@
     "@codemirror/lang-markdown": "^6.5.0",
     "@electron-toolkit/utils": "^4.0.0",
     "@karanganesan/vocule": "^1.0.0",
-    "@moonshine-ai/moonshine-wasm": "^0.1.5",
     "@types/bun": "latest",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",

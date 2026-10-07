@@ -15,7 +15,7 @@ export default defineConfig({
     worker: { format: 'es' },
     build: { target: 'esnext' },
     optimizeDeps: {
-      exclude: ['@moonshine-ai/moonshine-wasm', '@karanganesan/vocule', 'parakeet.js']
+      exclude: ['@karanganesan/vocule', 'parakeet.js']
     }
   }
 })

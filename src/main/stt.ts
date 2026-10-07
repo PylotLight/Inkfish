@@ -111,6 +111,7 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
     text?: string
     segments?: SttResult['segments']
     ms?: number
+    loadMs?: number
     runtime?: string
   }>(out)
   if (p && typeof p === 'object' && !Array.isArray(p)) {
@@ -120,6 +121,7 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
       engine: engine.name,
       segments: p.segments ?? [],
       ms: p.ms ?? ms,
+      loadMs: p.loadMs || undefined,
       runtime: p.runtime || undefined
     }
   }
