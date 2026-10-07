@@ -3381,3 +3381,9 @@ html[data-density='compact'] .md p {
   margin-right: 4px;
   opacity: 0.7;
 }
+
+.engine-runtime {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.6;
+}

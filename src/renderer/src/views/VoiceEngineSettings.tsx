@@ -4,7 +4,10 @@ import type { SttEngine } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, saveAudioPrefs, toWav } from '../audio'
 import { isWebEngine, prepareWeb, removeWeb, transcribeWeb, webEngines } from '../webStt'
 
-type Run = { state: 'running' } | { state: 'done'; text: string; ms: number } | { state: 'error'; text: string }
+type Run =
+  | { state: 'running' }
+  | { state: 'done'; text: string; ms: number; runtime?: string }
+  | { state: 'error'; text: string }
 
 const CLIP_SECONDS = 6
 
@@ -117,7 +120,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           [e.id]: {
             state: 'done',
             text: r.text.trim() || '(no speech heard)',
-            ms: r.ms ?? 0
+            ms: r.ms ?? 0,
+            runtime: r.runtime
           }
         }))
       } catch (err) {
@@ -157,6 +161,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
                 <>
                   <span className={`engine-ms${run.ms === fastest ? ' best' : ''}`}>{fmtMs(run.ms)}</span>
                   <span className="engine-text">{run.text}</span>
+                  {run.runtime && <span className="muted small engine-runtime">{run.runtime}</span>}
                 </>
               )}
               {run.state === 'error' && <span className="small error-text">{run.text}</span>}

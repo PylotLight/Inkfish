@@ -91,7 +91,7 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
   }
 
   const sessions: LiveSession[] = [await startRedux(mic, track('me'))]
-  if (sys) sessions.push(await startRedux(sys, track('them')))
+  if (sys) sessions.push(await startRedux(sys, track('them'), false))
 
   // One mixed recording for the note's audio attachment.
   const ctx = new AudioContext()

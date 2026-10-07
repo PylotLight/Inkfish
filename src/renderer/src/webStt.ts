@@ -6,7 +6,12 @@
  */
 import type { SttEngine, SttResult } from '../../shared/types'
 
-type Loaded = (pcm: Float32Array) => Promise<string>
+interface Heard {
+  text: string
+  /** What actually ran, e.g. "WebGPU fp16 · apple metal-3". */
+  runtime: string
+}
+type Loaded = (pcm: Float32Array) => Promise<Heard>
 
 interface WebEngine {
   id: string
@@ -18,30 +23,26 @@ interface WebEngine {
   /** Cache Storage buckets / IndexedDB databases the model lives in. */
   caches: string[]
   dbs?: string[]
-  load: (gpu: boolean) => Promise<Loaded>
+  load: (gpu: Gpu) => Promise<Loaded>
 }
 
-const hasGpu = (): boolean => typeof navigator !== 'undefined' && 'gpu' in navigator
-
-const whisper =
-  (model: string, dtype: (gpu: boolean) => unknown) =>
-  async (gpu: boolean): Promise<Loaded> => {
-    const { pipeline } = await import('@huggingface/transformers')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const asr: any = await pipeline('automatic-speech-recognition', model, {
-      device: gpu ? 'webgpu' : 'wasm',
+/** A real WebGPU adapter (not just the API existing), with its name for the runtime label. */
+type Gpu = { ok: boolean; label: string }
+let gpuProbe: Promise<Gpu> | null = null
+export function probeGpu(): Promise<Gpu> {
+  gpuProbe ??= (async () => {
+    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dtype: dtype(gpu) as any
-    })
-    return async (pcm) => {
-      const out = await asr(pcm, {
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        task: 'transcribe'
-      })
-      return (Array.isArray(out) ? out.map((o) => o.text).join(' ') : out.text) as string
+      const adapter: any = await (navigator as any).gpu?.requestAdapter({ powerPreference: 'high-performance' })
+      if (!adapter) return { ok: false, label: 'no WebGPU adapter' }
+      const info = adapter.info ?? {}
+      return { ok: true, label: [info.vendor, info.architecture].filter(Boolean).join(' ') || 'GPU' }
+    } catch {
+      return { ok: false, label: 'WebGPU unavailable' }
     }
-  }
+  })()
+  return gpuProbe
+}
 
 export const WEB_ENGINES: WebEngine[] = [
   {
@@ -53,10 +54,15 @@ export const WEB_ENGINES: WebEngine[] = [
     languages: '25 languages',
     caches: ['vocule-verified-weights-v1'],
     load: async () => {
-      const { createSpeech } = await import('@karanganesan/vocule')
-      const speech = createSpeech()
-      await speech.prepare()
-      return async (pcm) => (await speech.transcribe({ samples: pcm, sampleRate: 16_000 })).text
+      const speech = await reduxSpeech()
+      return async (pcm) => {
+        const t = await speech.transcribe({ samples: pcm, sampleRate: 16_000 })
+        const rt = t.metrics.realtimeFactor
+        return {
+          text: t.text,
+          runtime: `WebGPU+WASM · ${t.model.id}${t.verified ? ' (verified)' : ''} · ${rt.toFixed(0)}× realtime`
+        }
+      }
     }
   },
   {
@@ -64,18 +70,26 @@ export const WEB_ENGINES: WebEngine[] = [
     name: 'Parakeet v2 · Web',
     subtitle: 'parakeet.js — TDT 0.6B v2 on WebGPU (ONNX Runtime Web)',
     family: 'nvidia',
-    size: '~1.2 GB',
+    // WebGPU can't run the int8 encoder, so fp16 (1.24 GB) is the smallest GPU
+    // build; CPU-only Macs get int8 (652 MB). FluidVoice's 442 MB is the native
+    // Core ML build — that's our native "Parakeet v2" engine.
+    size: '~1.2 GB GPU · 650 MB CPU',
     languages: 'English',
     caches: [],
     dbs: ['parakeet-cache-db'],
     load: async (gpu) => {
       const { fromHub } = await import('parakeet.js')
+      const encoderQuant = gpu.ok ? 'fp16' : 'int8'
       const model = await fromHub('parakeet-tdt-0.6b-v2', {
-        backend: gpu ? 'webgpu' : 'wasm',
-        encoderQuant: gpu ? 'fp16' : 'int8',
-        decoderQuant: 'int8'
+        backend: gpu.ok ? 'webgpu-hybrid' : 'wasm',
+        encoderQuant,
+        decoderQuant: 'int8',
+        cpuThreads: Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
       })
-      return async (pcm) => (await model.transcribeLongAudio(pcm, 16_000)).text
+      const runtime = gpu.ok
+        ? `WebGPU encoder fp16 (${gpu.label}) + WASM decoder int8 · TDT 0.6B v2`
+        : 'WASM int8 (CPU) · TDT 0.6B v2'
+      return async (pcm) => ({ text: (await model.transcribeLongAudio(pcm, 16_000)).text, runtime })
     }
   },
   {
@@ -93,35 +107,15 @@ export const WEB_ENGINES: WebEngine[] = [
         modelArch: ModelArch.Base,
         moduleOptions: await moonshineModule()
       })
-      return async (pcm) =>
-        t
+      return async (pcm) => ({
+        text: t
           .transcribe(pcm, { sampleRate: 16_000 })
           .lines.map((l) => l.text.trim())
           .filter(Boolean)
-          .join(' ')
+          .join(' '),
+        runtime: 'WASM · Moonshine Base'
+      })
     }
-  },
-  {
-    id: 'web-whisper-turbo',
-    name: 'Whisper Large v3 Turbo · Web',
-    subtitle: 'Transformers.js — OpenAI Whisper on WebGPU',
-    family: 'openai',
-    size: '~1 GB',
-    languages: '99 languages',
-    caches: ['transformers-cache'],
-    load: whisper('onnx-community/whisper-large-v3-turbo', (gpu) =>
-      gpu ? { encoder_model: 'fp16', decoder_model_merged: 'q4' } : 'q8'
-    )
-  },
-  {
-    id: 'web-whisper-base',
-    name: 'Whisper Base · Web',
-    subtitle: 'Transformers.js — small multilingual Whisper',
-    family: 'openai',
-    size: '~80 MB',
-    languages: '99 languages',
-    caches: ['transformers-cache'],
-    load: whisper('onnx-community/whisper-base', () => 'q8')
   }
 ]
 
@@ -174,7 +168,7 @@ function get(id: string): Promise<Loaded> {
   if (!e) return Promise.reject(new Error(`Unknown engine ${id}`))
   let p = loaded.get(id)
   if (!p) {
-    p = e.load(hasGpu())
+    p = probeGpu().then((g) => e.load(g))
     loaded.set(id, p)
     p.catch(() => loaded.delete(id))
   }
@@ -192,6 +186,7 @@ export async function removeWeb(id: string): Promise<void> {
   const e = WEB_ENGINES.find((x) => x.id === id)
   if (!e) return
   loaded.delete(id)
+  if (id === 'web-parakeet-redux') redux = null
   for (const c of e.caches) await caches.delete(c).catch(() => false)
   for (const db of e.dbs ?? []) indexedDB.deleteDatabase(db)
   // Engines sharing a cache bucket lose their weights too.
@@ -220,7 +215,8 @@ export async function transcribeWeb(id: string, audio: Blob): Promise<SttResult>
   const t0 = performance.now()
   const pcm = await toPcm16k(audio)
   const run = await get(id)
-  const text = (await run(pcm)).replace(/\s+/g, ' ').trim()
+  const heard = await run(pcm)
+  const text = heard.text.replace(/\s+/g, ' ').trim()
   const s = readySet()
   if (!s.has(id)) {
     s.add(id)
@@ -231,6 +227,29 @@ export async function transcribeWeb(id: string, audio: Blob): Promise<SttResult>
     segments: text ? [{ start: 0, end: pcm.length / 16_000, text }] : [],
     provider: id,
     engine: WEB_ENGINES.find((e) => e.id === id)?.name ?? id,
+    runtime: heard.runtime,
     ms: Math.round(performance.now() - t0)
   }
+}
+
+/**
+ * One warm Redux instance shared by file transcription and live dictation, so
+ * the worker and GPU pipelines are built once per window instead of per
+ * recording. (Meeting capture makes its own second instance for "Them".)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let redux: Promise<any> | null = null
+export function reduxSpeech(): Promise<import('@karanganesan/vocule').Speech> {
+  redux ??= import('@karanganesan/vocule').then(async ({ createSpeech }) => {
+    const speech = createSpeech()
+    await speech.prepare()
+    return speech
+  })
+  redux.catch(() => (redux = null))
+  return redux
+}
+
+/** Load the chosen web engine in the background so the first transcription doesn't pay for it. */
+export function warmWeb(id: string | undefined): void {
+  if (id && isWebEngine(id) && readySet().has(id)) void get(id).catch(() => undefined)
 }

@@ -5,7 +5,7 @@
  * stop. Without Redux downloaded, Moonshine streams a preview instead.
  */
 import { loadAudioPrefs } from './audio'
-import { isWebReady, moonshineModule } from './webStt'
+import { isWebReady, moonshineModule, reduxSpeech } from './webStt'
 
 export const LIVE_ENGINE = 'web-parakeet-redux'
 
@@ -31,10 +31,14 @@ export interface LiveSession {
 /** Redux streaming on a caller-owned stream (mic, or system audio). */
 export async function startRedux(
   stream: MediaStream,
-  onText: (text: string, settled: LiveSegment[]) => void
+  onText: (text: string, settled: LiveSegment[]) => void,
+  /** Use the warm shared instance; a concurrent second stream needs its own. */
+  shared = true
 ): Promise<LiveSession> {
-  const { createSpeech } = await import('@karanganesan/vocule')
-  const speech = createSpeech()
+  const speech = shared ? await reduxSpeech() : (await import('@karanganesan/vocule')).createSpeech()
+  const release = (): void => {
+    if (!shared) speech.dispose()
+  }
   let segments: LiveSegment[] = []
   const live = await speech.listen({
     stream,
@@ -49,12 +53,12 @@ export async function startRedux(
     stop: async () => {
       const text = (await live.stop()).replace(/\s+/g, ' ').trim()
       segments = live.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
-      speech.dispose()
+      release()
       return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
     },
     cancel: async () => {
       await live.cancel().catch(() => undefined)
-      speech.dispose()
+      release()
     }
   }
 }

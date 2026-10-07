@@ -204,6 +204,10 @@ enum Fluid {
       text = r.text
     }
     let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return Transcript(text: t, segments: t.isEmpty ? [] : [Segment(start: 0, end: duration, text: t)])
+    return Transcript(
+      text: t,
+      segments: t.isEmpty ? [] : [Segment(start: 0, end: duration, text: t)],
+      runtime: "Core ML (FluidAudio, Neural Engine) · \(m.name)"
+    )
   }
 }

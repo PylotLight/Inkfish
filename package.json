@@ -102,7 +102,6 @@
   "devDependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
     "@electron-toolkit/utils": "^4.0.0",
-    "@huggingface/transformers": "^4.3.1",
     "@karanganesan/vocule": "^1.0.0",
     "@moonshine-ai/moonshine-wasm": "^0.1.5",
     "@types/bun": "latest",

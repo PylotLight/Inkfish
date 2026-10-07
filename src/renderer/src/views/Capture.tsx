@@ -3,7 +3,7 @@ import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 import { LIVE_ENGINE, startLive, type LiveSession } from '../liveCaptions'
 import { startMeeting, type Meeting, type MeetingLine } from '../meeting'
-import { isWebEngine, transcribeWeb } from '../webStt'
+import { isWebEngine, transcribeWeb, warmWeb } from '../webStt'
 
 /**
  * Capture popover (380×300): one borderless composer on the window's own
@@ -33,6 +33,8 @@ export default function Capture(): React.JSX.Element {
   useEffect(() => {
     window.api.projects.list().then(setProjects).catch(() => setProjects([]))
     inputRef.current?.focus()
+    // Build the chosen in-app engine now so stop → text is just inference.
+    warmWeb(loadAudioPrefs().engine)
     const onHash = (): void => {
       setDest(window.location.hash === '#capture-daily' ? 'today' : 'inbox')
       inputRef.current?.focus()
@@ -156,7 +158,7 @@ export default function Capture(): React.JSX.Element {
           ? await transcribeWeb(engine, wav)
           : await window.api.stt.transcribe(await window.api.assets.path(rel), engine)
         appendText(stt.text)
-        say(`Transcribed ✓ · ${stt.engine ?? stt.provider}`)
+        say(`Transcribed ✓ · ${stt.engine ?? stt.provider}`, stt.runtime)
       } catch (e) {
         say("Couldn't transcribe — audio saved", ipcError(e), 6000)
       }
