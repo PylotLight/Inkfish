@@ -1,0 +1,93 @@
+# Inkfish Android signed release build (k8s Job, EAS-free).
+#
+#   kubectl -n shuttle-build apply -f build-job.yaml
+#   kubectl -n shuttle-build wait --for=condition=complete job/inkfish-apk-build --timeout=3600s
+#   kubectl -n shuttle-build logs job/inkfish-apk-build
+#   POD=$(kubectl -n shuttle-build get pod -l job-name=inkfish-apk-build -o jsonpath='{.items[0].metadata.name}')
+#   kubectl -n shuttle-build cp "$POD:/cache/output/app-release.apk" ./Inkfish.apk
+#
+# Requires the `android-release-keystore` Secret (see keystore-init-job.yaml).
+# Re-run for a fresh APK: delete the job first (completions are one-shot):
+#   kubectl -n shuttle-build delete job inkfish-apk-build
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inkfish-apk-build
+  namespace: shuttle-build
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: shuttle-build-cache
+        - name: keystore
+          secret:
+            secretName: android-release-keystore
+            items:
+              - key: keystore
+                path: inkfish.keystore
+      containers:
+        - name: build
+          image: reactnativecommunity/react-native-android:v21.1
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "6"
+              memory: 12Gi
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: keystore
+              mountPath: /keystore
+              readOnly: true
+          env:
+            - name: CI
+              value: "1"
+            - name: GRADLE_USER_HOME
+              value: /cache/gradle
+            - name: KEYSTORE_FILE
+              value: /keystore/inkfish.keystore
+            - name: STORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: android-release-keystore
+                  key: store-password
+            - name: KEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: android-release-keystore
+                  key: key-password
+            - name: KEY_ALIAS
+              valueFrom:
+                secretKeyRef:
+                  name: android-release-keystore
+                  key: key-alias
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+              git clone --branch android-client --depth 1 \
+                https://github.com/PylotLight/Inkfish.git /src
+              cd /src/android
+              npm ci --cache /cache/npm --no-audit --no-fund
+              chmod +x build/inject-signing.sh
+              npx expo prebuild --platform android --clean
+              ./build/inject-signing.sh
+              cd android
+              ./gradlew :app:assembleRelease \
+                -Dorg.gradle.jvmargs=-Xmx4g \
+                -Dorg.gradle.caching=true \
+                --console=plain
+              APK=/cache/output/app-release.apk
+              cp app/build/outputs/apk/release/app-release.apk "$APK"
+              BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+              "$BT"apksigner verify --print-certs "$APK" | head -8
+              ls -la "$APK"
+              echo "BUILD OK: $APK"

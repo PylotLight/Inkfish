@@ -42,3 +42,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 /stt/bin/
 /stt/.build/
 bench-results.json
+
+# expo prebuild output (generated native projects)
+android/android/
+android/ios/
