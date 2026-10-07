@@ -1,11 +1,12 @@
+# Rendered from Casks/inkfish.rb.tmpl — do not edit by hand.
 # Updated automatically by .github/workflows/release.yml on every release.
 # Edit Casks/inkfish.rb.tmpl instead — this file is rendered from it.
 cask "inkfish" do
   arch arm: "arm64", intel: "x64"
 
   version "0.1.0"
-  sha256 arm:   "0000000000000000000000000000000000000000000000000000000000000000",
-         intel: "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 arm:   "573b9427cbcfe10624432908d5b91423ed22451aece20516d1e23cdfc45d8257",
+         intel: "c9bec82679aadddfed318c424c0ac2dc6ff06097e5680324cf18a8d43d82def2"
 
   url "https://github.com/PylotLight/Inkfish/releases/download/v#{version}/Inkfish-#{version}-mac-#{arch}.zip"
   name "Inkfish"
