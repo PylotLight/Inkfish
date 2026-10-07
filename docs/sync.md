@@ -1,6 +1,11 @@
 # Inkfish sync — Mac ↔ Android, peer-to-peer, no server
 
-Status: **design / proposal** (nothing implemented yet). 2026-10-08.
+Status: **design agreed, not implemented**. 2026-10-08.
+
+**Decision (2026-10-08): v1 is LAN only.** No relays of any kind — iroh runs with
+relays disabled and local discovery (mDNS) only, so the phone syncs when it's
+on the same network as the Mac. External access (custom relay, tunnel such as
+Tailscale / Cloudflare Tunnel, or n0 public relays) is a later phase.
 
 ## Goals
 
@@ -27,10 +32,18 @@ The relay is only used to hole-punch and as a fallback pipe. iroh upgrades to a
 direct UDP path whenever the network allows (most home routers do), so in
 practice the relay carries little or nothing.
 
-**Proposal:** default to n0 public relays (zero setup), with Settings options
-for *LAN only* and *Custom relay URL*. An "inbuilt relay" mode can be added
-later as an advanced toggle for people who port-forward, but it can't be the
-default because a NATed Mac can't relay for anyone.
+**Decision:** v1 ships **LAN only** — iroh endpoint with an empty RelayMap and
+mDNS local discovery; the pairing ticket carries only LAN addresses. Nothing
+leaves the network.
+
+**Later — external / tunnel support** (Settings › Sync › Away from home):
+- *Tunnel*: Mac reachable through Tailscale (tailnet IP / MagicDNS) or a
+  Cloudflare/ngrok-style tunnel; phone dials the Mac's tunnel address directly.
+  Simplest for a personal setup, no relay needed.
+- *Custom relay*: user's own `iroh-relay` (VPS/home server) added to the RelayMap.
+- *Public relay*: n0 preset, opt-in only.
+An "inbuilt relay" on the Mac only helps when the Mac is publicly reachable,
+which the tunnel option already covers.
 
 ## Transport: iroh 1.0
 
@@ -108,11 +121,11 @@ upgrade path if we ever want live co-editing.
 
 - **Mac:** listens whenever the app is running (it's already a menu-bar app).
   Watches the vault (chokidar) and pushes to connected peers after a 2 s quiet period.
-- **Android:** on app open, after each capture/save, pull-to-refresh, and a
+- **Android:** when on Wi-Fi with a paired Mac found via mDNS: on app open, after each capture/save, pull-to-refresh, and a
   WorkManager periodic job (Android minimum 15 min; best-effort). No permanent
   background socket — battery first.
-- Both: a **Sync now** button and a status line ("Synced 2 min ago · direct" /
-  "· via relay" / "Mac not reachable").
+- Both: a **Sync now** button and a status line ("Synced 2 min ago" /
+  "Mac not on this network").
 
 ## Android vault location (worth deciding now)
 
@@ -130,15 +143,13 @@ in a folder you choose" later.
 2. **Mac transport:** `@number0/iroh` endpoint in main, pairing QR, Settings › Sync.
 3. **Android transport:** Expo Module over `computer.iroh:iroh`, QR scan
    (`expo-camera`), Settings › Sync, sync on open/capture.
-4. **Hardening:** resume, big assets, WorkManager, conflict UI in Inbox, relay
-   choice (n0 / custom / LAN only).
-5. **Later:** optional encrypted backup to the user's own storage (S3/iCloud
+4. **Hardening:** resume, big assets, WorkManager (only when on Wi-Fi), conflict UI in Inbox.
+5. **Away from home:** tunnel address / custom relay / opt-in n0 relay.
+6. **Later:** optional encrypted backup to the user's own storage (S3/iCloud
    Drive) as a third "peer", CRDT for live co-edit, SAF vault folder.
 
 ## Open questions
 
-- Is n0's public relay acceptable as the default, or LAN-only by default with
-  relay opt-in?
 - Should the phone be able to sync with *several* Macs (work + home)? The
   design supports N peers; UI would list them.
 - Transcription: Android voice memos still transcribe on Mac after sync — Mac
