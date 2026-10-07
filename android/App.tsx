@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import Constants from 'expo-constants';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { StoreProvider, useStore } from './src/lib/store';
+import { PrefsProvider, usePrefs } from './src/lib/prefs';
 import { toPendingShare, type PendingShare } from './src/lib/share';
-import { dark } from './src/theme';
+import { useTheme } from './src/theme';
 import { CaptureScreen } from './src/screens/CaptureScreen';
 import { InboxScreen } from './src/screens/InboxScreen';
 import { NotesScreen } from './src/screens/NotesScreen';
@@ -26,6 +28,9 @@ const TABS: Array<{ id: Tab; glyph: string }> = [
 
 function Shell(): React.JSX.Element {
   const { ready, error, inbox } = useStore();
+  const { prefs } = usePrefs();
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   const [tab, setTab] = useState<Tab>('capture');
   // Selected doc id: a routed note id OR an inbox item id (editor handles both).
@@ -64,25 +69,33 @@ function Shell(): React.JSX.Element {
 
   if (!ready) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.loading}>
-          <Text style={styles.muted}>Opening vault…</Text>
-        </View>
-      </SafeAreaView>
+      <View style={[t.ui.center, { paddingTop: insets.top }]}>
+        <Text style={{ color: t.c.muted }}>Opening vault…</Text>
+      </View>
     );
   }
 
   const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length;
 
+  const tabs = TABS.map((tb) => {
+    const on = tab === tb.id;
+    return (
+      <Pressable key={tb.id} onPress={() => setTab(tb.id)} style={[t.ui.tab, on && t.ui.tabOn]}>
+        <Text style={[t.ui.glyph, on && t.ui.glyphOn]}>{tb.glyph}</Text>
+        {tb.id === 'inbox' && pending > 0 && <Text style={t.ui.badge}>{pending}</Text>}
+      </Pressable>
+    );
+  });
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={dark.bg} />
+    <View style={[styles.safe, { backgroundColor: t.c.bg }]}>
+      <StatusBar barStyle={t.statusBar} backgroundColor={t.c.bg} />
       {error && (
-        <View style={styles.errBar}>
-          <Text style={styles.errText}>{error}</Text>
+        <View style={[styles.errBar, { paddingTop: insets.top }]}>
+          <Text style={[styles.errText, { color: t.c.danger }]}>{error}</Text>
         </View>
       )}
-      <View style={styles.body}>
+      <View style={{ flex: 1, paddingTop: insets.top }}>
         {openId ? (
           <EditorScreen noteId={openId} onClose={() => setOpenId(null)} />
         ) : tab === 'capture' ? (
@@ -100,21 +113,17 @@ function Shell(): React.JSX.Element {
       {/* Floating glass toolbar (Obsidian-style). Hidden in the editor for
           distraction-free reading — the editor has its own back action. */}
       {!openId && (
-        <View style={styles.barWrap}>
-          <BlurView intensity={70} tint="dark" style={styles.bar}>
-            {TABS.map((t) => {
-              const on = tab === t.id;
-              return (
-                <Pressable key={t.id} onPress={() => setTab(t.id)} style={[styles.tab, on && styles.tabOn]}>
-                  <Text style={[styles.glyph, on && styles.glyphOn]}>{t.glyph}</Text>
-                  {t.id === 'inbox' && pending > 0 && <Text style={styles.badge}>{pending}</Text>}
-                </Pressable>
-              );
-            })}
-          </BlurView>
+        <View style={[t.ui.barWrap, { bottom: insets.bottom + 14 }]}>
+          {prefs.blur ? (
+            <BlurView intensity={70} tint={t.blurTint} style={t.ui.bar}>
+              {tabs}
+            </BlurView>
+          ) : (
+            <View style={[t.ui.bar, { backgroundColor: t.c.barSolid }]}>{tabs}</View>
+          )}
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -124,47 +133,20 @@ export default function App(): React.JSX.Element {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const disabled = (Constants as any).appOwnership === 'expo';
   return (
-    <ShareIntentProvider options={{ disabled }}>
-      <StoreProvider>
-        <Shell />
-      </StoreProvider>
-    </ShareIntentProvider>
+    <SafeAreaProvider>
+      <PrefsProvider>
+        <ShareIntentProvider options={{ disabled }}>
+          <StoreProvider>
+            <Shell />
+          </StoreProvider>
+        </ShareIntentProvider>
+      </PrefsProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: dark.bg },
-  body: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  muted: { color: dark.muted },
-  errBar: { backgroundColor: '#3a1d22', padding: 8 },
-  errText: { color: dark.danger, fontSize: 12 },
-  barWrap: {
-    position: 'absolute',
-    left: 52,
-    right: 52,
-    bottom: 22
-  },
-  bar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: dark.border,
-    overflow: 'hidden',
-    paddingVertical: 6,
-    backgroundColor: 'rgba(16,18,24,0.55)'
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999
-  },
-  tabOn: { backgroundColor: 'rgba(126,226,168,0.14)' },
-  glyph: { color: dark.muted, fontSize: 21 },
-  glyphOn: { color: dark.accent },
-  badge: { color: dark.accent, fontSize: 11, fontWeight: '700', marginLeft: 4 }
+  safe: { flex: 1 },
+  errBar: { padding: 8 },
+  errText: { fontSize: 12 }
 });

@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { dark, ui } from '../theme';
+import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 import { searchNotesSync } from '../lib/vault';
 
 export function NotesScreen({ onOpen }: { onOpen: (noteId: string) => void }): React.JSX.Element {
+  const { ui, c: dark } = useTheme();
   const { notes, projects, newNote } = useStore();
   const [q, setQ] = useState('');
   const [proj, setProj] = useState<string | null>(null);

@@ -19,7 +19,8 @@
     "expo-linking": "~57.0.12",
     "expo-share-intent": "^8.0.1",
     "react": "19.2.3",
-    "react-native": "0.86.3"
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",

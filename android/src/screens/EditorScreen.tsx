@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { dark, ui } from '../theme';
+import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 import type { NoteDoc } from '../lib/format';
 import { Markdown } from '../components/Markdown';
 
 /** Full editor: raw markdown source + rendered preview, same file as Mac edits. */
 export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () => void }): React.JSX.Element {
+  const { ui, c: dark } = useTheme();
   const { openNote, saveNote } = useStore();
   const [doc, setDoc] = useState<NoteDoc | null>(null);
   const [text, setText] = useState('');

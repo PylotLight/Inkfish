@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
-import { dark, ui } from '../theme';
+import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 import { saveAssetCopy } from '../lib/vault';
 import type { PendingShare } from '../lib/share';
@@ -24,6 +24,7 @@ interface Props {
  * borderless composer, accent only on Save and the live recording state.
  */
 export function CaptureScreen({ onSaved, shared, onSharedConsumed }: Props): React.JSX.Element {
+  const { ui, c: dark } = useTheme();
   const { projects, capture, captureDaily } = useStore();
   const [raw, setRaw] = useState('');
   const [dest, setDest] = useState<'inbox' | 'today'>('inbox');

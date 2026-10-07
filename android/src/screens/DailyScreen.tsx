@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { dark, ui } from '../theme';
+import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 import { Markdown } from '../components/Markdown';
 
 /** Today log — appends timestamped sections to `daily/YYYY-MM-DD.md`, like Mac. */
 export function DailyScreen(): React.JSX.Element {
+  const { ui, c: dark } = useTheme();
   const { readDaily, appendDaily } = useStore();
   const [body, setBody] = useState('');
   const [rel, setRel] = useState('');

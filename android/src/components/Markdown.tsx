@@ -1,14 +1,15 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { dark } from '../theme';
+import { Text, View } from 'react-native';
+import { useTheme, type AppTheme } from '../theme';
 
 /** Tiny markdown renderer — headings, bold, bullets, code fences, images. No deps. */
 export function Markdown({ text }: { text: string }): React.JSX.Element {
   const blocks = useMemo(() => parse(text), [text]);
+  const t = useTheme();
   return (
     <View>
       {blocks.map((b, i) => (
-        <Block key={i} block={b} />
+        <Block key={i} block={b} md={t.md} />
       ))}
     </View>
   );
@@ -67,60 +68,45 @@ function parse(text: string): Block[] {
 }
 
 /** Inline `**bold**`, `` `code` ``, [links](…) — rendered as plain runs. */
-function runs(text: string, base: object): React.ReactNode[] {
+function runs(text: string, base: object, md: AppTheme['md']): React.ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[.+?\]\(.+?\))/g);
   return parts.map((p, i) => {
     const b = /^\*\*(.+)\*\*$/.exec(p);
-    if (b) return <Text key={i} style={[base, styles.bold]}>{b[1]}</Text>;
+    if (b) return <Text key={i} style={[base, md.bold]}>{b[1]}</Text>;
     const c = /^`([^`]+)`$/.exec(p);
-    if (c) return <Text key={i} style={[base, styles.mono]}>{c[1]}</Text>;
+    if (c) return <Text key={i} style={[base, md.mono]}>{c[1]}</Text>;
     const l = /^\[(.+?)\]\(.+?\)$/.exec(p);
-    if (l) return <Text key={i} style={[base, styles.link]}>{l[1]}</Text>;
+    if (l) return <Text key={i} style={[base, md.link]}>{l[1]}</Text>;
     return <Text key={i} style={base}>{p}</Text>;
   });
 }
 
-function Block({ block }: { block: Block }): React.JSX.Element | null {
+function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.Element | null {
   switch (block.t) {
     case 'gap':
       return <View style={{ height: 8 }} />;
     case 'h':
       return (
-        <Text style={[styles.h, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : styles.h3]}>
-          {runs(block.text, {})}
+        <Text style={[md.h, block.level === 1 ? md.h1 : block.level === 2 ? md.h2 : md.h3]}>
+          {runs(block.text, {}, md)}
         </Text>
       );
     case 'li':
       return (
-        <Text style={styles.p}>
-          <Text style={styles.bullet}>•  </Text>
-          {runs(block.text.replace(/^• /, ''), {})}
+        <Text style={md.p}>
+          <Text style={md.bullet}>•  </Text>
+          {runs(block.text.replace(/^• /, ''), {}, md)}
         </Text>
       );
     case 'code':
       return (
-        <View style={styles.codeBox}>
-          <Text style={styles.code}>{block.text}</Text>
+        <View style={md.codeBox}>
+          <Text style={md.code}>{block.text}</Text>
         </View>
       );
     case 'img':
-      return <Text style={styles.imgRef}>🖼 {block.alt || block.src}</Text>;
+      return <Text style={md.imgRef}>🖼 {block.alt || block.src}</Text>;
     case 'p':
-      return <Text style={styles.p}>{runs(block.text, {})}</Text>;
+      return <Text style={md.p}>{runs(block.text, {}, md)}</Text>;
   }
 }
-
-const styles = StyleSheet.create({
-  h: { color: dark.text, fontWeight: '700', letterSpacing: -0.3, marginTop: 14, marginBottom: 6 },
-  h1: { fontSize: 26 },
-  h2: { fontSize: 20 },
-  h3: { fontSize: 16 },
-  p: { color: dark.text, fontSize: 16.5, lineHeight: 26, marginVertical: 3 },
-  bullet: { color: dark.muted },
-  bold: { fontWeight: '700' },
-  mono: { fontFamily: 'monospace', backgroundColor: dark.inset, borderRadius: 4 },
-  link: { color: dark.accent, textDecorationLine: 'underline' },
-  codeBox: { backgroundColor: dark.inset, borderRadius: 10, padding: 12, marginVertical: 8 },
-  code: { color: dark.text, fontFamily: 'monospace', fontSize: 13.5, lineHeight: 20 },
-  imgRef: { color: dark.muted, fontSize: 13, marginVertical: 4 }
-});

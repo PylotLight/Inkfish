@@ -1,9 +1,10 @@
 import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { ui } from '../theme';
+import { useTheme } from '../theme';
 import { useStore } from '../lib/store';
 
 export function InboxScreen({ onOpen }: { onOpen: (inboxId: string) => void }): React.JSX.Element {
+  const { ui } = useTheme();
   const { inbox, projects, routeInbox, undoInbox, refresh } = useStore();
   const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing');
 

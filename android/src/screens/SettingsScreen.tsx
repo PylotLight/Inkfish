@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { ui } from '../theme';
+import { useTheme } from '../theme';
+import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
 import { useStore } from '../lib/store';
 import { stagingUri, vaultRootUri } from '../lib/vault';
 
 export function SettingsScreen(): React.JSX.Element {
+  const { ui } = useTheme();
+  const { prefs, update } = usePrefs();
   const { inbox, notes, projects, refresh, error } = useStore();
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -13,6 +16,47 @@ export function SettingsScreen(): React.JSX.Element {
       <Text style={ui.h1}>Settings</Text>
       <Text style={ui.sub}>Local-only V1 · sync comes later</Text>
       {error && <Text style={ui.err}>{error}</Text>}
+
+      <Text style={ui.section}>Appearance · theme</Text>
+      <View style={ui.segWrap}>
+        {THEMES.map((t) => (
+          <Pressable key={t.id} onPress={() => update({ theme: t.id })} style={[ui.seg, prefs.theme === t.id && ui.segOn]}>
+            <Text style={[ui.segText, prefs.theme === t.id && ui.segTextOn]}>{t.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={ui.section}>Appearance · accent</Text>
+      <View style={ui.segWrap}>
+        {ACCENTS.map((a) => (
+          <Pressable key={a.id} onPress={() => update({ accent: a.id })} style={[ui.seg, prefs.accent === a.id && ui.segOn]}>
+            <Text style={[ui.segText, prefs.accent === a.id && ui.segTextOn]}>{a.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={ui.section}>Appearance · text size</Text>
+      <View style={ui.segWrap}>
+        {TEXT_SIZES.map((s) => (
+          <Pressable key={s.id} onPress={() => update({ textSize: s.id })} style={[ui.seg, prefs.textSize === s.id && ui.segOn]}>
+            <Text style={[ui.segText, prefs.textSize === s.id && ui.segTextOn]}>{s.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={ui.section}>Appearance · toolbar</Text>
+      <View style={ui.segWrap}>
+        {(
+          [
+            { id: true, name: 'Glass' },
+            { id: false, name: 'Solid' }
+          ] as const
+        ).map((o) => (
+          <Pressable key={o.name} onPress={() => update({ blur: o.id })} style={[ui.seg, prefs.blur === o.id && ui.segOn]}>
+            <Text style={[ui.segText, prefs.blur === o.id && ui.segTextOn]}>{o.name}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       <Text style={ui.section}>Vault · on-device</Text>
       <Text style={ui.meta} selectable>{vaultRootUri()}</Text>
