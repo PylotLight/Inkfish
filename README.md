@@ -6,6 +6,10 @@ Bun + Electron + React + Vite + TypeScript.
 > Status: P0 MVP (local only, free) — tray popover → staging inbox →
 > auto-routed top-level notes. See [docs/inkfish-mvp.md](docs/inkfish-mvp.md).
 
+![Inkfish home with fictional notes, folders, and inbox captures](docs/screenshots/home-synthetic-data.png)
+
+*Example workspace and all visible notes are synthetic.*
+
 ## Install
 
 **Homebrew (macOS):**
