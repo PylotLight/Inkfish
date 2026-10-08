@@ -5,6 +5,7 @@
     "": {
       "name": "bun-electron-app",
       "dependencies": {
+        "@noble/ciphers": "^2.4.0",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
       },
@@ -12,7 +13,6 @@
         "@codemirror/lang-markdown": "^6.5.0",
         "@electron-toolkit/utils": "^4.0.0",
         "@karanganesan/vocule": "^1.0.0",
-        "@noble/ciphers": "^2.4.0",
         "@types/bun": "latest",
         "@types/node": "^26.6.3",
         "@types/qrcode": "^1.5.6",
