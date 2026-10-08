@@ -29,6 +29,9 @@ tested TypeScript (`src/shared/sync/`):
   `inkfish/.sync/<macId>/`; the Mac is stateless apart from paired keys.
   Deletes go to trash on both sides (Mac app trash, phone `inkfish/trash/`), kept 7 days.
   Restore from Settings › Trash on either device; the restored file syncs back to the other.
+  Big-deletion guard: if a run would delete ≥10 files and ≥20% of what's synced on one side,
+  the phone asks first — Keep them (copied back from the side that has them), Delete everywhere,
+  or Not now (nothing changes; sync pauses and asks again). In the background it always pauses.
 - Tests: `src/shared/sync/e2e.test.ts` runs pairing + multi-round sync over
   the real handler with two in-memory vaults.
 
