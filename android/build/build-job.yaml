@@ -89,7 +89,7 @@ spec:
               python3 - "$V" "$CODE" <<'PYEOF'
               import json, sys
               v, code = sys.argv[1], int(sys.argv[2])
-              p = 'app.json'
+              p = '/src/android/app.json'
               doc = json.load(open(p))
               doc['expo']['version'] = v
               doc['expo']['android']['versionCode'] = code
