@@ -46,3 +46,6 @@ bench-results.json
 # expo prebuild output (generated native projects)
 android/android/
 android/ios/
+
+# cluster-build APK fetched via `kubectl cp ... ./Inkfish.apk` (see android/build/README.md)
+Inkfish.apk
