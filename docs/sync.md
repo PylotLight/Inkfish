@@ -27,7 +27,8 @@ tested TypeScript (`src/shared/sync/`):
 - **Endpoints**: `GET /v1/hello`, `POST /v1/pair | manifest | get | apply | done`.
 - **State**: the phone keeps the per-Mac base manifest + base note texts in
   `inkfish/.sync/<macId>/`; the Mac is stateless apart from paired keys.
-  Deletes go to trash on both sides (Mac app trash, phone `inkfish/trash/`).
+  Deletes go to trash on both sides (Mac app trash, phone `inkfish/trash/`), kept 7 days.
+  Restore from Settings › Trash on either device; the restored file syncs back to the other.
 - Tests: `src/shared/sync/e2e.test.ts` runs pairing + multi-round sync over
   the real handler with two in-memory vaults.
 

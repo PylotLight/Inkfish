@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme, THEME_SWATCH, ACCENT_SWATCH } from '../theme';
 import { ScreenHead } from '../components/ScreenHead';
@@ -9,6 +9,7 @@ import { useSync } from '../lib/syncing';
 import { PairScanner } from '../components/PairScanner';
 import { when } from '../lib/when';
 import { vaultRootUri } from '../lib/vault';
+import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/trash';
 
 /**
  * Settings — Obsidian-style rows: label left, control right. Theme and accent
@@ -22,6 +23,43 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
   const upd = useUpdates();
   const sync = useSync();
   const [scanning, setScanning] = useState(false);
+  const [trash, setTrash] = useState<TrashItem[]>([]);
+  const [showAllTrash, setShowAllTrash] = useState(false);
+  const [trashBusy, setTrashBusy] = useState(false);
+
+  const loadTrash = useCallback(() => void listTrash().then(setTrash).catch(() => setTrash([])), []);
+  // Reload when sync finishes (it may have trashed something).
+  useEffect(loadTrash, [loadTrash, sync.lastSync]);
+
+  const restore = async (items: TrashItem[]): Promise<void> => {
+    setTrashBusy(true);
+    try {
+      const n = await restoreTrash(items);
+      await refresh(); // the change nudges a sync, so the Mac gets them back too
+      if (items.length > 1) Alert.alert('Restored', `${n} item${n === 1 ? '' : 's'} back where they were.`);
+    } catch (e) {
+      Alert.alert("Couldn't restore", e instanceof Error ? e.message : String(e));
+    } finally {
+      setTrashBusy(false);
+      loadTrash();
+    }
+  };
+
+  const forget = (items: TrashItem[], label: string): void =>
+    Alert.alert(`Delete ${label} forever?`, "This can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          setTrashBusy(true);
+          void deleteTrash(items).finally(() => {
+            setTrashBusy(false);
+            loadTrash();
+          });
+        }
+      }
+    ]);
 
   const seg = <T extends string | boolean>(
     opts: ReadonlyArray<{ id: T; name: string }>,
@@ -149,6 +187,47 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
           Alert.alert('Paired', `Syncing with ${name}.`);
         }}
       />
+
+      <Text style={ui.label}>Trash</Text>
+      <View style={[ui.row, { justifyContent: 'space-between' }]}>
+        <Text style={ui.title}>{trash.length ? `${trash.length} deleted item${trash.length === 1 ? '' : 's'}` : 'Empty'}</Text>
+        {trash.length > 1 ? (
+          <View style={[ui.row, { gap: 14 }]}>
+            <Pressable onPress={() => void restore(trash)} disabled={trashBusy} style={ui.quiet}>
+              <Text style={ui.quietText}>Restore all</Text>
+            </Pressable>
+            <Pressable onPress={() => forget(trash, 'everything in Trash')} disabled={trashBusy} style={ui.quiet}>
+              <Text style={[ui.quietText, { color: c.muted }]}>Empty</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[ui.meta, { marginTop: 0 }]}>
+        Notes removed by sync stay here for 7 days. Restoring puts them back and sends them to your Mac on the next sync.
+      </Text>
+      {(showAllTrash ? trash : trash.slice(0, 12)).map((it) => (
+        <View key={it.id} style={[ui.row, { justifyContent: 'space-between', marginTop: 10, gap: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[ui.title, { fontSize: 15 }]} numberOfLines={1}>
+              {it.name.replace(/\.md$/, '')}
+            </Text>
+            <Text style={[ui.meta, { marginTop: 0 }]} numberOfLines={1} ellipsizeMode="middle">
+              {it.rel.includes('/') ? it.rel.slice(0, it.rel.lastIndexOf('/')) : 'Vault'} · {when(it.deletedAt)}
+            </Text>
+          </View>
+          <Pressable onPress={() => void restore([it])} disabled={trashBusy} hitSlop={6}>
+            <Text style={ui.quietText}>Restore</Text>
+          </Pressable>
+          <Pressable onPress={() => forget([it], it.name)} disabled={trashBusy} hitSlop={6}>
+            <Text style={[ui.quietText, { color: c.muted }]}>Delete</Text>
+          </Pressable>
+        </View>
+      ))}
+      {trash.length > 12 ? (
+        <Pressable onPress={() => setShowAllTrash((v) => !v)} style={[ui.quiet, { marginTop: 8 }]}>
+          <Text style={ui.quietText}>{showAllTrash ? 'Show fewer' : `Show all ${trash.length}`}</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={ui.label}>Updates</Text>
       <View style={[ui.row, { justifyContent: 'space-between' }]}>

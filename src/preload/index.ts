@@ -21,6 +21,7 @@ import type {
   VibrancyName
 } from '../shared/types'
 import type { SyncStatus } from '../main/sync'
+import type { TrashEntry as TrashItem } from '../main/vault'
 
 export interface Versions {
   node: () => string
@@ -136,6 +137,9 @@ const api = {
     trash: (rel: string): Promise<{ id: string; originalRel: string; name: string }> =>
       ipcRenderer.invoke('files:trash', rel),
     purgeTrash: (): Promise<number> => ipcRenderer.invoke('files:purge-trash'),
+    trashList: (): Promise<TrashItem[]> => ipcRenderer.invoke('trash:list'),
+    restoreTrash: (ids: string[] | 'all'): Promise<string[]> => ipcRenderer.invoke('trash:restore', ids),
+    deleteTrash: (ids: string[] | 'all'): Promise<number> => ipcRenderer.invoke('trash:delete', ids),
     reveal: (rel: string): Promise<boolean> => ipcRenderer.invoke('files:reveal', rel)
   },
   notes: {
