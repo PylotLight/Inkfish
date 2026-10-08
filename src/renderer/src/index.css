@@ -2795,8 +2795,8 @@ html[data-motion='reduced'] *::after {
 
 /* Nesting indent + guide rule — indent accumulates per level. */
 .fkids {
-  margin-left: 9px;
-  padding-left: 6px;
+  margin-left: 11px;
+  padding-left: 8px;
   border-left: 1px solid var(--border);
 }
 
@@ -2811,9 +2811,14 @@ html[data-motion='reduced'] *::after {
   border-radius: 9px;
   padding: 7px 8px;
   font-size: 13.5px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   text-align: left;
+}
+
+.frow:hover {
+  color: var(--text);
+  background: var(--panel);
 }
 
 button.frow:hover {
@@ -2868,6 +2873,16 @@ button.frow.on,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Subtle subtree count — marks a row as a folder, not a note. */
+.frow .fcount {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  opacity: 0.8;
 }
 
 .chips.kinds {
@@ -3359,9 +3374,26 @@ html[data-density='compact'] .md p {
   line-height: 1.35;
 }
 
-/* Bare tree rows: single text line, no icon or meta. */
+/* Bare tree rows: single text line, no icon or meta. Subordinate to
+ * folder rows — regular weight + smaller size, and left-aligned with
+ * sibling folder labels (caret width + gaps) so files read as children. */
 .filerow.bare {
-  padding: 6px 10px;
+  padding: 6px 10px 6px 30px;
+}
+
+.filerow.bare .fname {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.filerow.bare:hover .fname {
+  color: var(--text);
+}
+
+.filerow.bare.on .fname {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .filerow.bare .ftext {

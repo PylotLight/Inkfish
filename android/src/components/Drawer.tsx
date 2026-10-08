@@ -5,13 +5,76 @@ import { ChevronDown, ChevronRight, FilePlus, Folder, Plus } from 'lucide-react-
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
 import { useStore } from '../lib/store';
+import type { NoteEntry } from '../lib/format';
+import { folderOf } from '../lib/when';
 
 const WIDTH = Math.min(340, Dimensions.get('window').width * 0.85);
+
+/** File rows sit under a folder header (chevron + folder icon) — indent to
+ *  the folder label so notes read as children, not siblings. */
+const FILE_INDENT = 45;
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onOpenNote: (noteId: string) => void;
+}
+
+interface DirNode {
+  name: string;
+  /** Vault-relative dir, e.g. `personal/cairns-2026`. */
+  rel: string;
+  files: NoteEntry[];
+  children: DirNode[];
+  total: number;
+}
+
+/** Nested dir tree from vault-relative paths — mirrors desktop `buildTree`. */
+function buildTree(notes: NoteEntry[]): { roots: DirNode[]; rootFiles: NoteEntry[] } {
+  interface Mutable {
+    name: string;
+    rel: string;
+    files: NoteEntry[];
+    kids: Map<string, Mutable>;
+  }
+  const top = new Map<string, Mutable>();
+  const rootFiles: NoteEntry[] = [];
+  for (const n of notes) {
+    const parts = n.path.split('/');
+    if (parts.length <= 1) {
+      rootFiles.push(n);
+      continue;
+    }
+    let level = top;
+    let rel = '';
+    let node: Mutable | undefined;
+    for (const d of parts.slice(0, -1)) {
+      rel = rel ? `${rel}/${d}` : d;
+      node = level.get(d);
+      if (!node) {
+        node = { name: d, rel, files: [], kids: new Map() };
+        level.set(d, node);
+      }
+      level = node.kids;
+    }
+    node?.files.push(n);
+  }
+  const freeze = (m: Mutable): DirNode => {
+    const children = [...m.kids.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(freeze);
+    const files = [...m.files].sort((a, b) => a.title.localeCompare(b.title));
+    return {
+      name: m.name,
+      rel: m.rel,
+      files,
+      children,
+      total: m.files.length + children.reduce((a, c) => a + c.total, 0)
+    };
+  };
+  const roots = [...top.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze);
+  rootFiles.sort((a, b) => a.title.localeCompare(b.title));
+  return { roots, rootFiles };
 }
 
 /**
@@ -30,22 +93,27 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
     Animated.timing(x, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start();
   }, [open, x]);
 
-  const groups = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const match = (t: string, s?: string): boolean =>
-      !needle || t.toLowerCase().includes(needle) || (s ?? '').toLowerCase().includes(needle);
-    const list = notes.filter((n) => match(n.title, n.snippet)).slice(0, 400);
-    const byProj = new Map<string, typeof list>();
-    const rest: typeof list = [];
-    for (const n of list) {
-      if (n.projectId && projects.some((p) => p.id === n.projectId)) {
-        const arr = byProj.get(n.projectId) ?? [];
-        arr.push(n);
-        byProj.set(n.projectId, arr);
-      } else rest.push(n);
+  const needle = q.trim().toLowerCase();
+  const searchResults = useMemo(() => {
+    if (!needle) return null;
+    return notes
+      .filter((n) => n.title.toLowerCase().includes(needle) || n.snippet.toLowerCase().includes(needle))
+      .slice(0, 400);
+  }, [notes, needle]);
+
+  const tree = useMemo(() => {
+    const t = buildTree(notes.slice(0, 2000));
+    // Empty top-level projects still get a header so they don't vanish.
+    const have = new Set(t.roots.map((r) => r.rel));
+    for (const p of projects) {
+      if (!have.has(p.dir)) {
+        t.roots.push({ name: p.name, rel: p.dir, files: [], children: [], total: 0 });
+        have.add(p.dir);
+      }
     }
-    return { byProj, rest, total: list.length };
-  }, [notes, projects, q]);
+    t.roots.sort((a, b) => a.name.localeCompare(b.name));
+    return t;
+  }, [notes, projects]);
 
   async function createIn(dir: string): Promise<void> {
     try {
@@ -94,49 +162,96 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           style={[ui.search, { marginBottom: 8, borderWidth: 0, borderRadius: 10, paddingVertical: 9 }]}
         />
         <ScrollView keyboardShouldPersistTaps="handled">
-          {projects.map((p) => {
-            const items = groups.byProj.get(p.id) ?? [];
-            const shut = collapsed[p.id] ?? false;
-            if (items.length === 0 && q.trim()) return null;
-            return (
-              <View key={p.id}>
-                <View style={[ui.row, { justifyContent: 'space-between' }]}>
-                  <Pressable
-                    onPress={() => setCollapsed((m) => ({ ...m, [p.id]: !shut }))}
-                    style={[ui.row, { flex: 1, gap: 6, paddingVertical: 8 }]}
-                  >
-                    <Icon as={shut ? ChevronRight : ChevronDown} size={16} color={c.faint} />
-                    <Icon as={Folder} size={17} />
-                    <Text style={[ui.title, { fontWeight: '500' }]}>{p.name}</Text>
-                    <Text style={[ui.meta, { marginTop: 0 }]}>{items.length}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => void createIn(p.dir)} style={ui.iconBtn} accessibilityLabel={`New note in ${p.name}`}>
-                    <Icon as={Plus} size={16} color={c.faint} />
-                  </Pressable>
-                </View>
-                {!shut &&
-                  items.map((n) => (
-                    <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7, paddingLeft: 45 }}>
-                      <Text style={[ui.title, { fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
-                    </Pressable>
-                  ))}
-              </View>
-            );
-          })}
-          {groups.rest.length > 0 && (
-            <View>
-              <Text style={[ui.label, { marginTop: 14 }]}>Other notes</Text>
-              {groups.rest.map((n) => (
+          {searchResults !== null ? (
+            <>
+              {searchResults.length === 0 && <Text style={ui.meta}>No notes match.</Text>}
+              {searchResults.map((n) => (
+                <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7 }}>
+                  <Text style={[ui.title, { fontSize: 15, fontWeight: '400' }]} numberOfLines={1}>{n.title}</Text>
+                  <Text style={ui.meta} numberOfLines={1}>{folderOf(n.path)}</Text>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <>
+              {tree.roots.map((r) => (
+                <DirView
+                  key={r.rel}
+                  node={r}
+                  collapsed={collapsed}
+                  onToggle={(rel) => setCollapsed((m) => ({ ...m, [rel]: !m[rel] }))}
+                  onOpenNote={onOpenNote}
+                  onCreateIn={createIn}
+                />
+              ))}
+              {tree.rootFiles.map((n) => (
                 <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7 }}>
                   <Text style={[ui.title, { fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
                 </Pressable>
               ))}
-            </View>
+              {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
+                <Text style={ui.meta}>No notes yet.</Text>
+              )}
+            </>
           )}
-          {groups.total === 0 && <Text style={ui.meta}>No notes match.</Text>}
           <View style={{ height: 24 }} />
         </ScrollView>
       </Animated.View>
+    </View>
+  );
+}
+
+function DirView({
+  node,
+  collapsed,
+  onToggle,
+  onOpenNote,
+  onCreateIn
+}: {
+  node: DirNode;
+  collapsed: Record<string, boolean>;
+  onToggle: (rel: string) => void;
+  onOpenNote: (id: string) => void;
+  onCreateIn: (dir: string) => void;
+}): React.JSX.Element {
+  const { ui, c } = useTheme();
+  const shut = collapsed[node.rel] ?? false;
+  return (
+    <View>
+      <View style={[ui.row, { justifyContent: 'space-between' }]}>
+        <Pressable
+          onPress={() => onToggle(node.rel)}
+          style={[ui.row, { flex: 1, gap: 6, paddingVertical: 8 }]}
+          accessibilityLabel={shut ? `Expand ${node.rel}` : `Collapse ${node.rel}`}
+        >
+          <Icon as={shut ? ChevronRight : ChevronDown} size={16} color={c.faint} />
+          <Icon as={Folder} size={17} />
+          <Text style={[ui.title, { fontWeight: '600', fontSize: 15, flex: 1 }]} numberOfLines={1}>{node.name}</Text>
+          <Text style={[ui.meta, { marginTop: 0 }]}>{node.total > 0 ? String(node.total) : ''}</Text>
+        </Pressable>
+        <Pressable onPress={() => void onCreateIn(node.rel)} style={ui.iconBtn} accessibilityLabel={`New note in ${node.name}`}>
+          <Icon as={Plus} size={16} color={c.faint} />
+        </Pressable>
+      </View>
+      {!shut && (
+        <View style={{ marginLeft: 11, paddingLeft: 8, borderLeftWidth: 1, borderLeftColor: c.border }}>
+          {node.children.map((kid) => (
+            <DirView
+              key={kid.rel}
+              node={kid}
+              collapsed={collapsed}
+              onToggle={onToggle}
+              onOpenNote={onOpenNote}
+              onCreateIn={onCreateIn}
+            />
+          ))}
+          {node.files.map((n) => (
+            <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7, paddingLeft: FILE_INDENT }}>
+              <Text style={[ui.title, { fontSize: 14, fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }

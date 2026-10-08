@@ -302,6 +302,7 @@ function Node({
           title={`${node.rel} — toggle / set as target`}
         >
           <span className="fname">{node.name}</span>
+          <span className="fcount" title={`${node.total} notes in subtree`}>{node.total}</span>
         </button>
       </div>
       {open && (
