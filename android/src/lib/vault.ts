@@ -343,6 +343,22 @@ async function walkVault(dir: string, relBase: string, out: string[]): Promise<v
   }
 }
 
+/** Every folder in the vault (rel paths), app-managed ones excluded — so empty folders still show in the sidebar. */
+export async function listDirs(): Promise<string[]> {
+  await ensureTree();
+  const out: string[] = [];
+  const walk = async (dir: string, relBase: string): Promise<void> => {
+    for (const n of await childDirs(dir)) {
+      const rel = relBase ? `${relBase}/${n}` : n;
+      if (!relBase && RESERVED.has(n.toLowerCase())) continue;
+      out.push(rel);
+      await walk(`${dir}${n}/`, rel);
+    }
+  };
+  await walk(VAULT, '');
+  return out;
+}
+
 // --- projects ---
 
 const COLORS = ['#6ea8fe', '#7ee2a8', '#e5a56e', '#c79bfe', '#e5636f', '#6ed3e5'];
@@ -594,6 +610,122 @@ export function searchNotesSync(entries: NoteEntry[], query: string): NoteEntry[
 }
 
 // --- files: create note / trash ---
+
+/** Display name for a sidebar row — the filename, never content. */
+export function fileLabel(vaultRel: string): string {
+  const base = vaultRel.split('/').pop() ?? vaultRel;
+  return base.replace(/\.md$/i, '');
+}
+
+function cleanName(name: string, what: string): string {
+  const t = name.trim().replace(/^\/+|\/+$/g, '');
+  if (!t) throw new Error(`${what} name is empty`);
+  if (t.includes('/') || t.includes('\\')) throw new Error(`${what} name can't contain /`);
+  if (t === '.' || t === '..') throw new Error(`${what} name is reserved`);
+  if (t.startsWith('.')) throw new Error(`${what} name can't start with .`);
+  if (t.includes('..')) throw new Error(`${what} name is outside the vault`);
+  return t;
+}
+
+function ensureMd(name: string): string {
+  return name.toLowerCase().endsWith('.md') ? name : `${name}.md`;
+}
+
+/** Create a subfolder inside `parentRel` ('' = vault root). Returns its rel. */
+export async function createDir(parentRel: string, name: string): Promise<string> {
+  const clean = cleanName(name, 'Folder');
+  const parent = await resolveDirRel(parentRel);
+  if (parent.split('/').includes('..')) throw new Error('folder is outside the vault');
+  const rel = parent ? `${parent}/${clean}` : clean;
+  if (rel.split('/').includes('..')) throw new Error('folder is outside the vault');
+  if (!parent && RESERVED.has(clean.toLowerCase())) throw new Error(`“${clean}” is reserved`);
+  const abs = `${VAULT}${rel}/`;
+  if ((await FileSystem.getInfoAsync(abs)).exists) throw new Error(`“${clean}” already exists`);
+  await mkdir(abs);
+  return rel;
+}
+
+const TRASH_VAULT = `${APP}trash/`;
+
+async function trashMove(abs: string, rel: string): Promise<void> {
+  const info = await FileSystem.getInfoAsync(abs);
+  if (!info.exists) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = `${TRASH_VAULT}${stamp}/${rel}`;
+  await mkdir(dest.slice(0, dest.lastIndexOf('/') + 1));
+  await FileSystem.moveAsync({ from: abs, to: dest });
+}
+
+function assertVaultRel(rel: string): void {
+  if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) throw new Error('path is outside the vault');
+  const top = rel.split('/')[0]?.toLowerCase();
+  if (top === 'inbox' || top === 'daily' || top === 'assets') throw new Error('that folder is managed by the app');
+}
+
+/** Trash a single vault note (recoverable in Settings › Trash). */
+export async function trashNoteFile(rel: string): Promise<void> {
+  assertVaultRel(rel);
+  await trashMove(`${VAULT}${rel}`, rel);
+}
+
+/** Trash a whole vault folder with everything in it (recoverable). */
+export async function trashDir(dirRel: string): Promise<void> {
+  assertVaultRel(dirRel);
+  await trashMove(`${VAULT}${dirRel}`, dirRel);
+}
+
+/** Rename a vault note. `newName` is the bare filename (`Meeting` or `Meeting.md`). Returns the new rel. */
+export async function renameNoteFile(oldRel: string, newName: string): Promise<string> {
+  assertVaultRel(oldRel);
+  const clean = ensureMd(cleanName(newName, 'File'));
+  const slash = oldRel.lastIndexOf('/');
+  const dir = slash >= 0 ? oldRel.slice(0, slash) : '';
+  const next = dir ? `${dir}/${clean}` : clean;
+  if (next === oldRel) return oldRel;
+  if ((await FileSystem.getInfoAsync(`${VAULT}${next}`)).exists) throw new Error(`“${clean}” already exists`);
+  const info = await FileSystem.getInfoAsync(`${VAULT}${oldRel}`);
+  if (!info.exists || info.isDirectory) throw new Error('note not found');
+  await FileSystem.moveAsync({ from: `${VAULT}${oldRel}`, to: `${VAULT}${next}` });
+  return next;
+}
+
+/** Rename a vault folder. Returns the new rel. */
+export async function renameDir(oldRel: string, newName: string): Promise<string> {
+  assertVaultRel(oldRel);
+  const clean = cleanName(newName, 'Folder');
+  const slash = oldRel.lastIndexOf('/');
+  const parent = slash >= 0 ? oldRel.slice(0, slash) : '';
+  const next = parent ? `${parent}/${clean}` : clean;
+  if (!parent && RESERVED.has(clean.toLowerCase())) throw new Error(`“${clean}” is reserved`);
+  if (next === oldRel) return oldRel;
+  if ((await FileSystem.getInfoAsync(`${VAULT}${next}`)).exists) throw new Error(`“${clean}” already exists`);
+  const info = await FileSystem.getInfoAsync(`${VAULT}${oldRel}`);
+  if (!info.exists || !info.isDirectory) throw new Error('folder not found');
+  await FileSystem.moveAsync({ from: `${VAULT}${oldRel}`, to: `${VAULT}${next}` });
+  return next;
+}
+
+/** Create a note with a chosen filename. Returns the note id (for openNote). */
+export async function createNamedNoteFile(dirRel: string, name: string): Promise<string> {
+  await ensureTree();
+  const clean = ensureMd(cleanName(name, 'File'));
+  const resolved = await resolveDirRel(dirRel);
+  if (resolved.split('/').includes('..')) throw new Error('folder is outside the vault');
+  await mkdir(`${VAULT}${resolved ? `${resolved}/` : ''}`);
+  const dot = clean.lastIndexOf('.');
+  const base = dot > 0 ? clean.slice(0, dot) : clean;
+  let file = clean;
+  let i = 1;
+  while ((await FileSystem.getInfoAsync(`${VAULT}${resolved ? `${resolved}/` : ''}${file}`)).exists) {
+    i++;
+    file = `${base} ${i}.md`;
+  }
+  const rel = resolved ? `${resolved}/${file}` : file;
+  const noteId = newId('n');
+  const fm = stringifyFrontmatter({ id: noteId, created: new Date().toISOString(), source: 'android' });
+  await writeText(`${VAULT}${rel}`, `${fm}\n`);
+  return noteId;
+}
 
 export async function createNoteFile(dirRel: string): Promise<string> {
   await ensureTree();

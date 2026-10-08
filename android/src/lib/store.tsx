@@ -9,6 +9,8 @@ interface Store {
   inbox: InboxItem[];
   notes: NoteEntry[];
   projects: Project[];
+  /** All vault folders (rel), including empty ones. */
+  dirs: string[];
   refresh: () => Promise<void>;
   capture: (raw: string, kind: NoteKind, projectHint: string, assets: string[]) => Promise<InboxItem>;
   captureDaily: (raw: string, kind: NoteKind) => Promise<string>;
@@ -16,7 +18,12 @@ interface Store {
   undoInbox: (id: string) => Promise<void>;
   openNote: (id: string) => Promise<NoteDoc | null>;
   saveNote: (id: string, markdown: string) => Promise<NoteDoc | null>;
-  newNote: (dir: string) => Promise<string>;
+  newNote: (dir: string, name?: string) => Promise<string>;
+  createDir: (parentRel: string, name: string) => Promise<string>;
+  deleteFile: (rel: string) => Promise<void>;
+  deleteDir: (rel: string) => Promise<void>;
+  renameFile: (oldRel: string, newName: string) => Promise<string>;
+  renameDir: (oldRel: string, newName: string) => Promise<string>;
   appendDaily: (raw: string, kind: NoteKind) => Promise<string>;
   readDaily: () => Promise<{ rel: string; body: string }>;
 }
@@ -29,15 +36,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [dirs, setDirs] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [p, ib, n] = await Promise.all([
+      const [p, ib, n, d] = await Promise.all([
         vault.ensureSeedProjects(),
         vault.listInbox(),
-        vault.listNotes()
+        vault.listNotes(),
+        vault.listDirs()
       ]);
       setProjects(p);
+      setDirs(d);
       setInbox(ib);
       setNotes(n);
       setError(null);
@@ -127,6 +137,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       inbox,
       notes,
       projects,
+      dirs,
       refresh,
       capture,
       captureDaily,
@@ -138,15 +149,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
         await refresh();
         return d;
       },
-      newNote: async (dir) => {
-        const rel = await vault.createNoteFile(dir);
+      newNote: async (dir, name) => {
+        const id = name?.trim()
+          ? await vault.createNamedNoteFile(dir, name.trim())
+          : await vault.createNoteFile(dir);
+        await refresh();
+        return id;
+      },
+      createDir: async (parentRel, name) => {
+        const rel = await vault.createDir(parentRel, name);
         await refresh();
         return rel;
+      },
+      deleteFile: async (rel) => {
+        await vault.trashNoteFile(rel);
+        await refresh();
+      },
+      deleteDir: async (rel) => {
+        await vault.trashDir(rel);
+        await refresh();
+      },
+      renameFile: async (oldRel, newName) => {
+        const next = await vault.renameNoteFile(oldRel, newName);
+        await refresh();
+        return next;
+      },
+      renameDir: async (oldRel, newName) => {
+        const next = await vault.renameDir(oldRel, newName);
+        await refresh();
+        return next;
       },
       appendDaily: captureDaily,
       readDaily: () => vault.readDaily()
     }),
-    [ready, error, inbox, notes, projects, refresh, capture, captureDaily, routeInbox, undoInbox]
+    [ready, error, inbox, notes, projects, dirs, refresh, capture, captureDaily, routeInbox, undoInbox]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

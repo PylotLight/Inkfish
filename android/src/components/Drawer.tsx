@@ -1,18 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, ChevronRight, FilePlus, Folder, Plus } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
 import { useStore } from '../lib/store';
+import { fileLabel } from '../lib/vault';
 import type { NoteEntry } from '../lib/format';
 import { folderOf } from '../lib/when';
 
 const WIDTH = Math.min(340, Dimensions.get('window').width * 0.85);
-
-/** File rows sit under a folder header (chevron + folder icon) — indent to
- *  the folder label so notes read as children, not siblings. */
-const FILE_INDENT = 45;
 
 interface Props {
   open: boolean;
@@ -29,8 +26,10 @@ interface DirNode {
   total: number;
 }
 
+const fileName = (n: NoteEntry): string => fileLabel(n.path);
+
 /** Nested dir tree from vault-relative paths — mirrors desktop `buildTree`. */
-function buildTree(notes: NoteEntry[]): { roots: DirNode[]; rootFiles: NoteEntry[] } {
+function buildTree(notes: NoteEntry[], dirs: string[] = []): { roots: DirNode[]; rootFiles: NoteEntry[] } {
   interface Mutable {
     name: string;
     rel: string;
@@ -59,50 +58,195 @@ function buildTree(notes: NoteEntry[]): { roots: DirNode[]; rootFiles: NoteEntry
     }
     node?.files.push(n);
   }
+  // Empty folders (no notes anywhere below) still get a row.
+  for (const d of dirs) {
+    let level = top;
+    let rel = '';
+    for (const part of d.split('/')) {
+      rel = rel ? `${rel}/${part}` : part;
+      let node = level.get(part);
+      if (!node) {
+        node = { name: part, rel, files: [], kids: new Map() };
+        level.set(part, node);
+      }
+      level = node.kids;
+    }
+  }
+  const byFile = (a: NoteEntry, b: NoteEntry): number =>
+    fileName(a).toLowerCase().localeCompare(fileName(b).toLowerCase());
   const freeze = (m: Mutable): DirNode => {
     const children = [...m.kids.values()]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(freeze);
-    const files = [...m.files].sort((a, b) => a.title.localeCompare(b.title));
     return {
       name: m.name,
       rel: m.rel,
-      files,
+      files: [...m.files].sort(byFile),
       children,
       total: m.files.length + children.reduce((a, c) => a + c.total, 0)
     };
   };
   const roots = [...top.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze);
-  rootFiles.sort((a, b) => a.title.localeCompare(b.title));
+  rootFiles.sort(byFile);
   return { roots, rootFiles };
 }
+
+type Row =
+  | { kind: 'dir'; rel: string; name: string; depth: number; total: number; shut: boolean }
+  | { kind: 'file'; id: string; rel: string; name: string; depth: number };
+
+/** Flatten only the visible rows — collapsed subtrees cost nothing to toggle. */
+function flatten(roots: DirNode[], rootFiles: NoteEntry[], openDirs: Set<string>): Row[] {
+  const out: Row[] = [];
+  const walk = (node: DirNode, depth: number): void => {
+    const shut = !openDirs.has(node.rel);
+    out.push({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut });
+    if (shut) return;
+    for (const kid of node.children) walk(kid, depth + 1);
+    for (const f of node.files) out.push({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: depth + 1 });
+  };
+  for (const r of roots) walk(r, 0);
+  for (const f of rootFiles) out.push({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: 0 });
+  return out;
+}
+
+const DirRow = memo(function DirRow({
+  row,
+  onToggle,
+  onCreate,
+  onMenu
+}: {
+  row: Extract<Row, { kind: 'dir' }>;
+  onToggle: (rel: string) => void;
+  onCreate: (dir: string) => void;
+  onMenu: (rel: string, name: string) => void;
+}): React.JSX.Element {
+  const { ui, c } = useTheme();
+  return (
+    <View style={[ui.row, { justifyContent: 'space-between', paddingLeft: row.depth * 14 }]}>
+      <Pressable
+        onPress={() => onToggle(row.rel)}
+        onLongPress={() => onMenu(row.rel, row.name)}
+        delayLongPress={450}
+        style={[ui.row, { flex: 1, gap: 6, paddingVertical: 8 }]}
+        accessibilityLabel={row.shut ? `Expand ${row.rel}` : `Collapse ${row.rel}`}
+      >
+        <Icon as={row.shut ? ChevronRight : ChevronDown} size={16} color={c.faint} />
+        <Icon as={Folder} size={17} />
+        <Text style={[ui.title, { fontWeight: '600', fontSize: 15, flex: 1 }]} numberOfLines={1}>
+          {row.name}
+        </Text>
+        {row.total > 0 && <Text style={[ui.meta, { marginTop: 0 }]}>{String(row.total)}</Text>}
+      </Pressable>
+      <Pressable onPress={() => onCreate(row.rel)} style={ui.iconBtn} accessibilityLabel={`New note in ${row.name}`}>
+        <Icon as={Plus} size={16} color={c.faint} />
+      </Pressable>
+    </View>
+  );
+});
+
+const FileRow = memo(function FileRow({
+  row,
+  onOpen,
+  onMenu
+}: {
+  row: Extract<Row, { kind: 'file' }>;
+  onOpen: (id: string) => void;
+  onMenu: (id: string, rel: string, name: string) => void;
+}): React.JSX.Element {
+  const { ui, c } = useTheme();
+  return (
+    <Pressable
+      onPress={() => onOpen(row.id)}
+      onLongPress={() => onMenu(row.id, row.rel, row.name)}
+      delayLongPress={450}
+      style={{ paddingVertical: 7, paddingLeft: row.depth === 0 ? 0 : row.depth * 14 + 34 }}
+    >
+      <Text style={[ui.title, { fontSize: 14, fontWeight: '400', color: c.muted }]} numberOfLines={1}>
+        {row.name}
+      </Text>
+    </Pressable>
+  );
+});
+
+interface SheetAction {
+  label: string;
+  destructive?: boolean;
+  onPress: () => void;
+}
+
+/** Android's Alert caps at 3 buttons, so row menus use this bottom sheet. */
+interface Sheet {
+  title: string;
+  subtitle?: string;
+  actions: SheetAction[];
+}
+
+type NameModal =
+  | { mode: 'folder'; parent: string }
+  | { mode: 'renameFile'; rel: string; current: string }
+  | { mode: 'renameDir'; rel: string; current: string };
 
 /**
  * File sidebar (Obsidian-style left drawer): folder tree + all notes,
  * filter search, per-folder new-note. Slides over content with a scrim.
+ * Rows are virtualized (FlatList) so opening a folder re-renders one row,
+ * not the whole vault. Long-press a row for rename / delete / new folder.
  */
 export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { notes, projects, newNote } = useStore();
+  const { notes, projects, dirs, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
   const [q, setQ] = useState('');
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Folders start collapsed (Obsidian-style) so a big vault opens instantly.
+  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
+  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [modal, setModal] = useState<NameModal | null>(null);
+  const [name, setName] = useState('');
   const x = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(x, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start();
   }, [open, x]);
 
-  const needle = q.trim().toLowerCase();
-  const searchResults = useMemo(() => {
-    if (!needle) return null;
-    return notes
-      .filter((n) => n.title.toLowerCase().includes(needle) || n.snippet.toLowerCase().includes(needle))
-      .slice(0, 400);
-  }, [notes, needle]);
+  const toggle = useCallback((rel: string) => {
+    setOpenDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(rel)) next.delete(rel);
+      else next.add(rel);
+      return next;
+    });
+  }, []);
+
+  /** Reveal a dir after create/rename: expand its ancestors, open it. */
+  const reveal = useCallback((rel: string) => {
+    if (!rel) return;
+    setOpenDirs((prev) => {
+      const next = new Set(prev);
+      const parts = rel.split('/');
+      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'));
+      return next;
+    });
+  }, []);
+
+  /** Drop open state for a removed subtree; on rename, carry it to the new path. */
+  const prune = useCallback((rel: string, nextRel?: string) => {
+    setOpenDirs((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const k of prev) {
+        if (k === rel || k.startsWith(`${rel}/`)) {
+          next.delete(k);
+          if (nextRel) next.add(nextRel + k.slice(rel.length));
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
 
   const tree = useMemo(() => {
-    const t = buildTree(notes.slice(0, 2000));
+    const t = buildTree(notes.slice(0, 2000), dirs);
     // Empty top-level projects still get a header so they don't vanish.
     const have = new Set(t.roots.map((r) => r.rel));
     for (const p of projects) {
@@ -113,16 +257,167 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
     }
     t.roots.sort((a, b) => a.name.localeCompare(b.name));
     return t;
-  }, [notes, projects]);
+  }, [notes, projects, dirs]);
 
-  async function createIn(dir: string): Promise<void> {
-    try {
-      const id = await newNote(dir);
-      if (id) onOpenNote(id);
-    } catch {
-      // store surfaces the error
+  const needle = q.trim().toLowerCase();
+  const data: Row[] = useMemo(() => {
+    if (needle) {
+      return notes
+        .filter(
+          (n) =>
+            fileName(n).toLowerCase().includes(needle) ||
+            n.title.toLowerCase().includes(needle) ||
+            n.snippet.toLowerCase().includes(needle)
+        )
+        .slice(0, 100)
+        .map((n) => ({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }) as Row);
     }
-  }
+    return flatten(tree.roots, tree.rootFiles, openDirs);
+  }, [notes, needle, tree, openDirs]);
+
+  const fail = useCallback((e: unknown) => {
+    Alert.alert('Hmm', e instanceof Error ? e.message : String(e));
+  }, []);
+
+  const createIn = useCallback(
+    async (dir: string): Promise<void> => {
+      try {
+        const id = await newNote(dir);
+        if (id) onOpenNote(id);
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [newNote, onOpenNote, fail]
+  );
+
+  const submitName = useCallback(async (): Promise<void> => {
+    if (!modal) return;
+    const value = name.trim();
+    if (!value) return;
+    try {
+      if (modal.mode === 'folder') {
+        const rel = await createDir(modal.parent, value);
+        reveal(rel);
+      } else if (modal.mode === 'renameFile') {
+        await renameFile(modal.rel, value);
+      } else {
+        const next = await renameDir(modal.rel, value);
+        prune(modal.rel, next);
+        reveal(next);
+      }
+      setModal(null);
+      setName('');
+    } catch (e) {
+      fail(e);
+    }
+  }, [modal, name, createDir, renameFile, renameDir, reveal, prune, fail]);
+
+  const askDeleteFile = useCallback(
+    (rel: string, label: string) => {
+      Alert.alert('Delete note?', `“${label}” moves to Trash — recoverable in Settings.`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            void deleteFile(rel).catch((e: unknown) =>
+              Alert.alert('Hmm', e instanceof Error ? e.message : String(e))
+            )
+        }
+      ]);
+    },
+    [deleteFile]
+  );
+
+  const askDeleteDir = useCallback(
+    (rel: string, label: string, total: number) => {
+      Alert.alert(
+        'Delete folder?',
+        `“${label}”${total > 0 ? ` and its ${total} note${total === 1 ? '' : 's'}` : ''} move${total === 1 ? 's' : ''} to Trash — recoverable in Settings.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () =>
+              void deleteDir(rel)
+                .then(() => prune(rel))
+                .catch((e: unknown) => Alert.alert('Hmm', e instanceof Error ? e.message : String(e)))
+          }
+        ]
+      );
+    },
+    [deleteDir, prune]
+  );
+
+  const dirMenu = useCallback(
+    (rel: string, label: string) => {
+      const node = (function find(rs: DirNode[]): DirNode | null {
+        for (const r of rs) {
+          if (r.rel === rel) return r;
+          const k = find(r.children);
+          if (k) return k;
+        }
+        return null;
+      })(tree.roots);
+      setSheet({
+        title: label,
+        subtitle: rel,
+        actions: [
+          { label: 'New note here', onPress: () => void createIn(rel) },
+          {
+            label: 'New folder here',
+            onPress: () => {
+              setName('');
+              setModal({ mode: 'folder', parent: rel });
+            }
+          },
+          {
+            label: 'Rename folder',
+            onPress: () => {
+              setName(label);
+              setModal({ mode: 'renameDir', rel, current: label });
+            }
+          },
+          { label: 'Delete folder', destructive: true, onPress: () => askDeleteDir(rel, label, node?.total ?? 0) }
+        ]
+      });
+    },
+    [tree, createIn, askDeleteDir]
+  );
+
+  const fileMenu = useCallback(
+    (_id: string, rel: string, label: string) => {
+      setSheet({
+        title: label,
+        subtitle: folderOf(rel) || 'Vault',
+        actions: [
+          {
+            label: 'Rename',
+            onPress: () => {
+              setName(label);
+              setModal({ mode: 'renameFile', rel, current: label });
+            }
+          },
+          { label: 'Delete', destructive: true, onPress: () => askDeleteFile(rel, label) }
+        ]
+      });
+    },
+    [askDeleteFile]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Row }) =>
+      item.kind === 'dir' ? (
+        <DirRow row={item} onToggle={toggle} onCreate={(d) => void createIn(d)} onMenu={dirMenu} />
+      ) : (
+        <FileRow row={item} onOpen={onOpenNote} onMenu={fileMenu} />
+      ),
+    [toggle, createIn, dirMenu, fileMenu, onOpenNote]
+  );
+
+  const keyOf = useCallback((r: Row) => (r.kind === 'dir' ? `d:${r.rel}` : `f:${r.id}`), []);
 
   const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH - 24, 0] });
   const scrimOpacity = x.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] });
@@ -150,9 +445,21 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
       >
         <View style={[ui.row, { justifyContent: 'space-between', marginBottom: 8 }]}>
           <Text style={[ui.title, { fontSize: 18 }]}>Inkfish</Text>
-          <Pressable onPress={() => void createIn('')} style={ui.iconBtn} accessibilityLabel="New note">
-            <Icon as={FilePlus} size={20} />
-          </Pressable>
+          <View style={[ui.row, { gap: 0 }]}>
+            <Pressable
+              onPress={() => {
+                setName('');
+                setModal({ mode: 'folder', parent: '' });
+              }}
+              style={ui.iconBtn}
+              accessibilityLabel="New folder"
+            >
+              <Icon as={FolderPlus} size={20} />
+            </Pressable>
+            <Pressable onPress={() => void createIn('')} style={ui.iconBtn} accessibilityLabel="New note">
+              <Icon as={FilePlus} size={20} />
+            </Pressable>
+          </View>
         </View>
         <TextInput
           value={q}
@@ -161,97 +468,115 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           placeholderTextColor={c.faint}
           style={[ui.search, { marginBottom: 8, borderWidth: 0, borderRadius: 10, paddingVertical: 9 }]}
         />
-        <ScrollView keyboardShouldPersistTaps="handled">
-          {searchResults !== null ? (
-            <>
-              {searchResults.length === 0 && <Text style={ui.meta}>No notes match.</Text>}
-              {searchResults.map((n) => (
-                <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7 }}>
-                  <Text style={[ui.title, { fontSize: 15, fontWeight: '400' }]} numberOfLines={1}>{n.title}</Text>
-                  <Text style={ui.meta} numberOfLines={1}>{folderOf(n.path)}</Text>
-                </Pressable>
-              ))}
-            </>
-          ) : (
-            <>
-              {tree.roots.map((r) => (
-                <DirView
-                  key={r.rel}
-                  node={r}
-                  collapsed={collapsed}
-                  onToggle={(rel) => setCollapsed((m) => ({ ...m, [rel]: !m[rel] }))}
-                  onOpenNote={onOpenNote}
-                  onCreateIn={createIn}
-                />
-              ))}
-              {tree.rootFiles.map((n) => (
-                <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7 }}>
-                  <Text style={[ui.title, { fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
-                </Pressable>
-              ))}
-              {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
-                <Text style={ui.meta}>No notes yet.</Text>
-              )}
-            </>
-          )}
-          <View style={{ height: 24 }} />
-        </ScrollView>
+        <FlatList
+          data={data}
+          keyExtractor={keyOf}
+          renderItem={renderItem}
+          initialNumToRender={40}
+          maxToRenderPerBatch={30}
+          windowSize={7}
+          removeClippedSubviews
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : 'No notes yet.'}</Text>}
+          contentContainerStyle={{ paddingBottom: 24 }}
+        />
+        <Text style={[ui.meta, { marginTop: 4 }]}>Long-press a row for rename · delete · new folder</Text>
       </Animated.View>
-    </View>
-  );
-}
-
-function DirView({
-  node,
-  collapsed,
-  onToggle,
-  onOpenNote,
-  onCreateIn
-}: {
-  node: DirNode;
-  collapsed: Record<string, boolean>;
-  onToggle: (rel: string) => void;
-  onOpenNote: (id: string) => void;
-  onCreateIn: (dir: string) => void;
-}): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const shut = collapsed[node.rel] ?? false;
-  return (
-    <View>
-      <View style={[ui.row, { justifyContent: 'space-between' }]}>
+      <Modal visible={sheet !== null} transparent animationType="fade" onRequestClose={() => setSheet(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={() => setSheet(null)}>
+          <Pressable
+            onPress={() => undefined}
+            style={{
+              backgroundColor: c.barSolid,
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              borderTopWidth: 1,
+              borderColor: c.border,
+              paddingHorizontal: 20,
+              paddingTop: 16,
+              paddingBottom: insets.bottom + 12
+            }}
+          >
+            <Text style={[ui.title, { fontSize: 16 }]} numberOfLines={1}>
+              {sheet?.title}
+            </Text>
+            {!!sheet?.subtitle && (
+              <Text style={[ui.meta, { marginTop: 2, marginBottom: 6 }]} numberOfLines={1}>
+                {sheet.subtitle}
+              </Text>
+            )}
+            {sheet?.actions.map((a) => (
+              <Pressable
+                key={a.label}
+                onPress={() => {
+                  setSheet(null);
+                  a.onPress();
+                }}
+                style={{ paddingVertical: 13 }}
+              >
+                <Text style={[ui.title, { fontSize: 15, fontWeight: '400', color: a.destructive ? c.danger : c.text }]}>
+                  {a.label}
+                </Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={modal !== null} transparent animationType="fade" onRequestClose={() => setModal(null)}>
         <Pressable
-          onPress={() => onToggle(node.rel)}
-          style={[ui.row, { flex: 1, gap: 6, paddingVertical: 8 }]}
-          accessibilityLabel={shut ? `Expand ${node.rel}` : `Collapse ${node.rel}`}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 32 }}
+          onPress={() => setModal(null)}
         >
-          <Icon as={shut ? ChevronRight : ChevronDown} size={16} color={c.faint} />
-          <Icon as={Folder} size={17} />
-          <Text style={[ui.title, { fontWeight: '600', fontSize: 15, flex: 1 }]} numberOfLines={1}>{node.name}</Text>
-          <Text style={[ui.meta, { marginTop: 0 }]}>{node.total > 0 ? String(node.total) : ''}</Text>
-        </Pressable>
-        <Pressable onPress={() => void onCreateIn(node.rel)} style={ui.iconBtn} accessibilityLabel={`New note in ${node.name}`}>
-          <Icon as={Plus} size={16} color={c.faint} />
-        </Pressable>
-      </View>
-      {!shut && (
-        <View style={{ marginLeft: 11, paddingLeft: 8, borderLeftWidth: 1, borderLeftColor: c.border }}>
-          {node.children.map((kid) => (
-            <DirView
-              key={kid.rel}
-              node={kid}
-              collapsed={collapsed}
-              onToggle={onToggle}
-              onOpenNote={onOpenNote}
-              onCreateIn={onCreateIn}
+          <Pressable
+            onPress={() => undefined}
+            style={{
+              width: '100%',
+              backgroundColor: c.barSolid,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: 14,
+              padding: 16
+            }}
+          >
+            <Text style={[ui.title, { fontSize: 16 }]}>
+              {modal?.mode === 'folder'
+                ? 'New folder'
+                : modal?.mode === 'renameFile'
+                  ? 'Rename note'
+                  : 'Rename folder'}
+            </Text>
+            {!!modal && modal.mode !== 'renameFile' && modal.mode !== 'renameDir' && (
+              <Text style={[ui.meta, { marginTop: 2 }]} numberOfLines={1}>
+                {modal.parent || 'Vault'}
+              </Text>
+            )}
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              autoFocus
+              autoCorrect={false}
+              placeholder={modal?.mode === 'folder' ? 'Folder name' : 'Name'}
+              placeholderTextColor={c.faint}
+              onSubmitEditing={() => void submitName()}
+              style={[ui.search, { marginTop: 12, marginBottom: 0 }]}
             />
-          ))}
-          {node.files.map((n) => (
-            <Pressable key={n.id} onPress={() => onOpenNote(n.id)} style={{ paddingVertical: 7, paddingLeft: FILE_INDENT }}>
-              <Text style={[ui.title, { fontSize: 14, fontWeight: '400', color: c.muted }]} numberOfLines={1}>{n.title}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+            <View style={[ui.row, { justifyContent: 'flex-end', gap: 4, marginTop: 8 }]}>
+              <Pressable
+                onPress={() => {
+                  setModal(null);
+                  setName('');
+                }}
+                style={[ui.quiet, { paddingVertical: 10 }]}
+              >
+                <Text style={ui.quietMuted}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={() => void submitName()} style={[ui.quiet, { paddingVertical: 10 }]}>
+                <Text style={ui.quietText}>{modal?.mode === 'folder' ? 'Create' : 'Rename'}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
