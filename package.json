@@ -102,8 +102,10 @@
     "@codemirror/lang-markdown": "^6.5.0",
     "@electron-toolkit/utils": "^4.0.0",
     "@karanganesan/vocule": "^1.0.0",
+    "@noble/ciphers": "^2.4.0",
     "@types/bun": "latest",
     "@types/node": "^26.6.3",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -112,6 +114,7 @@
     "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "parakeet.js": "^1.4.4",
+    "qrcode": "^1.5.4",
     "typescript": "~5.9.2",
     "vite": "^8.3.2"
   },

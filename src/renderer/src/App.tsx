@@ -521,6 +521,9 @@ function Main(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allNotes, restored])
 
+  // A paired phone synced: re-read lists (main already re-indexed the files).
+  useEffect(() => window.api.onVaultChanged(() => refreshAll()), [refreshAll])
+
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
   useEffect(() => {
     const sub = (window as unknown as { api?: { onOpenToday?: (cb: () => void) => () => void } }).api

@@ -20,6 +20,7 @@ import type {
   VaultInfo,
   VibrancyName
 } from '../shared/types'
+import type { SyncStatus } from '../main/sync'
 
 export interface Versions {
   node: () => string
@@ -68,6 +69,24 @@ const api = {
   },
   popover: {
     hide: (): Promise<void> => ipcRenderer.invoke('popover:hide')
+  },
+  sync: {
+    status: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:status'),
+    pair: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:pair'),
+    cancelPair: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:cancel-pair'),
+    unpair: (id: string): Promise<SyncStatus> => ipcRenderer.invoke('sync:unpair', id),
+    rename: (name: string): Promise<SyncStatus> => ipcRenderer.invoke('sync:rename', name),
+    onStatus: (cb: () => void): (() => void) => {
+      const fn = (): void => cb()
+      ipcRenderer.on('sync:status-changed', fn)
+      return () => ipcRenderer.removeListener('sync:status-changed', fn)
+    }
+  },
+  /** Files changed outside the UI (a phone synced). */
+  onVaultChanged: (cb: () => void): (() => void) => {
+    const fn = (): void => cb()
+    ipcRenderer.on('inkfish:vault-changed', fn)
+    return () => ipcRenderer.removeListener('inkfish:vault-changed', fn)
   },
   onOpenToday: (cb: () => void): (() => void) => {
     const fn = (): void => cb()

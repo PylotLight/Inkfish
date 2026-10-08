@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTheme, THEME_SWATCH, ACCENT_SWATCH } from '../theme';
 import { ScreenHead } from '../components/ScreenHead';
 import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
 import { useStore } from '../lib/store';
 import { useUpdates } from '../lib/updates';
+import { useSync } from '../lib/syncing';
+import { PairScanner } from '../components/PairScanner';
 import { when } from '../lib/when';
 import { vaultRootUri } from '../lib/vault';
 
@@ -18,6 +20,8 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
   const { inbox, notes, projects, refresh, error } = useStore();
   const [scanned, setScanned] = useState(false);
   const upd = useUpdates();
+  const sync = useSync();
+  const [scanning, setScanning] = useState(false);
 
   const seg = <T extends string | boolean>(
     opts: ReadonlyArray<{ id: T; name: string }>,
@@ -84,6 +88,68 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.quietText}>{scanned ? 'Re-scanned' : 'Re-scan files'}</Text>
       </Pressable>
 
+      <Text style={ui.label}>Sync</Text>
+      {sync.mac ? (
+        <>
+          <View style={[ui.row, { justifyContent: 'space-between' }]}>
+            <Text style={ui.title}>{sync.mac.name}</Text>
+            <Pressable
+              onPress={() => void sync.syncNow()}
+              disabled={sync.phase === 'finding' || sync.phase === 'syncing'}
+              style={ui.quiet}
+            >
+              <Text style={ui.quietText}>
+                {sync.phase === 'finding' ? 'Looking…' : sync.phase === 'syncing' ? 'Syncing…' : 'Sync now'}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={[ui.meta, { marginTop: 0 }, sync.phase === 'error' && { color: c.danger }]}>
+            {sync.phase === 'offline'
+              ? `${sync.mac.name} isn't on this Wi-Fi${sync.lastSync ? ` · last synced ${when(sync.lastSync)}` : ''}`
+              : sync.phase === 'error'
+                ? `Sync failed: ${sync.error}`
+                : sync.lastSync
+                  ? `Synced ${when(sync.lastSync)}${
+                      sync.lastReport?.conflicts.length ? ` · ${sync.lastReport.conflicts.length} conflict copy saved` : ''
+                    }`
+                  : 'Paired · not synced yet'}
+          </Text>
+          <Pressable
+            onPress={() =>
+              Alert.alert(`Unpair ${sync.mac?.name}?`, 'Notes stay on this phone. Pair again any time.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Unpair', style: 'destructive', onPress: () => void sync.unpair() }
+              ])
+            }
+            style={[ui.quiet, { marginTop: 4 }]}
+          >
+            <Text style={[ui.quietText, { color: c.muted }]}>Unpair</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={[ui.row, { justifyContent: 'space-between' }]}>
+            <Text style={ui.title}>Not paired</Text>
+            <Pressable onPress={() => setScanning(true)} style={ui.quiet}>
+              <Text style={ui.quietText}>Pair with Mac</Text>
+            </Pressable>
+          </View>
+          <Text style={[ui.meta, { marginTop: 0 }]}>
+            Scan the code from Inkfish on your Mac (Settings › Sync). Notes sync directly over your Wi-Fi, encrypted. No
+            account, no server.
+          </Text>
+        </>
+      )}
+      <PairScanner
+        visible={scanning}
+        onClose={() => setScanning(false)}
+        onCode={async (data) => {
+          const name = await sync.pair(data);
+          setScanning(false);
+          Alert.alert('Paired', `Syncing with ${name}.`);
+        }}
+      />
+
       <Text style={ui.label}>Updates</Text>
       <View style={[ui.row, { justifyContent: 'space-between' }]}>
         <Text style={ui.title}>Version {upd.version}</Text>
@@ -115,9 +181,6 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.title}>Check automatically</Text>
         {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.autoUpdate, (v) => update({ autoUpdate: v }))}
       </View>
-
-      <Text style={ui.label}>Sync</Text>
-      <Text style={ui.meta}>Coming next: sync with your Mac over local Wi-Fi.</Text>
 
       <Text style={[ui.meta, { marginTop: 28, color: c.faint }]}>
         On this phone: voice memos are transcribed on Mac, search matches text, and routing uses folder keywords.

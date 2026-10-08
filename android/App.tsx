@@ -8,6 +8,7 @@ import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { StoreProvider, useStore } from './src/lib/store';
 import { PrefsProvider, usePrefs } from './src/lib/prefs';
 import { UpdatesProvider } from './src/lib/updates';
+import { SyncProvider } from './src/lib/syncing';
 import { toPendingShare, type PendingShare } from './src/lib/share';
 import { useTheme } from './src/theme';
 import { CaptureScreen } from './src/screens/CaptureScreen';
@@ -196,9 +197,11 @@ export default function App(): React.JSX.Element {
       <PrefsProvider>
         <ShareIntentProvider options={{ disabled }}>
           <StoreProvider>
-            <UpdatesProvider>
-              <Shell />
-            </UpdatesProvider>
+            <SyncProvider>
+              <UpdatesProvider>
+                <Shell />
+              </UpdatesProvider>
+            </SyncProvider>
           </StoreProvider>
         </ShareIntentProvider>
       </PrefsProvider>

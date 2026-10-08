@@ -9,6 +9,7 @@ import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePop
 import { registerAssetProtocol } from './assets-protocol'
 import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
+import { startSync, stopSync } from './sync'
 
 // Custom protocols must be privileged before the app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -96,6 +97,8 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  // LAN sync listener for paired phones (no-op until a vault exists).
+  startSync()
   registerSysTap()
   registerAssetProtocol()
   createWindow()
@@ -134,5 +137,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopSysTap()
+  stopSync()
   destroyTray()
 })
