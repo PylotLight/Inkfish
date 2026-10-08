@@ -61,6 +61,13 @@ async function mkdir(uri: string): Promise<void> {
 
 export async function ensureTree(): Promise<void> {
   for (const d of [VAULT, INBOX, DAILY, ASSETS, UNDONE]) await mkdir(d);
+  // Heal case-duplicate dirs (Personal vs personal) so this phone converges
+  // with the Mac, which sees only one of them.
+  try {
+    await mergeCaseDuplicates();
+  } catch {
+    // healing is best-effort; lists below still work
+  }
 }
 
 async function writeText(uri: string, text: string): Promise<void> {
@@ -101,6 +108,218 @@ async function childFiles(dir: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+// --- case-duplicate healing ------------------------------------------------------
+// `Personal` vs `personal`: one dir on case-insensitive APFS, two on
+// case-sensitive Android/Linux. Fold is plain lowercase — identical to Mac's
+// `foldName` — so both sides converge on the same survivor.
+
+function foldName(s: string): string {
+  return s.toLowerCase();
+}
+
+function pickSurvivor(names: string[]): string {
+  return names.find((n) => n === foldName(n)) ?? [...names].sort()[0]!;
+}
+
+/** Direct child dir matching `name` case-insensitively (on-disk spelling). */
+async function childDirNamed(dir: string, name: string, includeHidden = false): Promise<string | null> {
+  let names: string[];
+  try {
+    names = await FileSystem.readDirectoryAsync(dir);
+  } catch {
+    return null;
+  }
+  const want = foldName(name);
+  for (const n of names) {
+    if (n === name) return n;
+    if (!includeHidden && n.startsWith('.')) continue;
+    if (foldName(n) !== want) continue;
+    const info = await FileSystem.getInfoAsync(`${dir}${n}`);
+    if (info.exists && info.isDirectory) return n;
+  }
+  return null;
+}
+
+/** Resolve each segment of dirRel to its on-disk spelling (see Mac `resolveDirRel`). */
+export async function resolveDirRel(dirRel: string): Promise<string> {
+  if (!dirRel) return '';
+  const out: string[] = [];
+  let cur = VAULT;
+  for (const seg of dirRel.split('/')) {
+    if (!seg || seg === '.') continue;
+    const hit = await childDirNamed(cur, seg);
+    const use = hit ?? seg;
+    out.push(use);
+    cur = `${cur}${use}/`;
+  }
+  return out.join('/');
+}
+
+async function uniqueName(dir: string, file: string): Promise<string> {
+  const dot = file.lastIndexOf('.');
+  const base = dot > 0 ? file.slice(0, dot) : file;
+  const ext = dot > 0 ? file.slice(dot) : '';
+  let name = file;
+  let i = 1;
+  while ((await FileSystem.getInfoAsync(`${dir}${name}`)).exists) {
+    i++;
+    name = `${base} ${i}${ext}`;
+  }
+  return name;
+}
+
+async function fileTextEq(a: string, b: string): Promise<boolean> {
+  try {
+    return (await readText(a)) === (await readText(b));
+  } catch {
+    return false;
+  }
+}
+
+async function mergeDirInto(srcDir: string, dstDir: string): Promise<number> {
+  let files = 0;
+  let names: string[];
+  try {
+    names = await FileSystem.readDirectoryAsync(srcDir);
+  } catch {
+    return 0;
+  }
+  for (const n of names) {
+    const from = `${srcDir}${n}`;
+    const info = await FileSystem.getInfoAsync(from);
+    if (!info.exists) continue;
+    if (info.isDirectory) {
+      const hit = await childDirNamed(dstDir, n, true);
+      if (hit) {
+        files += await mergeDirInto(`${from}/`, `${dstDir}${hit}/`);
+        await FileSystem.deleteAsync(from, { idempotent: true });
+      } else {
+        await FileSystem.moveAsync({ from, to: `${dstDir}${n}` });
+      }
+      continue;
+    }
+    if (!info.isDirectory && !n.endsWith('.md')) {
+      // Non-note files ride along; bump on any collision so nothing is lost.
+      if (!(await FileSystem.getInfoAsync(`${dstDir}${n}`)).exists) {
+        await FileSystem.moveAsync({ from, to: `${dstDir}${n}` });
+      } else {
+        const bumped = await uniqueName(dstDir, n);
+        await FileSystem.moveAsync({ from, to: `${dstDir}${bumped}` });
+      }
+      continue;
+    }
+    let onto: string | null = null;
+    if ((await FileSystem.getInfoAsync(`${dstDir}${n}`)).exists) onto = n;
+    else {
+      // Case-variant of an existing note?
+      let kids: string[];
+      try {
+        kids = await FileSystem.readDirectoryAsync(dstDir);
+      } catch {
+        kids = [];
+      }
+      for (const k of kids) {
+        if (k === n || foldName(k) !== foldName(n)) continue;
+        const ki = await FileSystem.getInfoAsync(`${dstDir}${k}`);
+        if (ki.exists && !ki.isDirectory) {
+          onto = k;
+          break;
+        }
+      }
+    }
+    if (!onto) {
+      await FileSystem.moveAsync({ from, to: `${dstDir}${n}` });
+      files++;
+    } else if (await fileTextEq(from, `${dstDir}${onto}`)) {
+      await FileSystem.deleteAsync(from, { idempotent: true });
+    } else {
+      const bumped = await uniqueName(dstDir, n);
+      await FileSystem.moveAsync({ from, to: `${dstDir}${bumped}` });
+      files++;
+    }
+  }
+  return files;
+}
+
+export interface CaseMergeReport {
+  dirs: number;
+  files: number;
+}
+
+/** Collapse sibling dirs/notes that differ only by case, recursively.
+ * Same survivor rule as Mac — both sides always agree. Reserved top-level
+ * names are skipped. */
+export async function mergeCaseDuplicates(): Promise<CaseMergeReport> {
+  const report: CaseMergeReport = { dirs: 0, files: 0 };
+  const heal = async (dir: string, top: boolean): Promise<void> => {
+    let names: string[];
+    try {
+      names = await FileSystem.readDirectoryAsync(dir);
+    } catch {
+      return;
+    }
+    const dirGroups = new Map<string, string[]>();
+    const fileGroups = new Map<string, string[]>();
+    for (const n of names) {
+      if (n.startsWith('.')) continue;
+      const info = await FileSystem.getInfoAsync(`${dir}${n}`);
+      if (!info.exists) continue;
+      const key = foldName(n);
+      if (info.isDirectory) {
+        if (top && RESERVED.has(key)) continue;
+        const arr = dirGroups.get(key) ?? [];
+        arr.push(n);
+        dirGroups.set(key, arr);
+      } else if (n.endsWith('.md')) {
+        const arr = fileGroups.get(key) ?? [];
+        arr.push(n);
+        fileGroups.set(key, arr);
+      }
+    }
+    for (const [key, group] of dirGroups) {
+      if (group.length < 2) continue;
+      const survivor = pickSurvivor(group);
+      if (survivor !== key) await FileSystem.moveAsync({ from: `${dir}${survivor}`, to: `${dir}${key}` });
+      for (const loser of group) {
+        if (loser === survivor) continue;
+        report.files += await mergeDirInto(`${dir}${loser}/`, `${dir}${key}/`);
+        await FileSystem.deleteAsync(`${dir}${loser}`, { idempotent: true });
+      }
+      report.dirs++;
+    }
+    for (const [key, group] of fileGroups) {
+      if (group.length < 2) continue;
+      const survivor = pickSurvivor(group);
+      if (survivor !== key) await FileSystem.moveAsync({ from: `${dir}${survivor}`, to: `${dir}${key}` });
+      for (const loser of group) {
+        if (loser === survivor) continue;
+        const from = `${dir}${loser}`;
+        const onto = `${dir}${key}`;
+        if (await fileTextEq(from, onto)) {
+          await FileSystem.deleteAsync(from, { idempotent: true });
+        } else {
+          const bumped = await uniqueName(dir, loser);
+          await FileSystem.moveAsync({ from, to: `${dir}${bumped}` });
+          report.files++;
+        }
+      }
+    }
+    let next: string[];
+    try {
+      next = await FileSystem.readDirectoryAsync(dir);
+    } catch {
+      return;
+    }
+    for (const n of next) {
+      if (n.startsWith('.')) continue;
+      const info = await FileSystem.getInfoAsync(`${dir}${n}`);
+      if (info.exists && info.isDirectory) await heal(`${dir}${n}/`, false);
+    }
+  };
+  await heal(VAULT, true);
+  return report;
 }
 
 /** Recursive vault walk — every non-hidden `.md` (our notes + imported trees). */
@@ -378,15 +597,16 @@ export function searchNotesSync(entries: NoteEntry[], query: string): NoteEntry[
 
 export async function createNoteFile(dirRel: string): Promise<string> {
   await ensureTree();
-  if (dirRel.includes('..')) throw new Error('folder is outside the vault');
-  await mkdir(`${VAULT}${dirRel ? `${dirRel}/` : ''}`);
+  const resolved = await resolveDirRel(dirRel);
+  if (resolved.split('/').includes('..')) throw new Error('folder is outside the vault');
+  await mkdir(`${VAULT}${resolved ? `${resolved}/` : ''}`);
   let name = 'Untitled.md';
   let i = 1;
-  while ((await FileSystem.getInfoAsync(`${VAULT}${dirRel ? `${dirRel}/` : ''}${name}`)).exists) {
+  while ((await FileSystem.getInfoAsync(`${VAULT}${resolved ? `${resolved}/` : ''}${name}`)).exists) {
     i++;
     name = `Untitled ${i}.md`;
   }
-  const rel = dirRel ? `${dirRel}/${name}` : name;
+  const rel = resolved ? `${resolved}/${name}` : name;
   await writeText(`${VAULT}${rel}`, '');
   return rel;
 }

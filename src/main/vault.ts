@@ -185,6 +185,55 @@ function assertInside(root: string, abs: string, what: string): void {
   if (rel === '' || rel.startsWith('..')) throw new Error(`${what} is outside the notes home`)
 }
 
+/** Case-fold for comparing names across filesystems. macOS APFS is usually
+ * case-insensitive while Android/Linux ext4 is case-sensitive, so `Personal`
+ * and `personal` are one dir on Mac but two on Android. The rule below must
+ * stay identical to Android's fold — both sides converge on the same survivor. */
+function foldName(s: string): string {
+  return s.toLowerCase()
+}
+
+/** Resolve each segment of dirRel to its on-disk spelling when a
+ * case-insensitive match exists (e.g. `Personal/x` → `personal/x`).
+ * Segments without a match pass through for the caller to create. */
+export function resolveDirRel(dirRel: string, paths: VaultPaths = vaultPaths()): string {
+  if (!dirRel) return ''
+  const out: string[] = []
+  let cur = paths.root
+  for (const seg of dirRel.split('/')) {
+    if (!seg || seg === '.') continue
+    let use = seg
+    try {
+      const hit = readdirSync(cur, { withFileTypes: true }).find(
+        (e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== seg && foldName(e.name) === foldName(seg)
+      )
+      if (hit) use = hit.name
+    } catch {
+      // unreadable/missing — caller creates it
+    }
+    out.push(use)
+    cur = join(cur, use)
+  }
+  return out.join('/')
+}
+
+/** Find a direct child dir of `dir` matching `name` case-insensitively.
+ * Returns the on-disk spelling, or null. Hidden dirs never match by default. */
+function childDirNamed(dir: string, name: string, includeHidden = false): string | null {
+  let entries: Dirent<string>[]
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  const want = foldName(name)
+  for (const e of entries) {
+    if (!includeHidden && e.name.startsWith('.')) continue
+    if (e.isDirectory() && foldName(e.name) === want) return e.name
+  }
+  return null
+}
+
 function uniqueFile(dir: string, base: string, ext: string): string {
   let name = `${base}${ext}`
   let i = 1
@@ -197,8 +246,9 @@ function uniqueFile(dir: string, base: string, ext: string): string {
 
 /** New `Untitled.md` (numbered) in dirRel ('' = vault root). Returns vaultRel. */
 export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths()): string {
-  const dir = join(paths.root, dirRel)
-  assertInside(paths.root, join(paths.root, `${dirRel}/x`), `folder ${dirRel || '/'}`)
+  const resolved = resolveDirRel(dirRel, paths)
+  const dir = join(paths.root, resolved)
+  assertInside(paths.root, join(paths.root, `${resolved}/x`), `folder ${resolved || '/'}`)
   mkdirSync(dir, { recursive: true })
   const name = uniqueFile(dir, 'Untitled', '.md')
   const abs = join(dir, name)
@@ -206,11 +256,17 @@ export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths())
   return relative(paths.root, abs)
 }
 
-/** New subfolder. Returns vaultRel. */
+/** New subfolder. Returns vaultRel. Never forks a case-variant sibling
+ * (`Personal` when `personal` exists) — it reuses the existing dir. */
 export function createDir(parentRel: string, name: string, paths: VaultPaths = vaultPaths()): string {
   const clean = name.trim().replace(/[/\\]+/g, '-').slice(0, 80)
   if (!clean) throw new Error('folder name is empty')
-  const abs = join(paths.root, parentRel, clean)
+  const parent = resolveDirRel(parentRel, paths)
+  const parentAbs = join(paths.root, parent)
+  assertInside(paths.root, join(parentAbs, 'x'), `folder ${parent || '/'}`)
+  const existing = childDirNamed(parentAbs, clean)
+  if (existing) return relative(paths.root, join(parentAbs, existing))
+  const abs = join(parentAbs, clean)
   assertInside(paths.root, abs, `folder ${clean}`)
   mkdirSync(abs, { recursive: true })
   return relative(paths.root, abs)
@@ -238,15 +294,181 @@ export function movePath(rel: string, destDirRel: string, paths: VaultPaths = va
   const abs = join(paths.root, rel)
   assertInside(paths.root, abs, rel)
   if (!existsSync(abs)) throw new Error(`${rel} not found`)
-  const destDir = join(paths.root, destDirRel)
-  if (destDirRel) assertInside(paths.root, destDir, destDirRel)
+  const resolved = resolveDirRel(destDirRel, paths)
+  const destDir = join(paths.root, resolved)
+  if (resolved) assertInside(paths.root, destDir, resolved)
   if (destDir === abs || destDir.startsWith(`${abs}/`)) throw new Error('cannot move a folder into itself')
   mkdirSync(destDir, { recursive: true })
   const dest = join(destDir, basename(abs))
   if (dest === abs) return rel
-  if (existsSync(dest)) throw new Error(`${basename(abs)} already exists in ${destDirRel || '/'}`)
+  if (existsSync(dest)) throw new Error(`${basename(abs)} already exists in ${resolved || '/'}`)
   renameSync(abs, dest)
   return relative(paths.root, dest)
+}
+
+// --- case-duplicate healing ------------------------------------------------------
+// `Personal` vs `personal`: one dir on case-insensitive APFS, two on
+// case-sensitive Android/Linux — sync then fights itself and each side shows
+// a different tree. Folding is by plain lowercase on both platforms so the
+// merge converges to the same survivor everywhere.
+
+/** Survivor for a case-duplicate group: the already-lowercase member when
+ * there is one, else the code-unit-smallest (deterministic everywhere). */
+function pickSurvivor(names: string[]): string {
+  return (
+    names.find((n) => n === foldName(n)) ??
+    [...names].sort()[0]!
+  )
+}
+
+function sameBytes(a: string, b: string): boolean {
+  try {
+    const [x, y] = [readFileSync(a), readFileSync(b)]
+    return x.length === y.length && x.equals(y)
+  } catch {
+    return false
+  }
+}
+
+/** Move everything from srcDir into dstDir, folding nested case collisions
+ * the same way (identical files dedupe, the rest bump to `name 2.md`).
+ * Dot entries ride along so the loser vanishes completely. */
+function mergeDirInto(srcDir: string, dstDir: string): { files: number } {
+  let files = 0
+  let entries: Dirent<string>[]
+  try {
+    entries = readdirSync(srcDir, { withFileTypes: true })
+  } catch {
+    return { files }
+  }
+  for (const e of entries) {
+    const from = join(srcDir, e.name)
+    if (e.isDirectory()) {
+      const hit = childDirNamed(dstDir, e.name, true)
+      if (hit) {
+        files += mergeDirInto(from, join(dstDir, hit)).files
+        try {
+          rmSync(from, { recursive: true, force: true })
+        } catch {
+          // keep going
+        }
+      } else {
+        renameSync(from, join(dstDir, e.name))
+      }
+      continue
+    }
+    if (!e.isFile()) continue
+    const dest = join(dstDir, e.name)
+    const hit = existsSync(dest)
+      ? e.name
+      : ((): string | null => {
+          // Case-variant of an existing file?
+          let kids: Dirent<string>[]
+          try {
+            kids = readdirSync(dstDir, { withFileTypes: true })
+          } catch {
+            return null
+          }
+          return kids.find((k) => k.isFile() && k.name !== e.name && foldName(k.name) === foldName(e.name))?.name ?? null
+        })()
+    if (!hit) {
+      renameSync(from, dest)
+      files++
+    } else if (sameBytes(from, join(dstDir, hit))) {
+      unlinkSync(from)
+    } else {
+      const dot = e.name.lastIndexOf('.')
+      const base = dot > 0 ? e.name.slice(0, dot) : e.name
+      const ext = dot > 0 ? e.name.slice(dot) : ''
+      renameSync(from, join(dstDir, uniqueFile(dstDir, base, ext)))
+      files++
+    }
+  }
+  return { files }
+}
+
+export interface CaseMergeReport {
+  dirs: number
+  files: number
+}
+
+/** Collapse sibling dirs/files that differ only by case, recursively.
+ * Survivor spelling is the lowercase fold (or the already-lowercase member),
+ * so macOS and Android always agree. Reserved top-level names are skipped.
+ * Returns what moved. */
+export function mergeCaseDuplicates(root: string): CaseMergeReport {
+  const report: CaseMergeReport = { dirs: 0, files: 0 }
+  const heal = (dir: string, top: boolean): void => {
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    const dirGroups = new Map<string, string[]>()
+    const fileGroups = new Map<string, string[]>()
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue
+      const key = foldName(e.name)
+      if (e.isDirectory()) {
+        if (top && RESERVED_DIRS.has(key)) continue
+        const arr = dirGroups.get(key) ?? []
+        arr.push(e.name)
+        dirGroups.set(key, arr)
+      } else if (e.isFile() && e.name.endsWith('.md')) {
+        const arr = fileGroups.get(key) ?? []
+        arr.push(e.name)
+        fileGroups.set(key, arr)
+      }
+    }
+    for (const [key, names] of dirGroups) {
+      if (names.length > 1) {
+        const survivor = pickSurvivor(names)
+        if (survivor !== key) renameSync(join(dir, survivor), join(dir, key))
+        for (const loser of names) {
+          if (loser === survivor) continue
+          report.files += mergeDirInto(join(dir, loser), join(dir, key)).files
+          try {
+            rmSync(join(dir, loser), { recursive: true, force: true })
+          } catch {
+            // keep going
+          }
+        }
+        report.dirs++
+      }
+    }
+    for (const [key, names] of fileGroups) {
+      if (names.length < 2) continue
+      const survivor = pickSurvivor(names)
+      if (survivor !== key) renameSync(join(dir, survivor), join(dir, key))
+      for (const loser of names) {
+        if (loser === survivor) continue
+        const from = join(dir, loser)
+        const onto = join(dir, key)
+        if (sameBytes(from, onto)) {
+          unlinkSync(from)
+        } else {
+          const dot = loser.lastIndexOf('.')
+          const base = dot > 0 ? loser.slice(0, dot) : loser
+          const ext = dot > 0 ? loser.slice(dot) : ''
+          renameSync(from, join(dir, uniqueFile(dir, base, ext)))
+          report.files++
+        }
+      }
+    }
+    // Recurse into the surviving layout.
+    let next: Dirent<string>[]
+    try {
+      next = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of next) {
+      if (e.isDirectory() && !e.name.startsWith('.')) heal(join(dir, e.name), false)
+    }
+  }
+  heal(root, true)
+  return report
 }
 
 // --- app trash (7-day sweep; hook for the future scheduler) -----------------------

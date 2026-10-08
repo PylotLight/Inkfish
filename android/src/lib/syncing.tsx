@@ -175,14 +175,22 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
     if (!id || !mac) return;
     const t = setTimeout(() => void syncNow(), 1500);
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') void syncNow();
-      else if (s === 'background' && timer.current) {
+      if (s === 'active') {
+        void refresh(); // files may have changed out from under us (sync, restore)
+        void syncNow();
+      } else if (s === 'background' && timer.current) {
         clearTimeout(timer.current);
         void syncNow(); // flush pending edits before Android freezes us
       }
     });
+    // While the app sits open, poll the Mac so its edits appear without
+    // forcing the user to background/foreground. Manifest-only when idle.
+    const iv = setInterval(() => {
+      if (AppState.currentState === 'active') void syncNow();
+    }, 90_000);
     return () => {
       clearTimeout(t);
+      clearInterval(iv);
       sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

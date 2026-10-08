@@ -31,7 +31,7 @@ import {
   type SyncFs
 } from '../shared/sync'
 import { indexFile } from './db'
-import { appDataDir, isStagingRel, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
+import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
 
 /**
  * Mac side of LAN sync: an HTTP listener on the local network that only
@@ -272,6 +272,13 @@ const handler = createHandler({
     broadcastStatus()
   },
   changed: (rels) => {
+    // A synced drop can introduce a case-variant dir (Personal vs personal) —
+    // fold it before indexing so both sides converge.
+    try {
+      mergeCaseDuplicates(vaultPaths().root)
+    } catch (err) {
+      console.warn('[sync] case-merge failed', err instanceof Error ? err.message : String(err))
+    }
     for (const rel of new Set(rels)) {
       if (!rel.endsWith('.md')) continue
       try {

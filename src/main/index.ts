@@ -8,7 +8,8 @@ import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
 import { openDb, reindexStaging, reindexVault } from './db'
-import { ensureSeedProjects, ensureVault, setConfigDir, vaultConfigured } from './vault'
+import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
+import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { startSync, stopSync } from './sync'
 
 // Custom protocols must be privileged before the app is ready.
@@ -41,9 +42,14 @@ function initVault(): void {
   try {
     const paths = ensureVault()
     ensureSeedProjects(paths)
+    const merged = mergeCaseDuplicates(paths.root)
+    if (merged.dirs > 0 || merged.files > 0) {
+      console.log(`[inkfish] healed ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`)
+    }
     const kind = openDb(paths.dbPath)
     const n = reindexVault(paths.root) + reindexStaging(paths)
     console.log(`[inkfish] vault ${paths.root} — index ${kind}, ${n} notes`)
+    startVaultWatch([paths.root, paths.inboxDir, paths.dailyDir], rescanVaultFromDisk)
   } catch (err) {
     console.error('[inkfish] vault init failed:', err)
   }
@@ -138,5 +144,6 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopSysTap()
   stopSync()
+  stopVaultWatch()
   destroyTray()
 })

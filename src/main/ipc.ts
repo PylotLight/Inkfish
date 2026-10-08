@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
 import { cancelPairing, renameDevice, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
+import { rescanVaultFromDisk, startVaultWatch } from './watch'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
@@ -46,6 +47,7 @@ import {
   listTrash,
   restoreTrash,
   deleteTrash,
+  mergeCaseDuplicates,
   readInboxItem,
   renamePath,
   requireNotes,
@@ -264,6 +266,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle('vault:reindex', (): { indexed: number; backend: string } => {
     const paths = requireNotes()
+    mergeCaseDuplicates(paths.root)
     const n = reindexVault(paths.root) + reindexStaging(paths)
     return { indexed: n, backend: dbKind() }
   })
@@ -283,10 +286,12 @@ export function registerIpc(): void {
         storeRoot(paths.root)
         closeDb()
         ensureSeedProjects(paths)
+        mergeCaseDuplicates(paths.root)
         const backend = openDb(paths.dbPath)
         const indexed = reindexVault(paths.root) + reindexStaging(paths)
         console.log(`[inkfish] vault home → ${paths.root} (${backend}, ${indexed} notes)`)
         startSync()
+        startVaultWatch([paths.root, paths.inboxDir, paths.dailyDir], rescanVaultFromDisk)
         return { info: info(), backend, indexed }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
