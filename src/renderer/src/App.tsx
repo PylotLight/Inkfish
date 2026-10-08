@@ -948,6 +948,7 @@ function Main(): React.JSX.Element {
         <div className="side-foot">
           <span className="status-sub" title={vaultInfo?.root ?? ''}>
             {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
+            {sys?.appVersion ? ` · v${sys.appVersion}` : ''}
           </span>
           <div className="side-foot-row">
             <button className="settings-btn" onClick={openSettings}>

@@ -208,7 +208,8 @@ export function registerIpc(): void {
       hostname: os.hostname(),
       cpus: os.cpus().length,
       totalMem: os.totalmem(),
-      freeMem: os.freemem()
+      freeMem: os.freemem(),
+      appVersion: app.getVersion()
     }
   })
 
