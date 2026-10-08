@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-10-08
+
+### Added
+
+- **(ui)** Show app version in sidebar footer, like Blobfish (#39) ([b805b6b](https://github.com/PylotLight/Inkfish/commit/b805b6b9b762097ba1a75f29373f2e15bd560de8))
+
+### Documentation
+
+- Add Inkfish README screenshot ([d519c21](https://github.com/PylotLight/Inkfish/commit/d519c2112e85890a7390e559e7bd5ac7cda35447))
+
+### Other
+
+- Clarify folder tree hierarchy; show nested child dirs on Android ([613c8c2](https://github.com/PylotLight/Inkfish/commit/613c8c2e7beeaefad6d21c7e22e93332f8a95cff))
+- Ignore cluster-fetched Inkfish.apk ([19a7ede](https://github.com/PylotLight/Inkfish/commit/19a7ede21f422c278b2bf02a7986d099bd9d84bf))
+- Cluster APK: stamp version/versionCode from root package.json ([8ae0b33](https://github.com/PylotLight/Inkfish/commit/8ae0b33747f5c5e880df90f69266dbe24525a708))
+- Cluster APK: absolute app.json path for version stamping ([cd626f6](https://github.com/PylotLight/Inkfish/commit/cd626f64b386ee1c77db20cd009a352945c655e9))
+- Fetch cluster APK into android/build/output via helper pod ([b776dc5](https://github.com/PylotLight/Inkfish/commit/b776dc5cdc65632e3235c1df6984f003a40d617e))
+- Heal case-duplicate folders; watch vault for out-of-app changes ([7fdbf3e](https://github.com/PylotLight/Inkfish/commit/7fdbf3ec0be9b28b162f4b80fe8497470526dba9))
+- Cluster APK drops straight into android/build/output via hostPath ([fcd295a](https://github.com/PylotLight/Inkfish/commit/fcd295aa1355509168f120f844ae1943629951cc))
+- Sync history log on both apps; harden apply against mid-sync races ([ced8c83](https://github.com/PylotLight/Inkfish/commit/ced8c83a63e7b548d2546192fc5db67d22221f52))
+- Android sidebar: filename titles, faster folders, file/folder CRUD (#37) ([cab314f](https://github.com/PylotLight/Inkfish/commit/cab314f9ba463607ddf7acc2b29aa557b1b6b0db))
+- Local builds always regenerate native project (fresh launcher icon) (#38) ([0527026](https://github.com/PylotLight/Inkfish/commit/052702600b7bd701563767e3af7fd963ed89f12d))
+
 ## [0.2.3] - 2026-10-08
 
 ### Added
@@ -124,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.4]: https://github.com/PylotLight/Inkfish/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/PylotLight/Inkfish/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/PylotLight/Inkfish/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/PylotLight/Inkfish/compare/v0.2.0...v0.2.1
