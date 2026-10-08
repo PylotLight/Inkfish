@@ -2,11 +2,12 @@
   "name": "inkfish-android",
   "version": "0.1.0",
   "private": true,
-  "description": "Inkfish Android client (Expo + TypeScript) — local-only V1, same plain-.md vault format as Mac",
+  "description": "Inkfish Android client (Expo + TypeScript) \u2014 local-only V1, same plain-.md vault format as Mac",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
+    "prebuild": "expo prebuild --platform android --clean",
+    "android": "expo prebuild --platform android --clean && expo run:android",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
