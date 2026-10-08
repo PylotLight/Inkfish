@@ -47,6 +47,42 @@ export interface SyncReport {
   changedLocal: string[]
 }
 
+/** A sync that would delete this many files on one side, and this share of what's synced, asks first. */
+export const GUARD_MIN = 10
+export const GUARD_SHARE = 0.2
+
+export interface BigDelete {
+  /** Files this sync would delete on this device. */
+  local: string[]
+  /** Files it would delete on the other device. */
+  remote: string[]
+  /** Files synced before this run (the share is measured against this). */
+  total: number
+}
+
+/**
+ * What to do with a big deletion: `apply` it, `keep` the files (deleted ones
+ * are copied back from the side that still has them), or `hold` — stop this
+ * run before changing anything, and ask again next time.
+ */
+export type GuardChoice = 'apply' | 'keep' | 'hold'
+
+export class SyncHeld extends Error {
+  constructor(readonly pending: BigDelete) {
+    super(`waiting to confirm deleting ${pending.local.length + pending.remote.length} files`)
+    this.name = 'SyncHeld'
+  }
+}
+
+/** The deletions in a plan, if they're big enough to ask about. */
+export function bigDeletion(ops: Op[], base: Base): BigDelete | null {
+  const total = Object.keys(base).length
+  const local = ops.flatMap((o) => (o.op === 'deleteLocal' ? [o.path] : []))
+  const remote = ops.flatMap((o) => (o.op === 'deleteRemote' ? [o.path] : []))
+  const big = (n: number): boolean => n >= GUARD_MIN && n >= total * GUARD_SHARE
+  return big(local.length) || big(remote.length) ? { local, remote, total } : null
+}
+
 /** Keep each `get`/`apply` request under ~6 MB of content. */
 const BATCH_BYTES = 6 * 1024 * 1024
 
@@ -81,10 +117,28 @@ export async function runSync(opts: {
   /** Shown in conflict-copy names, e.g. "Mac". */
   remoteName: string
   now?: Date
+  /**
+   * Asked before a big deletion (see `bigDeletion`). Without it big
+   * deletions are held: nothing changes and the run throws `SyncHeld`.
+   */
+  confirmDelete?: (d: BigDelete) => Promise<GuardChoice>
 }): Promise<SyncReport> {
   const { fs, remote, state } = opts
   const [local, remoteMan, base] = await Promise.all([fs.list(), remote.manifest(), state.loadBase()])
-  const ops = plan(local, remoteMan, base)
+  let ops = plan(local, remoteMan, base)
+  const big = bigDeletion(ops, base)
+  if (big) {
+    const choice = opts.confirmDelete ? await opts.confirmDelete(big) : 'hold'
+    if (choice === 'hold') throw new SyncHeld(big)
+    if (choice === 'keep') {
+      // Undo the deletion: copy each file back from the side that still has it.
+      ops = ops.map((o): Op => {
+        if (o.op === 'deleteLocal') return { op: 'push', path: o.path, hash: local[o.path]!.hash }
+        if (o.op === 'deleteRemote') return { op: 'pull', path: o.path, hash: remoteMan[o.path]!.hash }
+        return o
+      })
+    }
+  }
   const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [] }
 
   const want = ops.flatMap((o) => (o.op === 'pull' || o.op === 'merge' ? [o.path] : []))

@@ -137,14 +137,16 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
               style={ui.quiet}
             >
               <Text style={ui.quietText}>
-                {sync.phase === 'finding' ? 'Looking…' : sync.phase === 'syncing' ? 'Syncing…' : 'Sync now'}
+                {sync.phase === 'finding' ? 'Looking…' : sync.phase === 'syncing' ? 'Syncing…' : sync.phase === 'held' ? 'Review' : 'Sync now'}
               </Text>
             </Pressable>
           </View>
-          <Text style={[ui.meta, { marginTop: 0 }, sync.phase === 'error' && { color: c.danger }]}>
+          <Text style={[ui.meta, { marginTop: 0 }, (sync.phase === 'error' || sync.phase === 'held') && { color: c.danger }]}>
             {sync.phase === 'offline'
               ? `${sync.mac.name} isn't on this Wi-Fi${sync.lastSync ? ` · last synced ${when(sync.lastSync)}` : ''}`
-              : sync.phase === 'error'
+              : sync.phase === 'held' && sync.held
+                ? `Paused: ${sync.held.local.length + sync.held.remote.length} files would be deleted. Tap Review to choose.`
+                : sync.phase === 'error'
                 ? `Sync failed: ${sync.error}`
                 : sync.lastSync
                   ? `Synced ${when(sync.lastSync)}${

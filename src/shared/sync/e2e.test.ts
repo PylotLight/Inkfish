@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { randomBytes } from 'node:crypto'
 import {
-  createHandler, encodePairUri, decodePairUri, httpRemote, pairWithMac, runSync, sha256, toBase64, utf8Decode, utf8Encode,
+  createHandler, SyncHeld, encodePairUri, decodePairUri, httpRemote, pairWithMac, runSync, sha256, toBase64, utf8Decode, utf8Encode,
   fromBase64, PEER_HEADER, type Fetch, type Manifest, type PeerRecord, type SyncFs, type SyncState, type Base
 } from './index'
 
@@ -120,6 +120,45 @@ describe('pair + sync over the wire', () => {
     await expect(stranger.manifest()).rejects.toThrow()
     const unknown = httpRemote(fetchFn, '192.168.1.20', peer, 'other-phone-123', random)
     await expect(unknown.manifest()).rejects.toThrow(/no longer paired/)
+  })
+
+  test('a big deletion is held, kept, or applied as asked', async () => {
+    const init: Record<string, string> = {}
+    for (let i = 0; i < 20; i++) init[`work/n${i}.md`] = `note ${i}\n`
+    const mac = new MemFs(init)
+    const phone = new MemFs()
+    const state = new MemState()
+    const { fetchFn, showQr } = setup(mac)
+    const peer = await pairWithMac(fetchFn, decodePairUri(showQr())!, { id: 'phone-abcdef12', name: 'Pixel' }, random)
+    const remote = httpRemote(fetchFn, '192.168.1.20', peer, 'phone-abcdef12', random)
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    expect(phone.files.size).toBe(20)
+
+    // Mac loses a whole folder. Without a handler the run holds and changes nothing.
+    for (let i = 0; i < 15; i++) await mac.remove(`work/n${i}.md`)
+    const held = await runSync({ fs: phone, remote, state, remoteName: 'Mac' }).catch((e: unknown) => e)
+    expect(held).toBeInstanceOf(SyncHeld)
+    expect((held as SyncHeld).pending.local.length).toBe(15)
+    expect(phone.files.size).toBe(20)
+
+    // "Keep" copies them back to the Mac.
+    let asked = 0
+    const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac', confirmDelete: async () => (asked++, 'keep') })
+    expect(asked).toBe(1)
+    expect(r.pushed).toBe(15)
+    expect(mac.files.size).toBe(20)
+
+    // A small deletion goes straight through.
+    await mac.remove('work/n0.md')
+    const small = await runSync({ fs: phone, remote, state, remoteName: 'Mac', confirmDelete: async () => 'hold' })
+    expect(small.deleted).toBe(1)
+    expect(phone.files.has('work/n0.md')).toBe(false)
+
+    // "Apply" deletes them on the phone too.
+    for (let i = 1; i < 15; i++) await mac.remove(`work/n${i}.md`)
+    const r2 = await runSync({ fs: phone, remote, state, remoteName: 'Mac', confirmDelete: async () => 'apply' })
+    expect(r2.deleted).toBe(14)
+    expect(phone.files.size).toBe(5)
   })
 
   test('expired / reused pairing code is refused', async () => {
