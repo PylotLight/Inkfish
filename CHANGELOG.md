@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-10-08
+
+### Added
+
+- **(sync)** Ask before applying a big deletion (keep, delete everywhere, or pause) (#36) ([338b716](https://github.com/PylotLight/Inkfish/commit/338b716c6ee34595e4910f9155c7ddb9bf385092))
+
 ## [0.2.2] - 2026-10-08
 
 ### Added
@@ -118,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.3]: https://github.com/PylotLight/Inkfish/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/PylotLight/Inkfish/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/PylotLight/Inkfish/compare/v0.2.0...v0.2.1
 [android-v0.2.1]: https://github.com/PylotLight/Inkfish/compare/android-v0.2.0...android-v0.2.1
