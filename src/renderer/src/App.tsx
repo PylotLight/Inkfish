@@ -683,7 +683,7 @@ function Main(): React.JSX.Element {
       if (guardDirty()) return
       setConfirm({
         title: `Delete ${name}?`,
-        body: 'It moves to the app Trash and is permanently deleted after 7 days. This removes it from your notes folder now.',
+        body: 'It moves to Trash for 7 days. Restore it any time from Settings › Trash.',
         confirm: 'Move to Trash',
         onConfirm: () => {
           window.api.files

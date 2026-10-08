@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { rulesClassify, type InboxItem, type NoteDoc, type NoteEntry, type NoteKind, type Project } from './format';
 import * as vault from './vault';
+import { purgeTrash } from './trash';
 
 interface Store {
   ready: boolean;
@@ -49,6 +50,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
     void vault
       .ensureTree()
       .then(refresh)
+      .then(() => purgeTrash().catch(() => undefined))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setReady(true));
   }, [refresh]);

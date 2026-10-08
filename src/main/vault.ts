@@ -256,7 +256,11 @@ export interface TrashEntry {
   name: string
   isDir: boolean
   deletedAt: number
+  /** Which root originalRel is relative to. Missing on old entries = vault. */
+  scope?: TrashScope
 }
+
+export type TrashScope = 'vault' | 'inbox' | 'daily'
 
 const TRASH_RETENTION_MS = 7 * 24 * 3600 * 1000
 
@@ -283,7 +287,7 @@ function writeManifest(dir: string, entries: TrashEntry[]): void {
 }
 
 /** Move a file/dir to app trash (recoverable until the sweep). Returns entry. */
-export function trashPath(rel: string, paths: VaultPaths = vaultPaths()): TrashEntry {
+export function trashPath(rel: string, paths: VaultPaths = vaultPaths(), scope: TrashScope = 'vault'): TrashEntry {
   const dir = trashDir()
   if (!dir) throw new Error('app data dir unavailable')
   const abs = join(paths.root, rel)
@@ -304,10 +308,100 @@ export function trashPath(rel: string, paths: VaultPaths = vaultPaths()): TrashE
     originalRel: rel,
     name: basename(abs),
     isDir: st.isDirectory(),
-    deletedAt: Date.now()
+    deletedAt: Date.now(),
+    scope
   }
   writeManifest(dir, [...trashManifest(dir), entry])
   return entry
+}
+
+/** Trash entries still on disk, newest first. */
+export function listTrash(): TrashEntry[] {
+  const dir = trashDir()
+  if (!dir || !existsSync(dir)) return []
+  return trashManifest(dir)
+    .filter((e) => existsSync(join(dir, e.id)))
+    .map((e) => ({ ...e, scope: entryScope(e) }))
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+}
+
+/** Old entries have no scope; staging files that sync trashed are bare `in-…` / `YYYY-MM-DD` names. */
+function entryScope(e: TrashEntry): TrashScope {
+  if (e.scope) return e.scope
+  if (/^in-\d{4}-\d{2}-\d{2}-[0-9a-f]+\.md$/.test(e.originalRel)) return 'inbox'
+  if (/^\d{4}-\d{2}-\d{2}\.md$/.test(e.originalRel)) return 'daily'
+  return 'vault'
+}
+
+function scopeRoot(e: TrashEntry, paths: VaultPaths): string {
+  const scope = entryScope(e)
+  if (scope === 'inbox') return paths.inboxDir
+  if (scope === 'daily') return paths.dailyDir
+  return paths.root
+}
+
+/** "a/b.md" taken → "a/b (restored).md", then "(restored 2)"… */
+function freeName(abs: string): string {
+  if (!existsSync(abs)) return abs
+  const ext = extname(abs)
+  const stem = ext ? abs.slice(0, -ext.length) : abs
+  for (let i = 1; ; i++) {
+    const next = `${stem} (restored${i > 1 ? ` ${i}` : ''})${ext}`
+    if (!existsSync(next)) return next
+  }
+}
+
+/**
+ * Put trash entries back where they were (recreating folders). A path that's
+ * been taken since gets a "(restored)" name instead of overwriting. Returns
+ * the restored paths, relative to their root.
+ */
+export function restoreTrash(ids: string[] | 'all', paths: VaultPaths = vaultPaths()): string[] {
+  const dir = trashDir()
+  if (!dir || !existsSync(dir)) return []
+  const want = ids === 'all' ? null : new Set(ids)
+  const keep: TrashEntry[] = []
+  const done: string[] = []
+  for (const e of trashManifest(dir)) {
+    const src = join(dir, e.id)
+    if (want && !want.has(e.id)) {
+      keep.push(e)
+      continue
+    }
+    if (!existsSync(src)) continue
+    const root = scopeRoot(e, paths)
+    const dest = freeName(join(root, e.originalRel))
+    assertInside(root, dest, e.originalRel)
+    mkdirSync(dirname(dest), { recursive: true })
+    try {
+      renameSync(src, dest)
+    } catch {
+      cpSync(src, dest, { recursive: true })
+      rmSync(src, { recursive: true, force: true })
+    }
+    done.push(relative(root, dest))
+  }
+  writeManifest(dir, keep)
+  return done
+}
+
+/** Permanently delete trash entries now. */
+export function deleteTrash(ids: string[] | 'all'): number {
+  const dir = trashDir()
+  if (!dir || !existsSync(dir)) return 0
+  const want = ids === 'all' ? null : new Set(ids)
+  const keep: TrashEntry[] = []
+  let n = 0
+  for (const e of trashManifest(dir)) {
+    if (want && !want.has(e.id)) {
+      keep.push(e)
+      continue
+    }
+    rmSync(join(dir, e.id), { recursive: true, force: true })
+    n++
+  }
+  writeManifest(dir, keep)
+  return n
 }
 
 /** Permanently delete trash entries older than 7d. Returns purged count. */

@@ -43,6 +43,9 @@ import {
   writeMeetingNote,
   parseVtt,
   purgeTrash,
+  listTrash,
+  restoreTrash,
+  deleteTrash,
   readInboxItem,
   renamePath,
   requireNotes,
@@ -489,6 +492,16 @@ export function registerIpc(): void {
     return entry
   })
   ipcMain.handle('files:purge-trash', (): number => purgeTrash())
+  ipcMain.handle('trash:list', () => listTrash())
+  ipcMain.handle('trash:restore', (_e: IpcMainInvokeEvent, ids: string[] | 'all'): string[] => {
+    const paths = requireNotes()
+    const done = restoreTrash(ids, paths)
+    reindexVault(paths.root)
+    reindexStaging(paths)
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('inkfish:vault-changed')
+    return done
+  })
+  ipcMain.handle('trash:delete', (_e: IpcMainInvokeEvent, ids: string[] | 'all'): number => deleteTrash(ids))
   ipcMain.handle('files:reveal', (_e: IpcMainInvokeEvent, rel: string): boolean => {
     const abs = join(requireNotes().root, rel)
     if (!existsSync(abs)) return false

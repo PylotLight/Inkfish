@@ -215,8 +215,9 @@ const macFs: SyncFs = {
     const paths = vaultPaths()
     // Recoverable: same app trash as deleting in the UI.
     if (isStagingRel(rel)) {
-      const root = rel.startsWith('inbox/') ? paths.inboxDir : paths.dailyDir
-      trashPath(relative(root, abs), { ...paths, root })
+      const scope = rel.startsWith('inbox/') ? 'inbox' : 'daily'
+      const root = scope === 'inbox' ? paths.inboxDir : paths.dailyDir
+      trashPath(relative(root, abs), { ...paths, root }, scope)
     } else trashPath(rel, paths)
   },
   async move(from, to) {

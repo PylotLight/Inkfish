@@ -24,13 +24,13 @@ import { syncRoots } from './vault';
 
 const R = syncRoots();
 const SYNC_DIR = `${R.app}.sync/`;
-const TRASH = `${R.app}trash/`;
+export const TRASH = `${R.app}trash/`;
 const B64 = { encoding: FileSystem.EncodingType.Base64 };
 const UTF8 = { encoding: FileSystem.EncodingType.UTF8 };
 
 export const random = (n: number): Uint8Array => getRandomBytes(n);
 
-function uriFor(rel: string): string {
+export function uriFor(rel: string): string {
   if (!safeRel(rel) || ignored(rel)) throw new Error(`refused path ${rel}`);
   if (rel.startsWith('inbox/')) return `${R.inbox}${rel.slice(6)}`;
   if (rel.startsWith('daily/')) return `${R.daily}${rel.slice(6)}`;
