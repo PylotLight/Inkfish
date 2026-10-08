@@ -343,6 +343,22 @@ async function walkVault(dir: string, relBase: string, out: string[]): Promise<v
   }
 }
 
+/** Every folder in the vault (rel paths), app-managed ones excluded — so empty folders still show in the sidebar. */
+export async function listDirs(): Promise<string[]> {
+  await ensureTree();
+  const out: string[] = [];
+  const walk = async (dir: string, relBase: string): Promise<void> => {
+    for (const n of await childDirs(dir)) {
+      const rel = relBase ? `${relBase}/${n}` : n;
+      if (!relBase && RESERVED.has(n.toLowerCase())) continue;
+      out.push(rel);
+      await walk(`${dir}${n}/`, rel);
+    }
+  };
+  await walk(VAULT, '');
+  return out;
+}
+
 // --- projects ---
 
 const COLORS = ['#6ea8fe', '#7ee2a8', '#e5a56e', '#c79bfe', '#e5636f', '#6ed3e5'];

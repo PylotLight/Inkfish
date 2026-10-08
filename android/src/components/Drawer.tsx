@@ -29,7 +29,7 @@ interface DirNode {
 const fileName = (n: NoteEntry): string => fileLabel(n.path);
 
 /** Nested dir tree from vault-relative paths — mirrors desktop `buildTree`. */
-function buildTree(notes: NoteEntry[]): { roots: DirNode[]; rootFiles: NoteEntry[] } {
+function buildTree(notes: NoteEntry[], dirs: string[] = []): { roots: DirNode[]; rootFiles: NoteEntry[] } {
   interface Mutable {
     name: string;
     rel: string;
@@ -58,6 +58,20 @@ function buildTree(notes: NoteEntry[]): { roots: DirNode[]; rootFiles: NoteEntry
     }
     node?.files.push(n);
   }
+  // Empty folders (no notes anywhere below) still get a row.
+  for (const d of dirs) {
+    let level = top;
+    let rel = '';
+    for (const part of d.split('/')) {
+      rel = rel ? `${rel}/${part}` : part;
+      let node = level.get(part);
+      if (!node) {
+        node = { name: part, rel, files: [], kids: new Map() };
+        level.set(part, node);
+      }
+      level = node.kids;
+    }
+  }
   const byFile = (a: NoteEntry, b: NoteEntry): number =>
     fileName(a).toLowerCase().localeCompare(fileName(b).toLowerCase());
   const freeze = (m: Mutable): DirNode => {
@@ -82,10 +96,10 @@ type Row =
   | { kind: 'file'; id: string; rel: string; name: string; depth: number };
 
 /** Flatten only the visible rows — collapsed subtrees cost nothing to toggle. */
-function flatten(roots: DirNode[], rootFiles: NoteEntry[], collapsed: Set<string>): Row[] {
+function flatten(roots: DirNode[], rootFiles: NoteEntry[], openDirs: Set<string>): Row[] {
   const out: Row[] = [];
   const walk = (node: DirNode, depth: number): void => {
-    const shut = collapsed.has(node.rel);
+    const shut = !openDirs.has(node.rel);
     out.push({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut });
     if (shut) return;
     for (const kid of node.children) walk(kid, depth + 1);
@@ -155,6 +169,19 @@ const FileRow = memo(function FileRow({
   );
 });
 
+interface SheetAction {
+  label: string;
+  destructive?: boolean;
+  onPress: () => void;
+}
+
+/** Android's Alert caps at 3 buttons, so row menus use this bottom sheet. */
+interface Sheet {
+  title: string;
+  subtitle?: string;
+  actions: SheetAction[];
+}
+
 type NameModal =
   | { mode: 'folder'; parent: string }
   | { mode: 'renameFile'; rel: string; current: string }
@@ -169,9 +196,11 @@ type NameModal =
 export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { notes, projects, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
+  const { notes, projects, dirs, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
   const [q, setQ] = useState('');
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Folders start collapsed (Obsidian-style) so a big vault opens instantly.
+  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
+  const [sheet, setSheet] = useState<Sheet | null>(null);
   const [modal, setModal] = useState<NameModal | null>(null);
   const [name, setName] = useState('');
   const x = useRef(new Animated.Value(0)).current;
@@ -181,7 +210,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
   }, [open, x]);
 
   const toggle = useCallback((rel: string) => {
-    setCollapsed((prev) => {
+    setOpenDirs((prev) => {
       const next = new Set(prev);
       if (next.has(rel)) next.delete(rel);
       else next.add(rel);
@@ -192,30 +221,24 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
   /** Reveal a dir after create/rename: expand its ancestors, open it. */
   const reveal = useCallback((rel: string) => {
     if (!rel) return;
-    setCollapsed((prev) => {
+    setOpenDirs((prev) => {
       const next = new Set(prev);
       const parts = rel.split('/');
-      for (let i = 1; i < parts.length; i++) next.delete(parts.slice(0, i).join('/'));
-      next.delete(rel);
+      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'));
       return next;
     });
   }, []);
 
-  /** Drop collapse state for a removed/renamed subtree. */
+  /** Drop open state for a removed subtree; on rename, carry it to the new path. */
   const prune = useCallback((rel: string, nextRel?: string) => {
-    setCollapsed((prev) => {
+    setOpenDirs((prev) => {
       let changed = false;
       const next = new Set(prev);
       for (const k of prev) {
         if (k === rel || k.startsWith(`${rel}/`)) {
           next.delete(k);
+          if (nextRel) next.add(nextRel + k.slice(rel.length));
           changed = true;
-        }
-      }
-      if (nextRel) {
-        const parts = nextRel.split('/');
-        for (let i = 1; i < parts.length; i++) {
-          if (next.delete(parts.slice(0, i).join('/'))) changed = true;
         }
       }
       return changed ? next : prev;
@@ -223,7 +246,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
   }, []);
 
   const tree = useMemo(() => {
-    const t = buildTree(notes.slice(0, 2000));
+    const t = buildTree(notes.slice(0, 2000), dirs);
     // Empty top-level projects still get a header so they don't vanish.
     const have = new Set(t.roots.map((r) => r.rel));
     for (const p of projects) {
@@ -234,7 +257,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
     }
     t.roots.sort((a, b) => a.name.localeCompare(b.name));
     return t;
-  }, [notes, projects]);
+  }, [notes, projects, dirs]);
 
   const needle = q.trim().toLowerCase();
   const data: Row[] = useMemo(() => {
@@ -249,8 +272,8 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
         .slice(0, 100)
         .map((n) => ({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }) as Row);
     }
-    return flatten(tree.roots, tree.rootFiles, collapsed);
-  }, [notes, needle, tree, collapsed]);
+    return flatten(tree.roots, tree.rootFiles, openDirs);
+  }, [notes, needle, tree, openDirs]);
 
   const fail = useCallback((e: unknown) => {
     Alert.alert('Hmm', e instanceof Error ? e.message : String(e));
@@ -338,42 +361,48 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
         }
         return null;
       })(tree.roots);
-      Alert.alert(label, rel, [
-        { text: 'New note here', onPress: () => void createIn(rel) },
-        {
-          text: 'New folder here',
-          onPress: () => {
-            setName('');
-            setModal({ mode: 'folder', parent: rel });
-          }
-        },
-        {
-          text: 'Rename folder',
-          onPress: () => {
-            setName(label);
-            setModal({ mode: 'renameDir', rel, current: label });
-          }
-        },
-        { text: 'Delete folder', style: 'destructive', onPress: () => askDeleteDir(rel, label, node?.total ?? 0) },
-        { text: 'Cancel', style: 'cancel' }
-      ]);
+      setSheet({
+        title: label,
+        subtitle: rel,
+        actions: [
+          { label: 'New note here', onPress: () => void createIn(rel) },
+          {
+            label: 'New folder here',
+            onPress: () => {
+              setName('');
+              setModal({ mode: 'folder', parent: rel });
+            }
+          },
+          {
+            label: 'Rename folder',
+            onPress: () => {
+              setName(label);
+              setModal({ mode: 'renameDir', rel, current: label });
+            }
+          },
+          { label: 'Delete folder', destructive: true, onPress: () => askDeleteDir(rel, label, node?.total ?? 0) }
+        ]
+      });
     },
     [tree, createIn, askDeleteDir]
   );
 
   const fileMenu = useCallback(
     (_id: string, rel: string, label: string) => {
-      Alert.alert(label, folderOf(rel), [
-        {
-          text: 'Rename',
-          onPress: () => {
-            setName(label);
-            setModal({ mode: 'renameFile', rel, current: label });
-          }
-        },
-        { text: 'Delete', style: 'destructive', onPress: () => askDeleteFile(rel, label) },
-        { text: 'Cancel', style: 'cancel' }
-      ]);
+      setSheet({
+        title: label,
+        subtitle: folderOf(rel) || 'Vault',
+        actions: [
+          {
+            label: 'Rename',
+            onPress: () => {
+              setName(label);
+              setModal({ mode: 'renameFile', rel, current: label });
+            }
+          },
+          { label: 'Delete', destructive: true, onPress: () => askDeleteFile(rel, label) }
+        ]
+      });
     },
     [askDeleteFile]
   );
@@ -453,6 +482,46 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
         />
         <Text style={[ui.meta, { marginTop: 4 }]}>Long-press a row for rename · delete · new folder</Text>
       </Animated.View>
+      <Modal visible={sheet !== null} transparent animationType="fade" onRequestClose={() => setSheet(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={() => setSheet(null)}>
+          <Pressable
+            onPress={() => undefined}
+            style={{
+              backgroundColor: c.barSolid,
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              borderTopWidth: 1,
+              borderColor: c.border,
+              paddingHorizontal: 20,
+              paddingTop: 16,
+              paddingBottom: insets.bottom + 12
+            }}
+          >
+            <Text style={[ui.title, { fontSize: 16 }]} numberOfLines={1}>
+              {sheet?.title}
+            </Text>
+            {!!sheet?.subtitle && (
+              <Text style={[ui.meta, { marginTop: 2, marginBottom: 6 }]} numberOfLines={1}>
+                {sheet.subtitle}
+              </Text>
+            )}
+            {sheet?.actions.map((a) => (
+              <Pressable
+                key={a.label}
+                onPress={() => {
+                  setSheet(null);
+                  a.onPress();
+                }}
+                style={{ paddingVertical: 13 }}
+              >
+                <Text style={[ui.title, { fontSize: 15, fontWeight: '400', color: a.destructive ? c.danger : c.text }]}>
+                  {a.label}
+                </Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal visible={modal !== null} transparent animationType="fade" onRequestClose={() => setModal(null)}>
         <Pressable
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 32 }}

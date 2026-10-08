@@ -9,6 +9,8 @@ interface Store {
   inbox: InboxItem[];
   notes: NoteEntry[];
   projects: Project[];
+  /** All vault folders (rel), including empty ones. */
+  dirs: string[];
   refresh: () => Promise<void>;
   capture: (raw: string, kind: NoteKind, projectHint: string, assets: string[]) => Promise<InboxItem>;
   captureDaily: (raw: string, kind: NoteKind) => Promise<string>;
@@ -34,15 +36,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [dirs, setDirs] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [p, ib, n] = await Promise.all([
+      const [p, ib, n, d] = await Promise.all([
         vault.ensureSeedProjects(),
         vault.listInbox(),
-        vault.listNotes()
+        vault.listNotes(),
+        vault.listDirs()
       ]);
       setProjects(p);
+      setDirs(d);
       setInbox(ib);
       setNotes(n);
       setError(null);
@@ -132,6 +137,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       inbox,
       notes,
       projects,
+      dirs,
       refresh,
       capture,
       captureDaily,
@@ -176,7 +182,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       appendDaily: captureDaily,
       readDaily: () => vault.readDaily()
     }),
-    [ready, error, inbox, notes, projects, refresh, capture, captureDaily, routeInbox, undoInbox]
+    [ready, error, inbox, notes, projects, dirs, refresh, capture, captureDaily, routeInbox, undoInbox]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
