@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [android-v0.3.0] - 2026-10-08
+## [0.2.1] - 2026-10-08
+
+### Fixed
+
+- **(main)** Don't bundle @noble/ciphers so electron-vite's ESM __dirname shim lands at top level (#34) ([4d3ae34](https://github.com/PylotLight/Inkfish/commit/4d3ae34693bafc5b454c51ca6e6e27bcbf5b31f4))
+
+## [android-v0.2.1] - 2026-10-08
 
 ### Added
 
@@ -106,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
-[android-v0.3.0]: https://github.com/PylotLight/Inkfish/compare/android-v0.2.0...android-v0.3.0
+[0.2.1]: https://github.com/PylotLight/Inkfish/compare/v0.2.0...v0.2.1
+[android-v0.2.1]: https://github.com/PylotLight/Inkfish/compare/android-v0.2.0...android-v0.2.1
 [android-v0.2.0]: https://github.com/PylotLight/Inkfish/compare/v0.1.0...android-v0.2.0
 [0.1.0]: https://github.com/PylotLight/Inkfish/releases/tag/v0.1.0
 
