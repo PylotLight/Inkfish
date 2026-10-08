@@ -20,6 +20,7 @@ import {
   DEFAULT_PORT,
   encodePairUri,
   ignored,
+  appendCapped,
   PAIR_TTL_MS,
   PEER_HEADER,
   safeRel,
@@ -28,7 +29,8 @@ import {
   type Manifest,
   type PeerRecord,
   type PendingPair,
-  type SyncFs
+  type SyncFs,
+  type SyncLogEntry
 } from '../shared/sync'
 import { indexFile } from './db'
 import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
@@ -129,6 +131,47 @@ function broadcastStatus(): void {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('sync:status-changed')
 }
 
+// --- sync history log (Settings › Sync › Recent) --------------------------------
+// One entry per phone-driven apply plus local heal/error notes, capped.
+// Best-effort: logging never breaks sync.
+
+function syncLogPath(): string | null {
+  const data = appDataDir()
+  return data ? join(data, 'sync-log.json') : null
+}
+
+export function appendSyncLog(e: SyncLogEntry): void {
+  try {
+    const p = syncLogPath()
+    if (!p) return
+    let log: SyncLogEntry[] = []
+    try {
+      const raw = JSON.parse(readFileSync(p, 'utf8')) as unknown
+      if (Array.isArray(raw)) log = raw as SyncLogEntry[]
+    } catch {
+      // fresh log
+    }
+    writeFileSync(p, JSON.stringify(appendCapped(log, e)))
+  } catch {
+    // never break sync for logging
+  }
+}
+
+export function readSyncLog(): SyncLogEntry[] {
+  try {
+    const p = syncLogPath()
+    if (!p) return []
+    const raw = JSON.parse(readFileSync(p, 'utf8')) as unknown
+    return Array.isArray(raw) ? (raw as SyncLogEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+function peerName(id: string): string {
+  return load().peers.find((p) => p.id === id)?.name ?? id.slice(0, 8)
+}
+
 // --- files ------------------------------------------------------------------
 
 const hashCache = new Map<string, { size: number; mtime: number; hash: string }>()
@@ -159,6 +202,13 @@ function absFor(rel: string): string {
 const macFs: SyncFs = {
   async list(): Promise<Manifest> {
     const paths = vaultPaths()
+    // Heal here, not just at boot: the phone may hold the old spelling
+    // while this Mac still has both. Whoever manifests first converges.
+    try {
+      mergeCaseDuplicates(paths.root)
+    } catch (err) {
+      console.warn('[sync] case-merge failed', err instanceof Error ? err.message : String(err))
+    }
     const m: Manifest = {}
     const walk = (dir: string): void => {
       let entries: Dirent<string>[]
@@ -204,10 +254,19 @@ const macFs: SyncFs = {
   },
   async write(rel, data) {
     const abs = absFor(rel)
-    mkdirSync(dirname(abs), { recursive: true })
-    const tmp = join(dirname(abs), `.${randomBytes(4).toString('hex')}.inkfish-sync`)
-    writeFileSync(tmp, data)
-    renameSync(tmp, abs)
+    const attempt = (): void => {
+      mkdirSync(dirname(abs), { recursive: true })
+      const tmp = join(dirname(abs), `.${randomBytes(4).toString('hex')}.inkfish-sync`)
+      writeFileSync(tmp, data)
+      renameSync(tmp, abs)
+    }
+    try {
+      attempt()
+    } catch {
+      // The parent can vanish mid-op (a heal or a parallel apply won the
+      // race) — recreate it and retry once before giving up.
+      attempt()
+    }
   },
   async remove(rel) {
     const abs = absFor(rel)
@@ -271,11 +330,12 @@ const handler = createHandler({
     save()
     broadcastStatus()
   },
-  changed: (rels) => {
+  changed: (rels, peerId) => {
     // A synced drop can introduce a case-variant dir (Personal vs personal) —
     // fold it before indexing so both sides converge.
+    let merged = { dirs: 0, files: 0 }
     try {
-      mergeCaseDuplicates(vaultPaths().root)
+      merged = mergeCaseDuplicates(vaultPaths().root)
     } catch (err) {
       console.warn('[sync] case-merge failed', err instanceof Error ? err.message : String(err))
     }
@@ -287,7 +347,27 @@ const handler = createHandler({
         console.warn('[sync] reindex failed', rel, err)
       }
     }
+    const name = peerId ? peerName(peerId) : 'phone'
+    if (merged.dirs > 0 || merged.files > 0) {
+      appendSyncLog({
+        at: Date.now(),
+        peer: '',
+        kind: 'heal',
+        message: `merged ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`
+      })
+    }
+    appendSyncLog({
+      at: Date.now(),
+      peer: name,
+      kind: 'apply',
+      message: `${rels.length} file change(s) from ${name}`
+    })
     broadcastChanged()
+    broadcastStatus()
+  },
+  note: (msg) => {
+    appendSyncLog({ at: Date.now(), peer: '', kind: 'error', message: msg })
+    broadcastStatus()
   }
 })
 

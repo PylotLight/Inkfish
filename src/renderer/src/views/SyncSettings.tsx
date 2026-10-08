@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SyncStatus } from '../../../main/sync'
+import { summarize, type SyncLogEntry } from '../../../shared/sync'
 
 function ago(ts: number | null): string {
   if (!ts) return 'never synced'
@@ -8,6 +9,14 @@ function ago(ts: number | null): string {
   if (s < 3600) return `synced ${Math.round(s / 60)} min ago`
   if (s < 86400) return `synced ${Math.round(s / 3600)} h ago`
   return `synced ${new Date(ts).toLocaleDateString()}`
+}
+
+function when(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.round(s / 60)}m ago`
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`
+  return new Date(ts).toLocaleDateString()
 }
 
 /**
@@ -19,6 +28,7 @@ export default function SyncSettings(): React.JSX.Element {
   const [st, setSt] = useState<SyncStatus | null>(null)
   const [, tick] = useState(0)
   const [name, setName] = useState('')
+  const [log, setLog] = useState<SyncLogEntry[]>([])
 
   const load = useCallback(() => {
     window.api.sync
@@ -28,6 +38,7 @@ export default function SyncSettings(): React.JSX.Element {
         setName((n) => n || s.deviceName)
       })
       .catch(console.error)
+    window.api.sync.log().then(setLog).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -134,6 +145,31 @@ export default function SyncSettings(): React.JSX.Element {
           ))
         ) : (
           <p className="muted small setting-hint">No phones yet.</p>
+        )}
+      </section>
+
+      <section className="settings-group">
+        <h4>Recent syncs</h4>
+        {log.length ? (
+          [...log].reverse().slice(0, 10).map((e, i) => (
+            <div key={`${e.at}-${i}`} className="setting-row inline">
+              <div className="setting-label">
+                {e.peer || 'This Mac'}
+                <span className="muted small setting-hint">
+                  {summarize(e)} · {when(e.at)}
+                </span>
+              </div>
+              <span
+                className="muted small"
+                style={e.kind === 'error' ? { color: 'var(--danger)' } : undefined}
+                aria-live="polite"
+              >
+                {e.kind === 'error' ? '● Failed' : e.kind === 'hold' ? '● Held' : e.kind === 'heal' ? '◆ Healed' : '● Ok'}
+              </span>
+            </div>
+          ))
+        ) : (
+          <p className="muted small setting-hint">No syncs yet — pair a phone above.</p>
         )}
       </section>
     </>

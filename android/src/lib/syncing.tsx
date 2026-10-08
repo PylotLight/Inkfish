@@ -15,6 +15,8 @@ import {
   type SyncReport
 } from './sync';
 import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } from './syncfs';
+import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog';
+import { shortError } from './sync';
 
 export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error';
 
@@ -26,6 +28,8 @@ interface SyncCtx {
   error: string | null;
   /** A big deletion waiting on the user (phase 'held'). */
   held: BigDelete | null;
+  /** Newest-last session history (Settings › Sync › Recent). */
+  log: SyncLogEntry[];
   /** Pair from a scanned QR string. Resolves with the Mac's name. */
   pair: (qr: string) => Promise<string>;
   unpair: () => Promise<void>;
@@ -84,6 +88,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const [error, setError] = useState<string | null>(null);
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
   const [held, setHeld] = useState<BigDelete | null>(null);
+  const [log, setLog] = useState<SyncLogEntry[]>([]);
   const running = useRef(false);
   const again = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,6 +101,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       setMac(v.mac);
       setPhase(v.mac ? 'idle' : 'unpaired');
     });
+    void readSyncLog().then(setLog).catch(() => undefined);
   }, []);
 
   const persistMac = useCallback(
@@ -116,6 +122,11 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
     }
     running.current = true;
     setError(null);
+    const t0 = Date.now();
+    const done = async (e: SyncLogEntry): Promise<void> => {
+      await appendSyncLog(e);
+      readSyncLog().then(setLog).catch(() => undefined);
+    };
     try {
       do {
         again.current = false;
@@ -139,16 +150,36 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         setLastReport(report);
         await persistMac({ ...peer, lastHost: host, lastSync: Date.now() });
         if (report.changedLocal.length) await refresh();
+        await done({
+          at: Date.now(),
+          peer: peer.name,
+          kind: 'sync',
+          pulled: report.pulled,
+          pushed: report.pushed,
+          merged: report.merged,
+          conflicts: report.conflicts,
+          deleted: report.deleted,
+          moved: report.moved,
+          ms: Date.now() - t0
+        });
         setPhase('idle');
       } while (again.current);
     } catch (e) {
       if (e instanceof SyncHeld) {
         setHeld(e.pending);
         setPhase('held');
+        await done({
+          at: Date.now(),
+          peer: peer.name,
+          kind: 'hold',
+          message: `${e.pending.local.length + e.pending.remote.length} files would be deleted — waiting for choice`
+        });
         return;
       }
-      setError(e instanceof Error ? e.message : String(e));
+      const message = shortError(e);
+      setError(message);
       setPhase('error');
+      await done({ at: Date.now(), peer: peer.name, kind: 'error', message });
     } finally {
       running.current = false;
     }
@@ -219,8 +250,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [id]);
 
   const value = useMemo(
-    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, held, pair, unpair, syncNow, nudge }),
-    [phase, mac, lastReport, error, held, pair, unpair, syncNow, nudge]
+    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, held, log, pair, unpair, syncNow, nudge }),
+    [phase, mac, lastReport, error, held, log, pair, unpair, syncNow, nudge]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

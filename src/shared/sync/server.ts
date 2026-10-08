@@ -51,7 +51,9 @@ export interface ServerHost {
   addPeer(p: PeerRecord): void
   touchPeer(id: string, at: number): void
   /** Files changed by an apply (re-index, refresh UI). */
-  changed(paths: string[]): void
+  changed(paths: string[], peerId?: string): void
+  /** Optional sink for apply problems (sync log). Never throws. */
+  note?: (msg: string) => void
   now?: () => number
 }
 
@@ -137,21 +139,47 @@ export function createHandler(host: ServerHost): (method: string, path: string, 
         const r = req as ApplyReq
         const all = [...(r.moves ?? []).flatMap((m) => [m.from, m.to]), ...(r.writes ?? []).map((w) => w.path), ...(r.deletes ?? [])]
         if (all.some((p) => !safeRel(p) || ignored(p))) return fail(400, 'bad path')
+        // Per-op errors must not abort the rest — apply what's possible and
+        // report the failures so the client logs them and retries next run.
         const changed: string[] = []
+        const errors: string[] = []
+        const failOne = (what: string, err: unknown): void => {
+          errors.push(`${what}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300))
+        }
         for (const m of r.moves ?? []) {
-          await host.fs.move(m.from, m.to)
-          changed.push(m.from, m.to)
+          try {
+            await host.fs.move(m.from, m.to)
+            changed.push(m.from, m.to)
+          } catch (err) {
+            failOne(`${m.from} → ${m.to}`, err)
+          }
         }
         for (const w of r.writes ?? []) {
-          await host.fs.write(w.path, fromBase64(w.data))
-          changed.push(w.path)
+          try {
+            await host.fs.write(w.path, fromBase64(w.data))
+            changed.push(w.path)
+          } catch (err) {
+            failOne(w.path, err)
+          }
         }
         for (const d of r.deletes ?? []) {
-          await host.fs.remove(d)
-          changed.push(d)
+          try {
+            await host.fs.remove(d)
+            changed.push(d)
+          } catch (err) {
+            failOne(d, err)
+          }
         }
         host.touchPeer(peerId, now())
-        if (changed.length) host.changed(changed)
+        if (changed.length) host.changed(changed, peerId)
+        if (errors.length) {
+          try {
+            host.note?.(`apply from ${peerId}: ${errors.length} failed — ${errors[0]}`)
+          } catch {
+            // logging never breaks sync
+          }
+          return fail(500, `apply: ${errors.length} op(s) failed — ${errors[0]}`)
+        }
         return ok(key, path, peerId, { manifest: await host.fs.list() } satisfies ApplyRes)
       }
       case '/v1/done': {

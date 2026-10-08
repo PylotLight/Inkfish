@@ -10,7 +10,7 @@ import { registerAssetProtocol } from './assets-protocol'
 import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
-import { startSync, stopSync } from './sync'
+import { startSync, stopSync, appendSyncLog } from './sync'
 
 // Custom protocols must be privileged before the app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -45,6 +45,12 @@ function initVault(): void {
     const merged = mergeCaseDuplicates(paths.root)
     if (merged.dirs > 0 || merged.files > 0) {
       console.log(`[inkfish] healed ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`)
+      appendSyncLog({
+        at: Date.now(),
+        peer: '',
+        kind: 'heal',
+        message: `merged ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`
+      })
     }
     const kind = openDb(paths.dbPath)
     const n = reindexVault(paths.root) + reindexStaging(paths)

@@ -21,6 +21,7 @@ import type {
   VibrancyName
 } from '../shared/types'
 import type { SyncStatus } from '../main/sync'
+import type { SyncLogEntry } from '../shared/sync'
 import type { TrashEntry as TrashItem } from '../main/vault'
 
 export interface Versions {
@@ -77,6 +78,7 @@ const api = {
     cancelPair: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:cancel-pair'),
     unpair: (id: string): Promise<SyncStatus> => ipcRenderer.invoke('sync:unpair', id),
     rename: (name: string): Promise<SyncStatus> => ipcRenderer.invoke('sync:rename', name),
+    log: (): Promise<SyncLogEntry[]> => ipcRenderer.invoke('sync:log'),
     onStatus: (cb: () => void): (() => void) => {
       const fn = (): void => cb()
       ipcRenderer.on('sync:status-changed', fn)

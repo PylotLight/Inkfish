@@ -14,7 +14,7 @@ import {
   type SyncFs,
   type SyncState
 } from './sync';
-import { syncRoots } from './vault';
+import { syncRoots, mergeCaseDuplicates } from './vault';
 
 /**
  * Android file system + state for the shared sync engine. Paths use the
@@ -67,6 +67,13 @@ const CACHE_URI = `${SYNC_DIR}hashes.json`;
 
 export const androidFs: SyncFs = {
   async list(): Promise<Manifest> {
+    // Heal before manifesting (same rule as the Mac): a case-duplicate must
+    // never be advertised, or the two sides recreate each other's losers.
+    try {
+      await mergeCaseDuplicates();
+    } catch {
+      // best-effort; the walk below still works
+    }
     const cache = await readJson<HashCache>(CACHE_URI, {});
     const next: HashCache = {};
     const m: Manifest = {};
@@ -123,11 +130,23 @@ export const androidFs: SyncFs = {
   },
   async write(rel, data) {
     const uri = uriFor(rel);
-    await mkdirp(parentOf(uri));
-    const tmp = `${parentOf(uri)}.${toHex(random(4))}.inkfish-sync`;
-    await FileSystem.writeAsStringAsync(tmp, toBase64(data), B64);
-    await FileSystem.deleteAsync(uri, { idempotent: true });
-    await FileSystem.moveAsync({ from: tmp, to: uri });
+    const parent = parentOf(uri);
+    const payload = toBase64(data);
+    const attempt = async (): Promise<void> => {
+      await mkdirp(parent);
+      const tmp = `${parent}.${toHex(random(4))}.inkfish-sync`;
+      await FileSystem.writeAsStringAsync(tmp, payload, B64);
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+      await FileSystem.moveAsync({ from: tmp, to: uri });
+    };
+    try {
+      await attempt();
+    } catch (e) {
+      // The parent can vanish mid-op (a heal or another sync won the race) —
+      // recreate it and retry once before giving up.
+      await mkdirp(parent);
+      await attempt();
+    }
   },
   async remove(rel) {
     const uri = uriFor(rel);

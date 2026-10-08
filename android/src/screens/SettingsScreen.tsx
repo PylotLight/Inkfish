@@ -8,6 +8,7 @@ import { useUpdates } from '../lib/updates';
 import { useSync } from '../lib/syncing';
 import { PairScanner } from '../components/PairScanner';
 import { when } from '../lib/when';
+import { summarize } from '../lib/sync';
 import { vaultRootUri } from '../lib/vault';
 import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/trash';
 
@@ -165,6 +166,22 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
           >
             <Text style={[ui.quietText, { color: c.muted }]}>Unpair</Text>
           </Pressable>
+          {sync.log.length > 0 && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={[ui.meta, { marginBottom: 2 }]}>Recent syncs</Text>
+              {[...sync.log].reverse().slice(0, 8).map((e, i) => (
+                <View key={`${e.at}-${i}`} style={[ui.row, { justifyContent: 'space-between', paddingVertical: 5 }]}>
+                  <Text
+                    style={[ui.meta, { marginTop: 0, flex: 1, color: e.kind === 'error' ? c.danger : c.muted }]}
+                    numberOfLines={e.kind === 'error' ? 3 : 1}
+                  >
+                    {summarize(e)}
+                  </Text>
+                  <Text style={[ui.meta, { marginTop: 0, marginLeft: 8 }]}>{when(e.at)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </>
       ) : (
         <>

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
-import { cancelPairing, renameDevice, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
+import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
+import type { SyncLogEntry } from '../shared/sync'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -195,6 +196,7 @@ export function registerIpc(): void {
   ipcMain.handle('sync:cancel-pair', (): SyncStatus => cancelPairing())
   ipcMain.handle('sync:unpair', (_e: IpcMainInvokeEvent, id: string): SyncStatus => unpair(id))
   ipcMain.handle('sync:rename', (_e: IpcMainInvokeEvent, name: string): SyncStatus => renameDevice(name))
+  ipcMain.handle('sync:log', (): SyncLogEntry[] => readSyncLog())
 
   ipcMain.handle('ping', () => 'pong')
 
