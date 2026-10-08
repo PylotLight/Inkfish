@@ -47,10 +47,14 @@ slow (~10–20 min), later ones reuse the cache.
 ## What the job does
 
 1. `git clone --branch $BRANCH --depth 1` (default `main`)
-2. `npm ci` (cached on PVC)
-3. `npx expo prebuild --platform android --clean` (generates `android/android/`, gitignored)
-4. `build/inject-signing.sh` — release `signingConfigs` from the Secret env
-5. `./gradlew :app:assembleRelease` + `apksigner verify`
+2. Stamp `expo.version` + `android.versionCode` from the root `package.json`
+   version (same `MAJOR·10000+MINOR·100+PATCH` rule as the GitHub release
+   workflow; override with a `VERSION=X.Y.Z` env) — so cluster builds
+   install as upgrades, and the in-app updater sees the right version
+3. `npm ci` (cached on PVC)
+4. `npx expo prebuild --platform android --clean` (generates `android/android/`, gitignored)
+5. `build/inject-signing.sh` — release `signingConfigs` from the Secret env
+6. `./gradlew :app:assembleRelease` + `apksigner verify` + `aapt2 dump badging` (logs the stamped versionCode)
 
 ## GitHub releases + in-app updates
 

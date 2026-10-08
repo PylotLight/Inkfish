@@ -77,6 +77,26 @@ spec:
               export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
               git clone --branch "${BRANCH:-main}" --depth 1 \
                 https://github.com/PylotLight/Inkfish.git /src
+              # Stamp expo version + android versionCode from the repo release
+              # version (root package.json) — same MAJOR·10000+MINOR·100+PATCH
+              # rule as .github/workflows/android-release.yml, so cluster builds
+              # install as upgrades over GitHub builds instead of downgrades.
+              # Override with VERSION=X.Y.Z for one-off test builds.
+              V="${VERSION:-$(python3 -c "import json;print(json.load(open('/src/package.json'))['version'])")}"
+              [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version '$V'"; exit 1; }
+              IFS=. read -r MA MI PA <<< "$V"
+              CODE=$((10#$MA * 10000 + 10#$MI * 100 + 10#$PA))
+              python3 - "$V" "$CODE" <<'PYEOF'
+              import json, sys
+              v, code = sys.argv[1], int(sys.argv[2])
+              p = 'app.json'
+              doc = json.load(open(p))
+              doc['expo']['version'] = v
+              doc['expo']['android']['versionCode'] = code
+              json.dump(doc, open(p, 'w'), indent=2)
+              open(p, 'a').write('\n')
+              PYEOF
+              echo "Inkfish Android $V (versionCode $CODE)"
               cd /src/android
               npm ci --cache /cache/npm --no-audit --no-fund
               chmod +x build/inject-signing.sh
@@ -91,5 +111,6 @@ spec:
               cp app/build/outputs/apk/release/app-release.apk "$APK"
               BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
               "$BT"apksigner verify --print-certs "$APK" | head -8
+              "$BT"aapt2 dump badging "$APK" | grep -o "package: name='[^']*' versionCode='[^']*' versionName='[^']*'"
               ls -la "$APK"
               echo "BUILD OK: $APK"
