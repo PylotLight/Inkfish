@@ -59,15 +59,25 @@ async function mkdir(uri: string): Promise<void> {
   if (!info.exists) await FileSystem.makeDirectoryAsync(uri, { intermediates: true });
 }
 
-export async function ensureTree(): Promise<void> {
-  for (const d of [VAULT, INBOX, DAILY, ASSETS, UNDONE]) await mkdir(d);
-  // Heal case-duplicate dirs (Personal vs personal) so this phone converges
-  // with the Mac, which sees only one of them.
-  try {
-    await mergeCaseDuplicates();
-  } catch {
-    // healing is best-effort; lists below still work
-  }
+let ensureTreeTask: Promise<void> | null = null;
+
+export function ensureTree(): Promise<void> {
+  if (ensureTreeTask) return ensureTreeTask;
+  const task = (async () => {
+    for (const d of [VAULT, INBOX, DAILY, ASSETS, UNDONE]) await mkdir(d);
+    // Heal case-duplicate dirs (Personal vs personal) so this phone converges
+    // with the Mac. Concurrent callers share this one filesystem pass.
+    try {
+      await mergeCaseDuplicates();
+    } catch {
+      // healing is best-effort; lists below still work
+    }
+  })();
+  ensureTreeTask = task;
+  task.finally(() => {
+    if (ensureTreeTask === task) ensureTreeTask = null;
+  }).catch(() => undefined);
+  return task;
 }
 
 async function writeText(uri: string, text: string): Promise<void> {
@@ -322,60 +332,153 @@ export async function mergeCaseDuplicates(): Promise<CaseMergeReport> {
   return report;
 }
 
+interface ScannedFile {
+  rel: string;
+  uri: string;
+  size: number;
+  mtime: number;
+}
+
+interface VaultScan {
+  files: ScannedFile[];
+  dirs: string[];
+}
+
+type ScannedChild = { kind: 'dir'; uri: string; rel: string } | { kind: 'file'; file: ScannedFile };
+
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/** One bounded-concurrency inventory pass for notes and visible folders. */
+async function scanVault(root = VAULT, relBase = ''): Promise<VaultScan> {
+  const files: ScannedFile[] = [];
+  const dirs: string[] = [];
+  let pending = [{ uri: root, rel: relBase }];
+
+  while (pending.length) {
+    const parents = pending.splice(0, 6);
+    const groups = await mapLimit(parents, 6, async (parent): Promise<ScannedChild[]> => {
+      let names: string[];
+      try {
+        names = await FileSystem.readDirectoryAsync(parent.uri);
+      } catch {
+        return [];
+      }
+      const visible = names.filter((name) => !name.startsWith('.'));
+      const children = await mapLimit(visible, 8, async (name): Promise<ScannedChild | null> => {
+        const uri = `${parent.uri}${name}`;
+        const rel = parent.rel ? `${parent.rel}/${name}` : name;
+        const top = rel.split('/')[0] ?? '';
+        if (top === 'inbox' || top === 'daily') return null;
+        try {
+          const info = await FileSystem.getInfoAsync(uri);
+          if (!info.exists) return null;
+          if (info.isDirectory) return { kind: 'dir', uri: `${uri}/`, rel };
+          if (!name.endsWith('.md')) return null;
+          return {
+            kind: 'file',
+            file: {
+              rel,
+              uri,
+              size: info.size ?? 0,
+              mtime: info.modificationTime ? info.modificationTime * 1000 : Date.now()
+            }
+          };
+        } catch {
+          return null;
+        }
+      });
+      return children.filter((child): child is ScannedChild => child !== null);
+    });
+
+    pending = [];
+    for (const group of groups) {
+      for (const child of group) {
+        if (child.kind === 'file') {
+          files.push(child.file);
+          continue;
+        }
+        const top = child.rel.split('/')[0] ?? '';
+        // `assets` is scanned for legacy markdown, but never appears in the
+        // sidebar. Inbox/daily were skipped above, matching the previous walk.
+        if (!RESERVED.has(top.toLowerCase())) dirs.push(child.rel);
+        pending.push(child);
+      }
+    }
+  }
+
+  dirs.sort((a, b) => a.localeCompare(b));
+  return { files, dirs };
+}
+
 /** Recursive vault walk — every non-hidden `.md` (our notes + imported trees). */
 async function walkVault(dir: string, relBase: string, out: string[]): Promise<void> {
-  let names: string[];
-  try {
-    names = await FileSystem.readDirectoryAsync(dir);
-  } catch {
-    return;
+  const scan = await scanVault(dir, relBase);
+  out.push(...scan.files.map((file) => file.rel));
+}
+
+const noteEntryCache = new Map<string, { size: number; mtime: number; entry: NoteEntry }>();
+
+async function entriesFromFiles(files: ScannedFile[]): Promise<NoteEntry[]> {
+  const entries = await mapLimit(files, 8, async (file): Promise<NoteEntry | null> => {
+    const cached = noteEntryCache.get(file.rel);
+    if (cached && cached.size === file.size && cached.mtime === file.mtime) return cached.entry;
+    try {
+      const entry = entryFromFile(file.rel, await readText(file.uri), { size: file.size, mtime: file.mtime });
+      noteEntryCache.set(file.rel, { size: file.size, mtime: file.mtime, entry });
+      return entry;
+    } catch {
+      noteEntryCache.delete(file.rel);
+      return null;
+    }
+  });
+  const present = new Set(files.map((file) => file.rel));
+  for (const path of noteEntryCache.keys()) {
+    if (!present.has(path)) noteEntryCache.delete(path);
   }
-  for (const n of names) {
-    if (n.startsWith('.')) continue;
-    const abs = `${dir}${n}`;
-    const rel = relBase ? `${relBase}/${n}` : n;
-    const top = rel.split('/')[0];
-    if (top === 'inbox' || top === 'daily') continue;
-    const info = await FileSystem.getInfoAsync(abs);
-    if (!info.exists) continue;
-    if (info.isDirectory) await walkVault(`${abs}/`, rel, out);
-    else if (n.endsWith('.md')) out.push(rel);
-  }
+  return entries.filter((entry): entry is NoteEntry => entry !== null);
 }
 
 /** Every folder in the vault (rel paths), app-managed ones excluded — so empty folders still show in the sidebar. */
 export async function listDirs(): Promise<string[]> {
   await ensureTree();
-  const out: string[] = [];
-  const walk = async (dir: string, relBase: string): Promise<void> => {
-    for (const n of await childDirs(dir)) {
-      const rel = relBase ? `${relBase}/${n}` : n;
-      if (!relBase && RESERVED.has(n.toLowerCase())) continue;
-      out.push(rel);
-      await walk(`${dir}${n}/`, rel);
-    }
-  };
-  await walk(VAULT, '');
-  return out;
+  return (await scanVault()).dirs;
 }
 
 // --- projects ---
 
 const COLORS = ['#6ea8fe', '#7ee2a8', '#e5a56e', '#c79bfe', '#e5636f', '#6ed3e5'];
 
-export async function listProjects(): Promise<Project[]> {
-  await ensureTree();
-  const dirs = await childDirs(VAULT);
+function projectsFromNames(names: string[]): Project[] {
   const seen = new Set<string>();
   const found: Project[] = [];
-  for (const name of dirs) {
-    if (RESERVED.has(name)) continue;
+  for (const name of names) {
+    if (RESERVED.has(name.toLowerCase())) continue;
     const id = slugToId(name);
     if (seen.has(id)) continue;
     seen.add(id);
-    found.push({ id, name, dir: name, color: COLORS[found.length % COLORS.length] } as Project & { color?: string } as Project);
+    found.push({ id, name, dir: name });
   }
-  return found.sort((a, b) => a.name.localeCompare(b.name));
+  return found.sort((a, b) => a.name.localeCompare(b.name)).map((project, index) => ({
+    ...project,
+    color: COLORS[index % COLORS.length]
+  } as Project));
+}
+
+export async function listProjects(): Promise<Project[]> {
+  await ensureTree();
+  return projectsFromNames(await childDirs(VAULT));
 }
 
 export async function createProject(name: string): Promise<Project> {
@@ -392,7 +495,26 @@ export async function ensureSeedProjects(): Promise<Project[]> {
   if (rels.length === 0) {
     for (const name of ['personal', 'work', 'reading']) await mkdir(`${VAULT}${name}/`);
   }
-  return listProjects();
+  return projectsFromNames(await childDirs(VAULT));
+}
+
+export interface VaultIndex {
+  notes: NoteEntry[];
+  projects: Project[];
+  dirs: string[];
+}
+
+/** Load all sidebar/store data from one filesystem inventory. */
+export async function listVaultIndex(): Promise<VaultIndex> {
+  await ensureTree();
+  let scan = await scanVault();
+  if (scan.files.length === 0) {
+    await Promise.all(['personal', 'work', 'reading'].map((name) => mkdir(`${VAULT}${name}/`)));
+    scan = await scanVault();
+  }
+  const notes = await entriesFromFiles(scan.files);
+  notes.sort((a, b) => b.updatedAt - a.updatedAt);
+  return { notes, dirs: scan.dirs, projects: projectsFromNames(scan.dirs.filter((dir) => !dir.includes('/'))) };
 }
 
 // --- inbox ---
@@ -547,13 +669,7 @@ export async function noteEntryForRel(rel: string): Promise<NoteEntry | null> {
 
 export async function listNotes(projectId?: string | null): Promise<NoteEntry[]> {
   await ensureTree();
-  const rels: string[] = [];
-  await walkVault(VAULT, '', rels);
-  const out: NoteEntry[] = [];
-  for (const rel of rels) {
-    const e = await noteEntryForRel(rel);
-    if (e) out.push(e);
-  }
+  const out = await entriesFromFiles((await scanVault()).files);
   out.sort((a, b) => b.updatedAt - a.updatedAt);
   if (projectId === 'inbox') return out.filter((e) => e.status === 'inbox' || e.status === 'processing');
   if (projectId) return out.filter((e) => e.projectId === projectId);

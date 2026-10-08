@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { rulesClassify, type InboxItem, type NoteDoc, type NoteEntry, type NoteKind, type Project } from './format';
 import * as vault from './vault';
 import { purgeTrash } from './trash';
@@ -30,6 +30,23 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
+function retainArray<T>(previous: T[], next: T[], equal: (a: T, b: T) => boolean = Object.is): T[] {
+  return previous.length === next.length && previous.every((item, index) => equal(item, next[index]!)) ? previous : next;
+}
+
+function sameInboxItem(a: InboxItem, b: InboxItem): boolean {
+  return (
+    a.id === b.id &&
+    a.kind === b.kind &&
+    a.raw === b.raw &&
+    a.status === b.status &&
+    a.projectHint === b.projectHint &&
+    a.createdAt === b.createdAt &&
+    a.assets.length === b.assets.length &&
+    a.assets.every((asset, index) => asset === b.assets[index])
+  );
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,23 +54,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [dirs, setDirs] = useState<string[]>([]);
+  const refreshTask = useRef<Promise<void> | null>(null);
+  const refreshAgain = useRef(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [p, ib, n, d] = await Promise.all([
-        vault.ensureSeedProjects(),
-        vault.listInbox(),
-        vault.listNotes(),
-        vault.listDirs()
-      ]);
-      setProjects(p);
-      setDirs(d);
-      setInbox(ib);
-      setNotes(n);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+  const refresh = useCallback((): Promise<void> => {
+    if (refreshTask.current) {
+      refreshAgain.current = true;
+      return refreshTask.current;
     }
+    const task = (async () => {
+      do {
+        refreshAgain.current = false;
+        try {
+          const [index, ib] = await Promise.all([vault.listVaultIndex(), vault.listInbox()]);
+          setProjects((previous) => retainArray(previous, index.projects, (a, b) => a.id === b.id && a.name === b.name && a.dir === b.dir));
+          setDirs((previous) => retainArray(previous, index.dirs));
+          setInbox((previous) => retainArray(previous, ib, sameInboxItem));
+          setNotes((previous) => retainArray(previous, index.notes));
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      } while (refreshAgain.current);
+    })();
+    refreshTask.current = task;
+    void task.finally(() => {
+      if (refreshTask.current === task) refreshTask.current = null;
+    }).catch(() => undefined);
+    return task;
   }, []);
 
   useEffect(() => {

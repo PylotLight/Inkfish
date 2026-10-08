@@ -95,18 +95,30 @@ type Row =
   | { kind: 'dir'; rel: string; name: string; depth: number; total: number; shut: boolean }
   | { kind: 'file'; id: string; rel: string; name: string; depth: number };
 
+function rememberRow(row: Row, cache: Map<string, Row>): Row {
+  const key = row.kind === 'dir' ? `d:${row.rel}:${row.shut ? 1 : 0}` : `f:${row.id}:${row.depth}`;
+  const existing = cache.get(key);
+  if (existing) return existing;
+  cache.set(key, row);
+  return row;
+}
+
 /** Flatten only the visible rows — collapsed subtrees cost nothing to toggle. */
-function flatten(roots: DirNode[], rootFiles: NoteEntry[], openDirs: Set<string>): Row[] {
+function flatten(roots: DirNode[], rootFiles: NoteEntry[], openDirs: Set<string>, rowCache: Map<string, Row>): Row[] {
   const out: Row[] = [];
   const walk = (node: DirNode, depth: number): void => {
     const shut = !openDirs.has(node.rel);
-    out.push({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut });
+    out.push(rememberRow({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut }, rowCache));
     if (shut) return;
     for (const kid of node.children) walk(kid, depth + 1);
-    for (const f of node.files) out.push({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: depth + 1 });
+    for (const f of node.files) {
+      out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: depth + 1 }, rowCache));
+    }
   };
   for (const r of roots) walk(r, 0);
-  for (const f of rootFiles) out.push({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: 0 });
+  for (const f of rootFiles) {
+    out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: 0 }, rowCache));
+  }
   return out;
 }
 
@@ -258,6 +270,9 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
     t.roots.sort((a, b) => a.name.localeCompare(b.name));
     return t;
   }, [notes, projects, dirs]);
+  // Reuse row objects for unchanged items so memoized rows stay memoized when
+  // a directory is toggled. The cache is scoped to the current vault snapshot.
+  const rowCache = useMemo(() => new Map<string, Row>(), [tree]);
 
   const needle = q.trim().toLowerCase();
   const data: Row[] = useMemo(() => {
@@ -270,10 +285,10 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
             n.snippet.toLowerCase().includes(needle)
         )
         .slice(0, 100)
-        .map((n) => ({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }) as Row);
+        .map((n) => rememberRow({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }, rowCache));
     }
-    return flatten(tree.roots, tree.rootFiles, openDirs);
-  }, [notes, needle, tree, openDirs]);
+    return flatten(tree.roots, tree.rootFiles, openDirs, rowCache);
+  }, [notes, needle, tree, openDirs, rowCache]);
 
   const fail = useCallback((e: unknown) => {
     Alert.alert('Hmm', e instanceof Error ? e.message : String(e));
@@ -410,7 +425,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
   const renderItem = useCallback(
     ({ item }: { item: Row }) =>
       item.kind === 'dir' ? (
-        <DirRow row={item} onToggle={toggle} onCreate={(d) => void createIn(d)} onMenu={dirMenu} />
+        <DirRow row={item} onToggle={toggle} onCreate={createIn} onMenu={dirMenu} />
       ) : (
         <FileRow row={item} onOpen={onOpenNote} onMenu={fileMenu} />
       ),
@@ -472,9 +487,10 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           data={data}
           keyExtractor={keyOf}
           renderItem={renderItem}
-          initialNumToRender={40}
-          maxToRenderPerBatch={30}
-          windowSize={7}
+          initialNumToRender={24}
+          maxToRenderPerBatch={16}
+          updateCellsBatchingPeriod={16}
+          windowSize={5}
           removeClippedSubviews
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : 'No notes yet.'}</Text>}
