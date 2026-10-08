@@ -36,14 +36,12 @@ same signing key. Future apps reuse this keystore with a new alias
 kubectl -n shuttle-build delete job inkfish-apk-build --ignore-not-found
 kubectl -n shuttle-build apply -f android/build/build-job.yaml
 kubectl -n shuttle-build wait --for=condition=complete job/inkfish-apk-build --timeout=3600s
-# The build pod has exited by now, so `cp` from it fails — fetch through a
-# short-lived helper pod on the same cache PVC instead:
-kubectl -n shuttle-build run apk-fetch --image=busybox:1.36 --restart=Never \
-  --overrides='{"spec":{"containers":[{"name":"apk-fetch","image":"busybox:1.36","command":["sleep","600"],"volumeMounts":[{"name":"cache","mountPath":"/cache"}]}],"volumes":[{"name":"cache","persistentVolumeClaim":{"claimName":"shuttle-build-cache"}}]}}'
-kubectl -n shuttle-build wait --for=condition=ready pod/apk-fetch --timeout=180s
-kubectl -n shuttle-build cp apk-fetch:/cache/output/app-release.apk android/build/output/app-release.apk
-kubectl -n shuttle-build delete pod apk-fetch
+ls -la android/build/output/app-release.apk
 ```
+
+The finished APK lands in `android/build/output/` by itself (hostPath
+mount — `/Data` is shared with the node). No fetch step. If the wait hangs,
+the job failed fast: `kubectl -n shuttle-build logs job/inkfish-apk-build`.
 
 The job clones `main` (override with the `BRANCH` env in the Job), so **push before building**.
 Gradle/npm caches persist on the `shuttle-build-cache` PVC — first build is

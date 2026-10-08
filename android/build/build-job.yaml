@@ -1,14 +1,16 @@
 # Inkfish Android signed release build (k8s Job, EAS-free).
 #
+#   kubectl -n shuttle-build delete job inkfish-apk-build --ignore-not-found
 #   kubectl -n shuttle-build apply -f build-job.yaml
 #   kubectl -n shuttle-build wait --for=condition=complete job/inkfish-apk-build --timeout=3600s
-#   kubectl -n shuttle-build logs job/inkfish-apk-build
-#   POD=$(kubectl -n shuttle-build get pod -l job-name=inkfish-apk-build -o jsonpath='{.items[0].metadata.name}')
-#   kubectl -n shuttle-build cp "$POD:/cache/output/app-release.apk" ./Inkfish.apk
+#   ls -la android/build/output/app-release.apk   # already there — no fetch step
 #
 # Requires the `android-release-keystore` Secret (see keystore-init-job.yaml).
 # Re-run for a fresh APK: delete the job first (completions are one-shot):
 #   kubectl -n shuttle-build delete job inkfish-apk-build
+#
+# The finished APK drops straight into the repo's android/build/output/ via
+# the `out` hostPath mount (/Data is shared with the node). No kubectl cp.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -30,6 +32,10 @@ spec:
             items:
               - key: keystore
                 path: inkfish.keystore
+        - name: out
+          hostPath:
+            path: /Data/files/repos/inkfish/android/build/output
+            type: Directory
       containers:
         - name: build
           image: reactnativecommunity/react-native-android:v21.1
@@ -46,6 +52,8 @@ spec:
             - name: keystore
               mountPath: /keystore
               readOnly: true
+            - name: out
+              mountPath: /out
           env:
             - name: BRANCH
               value: main
@@ -112,5 +120,10 @@ spec:
               BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
               "$BT"apksigner verify --print-certs "$APK" | head -8
               "$BT"aapt2 dump badging "$APK" | grep -o "package: name='[^']*' versionCode='[^']*' versionName='[^']*'"
-              ls -la "$APK"
+              # Straight into the repo's standard out dir via the /out hostPath
+              # mount. The job runs as root — hand ownership back to whoever
+              # owns the dir so the next build/dev can overwrite it.
+              cp "$APK" /out/app-release.apk
+              chown --reference=/out /out/app-release.apk || chmod 644 /out/app-release.apk
+              ls -la "$APK" /out/app-release.apk
               echo "BUILD OK: $APK"
