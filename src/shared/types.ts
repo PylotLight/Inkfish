@@ -18,6 +18,7 @@ export interface SysInfo {
   cpus: number
   totalMem: number
   freeMem: number
+  appVersion: string
 }
 
 export interface GlassState {
