@@ -45,9 +45,11 @@ async function copyText(txt: string): Promise<boolean> {
 }
 
 /**
- * Live view: rendered markdown with click-to-edit blocks (Obsidian Live
- * Preview lite). Click a block → it becomes a focused textarea; blur/⌘Enter
- * commits back to the full source. Task checkboxes toggle in place.
+ * Live view: rendered markdown with double-click-to-edit blocks (Obsidian
+ * Live Preview lite). Double-click a block (or its line number, or Enter on
+ * a focused block) → it becomes a focused textarea; blur/⌘Enter commits back
+ * to the full source. Single clicks never edit, so mouse selections can span
+ * multiple blocks. Task checkboxes toggle in place.
  */
 function LiveView({ docId, text, onChange, find }: Props): React.JSX.Element {
   const blocks = useMemo(() => parseBlocks(text), [text])
@@ -181,7 +183,7 @@ const LiveBlockView = memo(function LiveBlockView({
   return (
     <div
       className={`live-block kind-${block.kind}`}
-      title="Click to edit"
+      title="Double-click to edit (drag to select across lines)"
       onClick={(e) => {
         const t = e.target as HTMLElement
         // Code block buttons (copy / expand) — handled here, never edit.
@@ -218,6 +220,14 @@ const LiveBlockView = memo(function LiveBlockView({
           return
         }
         if (t.tagName === 'A') return // let links work
+        // Single click never edits: it would destroy mouse selections that
+        // end on this block. Edit via double-click, Enter, or the gutter.
+      }}
+      onDoubleClick={(e) => {
+        const t = e.target as HTMLElement
+        if (t.closest?.('button')) return
+        if (t.tagName === 'INPUT' || t.tagName === 'A') return
+        e.preventDefault()
         onEdit(block)
       }}
       onKeyDown={(e) => {
@@ -225,9 +235,20 @@ const LiveBlockView = memo(function LiveBlockView({
       }}
       tabIndex={0}
       role="button"
-      aria-label={`Edit ${block.kind} block, line ${block.startLine + 1}`}
+      aria-label={`Double-click to edit ${block.kind} block, line ${block.startLine + 1}`}
     >
-      <span className="live-ln" aria-hidden>{block.startLine + 1}</span>
+      <button
+        type="button"
+        className="live-ln live-edit-btn"
+        aria-label={`Edit block starting at line ${block.startLine + 1}`}
+        title="Edit this block"
+        onClick={(e) => {
+          e.stopPropagation()
+          onEdit(block)
+        }}
+      >
+        {block.startLine + 1}
+      </button>
       <div className="live-body md" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   )

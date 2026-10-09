@@ -3643,6 +3643,27 @@ html[data-density='compact'] .md p {
   font-family: var(--mono-font);
 }
 
+/* Gutter numbers double as edit handles — quiet until hover/focus. */
+button.live-ln.live-edit-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 6px;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+button.live-ln.live-edit-btn:hover,
+button.live-ln.live-edit-btn:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--panel);
+  outline: none;
+}
+
 /* Kill first/last child margins so the gutter's first line box starts at
    exactly the same y as the body's first text line. */
 .live-body > :first-child {
