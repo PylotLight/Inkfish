@@ -4189,3 +4189,40 @@ mark.find-hit.current {
   padding-top: 10px;
   margin-top: 4px;
 }
+
+/* ---------- Inkfish: opaque popups ----------
+ * `.glass` is ~10% white by design, so dialogs/context menus built on it let
+ * background text bleed straight through (and `backdrop-filter` alone only
+ * blurs, never hides). Popups get the `.toast.glass` recipe instead: a
+ * mostly-opaque theme-bg tint + heavy frost + shadow. The backdrop scrim is
+ * dimmed + lightly blurred so nothing behind stays legible.
+ */
+
+.modal-backdrop {
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.modal.glass,
+.modal.glass.strong,
+.ctxmenu.glass,
+.ctxmenu.glass.strong {
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme='paper'] .modal-backdrop {
+  background: rgba(30, 25, 15, 0.32);
+}
+
+html[data-theme='paper'] .modal.glass,
+html[data-theme='paper'] .modal.glass.strong,
+html[data-theme='paper'] .ctxmenu.glass,
+html[data-theme='paper'] .ctxmenu.glass.strong {
+  background: rgba(250, 248, 243, 0.94);
+  box-shadow: 0 24px 60px rgba(30, 25, 15, 0.28);
+}
