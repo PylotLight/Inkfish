@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  assetUrl, parseBlocks, renderMarkdown, spliceBlock, toggleTaskSource,
+  assetUrl, highlightHtml, parseBlocks, renderMarkdown, spliceBlock, toggleTaskSource,
   type LiveBlock
 } from '../md'
 
@@ -9,6 +9,8 @@ interface Props {
   /** Full markdown source — blocks re-derive from this. */
   text: string
   onChange: (full: string) => void
+  /** In-note find: case-insensitive query + active hit ordinal. */
+  find?: { query: string; current: number }
 }
 
 function toDataUrl(file: File): Promise<string> {
@@ -47,20 +49,32 @@ async function copyText(txt: string): Promise<boolean> {
  * Preview lite). Click a block → it becomes a focused textarea; blur/⌘Enter
  * commits back to the full source. Task checkboxes toggle in place.
  */
-function LiveView({ docId, text, onChange }: Props): React.JSX.Element {
+function LiveView({ docId, text, onChange, find }: Props): React.JSX.Element {
   const blocks = useMemo(() => parseBlocks(text), [text])
+  const query = find?.query ?? ''
+  const current = find?.current ?? 0
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const changeRef = useRef(onChange)
   changeRef.current = onChange
   const textRef = useRef(text)
   textRef.current = text
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   // Switching notes clears the editing block.
   useEffect(() => {
     setActiveKey(null)
     setDraft('')
   }, [docId])
+
+  // Keep the active hit in view as the user steps through matches.
+  useEffect(() => {
+    if (!query) return
+    const root = scrollRef.current
+    if (!root) return
+    const el = root.querySelector('.find-hit.current')
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [query, current])
 
   const startEdit = (b: LiveBlock): void => {
     setActiveKey(b.key)
@@ -118,37 +132,52 @@ function LiveView({ docId, text, onChange }: Props): React.JSX.Element {
   }
 
   return (
-    <div className="live" onPaste={(e) => void onPasteImage(e)}>
-      {blocks.map((b) =>
-        activeKey === b.key ? (
-          <BlockEditor
-            key={b.key}
-            initial={draft}
-            kind={b.kind}
-            line={b.startLine + 1}
-            onChange={setDraft}
-            onCommit={commit}
-            onCancel={cancel}
-          />
-        ) : (
-          <LiveBlockView key={b.key} block={b} onEdit={startEdit} onToggle={toggleTask} />
-        )
-      )}
+    <div className="live" ref={scrollRef} onPaste={(e) => void onPasteImage(e)}>
+      {(() => {
+        let ordinal = 0
+        return blocks.map((b) => {
+          if (activeKey === b.key) {
+            return (
+              <BlockEditor
+                key={b.key}
+                initial={draft}
+                kind={b.kind}
+                line={b.startLine + 1}
+                onChange={setDraft}
+                onCommit={commit}
+                onCancel={cancel}
+              />
+            )
+          }
+          const base = ordinal
+          if (query) {
+            const { used } = highlightHtml(renderMarkdown(b.source, { resolveAsset: assetUrl }), query, 0, -1)
+            ordinal += used
+          }
+          return (
+            <LiveBlockView key={b.key} block={b} findQuery={query} findCurrent={current} findBase={base} onEdit={startEdit} onToggle={toggleTask} />
+          )
+        })
+      })()}
     </div>
   )
 }
 
 const LiveBlockView = memo(function LiveBlockView({
-  block, onEdit, onToggle
+  block, findQuery, findCurrent, findBase, onEdit, onToggle
 }: {
   block: LiveBlock
+  findQuery: string
+  findCurrent: number
+  findBase: number
   onEdit: (b: LiveBlock) => void
   onToggle: (b: LiveBlock) => void
 }): React.JSX.Element {
-  const html = useMemo(
-    () => renderMarkdown(block.source, { resolveAsset: assetUrl }),
-    [block.source]
-  )
+  const html = useMemo(() => {
+    const raw = renderMarkdown(block.source, { resolveAsset: assetUrl })
+    if (!findQuery) return raw
+    return highlightHtml(raw, findQuery, findBase, findCurrent).html
+  }, [block.source, findQuery, findBase, findCurrent])
   return (
     <div
       className={`live-block kind-${block.kind}`}

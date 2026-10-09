@@ -6,12 +6,18 @@ interface Props {
   projects: Project[]
   selectedId: string | null
   onSelect: (id: string) => void
+  onDelete: (id: string) => void
   onRefresh: () => void
   notify: (msg: string) => void
 }
 
-/** Right rail: inbox queue with `inbox → processing → ready` status pills. */
-function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }: Props): React.JSX.Element {
+/**
+ * Right rail: inbox queue. One quiet card per capture — kind + age on a
+ * single muted line, preview text, then one action row (Route / Move / Delete
+ * / Undo-when-ready). Status pills only appear for non-default states
+ * (`routing…`, `ready ✓`) so the default `inbox` state stays silent.
+ */
+function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh, notify }: Props): React.JSX.Element {
   useEffect(() => {
     const t = window.setInterval(onRefresh, 4000)
     return () => window.clearInterval(t)
@@ -28,11 +34,13 @@ function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }
     }
   }
 
+  const pending = items.filter((i) => i.status === 'inbox' || i.status === 'processing').length
+
   return (
     <div className="queue">
       <div className="pane-head">
         <h2>Inbox</h2>
-        <span className="pill">{items.filter((i) => i.status === 'inbox' || i.status === 'processing').length}</span>
+        <span className="pill" title={`${pending} waiting`}>{pending}</span>
       </div>
       {items.length === 0 && (
         <div className="empty">
@@ -43,16 +51,13 @@ function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }
         {items.map((item) => (
           <li key={item.id} className={selectedId === item.id ? 'sel' : ''}>
             <button className="qmain" onClick={() => onSelect(item.id)}>
-              <span className="qkind">{item.kind}</span>
               <span className="qtext">{item.raw.split('\n')[0]?.slice(0, 90) || '(empty)'}</span>
-            </button>
-            <div className="qmeta">
-              <span className={`status-pill st-${item.status}`}>
-                {item.status === 'inbox' ? 'inbox' : item.status === 'processing' ? '…' : item.status}
+              <span className="qsub muted">
+                {item.kind} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                {item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}
               </span>
-              <span className="muted small">{new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-            </div>
-            <div className="row wrap qactions">
+            </button>
+            <div className="row qactions">
               {item.status !== 'processing' && (
                 <button
                   className="btn ghost sm"
@@ -63,9 +68,9 @@ function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }
                 </button>
               )}
               <select
-                className="sm"
+                className="sm qmove"
                 defaultValue=""
-                aria-label={`Reassign ${item.id}`}
+                aria-label={`Move ${item.raw.slice(0, 30)} to folder`}
                 onChange={(e) => {
                   const v = e.target.value
                   if (v) void act(() => window.api.inbox.reassign(item.id, v), `Moved → ${v}`)
@@ -79,6 +84,7 @@ function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }
                   </option>
                 ))}
               </select>
+              <span className="flex-sp" />
               {item.status === 'ready' && (
                 <button
                   className="btn ghost sm"
@@ -88,6 +94,14 @@ function InboxQueue({ items, projects, selectedId, onSelect, onRefresh, notify }
                   Undo
                 </button>
               )}
+              <button
+                className="btn ghost sm danger-quiet"
+                title="Delete permanently"
+                aria-label={`Delete inbox item ${item.raw.slice(0, 30)}`}
+                onClick={() => onDelete(item.id)}
+              >
+                Delete
+              </button>
             </div>
           </li>
         ))}

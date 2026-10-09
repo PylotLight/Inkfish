@@ -32,6 +32,7 @@ import {
   createProject,
   createDir,
   dailyFile,
+  deleteInboxItem,
   ensureSeedProjects,
   ensureVault,
   envManaged,
@@ -381,6 +382,15 @@ export function registerIpc(): void {
     const paths = requireNotes()
     const ok = undoRoute(id, paths)
     // Drop undone notes from the index (files moved to app-data, re-scan is cheap).
+    void reindexVault(paths.root)
+    return ok
+  })
+
+  ipcMain.handle('inbox:delete', (_e: IpcMainInvokeEvent, id: string): boolean => {
+    const paths = requireNotes()
+    const ok = deleteInboxItem(id, paths)
+    removeNote(id)
+    removeNote(`inbox/${id}.md`)
     void reindexVault(paths.root)
     return ok
   })

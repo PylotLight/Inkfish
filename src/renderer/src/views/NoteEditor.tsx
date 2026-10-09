@@ -1,14 +1,55 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { EditorState } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers } from '@codemirror/view'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
 import { foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import type { EditMode } from '../theme'
 import { dropDupH1, fmtBytes, fmtChars, timeAgo } from '../text'
-import { assetUrl, renderMarkdown } from '../md'
+import { assetUrl, findAll, renderMarkdown } from '../md'
 import LiveView from './LiveView'
+
+/** In-note find highlight for the Raw CodeMirror pane. */
+const setFind = StateEffect.define<{ query: string; current: number }>()
+const findQueryField = StateField.define<{ query: string; current: number }>({
+  create: () => ({ query: '', current: 0 }),
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setFind)) return e.value as { query: string; current: number }
+    return v
+  }
+})
+function buildFindDeco(docText: string, query: string, current: number): DecorationSet {
+  if (!query) return Decoration.none
+  const hay = docText.toLowerCase()
+  const q = query.toLowerCase()
+  const builder = new RangeSetBuilder<Decoration>()
+  let ordinal = 0
+  let from = 0
+  while (true) {
+    const i = hay.indexOf(q, from)
+    if (i < 0) break
+    builder.add(
+      i,
+      i + q.length,
+      ordinal === current
+        ? Decoration.mark({ class: 'cm-find-hit current' })
+        : Decoration.mark({ class: 'cm-find-hit' })
+    )
+    ordinal++
+    from = i + Math.max(1, q.length)
+  }
+  return builder.finish()
+}
+const findDecoField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (old, tr) => {
+    const q = tr.state.field(findQueryField)
+    if (!tr.docChanged && !tr.effects.some((e) => e.is(setFind))) return old.map(tr.changes)
+    return buildFindDeco(tr.newDoc.toString(), q.query, q.current)
+  },
+  provide: (f) => EditorView.decorations.from(f)
+})
 
 interface Props {
   doc: NoteDoc | null
@@ -75,6 +116,38 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
   const handleTextRef = useRef(handleText)
   handleTextRef.current = handleText
 
+  // --- in-note find ---------------------------------------------------------
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findIndex, setFindIndex] = useState(0)
+  const findInputRef = useRef<HTMLInputElement>(null)
+  const openFind = useCallback(() => {
+    setFindOpen(true)
+    setFindIndex(0)
+    requestAnimationFrame(() => findInputRef.current?.select())
+  }, [])
+
+  // Reset find when switching documents.
+  const docId = doc?.id ?? null
+  useEffect(() => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindIndex(0)
+  }, [docId])
+
+  // Push find state into the Raw pane decorations + scroll to the hit.
+  useEffect(() => {
+    const v = viewRef.current
+    if (!v || mode !== 'raw') return
+    const srcText = v.state.doc.toString()
+    const hits = findAll(srcText, findQuery)
+    const cur = hits.length > 0 ? ((findIndex % hits.length) + hits.length) % hits.length : 0
+    v.dispatch({ effects: setFind.of({ query: findQuery, current: cur }) })
+    if (findQuery && hits[cur] !== undefined) {
+      v.dispatch({ effects: EditorView.scrollIntoView(hits[cur] as number, { y: 'center' }) })
+    }
+  }, [findQuery, findIndex, mode])
+
   // Raw source pane mounts only in raw mode. Re-created with the current
   // text if the pane remounts. Textarea fallback when CodeMirror fails.
   useEffect(() => {
@@ -107,6 +180,8 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           EditorView.updateListener.of((u) => {
             if (u.docChanged) handleTextRef.current(u.state.doc.toString())
           }),
+          findQueryField,
+          findDecoField,
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
             '.cm-content': {
@@ -157,7 +232,6 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
 
   // Swap document content when selection changes — lifted draft wins over
   // saved markdown so tab switches keep unsaved edits.
-  const docId = doc?.id ?? null
   useEffect(() => {
     if (!doc) return
     const next = draft ?? doc.markdown
@@ -199,6 +273,28 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     return () => cancelAnimationFrame(t)
   }, [mode, docId])
 
+  // In-note find matches over the current source (live + raw share ordinals).
+  // Hooks live above the `!doc` early return to keep hook order stable.
+  const preSrc = text || (doc && !editedRef.current ? doc.markdown : '')
+  const findHits = useMemo(() => findAll(preSrc, findQuery), [preSrc, findQuery])
+  const findTotal = findHits.length
+  const findCurrent = findTotal > 0 ? ((findIndex % findTotal) + findTotal) % findTotal : 0
+  const stepFind = useCallback(
+    (dir: 1 | -1) => {
+      setFindIndex((i) => (findTotal > 0 ? i + dir : 0))
+      // Fallback textarea can't render marks — jump the caret instead.
+      if (mode === 'raw' && cmFailed && findTotal > 0) {
+        const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
+        const pos = findHits[((findIndex + dir) % findTotal + findTotal) % findTotal] ?? 0
+        if (ta) {
+          ta.focus()
+          ta.setSelectionRange(pos, pos + findQuery.length)
+        }
+      }
+    },
+    [findTotal, findHits, findIndex, findQuery.length, mode, cmFailed]
+  )
+
   if (!doc) {
     return (
       <div className="editor-empty">
@@ -238,6 +334,20 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
           e.preventDefault()
           onSave(doc.id, textRef.current)
+          return
+        }
+        // ⌘F opens in-note find (we highlight ourselves, not the browser).
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+          e.preventDefault()
+          if (findOpen) findInputRef.current?.select()
+          else openFind()
+          return
+        }
+        // Esc inside the find bar closes it (live block edits own their Esc).
+        if (e.key === 'Escape' && findOpen && (e.target as HTMLElement)?.closest?.('.find-bar')) {
+          e.preventDefault()
+          setFindOpen(false)
+          setFindQuery('')
         }
       }}
     >
@@ -283,6 +393,15 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           </p>
         </div>
         <div className="row ed-actions">
+          <button
+            className={`btn ghost sm icon${findOpen ? ' active-opt' : ''}`}
+            title="Find in note (⌘F)"
+            aria-label="Find in note"
+            aria-expanded={findOpen}
+            onClick={() => (findOpen ? setFindOpen(false) : openFind())}
+          >
+            ⌕
+          </button>
           <div className="seg sm" role="group" aria-label="View mode">
             {MODES.map((m) => (
               <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
@@ -309,6 +428,52 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           </button>
         </div>
       </div>
+      {findOpen && (
+        <div className="find-bar" role="search" aria-label="Find in note">
+          <input
+            ref={findInputRef}
+            className="find-input"
+            value={findQuery}
+            autoFocus
+            onChange={(e) => {
+              setFindQuery(e.target.value)
+              setFindIndex(0)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                stepFind(e.shiftKey ? -1 : 1)
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                setFindOpen(false)
+                setFindQuery('')
+              }
+            }}
+            placeholder="Find in note…"
+            aria-label="Find in note"
+          />
+          <span className="muted small find-count" aria-live="polite">
+            {findQuery ? (findTotal > 0 ? `${findCurrent + 1}/${findTotal}` : '0/0') : ''}
+          </span>
+          <button className="btn ghost sm icon" title="Previous (⇧↵)" aria-label="Previous match" onClick={() => stepFind(-1)} disabled={findTotal === 0}>
+            ↑
+          </button>
+          <button className="btn ghost sm icon" title="Next (↵)" aria-label="Next match" onClick={() => stepFind(1)} disabled={findTotal === 0}>
+            ↓
+          </button>
+          <button
+            className="btn ghost sm icon"
+            title="Close (Esc)"
+            aria-label="Close find"
+            onClick={() => {
+              setFindOpen(false)
+              setFindQuery('')
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className={`ed-cols ${mode}`}>
         {mode === 'raw' ? (
           cmFailed ? (
@@ -327,7 +492,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
             <p className="muted">Preview failed for this note — switch to Raw to see the source.</p>
           </div>
         ) : (
-          <LiveView docId={doc.id} text={src} onChange={handleText} />
+          <LiveView docId={doc.id} text={src} onChange={handleText} find={{ query: findQuery, current: findCurrent }} />
         )}
       </div>
     </div>

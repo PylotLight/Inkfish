@@ -388,6 +388,51 @@ function Main(): React.JSX.Element {
     [openEntry]
   )
 
+  /** Open today's day-log (where ⌥Space → Today appends land). Creates it on first use. */
+  const openToday = useCallback(async (): Promise<void> => {
+    try {
+      const { vaultRel } = await window.api.daily.today()
+      const all = await window.api.notes.list(null)
+      setAllNotes(all)
+      const found = all.find((n) => n.path === vaultRel)
+      if (found) {
+        selectNote(found.id)
+        notify(`Today ✓ · ${vaultRel}`)
+      } else {
+        notify(`Today ✓ · ${vaultRel}`)
+      }
+    } catch (err: unknown) {
+      notify(`Today failed: ${String(err)}`)
+    }
+  }, [notify, selectNote])
+
+  /** Delete an inbox capture permanently (routed outputs moved aside, raw removed). */
+  const deleteInbox = useCallback(
+    (id: string) => {
+      const item = inbox.find((i) => i.id === id)
+      const preview = item ? plain(item.raw).slice(0, 48) : id
+      setConfirm({
+        title: 'Delete this capture?',
+        body: `“${preview}” will be permanently deleted (routed copies moved aside).`,
+        confirm: 'Delete',
+        onConfirm: () => {
+          window.api.inbox
+            .remove(id)
+            .then(() => {
+              if (sel?.id === id) {
+                setSel(null)
+                setDoc(null)
+              }
+              refreshAll()
+              notify('Deleted ✓')
+            })
+            .catch((err: unknown) => notify(`Delete failed: ${String(err)}`))
+        }
+      })
+    },
+    [inbox, sel, refreshAll, notify]
+  )
+
   // --- tabs --------------------------------------------------------------------
   const activateNeighbor = useCallback((closedId: string, remaining: Tab[]) => {
     const active = selRef.current
@@ -530,22 +575,9 @@ function Main(): React.JSX.Element {
       ?.onOpenToday
     if (!sub) return
     return sub(() => {
-      window.api.daily
-        .today()
-        .then(({ vaultRel }) => {
-          refreshNotes()
-          window.api.notes
-            .list(null)
-            .then((all) => {
-              const found = all.find((n) => n.path === vaultRel)
-              if (found) selectNote(found.id)
-              else notify('Today opened ✓')
-            })
-            .catch(console.error)
-        })
-        .catch((err: unknown) => notify(`Today failed: ${String(err)}`))
+      void openToday()
     })
-  }, [notify, refreshNotes, selectNote])
+  }, [openToday])
 
   const renameNote = useCallback(
     (id: string, title: string) => {
@@ -890,6 +922,7 @@ function Main(): React.JSX.Element {
               projects={projects}
               selectedId={sel !== null && sel.origin === 'inbox' ? sel.id : null}
               onSelect={selectInbox}
+              onDelete={deleteInbox}
               onRefresh={refreshAll}
               notify={notify}
             />
@@ -1017,6 +1050,9 @@ function Main(): React.JSX.Element {
               <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
                 {meetingLive ? '● Recording' : '🎙 Meetings'}
               </button>
+              <button className="btn ghost sm" title="Open today's day-log (appends from ⌥Space → Today land here)" onClick={() => void openToday()}>
+                ☀ Today
+              </button>
               <span className="flex-sp" />
               {dirty && <span className="pill dirty-static">unsaved</span>}
             </header>
@@ -1057,6 +1093,7 @@ function Main(): React.JSX.Element {
                   <InboxBar
                     item={activeItem}
                     projects={projects}
+                    onDelete={() => deleteInbox(activeItem.id)}
                     onDone={(noteId) => {
                       refreshAll()
                       if (noteId) selectNote(noteId)
@@ -1231,13 +1268,14 @@ function TabBar({
   )
 }
 
-/** Action bar pinned above inbox docs: route / move / undo without leaving the note. */
+/** Action bar pinned above inbox docs: route / move / undo / delete without leaving the note. */
 function InboxBar({
-  item, projects, onDone, notify
+  item, projects, onDone, onDelete, notify
 }: {
   item: InboxItem
   projects: Project[]
   onDone: (noteId?: string) => void
+  onDelete: () => void
   notify: (msg: string) => void
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
@@ -1253,10 +1291,7 @@ function InboxBar({
 
   return (
     <div className="inboxbar glass">
-      <span className="qkind">{item.kind}</span>
-      <span className={`status-pill st-${item.status}`}>
-        {item.status === 'processing' ? 'routing…' : item.status}
-      </span>
+      <span className="qsub muted">{item.kind}{item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}</span>
       <span className="flex-sp" />
       {item.status !== 'processing' && (
         <button
@@ -1325,6 +1360,9 @@ function InboxBar({
           Undo
         </button>
       )}
+      <button className="btn ghost sm danger-quiet" disabled={busy} onClick={onDelete} title="Delete permanently">
+        Delete
+      </button>
     </div>
   )
 }

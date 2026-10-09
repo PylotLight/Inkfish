@@ -1136,8 +1136,7 @@ function undoneDir(): string {
 }
 
 /** Undo a routing: inbox item back to `inbox`, processed file moved aside. */
-export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
-  // Find processed notes pointing at this inbox id and archive them.
+export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {  // Find processed notes pointing at this inbox id and archive them.
   // Only routed notes carry an `inbox:` frontmatter ref, so walking the
   // vault is safe — user files never match.
   let found = false
@@ -1163,6 +1162,15 @@ export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): bo
   walk(paths.root)
   setInboxStatus(inboxId, 'inbox', paths)
   return found
+}
+
+/** Permanently delete an inbox capture: routed outputs moved aside, raw removed. */
+export function deleteInboxItem(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
+  undoRoute(inboxId, paths)
+  const file = join(paths.inboxDir, `${inboxId}.md`)
+  if (!existsSync(file)) return false
+  unlinkSync(file)
+  return true
 }
 
 // --- assets ---------------------------------------------------------------------

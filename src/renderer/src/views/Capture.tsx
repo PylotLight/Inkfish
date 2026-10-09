@@ -82,13 +82,14 @@ export default function Capture(): React.JSX.Element {
         })
       }
       setSaved(true)
+      if (dest === 'today') say('Appended to Today ☀', 'Open ☀ Today in the main window to read it', 2600)
       window.setTimeout(() => {
         setSaved(false)
         setRaw('')
         setAttachments([])
         setSaving(false)
         void window.api.popover.hide()
-      }, 380)
+      }, dest === 'today' ? 900 : 380)
     } catch (err) {
       setSaving(false)
       say(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -264,6 +265,10 @@ export default function Capture(): React.JSX.Element {
 
   const recLabel = recState === 'rec' ? 'Stop dictation' : recState === 'working' ? 'Transcribing…' : 'Dictate'
 
+  const isMac =
+    typeof navigator !== 'undefined' &&
+    (/mac/i.test(navigator.platform ?? '') || /mac/i.test(navigator.userAgent ?? ''))
+
   // Keep the newest live text in view; pause if the user scrolls up to reread.
   const onCaptionScroll = (): void => {
     const el = captionRef.current
@@ -283,7 +288,7 @@ export default function Capture(): React.JSX.Element {
 
   return (
     <div
-      className={`capture${saved ? ' pop' : ''}`}
+      className={`capture${saved ? ' pop' : ''}${isMac ? ' mac' : ''}`}
       onKeyDown={onKey}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -334,7 +339,7 @@ export default function Capture(): React.JSX.Element {
         className="cap-input"
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
-        placeholder={dest === 'today' ? 'Add to today…' : 'Capture a thought…'}
+        placeholder={dest === 'today' ? 'Add to today’s log… (opens via ☀ Today)' : 'Capture a thought…'}
       />
 
       {recState === 'rec' && caption && (
@@ -472,8 +477,8 @@ export default function Capture(): React.JSX.Element {
           </svg>
         </button>
         <span className="flex-sp" />
-        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()}>
-          {saving ? 'Saving…' : dest === 'today' ? 'Append' : 'Save'}
+        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()} title={dest === 'today' ? 'Append to today’s day-log (open via ☀ Today)' : 'Save to inbox'}>
+          {saving ? 'Saving…' : dest === 'today' ? 'Append to Today' : 'Save'}
           <kbd>⌘↵</kbd>
         </button>
       </div>

@@ -414,3 +414,70 @@ export function toggleTaskSource(source: string): string | null {
   const checked = m[2]?.toLowerCase() === 'x'
   return `${m[1]}${checked ? ' ' : 'x'}${m[3]}${source.slice(m[0].length)}`
 }
+
+// --- In-note find ------------------------------------------------------------
+// Case-insensitive helpers shared by Live (HTML highlight) + Raw (match
+// counting). Live highlight walks the HTML tag-by-tag so replacements only
+// touch text nodes — code spans, links and token `<span>`s stay intact.
+
+/** Ordinal positions of every case-insensitive `query` hit in `text`. */
+export function findAll(text: string, query: string): number[] {
+  if (!query) return []
+  const hay = text.toLowerCase()
+  const needle = query.toLowerCase()
+  const out: number[] = []
+  let from = 0
+  while (true) {
+    const i = hay.indexOf(needle, from)
+    if (i < 0) return out
+    out.push(i)
+    from = i + Math.max(1, needle.length)
+  }
+}
+
+/** Count case-insensitive hits (no positions). */
+export function countOccurrences(text: string, query: string): number {
+  return findAll(text, query).length
+}
+
+function highlightTextSegment(seg: string, query: string, base: number, current: number): { html: string; used: number } {
+  const lower = seg.toLowerCase()
+  const q = query.toLowerCase()
+  let out = ''
+  let last = 0
+  let used = 0
+  let from = 0
+  while (true) {
+    const i = lower.indexOf(q, from)
+    if (i < 0) break
+    out += esc(seg.slice(last, i))
+    const ordinal = base + used
+    out += ordinal === current
+      ? `<mark class="find-hit current">${esc(seg.slice(i, i + query.length))}</mark>`
+      : `<mark class="find-hit">${esc(seg.slice(i, i + query.length))}</mark>`
+    used++
+    last = i + query.length
+    from = i + Math.max(1, query.length)
+  }
+  out += esc(seg.slice(last))
+  return { html: out, used }
+}
+
+/**
+ * Highlight `query` hits inside already-rendered `html`. `base` is this
+ * fragment's global starting ordinal, `current` the active hit ordinal.
+ * Returns the highlighted HTML + how many hits were consumed.
+ */
+export function highlightHtml(html: string, query: string, base: number, current: number): { html: string; used: number } {
+  if (!query) return { html, used: 0 }
+  const parts = html.split(/(<[^>]*>)/g)
+  let used = 0
+  const out = parts.map((p) => {
+    if (p.startsWith('<') && p.endsWith('>')) return p
+    if (!p) return p
+    const r = highlightTextSegment(p, query, base + used, current)
+    used += r.used
+    return r.html
+  })
+  return { html: out.join(''), used }
+}

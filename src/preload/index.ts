@@ -118,6 +118,7 @@ const api = {
     reassign: (id: string, projectName: string): Promise<{ note: string; path: string } | { error: string }> =>
       ipcRenderer.invoke('inbox:reassign', id, projectName),
     undo: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:undo', id),
+    remove: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:delete', id),
     setStatus: (id: string, status: NoteStatus): Promise<boolean> => ipcRenderer.invoke('inbox:set-status', id, status)
   },
   daily: {
