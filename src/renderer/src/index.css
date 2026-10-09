@@ -1986,6 +1986,7 @@ html[data-font='large'] {
 .ed-src .cm-content {
   caret-color: var(--text);
   font-family: var(--text-font);
+  line-height: 1.5;
 }
 .ed-src .cm-cursor {
   border-left-color: var(--text) !important;
@@ -1997,6 +1998,20 @@ html[data-font='large'] {
 .ed-src .cm-selectionBackground,
 .ed-src ::selection {
   background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+/* Gutter numbers pin to the top of each line box while content glyphs start
+ * below half-leading — the gap grows with font size, so numbers float high.
+ * This pushes them down by the difference, tracking --ed-fs (quick-zoom). */
+.ed-src .cm-lineNumbers {
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--mono-font);
+}
+.ed-src .cm-lineNumbers .cm-gutterElement {
+  padding: max(0px, calc((var(--ed-fs, 14px) * 1.5 - 17px) / 2)) 10px 0 2px;
+  min-width: 40px;
+  text-align: right;
 }
 
 /* Motion reduced (settings) + OS preference */
