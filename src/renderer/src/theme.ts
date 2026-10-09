@@ -9,12 +9,6 @@ export type AccentId = 'mint' | 'sky' | 'violet' | 'amber' | 'coral' | 'custom'
 export type DensityId = 'comfortable' | 'compact'
 export type MotionId = 'full' | 'reduced'
 export type FontId = 'compact' | 'default' | 'large'
-/**
- * Center view: `live` = rendered note with click-to-edit blocks (default),
- * `raw` = full markdown source. The old `read`/`edit`/`split` split is gone —
- * `read`+`split` migrate to `live`, `edit` migrates to `raw`.
- */
-export type EditMode = 'live' | 'raw'
 
 export interface Prefs {
   theme: ThemeId
@@ -33,7 +27,6 @@ export interface Prefs {
   monoFont: string
   /** Ctrl+Scroll / pinch adjusts `fontSize` when inside the note stage. */
   quickZoom: boolean
-  mode: EditMode
   /** macOS vibrancy blur. */
   blur: boolean
 }
@@ -50,7 +43,6 @@ export const DEFAULT_PREFS: Prefs = {
   textFont: '',
   monoFont: '',
   quickZoom: true,
-  mode: 'live',
   blur: true
 }
 
@@ -163,10 +155,6 @@ function legacy(): Partial<Prefs> {
   if (isAccent(accent)) out.accent = accent
   const font = get('inkfish.font')
   if (font === 'compact' || font === 'default' || font === 'large') out.font = font
-  const mode = get('inkfish.editmode')
-  if (mode === 'live' || mode === 'raw') out.mode = mode
-  else if (mode === 'read' || mode === 'split') out.mode = 'live'
-  else if (mode === 'edit') out.mode = 'raw'
   const motion = get('inkfish.motion')
   if (motion === 'on') out.motion = 'full'
   else if (motion === 'off') out.motion = 'reduced'
@@ -198,9 +186,6 @@ export function loadPrefs(): Prefs {
     textFont: cleanFontStack((base as Partial<Prefs>).textFont),
     monoFont: cleanFontStack((base as Partial<Prefs>).monoFont),
     quickZoom: (base as Partial<Prefs>).quickZoom !== false,
-    mode: base.mode === 'raw' ? 'raw' : base.mode === 'live' ? 'live'
-      // Migrate the old read/edit/split split: rendered views → live, source → raw.
-      : (base.mode as unknown) === 'edit' ? 'raw' : 'live',
     blur: base.blur !== false
   }
 }

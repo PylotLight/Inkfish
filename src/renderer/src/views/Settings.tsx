@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type EditMode, type Prefs } from '../theme'
+import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
@@ -19,11 +19,6 @@ interface Props {
   onRescan: () => void
   notify: (msg: string) => void
 }
-
-const MODES: Array<{ id: EditMode; name: string; hint: string }> = [
-  { id: 'live', name: 'Live', hint: 'Rendered note, click any block to edit.' },
-  { id: 'raw', name: 'Raw', hint: 'Markdown source.' }
-]
 
 const TEXT_FONTS = [
   'SF Pro Text',
@@ -404,29 +399,6 @@ export default function SettingsView({
                   </button>
                 </div>
 
-                <div className="setting-row stacked">
-                  <span className="setting-label">Default note view</span>
-                  <div className="seg-row" role="radiogroup" aria-label="Default note view">
-                    {MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        role="radio"
-                        aria-checked={prefs.mode === m.id}
-                        className={`seg${prefs.mode === m.id ? ' selected' : ''}`}
-                        onClick={() => {
-                          set({ mode: m.id })
-                          notify(`Editor default: ${m.name}`)
-                        }}
-                        title={m.hint}
-                      >
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="muted small setting-hint">
-                    Live renders the note — click any block to edit. Raw shows markdown source.
-                  </p>
-                </div>
               </section>
 
               <section className="settings-group">

@@ -1,16 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
-import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
-import { foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
-import { markdown } from '@codemirror/lang-markdown'
+import {
+  Decoration,
+  EditorView,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  type DecorationSet
+} from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
-import type { EditMode } from '../theme'
-import { dropDupH1, fmtBytes, fmtChars, timeAgo } from '../text'
-import { assetUrl, findAll, renderMarkdown } from '../md'
-import LiveView from './LiveView'
+import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
+import { listKeys, livePreview } from '../livePreview'
 
-/** In-note find highlight for the Raw CodeMirror pane. */
+/** In-note find highlight for the editor pane. */
 const setFind = StateEffect.define<{ query: string; current: number }>()
 const findQueryField = StateField.define<{ query: string; current: number }>({
   create: () => ({ query: '', current: 0 }),
@@ -56,9 +59,6 @@ interface Props {
   /** Obsidian-style display title (filename or override). */
   title: string
   dirty: boolean
-  defaultMode: EditMode
-  /** One-shot mode for freshly created notes (open straight into Raw). */
-  openMode: EditMode | null
   /** Unsaved markdown lifted to the tab strip (survives tab switches). */
   draft?: string
   onDraft: (id: string, markdown: string) => void
@@ -68,29 +68,19 @@ interface Props {
   onMore: (x: number, y: number) => void
 }
 
-const MODES: EditMode[] = ['live', 'raw']
-
-/** Normalize legacy one-shot modes (`edit`→`raw`, `read`/`split`→`live`). */
-function normalizeMode(m: string | null | undefined): EditMode | null {
-  if (m === 'live' || m === 'raw') return m
-  if (m === 'edit') return 'raw'
-  if (m === 'read' || m === 'split') return 'live'
-  return null
-}
-
 /**
- * Center editor: Live rendered view (click-to-edit blocks) + Raw markdown
- * source (CodeMirror 6, image paste → assets/).
+ * Center editor: one continuous Obsidian-style live preview (CodeMirror 6).
+ * The whole file renders and edits in place — selections span lines, no
+ * block editors, no separate raw mode.
  *
  * Perf: the text lives in LOCAL state — typing never re-renders the parent
  * (sidebar, lists, queue). Unsaved text is ALSO lifted via `onDraft` so
  * switching tabs keeps edits; the tab strip owns dirtiness.
  */
-function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, onDirty, onSave, onRename, onMore }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
-  const [mode, setMode] = useState<EditMode>(normalizeMode(defaultMode) ?? 'live')
   const [cmFailed, setCmFailed] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
@@ -116,6 +106,16 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
   const handleTextRef = useRef(handleText)
   handleTextRef.current = handleText
 
+  /** Flip the task checkbox at `pos` (the ` `/`x` inside brackets). */
+  const toggleTaskRef = useRef((pos: number): void => {
+    const v = viewRef.current
+    if (!v) return
+    const ch = v.state.doc.sliceString(pos, pos + 1)
+    if (ch !== ' ' && ch !== 'x' && ch !== 'X') return
+    v.dispatch({ changes: { from: pos, to: pos + 1, insert: ch === ' ' ? 'x' : ' ' } })
+    v.focus()
+  })
+
   // --- in-note find ---------------------------------------------------------
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
@@ -135,10 +135,10 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     setFindIndex(0)
   }, [docId])
 
-  // Push find state into the Raw pane decorations + scroll to the hit.
+  // Push find state into the editor decorations + scroll to the hit.
   useEffect(() => {
     const v = viewRef.current
-    if (!v || mode !== 'raw') return
+    if (!v) return
     const srcText = v.state.doc.toString()
     const hits = findAll(srcText, findQuery)
     const cur = hits.length > 0 ? ((findIndex % hits.length) + hits.length) % hits.length : 0
@@ -146,12 +146,12 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     if (findQuery && hits[cur] !== undefined) {
       v.dispatch({ effects: EditorView.scrollIntoView(hits[cur] as number, { y: 'center' }) })
     }
-  }, [findQuery, findIndex, mode])
+  }, [findQuery, findIndex])
 
-  // Raw source pane mounts only in raw mode. Re-created with the current
-  // text if the pane remounts. Textarea fallback when CodeMirror fails.
+  // Editor mounts once. Re-created with the current text if it remounts.
+  // Textarea fallback when CodeMirror fails.
   useEffect(() => {
-    if (mode !== 'raw' || cmFailed || !mountRef.current || viewRef.current) return
+    if (cmFailed || !mountRef.current || viewRef.current) return
     let view: EditorView | null = null
     try {
       view = new EditorView({
@@ -159,15 +159,13 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
         doc: textRef.current,
         extensions: [
           lineNumbers(),
-          foldGutter({ openText: '▾', closedText: '▸' }),
-          syntaxHighlighting(defaultHighlightStyle),
-          markdown(),
           EditorView.lineWrapping,
+          highlightActiveLine(),
           history(),
           keymap.of([
+            ...listKeys,
             ...defaultKeymap,
             ...historyKeymap,
-            ...foldKeymap,
             {
               key: 'Mod-s',
               run: () => {
@@ -182,15 +180,17 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           }),
           findQueryField,
           findDecoField,
+          livePreview({ onToggleTask: (pos) => toggleTaskRef.current(pos) }),
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
             '.cm-content': {
-              fontFamily: 'var(--mono-font)',
+              fontFamily: 'var(--text-font)',
               fontSize: 'var(--ed-fs, 14px)',
               caretColor: 'var(--text)'
             },
             '.cm-cursor': { borderLeftColor: 'var(--text)' },
-            '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
+            '.cm-gutters': { backgroundColor: 'transparent', border: 'none' },
+            '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--text) 4%, transparent)' }
           })
         ]
       }),
@@ -202,8 +202,6 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
       return
     }
     viewRef.current = view
-    // Focus so the caret is visible immediately.
-    requestAnimationFrame(() => view.focus())
 
     const onPaste = async (e: ClipboardEvent): Promise<void> => {
       const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'))
@@ -228,7 +226,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
       viewRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, cmFailed])
+  }, [cmFailed])
 
   // Swap document content when selection changes — lifted draft wins over
   // saved markdown so tab switches keep unsaved edits.
@@ -253,27 +251,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, draft])
 
-  // Follow the settings default when it changes there.
-  useEffect(() => {
-    const m = normalizeMode(defaultMode)
-    if (m) setMode(m)
-  }, [defaultMode])
-
-  // Freshly created notes open straight into Raw.
-  useEffect(() => {
-    const m = normalizeMode(openMode)
-    if (m && doc && m === 'raw') setMode('raw')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openMode, docId])
-
-  // CodeMirror can't measure inside `display: none` — remeasure on reveal.
-  useEffect(() => {
-    if (mode === 'live') return
-    const t = requestAnimationFrame(() => viewRef.current?.requestMeasure())
-    return () => cancelAnimationFrame(t)
-  }, [mode, docId])
-
-  // In-note find matches over the current source (live + raw share ordinals).
+  // In-note find matches over the current source.
   // Hooks live above the `!doc` early return to keep hook order stable.
   const preSrc = text || (doc && !editedRef.current ? doc.markdown : '')
   const findHits = useMemo(() => findAll(preSrc, findQuery), [preSrc, findQuery])
@@ -283,7 +261,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     (dir: 1 | -1) => {
       setFindIndex((i) => (findTotal > 0 ? i + dir : 0))
       // Fallback textarea can't render marks — jump the caret instead.
-      if (mode === 'raw' && cmFailed && findTotal > 0) {
+      if (cmFailed && findTotal > 0) {
         const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
         const pos = findHits[((findIndex + dir) % findTotal + findTotal) % findTotal] ?? 0
         if (ta) {
@@ -292,7 +270,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
         }
       }
     },
-    [findTotal, findHits, findIndex, findQuery.length, mode, cmFailed]
+    [findTotal, findHits, findIndex, findQuery.length, cmFailed]
   )
 
   if (!doc) {
@@ -306,21 +284,6 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     )
   }
 
-  // First paint can beat the editor sync — fall back to the saved markdown
-  // until the user types. Never render a silent blank box: surface the error.
-  // A leading H1 duplicating the filename title is dropped (double header).
-  const src = text || (!editedRef.current ? doc.markdown : '')
-  const deduped = dropDupH1(src, title)
-  let html = ''
-  let failed = false
-  try {
-    html = renderMarkdown(deduped, { resolveAsset: assetUrl })
-  } catch (err) {
-    console.error('[editor] preview failed:', err)
-    failed = true
-  }
-  const showFallback = failed || (src.trim() !== '' && html.trim() === '')
-
   const commitRename = (): void => {
     setRenaming(false)
     onRename(nameDraft.trim())
@@ -330,7 +293,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
     <div
       className="editor"
       onKeyDown={(e) => {
-        // ⌘S from anywhere in the editor (live blocks are textareas).
+        // ⌘S from anywhere in the editor.
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
           e.preventDefault()
           onSave(doc.id, textRef.current)
@@ -343,7 +306,7 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           else openFind()
           return
         }
-        // Esc inside the find bar closes it (live block edits own their Esc).
+        // Esc inside the find bar closes it.
         if (e.key === 'Escape' && findOpen && (e.target as HTMLElement)?.closest?.('.find-bar')) {
           e.preventDefault()
           setFindOpen(false)
@@ -402,13 +365,6 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           >
             ⌕
           </button>
-          <div className="seg sm" role="group" aria-label="View mode">
-            {MODES.map((m) => (
-              <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
-                {m === 'live' ? 'Live' : 'Raw'}
-              </button>
-            ))}
-          </div>
           <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
             Reveal
           </button>
@@ -474,25 +430,17 @@ function NoteEditor({ doc, title, dirty, defaultMode, openMode, draft, onDraft, 
           </button>
         </div>
       )}
-      <div className={`ed-cols ${mode}`}>
-        {mode === 'raw' ? (
-          cmFailed ? (
-            <textarea
-              className="ed-fallback"
-              value={text}
-              autoFocus
-              onChange={(e) => handleText(e.target.value)}
-              aria-label="Markdown source (fallback editor)"
-            />
-          ) : (
-            <div className="ed-src" ref={mountRef} aria-label="Markdown source" />
-          )
-        ) : showFallback ? (
-          <div className="ed-preview md">
-            <p className="muted">Preview failed for this note — switch to Raw to see the source.</p>
-          </div>
+      <div className="ed-live">
+        {cmFailed ? (
+          <textarea
+            className="ed-fallback"
+            value={text}
+            autoFocus
+            onChange={(e) => handleText(e.target.value)}
+            aria-label="Markdown source (fallback editor)"
+          />
         ) : (
-          <LiveView docId={doc.id} text={src} onChange={handleText} find={{ query: findQuery, current: findCurrent }} />
+          <div className="ed-src" ref={mountRef} aria-label="Note editor" />
         )}
       </div>
     </div>

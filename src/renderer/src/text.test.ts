@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { baseName, displayTitle, dropDupH1, fmtBytes, fmtChars, plain } from './text'
+import { baseName, displayTitle, dropDupH1, findAll, fmtBytes, fmtChars, plain } from './text'
 
 describe('display titles', () => {
   test('filename wins over indexed first line', () => {
@@ -34,11 +34,10 @@ describe('display titles', () => {
     expect(plain('Yes, **Monaco** [x](y)')).toBe('Yes, Monaco x')
   })
 
-  test('assetUrl maps vault-relative images to asset:// only', async () => {
-    const { assetUrl } = await import('./md')
-    expect(assetUrl('assets/2026/10/x.png')).toBe('asset://assets/2026/10/x.png')
-    expect(assetUrl('https://a/b.png')).toBe('https://a/b.png')
-    expect(assetUrl('data:image/png;base64,xx')).toBe('data:image/png;base64,xx')
-    expect(assetUrl('a b/c.png')).toBe('asset://a%20b/c.png')
+  test('findAll locates case-insensitive hits in order', () => {
+    expect(findAll('Hello hello HELLO world', 'hello')).toEqual([0, 6, 12])
+    expect(findAll('aaa', 'aa')).toEqual([0])
+    expect(findAll('nothing here', 'z')).toEqual([])
+    expect(findAll('anything', '')).toEqual([])
   })
 })

@@ -69,3 +69,18 @@ export function timeAgo(ts: number): string {
   if (d < 30) return `${d}d ago`
   return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
+
+/** Ordinal positions of every case-insensitive `query` hit in `text`. */
+export function findAll(text: string, query: string): number[] {
+  if (!query) return []
+  const hay = text.toLowerCase()
+  const needle = query.toLowerCase()
+  const out: number[] = []
+  let from = 0
+  while (true) {
+    const i = hay.indexOf(needle, from)
+    if (i < 0) return out
+    out.push(i)
+    from = i + Math.max(1, needle.length)
+  }
+}

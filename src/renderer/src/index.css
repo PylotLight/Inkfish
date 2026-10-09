@@ -1466,12 +1466,6 @@ html[data-theme='paper'] .toast.glass {
   gap: 4px;
 }
 
-.qkind {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--mint);
-}
 
 .qtext {
   font-size: 14px;
@@ -1484,12 +1478,6 @@ html[data-theme='paper'] .toast.glass {
   font-size: 12px;
 }
 
-.qmeta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
 
 .status-pill.st-processing {
   color: var(--accent);
@@ -1610,22 +1598,23 @@ select.sm {
   margin: 2px 0 0;
 }
 
-.ed-cols {
+/* Single continuous live editor: fills the stage, prose in the text font. */
+.ed-live {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .ed-src {
+  flex: 1;
+  min-height: 0;
   border: none;
   border-radius: 0;
   background: transparent;
   overflow: auto;
-  padding: 6px 2px 24px;
-  min-height: 200px;
+  padding: 6px 2px 32px;
 }
 
 .ed-src .cm-editor {
@@ -1637,15 +1626,69 @@ select.sm {
   overflow: auto;
 }
 
-.ed-preview {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  overflow-y: auto;
-  padding: 6px 2px 24px;
-  flex: 1;
-  min-height: 0;
+/* Live preview: rendered markdown chrome, still fully editable. Selections
+ * span lines — there are no block editors anymore. */
+.ed-src .cm-line {
+  padding: 1px 2px 1px 6px;
 }
+
+.cm-line.lp-h1,
+.cm-line.lp-h2,
+.cm-line.lp-h3,
+.cm-line.lp-h4 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.cm-line.lp-h1 { font-size: 1.5em; padding-top: 0.35em; }
+.cm-line.lp-h2 { font-size: 1.25em; padding-top: 0.3em; }
+.cm-line.lp-h3,
+.cm-line.lp-h4 { font-size: 1.08em; padding-top: 0.25em; }
+
+.cm-line.lp-quote {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--muted);
+}
+
+.cm-line.lp-hr {
+  border-bottom: 1px solid var(--border);
+  min-height: 1.6em;
+}
+
+.cm-line.lp-code,
+.cm-line.lp-fence {
+  font-family: var(--mono-font);
+  font-size: 0.88em;
+  color: var(--muted);
+}
+.cm-line.lp-fence {
+  opacity: 0.6;
+}
+
+.ed-src .lp-bold { font-weight: 700; }
+.ed-src .lp-em { font-style: italic; }
+.ed-src .lp-strike { text-decoration: line-through; }
+.ed-src .lp-codespan {
+  font-family: var(--mono-font);
+  font-size: 0.88em;
+  background: rgba(127, 127, 127, 0.22);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.ed-src .lp-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+input.lp-taskbox {
+  accent-color: var(--mint);
+  width: 15px;
+  height: 15px;
+  vertical-align: -2px;
+  margin: 0 2px 0 0;
+  cursor: pointer;
+}
+
 
 .editor-empty {
   display: flex;
@@ -1656,181 +1699,6 @@ select.sm {
   padding: 24px;
 }
 
-/* rendered markdown */
-
-.md h1 {
-  font-size: 21px;
-  margin: 0.35em 0 0.25em;
-}
-.md h2 {
-  font-size: 17px;
-  margin: 0.45em 0 0.25em;
-}
-.md h3,
-.md h4 {
-  font-size: 15px;
-  margin: 0.4em 0 0.2em;
-}
-.md p {
-  margin: 0.28em 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.md ul,
-.md ol {
-  padding-left: 22px;
-  margin: 0.28em 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.md li {
-  margin: 1px 0;
-}
-.md li > p {
-  margin: 0.1em 0;
-}
-.md blockquote {
-  border-left: 3px solid var(--accent);
-  margin: 0.5em 0;
-  padding: 2px 12px;
-  color: var(--muted);
-}
-.md pre {
-  background: var(--codeblock);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  font-size: 12.5px;
-}
-.md img {
-  max-width: 100%;
-  border-radius: 8px;
-}
-.md .task {
-  list-style: none;
-  margin-left: -22px;
-}
-
-/* Code blocks: header row (lang + copy/expand) over highlighted source. */
-.md .codeblock {
-  background: var(--codeblock);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin: 0.5em 0;
-  overflow: hidden;
-}
-
-.md .codehead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 8px 3px 12px;
-}
-
-.md .codelang {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
-  font-family: var(--mono-font);
-  text-transform: lowercase;
-}
-
-.md .codeactions {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.md .copy-code,
-.md .expand-code {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 7px;
-  padding: 3px 10px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 0.14s ease,
-    background 0.14s ease;
-}
-
-.md .copy-code:hover,
-.md .expand-code:hover {
-  color: var(--text);
-  background: var(--panel-strong);
-}
-
-.md .codeblock pre {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  margin: 0;
-  padding: 4px 12px 12px;
-}
-
-.md .codeblock pre.collapsed {
-  display: none;
-}
-
-/* Syntax tokens (dependency-free highlighter in md.ts). */
-.md .tok-kw {
-  color: #8ab4ff;
-}
-.md .tok-str {
-  color: #7ee2a8;
-}
-.md .tok-com {
-  color: var(--muted);
-  font-style: italic;
-  opacity: 0.85;
-}
-.md .tok-num {
-  color: #f2c069;
-}
-.md .tok-key {
-  color: #b79bff;
-}
-.md .tok-tag {
-  color: #f28b8b;
-}
-
-html[data-theme='paper'] .md .tok-kw {
-  color: #2f6fed;
-}
-html[data-theme='paper'] .md .tok-str {
-  color: #3d8a56;
-}
-html[data-theme='paper'] .md .tok-num {
-  color: #b26a00;
-}
-html[data-theme='paper'] .md .tok-key {
-  color: #7a4fd0;
-}
-html[data-theme='paper'] .md .tok-tag {
-  color: #c0454f;
-}
-/* CodeMirror fold gutter — quiet, aligns with the editor font. */
-.ed-src .cm-foldGutter {
-  color: var(--muted);
-  font-size: 11px;
-}
-.ed-src .cm-lineNumbers {
-  color: var(--muted);
-  opacity: 0.55;
-  font-size: 12px;
-  font-family: var(--mono-font);
-}
-.ed-src .cm-lineNumbers .cm-gutterElement {
-  padding: 0 10px 0 2px;
-  min-width: 40px;
-  text-align: right;
-}
-.ed-src .cm-foldGutter .cm-gutterElement {
-  cursor: pointer;
-}
 
 /* onboarding + meeting modals */
 
@@ -1974,10 +1842,7 @@ html[data-theme='paper'] .md .tok-tag {
   animation: scaleIn 0.18s ease both;
 }
 
-/* Editor swap + preview settle. */
-.ed-preview {
-  animation: fadeIn 0.18s ease both;
-}
+/* Editor settle. */
 
 .ed-head h2 {
   animation: rise 0.2s ease both;
@@ -2107,29 +1972,11 @@ html[data-font='large'] {
   --ed-fs: 16px;
 }
 
-.md {
-  font-size: var(--ed-fs, 14px);
-  font-family: var(--text-font);
-}
-.md p {
-  font-size: 1em;
-}
-.md ul,
-.md ol {
-  font-size: 1em;
-}
-.md pre {
-  font-size: 0.92em;
-  font-family: var(--mono-font);
-}
-.md code {
-  font-family: var(--mono-font);
-}
 
 /* CodeMirror caret — default black is invisible on dark themes. */
 .ed-src .cm-content {
   caret-color: var(--text);
-  font-family: var(--mono-font);
+  font-family: var(--text-font);
 }
 .ed-src .cm-cursor {
   border-left-color: var(--text) !important;
@@ -2413,33 +2260,6 @@ html[data-motion='reduced'] *::after {
   flex-direction: column;
 }
 
-.ed-cols {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ed-cols.live,
-.ed-cols.raw {
-  display: flex;
-  flex-direction: column;
-}
-
-.ed-src {
-  flex: 1;
-  min-height: 0;
-}
-
-.ed-cols.read,
-.ed-cols.edit,
-.ed-cols.live,
-.ed-cols.raw {
-  grid-template-columns: 1fr;
-}
-
-.ed-src[hidden] {
-  display: none;
-}
 
 .ed-actions {
   margin-top: 0;
@@ -3288,9 +3108,6 @@ html[data-density='compact'] .note-stage {
   padding: 10px 14px 0;
 }
 
-html[data-density='compact'] .md p {
-  margin: 0.3em 0;
-}
 
 /* ---------- Inkfish: filename titles, rename, fallback editor ---------- */
 
@@ -3327,13 +3144,6 @@ html[data-density='compact'] .md p {
   resize: vertical;
 }
 
-.preview-warn {
-  color: var(--danger);
-  font-size: 13px;
-  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
-  border-radius: 10px;
-  padding: 8px 12px;
-}
 
 /* ---------- Inkfish: context menu + dialogs ---------- */
 
@@ -3600,177 +3410,6 @@ html[data-density='compact'] .md p {
   background: var(--panel);
 }
 
-/* ---------- Inkfish: live view (rendered + click-to-edit) ----------
-   Single card is the stage itself — the live body is borderless so there is
-   no double-nested frame. Gutter shows the source line no. (Obsidian-like). */
-
-.live {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 6px 2px 24px;
-}
-
-.live-block {
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 0 10px;
-  align-items: start;
-  border-radius: 8px;
-  padding: 1px 6px 1px 0;
-  margin: 0;
-  cursor: text;
-  outline: none;
-}
-
-/* Gutter number centers on the block's first text line regardless of the
-   content font size (--ed-fs): fixed one-line-height flex box instead of a
-   magic line-height that drifts at 18px+. */
-.live-ln {
-  user-select: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: calc(var(--ed-fs, 14px) * 1.5);
-  line-height: 1;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-  opacity: 0.55;
-  font-family: var(--mono-font);
-}
-
-/* Gutter numbers double as edit handles — quiet until hover/focus. */
-button.live-ln.live-edit-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
-  border-radius: 6px;
-  transition:
-    opacity 0.12s ease,
-    color 0.12s ease,
-    background 0.12s ease;
-}
-
-button.live-ln.live-edit-btn:hover,
-button.live-ln.live-edit-btn:focus-visible {
-  opacity: 1;
-  color: var(--accent);
-  background: var(--panel);
-  outline: none;
-}
-
-/* Kill first/last child margins so the gutter's first line box starts at
-   exactly the same y as the body's first text line. */
-.live-body > :first-child {
-  margin-top: 0 !important;
-}
-.live-body > :last-child {
-  margin-bottom: 0 !important;
-}
-
-.live-body {
-  min-width: 0;
-}
-
-/* Each list item is its own block (independent toggle) — kill the default
-   per-<ul> top/bottom margin or bullets get huge gaps at large font sizes. */
-.live-block .md ul,
-.live-block .md ol {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.live-block .md li {
-  margin: 1px 0;
-}
-
-.live-block .md p {
-  margin: 0.18em 0;
-}
-
-.live-block .md h1,
-.live-block .md h2,
-.live-block .md h3,
-.live-block .md h4 {
-  margin: 0.2em 0 0.15em;
-}
-
-.live-block .md hr {
-  margin: 0.4em 0;
-}
-
-.live-block:hover {
-  background: color-mix(in srgb, var(--text) 4%, transparent);
-}
-
-.live-block:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-.live-block input[type='checkbox'] {
-  accent-color: var(--mint);
-  width: 15px;
-  height: 15px;
-  vertical-align: -2px;
-  cursor: pointer;
-}
-
-.live-editing {
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 0 10px;
-  align-items: start;
-  margin: 1px 0;
-  padding: 1px 6px 1px 0;
-}
-
-/* Editing gutter matches the textarea's own padding + line box. */
-.live-editing .live-ln {
-  height: auto;
-  display: block;
-  text-align: right;
-  padding-top: 10px;
-  line-height: calc(var(--ed-fs, 14px) * 1.6);
-}
-
-.live-textarea {
-  width: 100%;
-  grid-column: 2;
-  background: var(--inset);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  color: var(--text);
-  caret-color: var(--text);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-family: var(--mono-font);
-  font-size: var(--ed-fs, 14px);
-  line-height: 1.6;
-  resize: none;
-  overflow: hidden;
-}
-
-.live-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.live-hint {
-  margin: 4px 2px 6px;
-  grid-column: 2;
-}
-
-.live-empty {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 32px 16px;
-  text-align: center;
-  cursor: text;
-}
 
 .cap-caption {
   margin: 0 12px 6px;

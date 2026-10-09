@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { APP_NAME } from '../../shared/config'
 import logoUrl from './assets/logo.png'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
-import { applyPrefs, loadPrefs, type EditMode, type Prefs } from './theme'
+import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
 import Capture from './views/Capture'
 import FolderTree, { type KindFilter, type TreeTarget } from './views/FolderTree'
@@ -99,7 +99,6 @@ function Main(): React.JSX.Element {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
-  const [openMode, setOpenMode] = useState<{ id: string; mode: EditMode } | null>(null)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NoteEntry[] | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -380,9 +379,8 @@ function Main(): React.JSX.Element {
   const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
 
   const selectNote = useCallback(
-    (id: string, mode?: EditMode) => {
+    (id: string) => {
       setScope('notes')
-      if (mode) setOpenMode({ id, mode })
       openEntry(id, 'note')
     },
     [openEntry]
@@ -617,7 +615,7 @@ function Main(): React.JSX.Element {
             .then((all) => {
               setAllNotes(all)
               const found = all.find((n) => n.path === rel)
-              if (found) selectNote(found.id, 'raw')
+              if (found) selectNote(found.id)
             })
             .catch(console.error)
           refreshInbox()
@@ -1116,8 +1114,6 @@ function Main(): React.JSX.Element {
                   doc={doc}
                   title={doc ? titleOf(doc) : ''}
                   dirty={dirty}
-                  defaultMode={prefs.mode}
-                  openMode={openMode && doc && openMode.id === doc.id ? openMode.mode : null}
                   draft={sel ? drafts[sel.id] : undefined}
                   onDraft={handleDraft}
                   onDirty={() => undefined}
