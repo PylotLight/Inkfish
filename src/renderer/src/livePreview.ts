@@ -26,6 +26,8 @@ const HEADING_RE = /^(#{1,4})\s+/
 const HR_RE = /^\s{0,3}(---|\*\*\*|___)\s*$/
 const QUOTE_PREFIX_RE = /^(?:\s{0,3}>\s?)+/
 const TASK_RE = /^(\s{0,8}[-*])\s+\[([ xX])\](?=\s|$)/
+const BULLET_RE = /^(\s*)([-*+])(\s+)/
+const ORDERED_RE = /^(\s*)(\d+[.)])(\s+)/
 const CODE_SPAN_RE = /`([^`\n]+?)`/g
 const BOLD_RE = /\*\*(.+?)\*\*/g
 const TRIPLE_RE = /\*\*\*(.+?)\*\*\*/g
@@ -33,7 +35,24 @@ const ITALIC_RE = /(^|[^*\w])\*([^*\n]+?)\*/g
 const STRIKE_RE = /~~(.+?)~~/g
 const LINK_RE = /\[([^\]\n]*)\]\(([^)\n]*)\)/g
 
-class TaskWidget extends WidgetType {
+/** Rendered list bullet (`•`) replacing the typed `-`/`*` marker. */
+class BulletWidget extends WidgetType {
+  override eq(other: unknown): boolean {
+    return other instanceof BulletWidget
+  }
+  override ignoreEvent(): boolean {
+    return false
+  }
+  override toDOM(): HTMLElement {
+    const s = document.createElement('span')
+    s.className = 'lp-bullet'
+    s.textContent = '• '
+    return s
+  }
+}
+
+/** Task row: rendered bullet + interactive checkbox for `- [ ]`. */
+class TaskBulletWidget extends WidgetType {
   constructor(
     readonly checked: boolean,
     readonly pos: number,
@@ -41,13 +60,16 @@ class TaskWidget extends WidgetType {
   ) {
     super()
   }
-  override eq(other: TaskWidget): boolean {
-    return other instanceof TaskWidget && other.checked === this.checked && other.pos === this.pos
+  override eq(other: TaskBulletWidget): boolean {
+    return other instanceof TaskBulletWidget && other.checked === this.checked && other.pos === this.pos
   }
   override ignoreEvent(): boolean {
     return false
   }
   override toDOM(): HTMLElement {
+    const s = document.createElement('span')
+    s.className = 'lp-taskbullet'
+    s.textContent = '• '
     const input = document.createElement('input')
     input.type = 'checkbox'
     input.checked = this.checked
@@ -58,7 +80,9 @@ class TaskWidget extends WidgetType {
       e.preventDefault()
       this.onToggle(this.pos)
     })
-    return input
+    s.appendChild(input)
+    s.appendChild(document.createTextNode(' '))
+    return s
   }
 }
 
@@ -131,20 +155,43 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
       continue
     }
 
-    // Task checkbox → interactive widget. Loops below hide/mark directly.
+    // Tasks render as bullet + checkbox; plain bullets as `•`; ordered
+    // numbers stay visible, subtly styled. Indent spaces are untouched so
+    // nesting keeps its alignment.
     const claimed: Array<[number, number]> = []
     const tm = TASK_RE.exec(rest)
     if (tm) {
-      const openBracket = restBase + (tm[1]?.length ?? 0) + 1
+      const bulletLen = tm[1]?.length ?? 0
+      const openBracket = restBase + bulletLen + 1
       const checkPos = openBracket + 1
       ops.push({
-        from: openBracket,
+        from: restBase + bulletLen - 1,
         to: openBracket + 3,
         deco: Decoration.replace({
-          widget: new TaskWidget(tm[2]?.toLowerCase() === 'x', checkPos, opts.onToggleTask)
+          widget: new TaskBulletWidget(tm[2]?.toLowerCase() === 'x', checkPos, opts.onToggleTask)
         })
       })
-      claimed.push([openBracket, openBracket + 3])
+      claimed.push([restBase + bulletLen - 1, openBracket + 3])
+    } else {
+      const bm = BULLET_RE.exec(rest)
+      if (bm) {
+        const indentLen = bm[1]?.length ?? 0
+        const markerLen = 1 + (bm[3]?.length ?? 1)
+        const wFrom = restBase + indentLen
+        ops.push({
+          from: wFrom,
+          to: wFrom + markerLen,
+          deco: Decoration.replace({ widget: new BulletWidget() })
+        })
+        claimed.push([wFrom, wFrom + markerLen])
+      } else {
+        const om = ORDERED_RE.exec(rest)
+        if (om) {
+          const numFrom = restBase + (om[1]?.length ?? 0)
+          mark(numFrom, numFrom + (om[2]?.length ?? 0), 'lp-olist')
+          claimed.push([numFrom, numFrom + (om[2]?.length ?? 0)])
+        }
+      }
     }
 
     // Inline code first — other markup inside code spans stays literal.
