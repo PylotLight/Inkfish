@@ -40,6 +40,9 @@ export default function Capture(): React.JSX.Element {
     inputRef.current?.focus()
     // Build the chosen in-app engine now so stop → text is just inference.
     warmWeb(loadAudioPrefs().engine)
+    // Live captions always run on Redux, even when it isn't the chosen
+    // engine — warm it too so streaming starts instantly on record.
+    warmWeb(LIVE_ENGINE)
     const onHash = (): void => {
       setDest(window.location.hash === '#capture-daily' ? 'today' : 'inbox')
       inputRef.current?.focus()
@@ -128,9 +131,19 @@ export default function Capture(): React.JSX.Element {
       setRecState('rec')
       const prefs = loadAudioPrefs()
       // Redux as the engine streams the real transcript; otherwise a preview.
-      if ((prefs.liveCaptions || prefs.engine === LIVE_ENGINE) && liveAvailable()) {
+      // Attempt live whenever it's wanted: when Redux is the chosen engine we
+      // try even without the downloaded flag (the model may be cached and the
+      // flag stale) and surface the reason if it fails — silent loss of live
+      // text is what made dictation feel "transcribe on stop".
+      const wantLive = prefs.liveCaptions || prefs.engine === LIVE_ENGINE
+      if (wantLive && (liveAvailable() || prefs.engine === LIVE_ENGINE)) {
         liveRef.current = startLive(stream, (t) => setCaption(t)).catch((e) => {
           console.warn('[live]', e)
+          say(
+            'Live text off — transcript lands on stop',
+            e instanceof Error ? e.message : String(e),
+            5000
+          )
           return null
         })
       }

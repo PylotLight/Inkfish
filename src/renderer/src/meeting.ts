@@ -10,7 +10,7 @@
  * permission. Video is dropped immediately.
  */
 import { openMic } from './audio'
-import { startRedux, type LiveSegment, type LiveSession } from './liveCaptions'
+import { liveAvailable, startRedux, type LiveSegment, type LiveSession } from './liveCaptions'
 
 export type Channel = 'mic' | 'system'
 
@@ -193,6 +193,9 @@ export function toMarkdown(lines: MeetingLine[], labels: SpeakerLabels = loadLab
 }
 
 export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Promise<Meeting> {
+  if (!liveAvailable()) {
+    throw new Error('Download Parakeet Redux · Web in Settings › Voice for live meeting text')
+  }
   const mic = await openMic()
   const sysCap = await openSystemAudio()
   const sys = sysCap?.audio ?? null

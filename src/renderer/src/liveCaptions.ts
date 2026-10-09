@@ -4,7 +4,7 @@
  * chosen engine its settled text *is* the final transcript — no wait after
  * stop. Live text needs Redux · Web downloaded.
  */
-import { isWebReady, reduxSpeech } from './webStt'
+import { isWebReady, reduxSpeech, resetWeb } from './webStt'
 
 export const LIVE_ENGINE = 'web-parakeet-redux'
 
@@ -34,31 +34,47 @@ export async function startRedux(
   /** Use the warm shared instance; a concurrent second stream needs its own. */
   shared = true
 ): Promise<LiveSession> {
-  const speech = shared ? await reduxSpeech() : (await import('@karanganesan/vocule')).createSpeech()
-  const release = (): void => {
-    if (!shared) speech.dispose()
-  }
-  let segments: LiveSegment[] = []
-  const live = await speech.listen({
-    stream,
-    onUpdate: (u) => {
-      segments = u.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
-      onText(u.text.trim(), segments)
-    },
-    onError: (e) => console.warn('[live] redux', e)
-  })
-  return {
-    engine: 'Parakeet Redux · live',
-    stop: async () => {
-      const text = (await live.stop()).replace(/\s+/g, ' ').trim()
-      segments = live.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
-      release()
-      return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
-    },
-    cancel: async () => {
-      await live.cancel().catch(() => undefined)
-      release()
+  const open = async (useShared: boolean): Promise<LiveSession> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const speech: any = useShared
+      ? await reduxSpeech()
+      : await (await import('@karanganesan/vocule')).createSpeech()
+    const release = (): void => {
+      if (!useShared) speech.dispose()
     }
+    let segments: LiveSegment[] = []
+    const live = await speech.listen({
+      stream,
+      onUpdate: (u) => {
+        segments = u.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+        onText(u.text.trim(), segments)
+      },
+      onError: (e) => console.warn('[live] redux', e)
+    })
+    return {
+      engine: 'Parakeet Redux · live',
+      stop: async () => {
+        const text = (await live.stop()).replace(/\s+/g, ' ').trim()
+        segments = live.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+        release()
+        return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
+      },
+      cancel: async () => {
+        await live.cancel().catch(() => undefined)
+        release()
+      }
+    }
+  }
+  if (!shared) return open(false)
+  try {
+    return await open(true)
+  } catch (err) {
+    // The shared instance can wedge (e.g. a benchmark timeout disposes it
+    // mid-flight) — drop it and retry once on a fresh instance instead of
+    // silently losing live text for every recording after.
+    console.warn('[live] shared redux failed, retrying with a fresh instance:', err)
+    resetWeb(LIVE_ENGINE)
+    return open(false)
   }
 }
 
