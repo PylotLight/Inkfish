@@ -265,10 +265,6 @@ export default function Capture(): React.JSX.Element {
 
   const recLabel = recState === 'rec' ? 'Stop dictation' : recState === 'working' ? 'Transcribing…' : 'Dictate'
 
-  const isMac =
-    typeof navigator !== 'undefined' &&
-    (/mac/i.test(navigator.platform ?? '') || /mac/i.test(navigator.userAgent ?? ''))
-
   // Keep the newest live text in view; pause if the user scrolls up to reread.
   const onCaptionScroll = (): void => {
     const el = captionRef.current
@@ -288,7 +284,7 @@ export default function Capture(): React.JSX.Element {
 
   return (
     <div
-      className={`capture${saved ? ' pop' : ''}${isMac ? ' mac' : ''}`}
+      className={`capture${saved ? ' pop' : ''}`}
       onKeyDown={onKey}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {

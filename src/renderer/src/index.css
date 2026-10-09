@@ -1158,7 +1158,7 @@ html[data-theme='paper'] .toast.glass {
 /* ---------- Inkfish: capture popover ----------
  * One surface: the window's own vibrancy. No inner glass card, no boxed
  * textarea, no pill buttons. Accent appears only on the Save action and the
- * live recording state.
+ * live recording state. A hairline border defines the frameless edge.
  */
 
 .capture-shell {
@@ -1172,6 +1172,8 @@ html[data-theme='paper'] .toast.glass {
   flex-direction: column;
   padding: 12px 14px 10px;
   -webkit-app-region: drag;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 
 .capture button,
@@ -4152,42 +4154,6 @@ mark.find-hit.current {
 .cm-find-hit.current {
   background: var(--accent);
   color: var(--accent-ink);
-}
-
-/* ---------- Inkfish: capture spacing (traffic lights + dest tabs) ---------- */
-
-.capture {
-  padding: 12px 16px 10px;
-}
-
-/* macOS frameless popover: traffic lights overlay the top-left — clear them. */
-.capture.mac {
-  padding-left: 78px;
-  padding-top: 26px;
-}
-
-.cap-top {
-  padding-bottom: 10px;
-  margin-bottom: 2px;
-}
-
-.cap-dest {
-  gap: 18px;
-}
-
-.cap-dest button {
-  font-size: 13.5px;
-  padding: 6px 0;
-}
-
-.cap-input {
-  padding: 10px 0;
-}
-
-.cap-bar {
-  gap: 4px;
-  padding-top: 10px;
-  margin-top: 4px;
 }
 
 /* ---------- Inkfish: opaque popups ----------
