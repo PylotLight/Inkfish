@@ -1634,18 +1634,19 @@ select.sm {
 
 /* Headings stay close to body size so gutter numbers align with the text —
  * large display type pushes the baseline off the line number. */
+/* Headings stay near body size so gutter numbers sit with the text — large
+ * display type pushes the glyphs off their line number. */
 .cm-line.lp-h1,
 .cm-line.lp-h2,
 .cm-line.lp-h3,
 .cm-line.lp-h4 {
   font-weight: 700;
   letter-spacing: -0.01em;
-  line-height: 1.3;
 }
-.cm-line.lp-h1 { font-size: 1.3em; padding-top: 0.12em; }
-.cm-line.lp-h2 { font-size: 1.17em; padding-top: 0.1em; }
+.cm-line.lp-h1 { font-size: 1.28em; line-height: 1.25; }
+.cm-line.lp-h2 { font-size: 1.16em; line-height: 1.28; }
 .cm-line.lp-h3,
-.cm-line.lp-h4 { font-size: 1.06em; }
+.cm-line.lp-h4 { font-size: 1.04em; line-height: 1.3; }
 
 .cm-line.lp-quote {
   box-shadow: inset 2px 0 0 var(--accent);
