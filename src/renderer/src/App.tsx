@@ -849,6 +849,13 @@ function Main(): React.JSX.Element {
     return m
   }, [finalNotes])
 
+  /** Today's day-log index entry, if one exists yet (staging `daily/…`, not the tree). */
+  const todayEntry = useMemo(() => {
+    const d = new Date()
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return allNotes.find((n) => n.path === `daily/${day}.md`) ?? null
+  }, [allNotes])
+
   const pickScope = (s: Scope): void => {
     setScope(s)
     if (s === 'home') {
@@ -1062,9 +1069,12 @@ function Main(): React.JSX.Element {
                 <Home
                   notes={finalNotes}
                   inbox={inbox}
+                  today={todayEntry}
                   titleOf={titleOf}
                   onOpenNote={selectNote}
                   onOpenInbox={() => pickScope('inbox')}
+                  onOpenToday={() => void openToday()}
+                  onTodayAppended={refreshAll}
                   onOpenFolder={(rel) => {
                     if (rel) {
                       setTargetDir(rel)
@@ -1072,6 +1082,7 @@ function Main(): React.JSX.Element {
                     }
                     setScope('notes')
                   }}
+                  notify={notify}
                 />
               </main>
             ) : (

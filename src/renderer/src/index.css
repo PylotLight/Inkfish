@@ -3177,6 +3177,48 @@ button.frow.on,
   cursor: pointer;
 }
 
+/* Today log strip: the day-log lives in staging (never in the tree), so it
+ * gets its own full-width space — latest entries + a quick-append box. */
+.htoday {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--inset-soft);
+  padding: 14px 16px;
+}
+
+.htoday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.htoday-head .hsec-title {
+  margin: 0;
+}
+
+.htoday-head .hlink {
+  margin-top: 0;
+}
+
+.htoday-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.htoday-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.hrow.static {
+  cursor: default;
+}
+
+.hrow.static:hover {
+  background: transparent;
+}
+
 @media (max-width: 860px) {
   .home-grid {
     grid-template-columns: minmax(0, 1fr);

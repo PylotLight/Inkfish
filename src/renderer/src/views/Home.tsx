@@ -1,14 +1,19 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { InboxItem, NoteEntry } from '../../../shared/types'
 import { plain, timeAgo } from '../text'
 
 interface Props {
   notes: NoteEntry[]
   inbox: InboxItem[]
+  /** Today's day-log index entry, if one exists yet (lives in staging, not the tree). */
+  today: NoteEntry | null
   titleOf: (n: NoteEntry) => string
   onOpenNote: (id: string) => void
   onOpenInbox: () => void
+  onOpenToday: () => void
+  onTodayAppended: () => void
   onOpenFolder: (rel: string | null) => void
+  notify: (msg: string) => void
 }
 
 /** Parent folder of a vault-relative path ('' for root). */
@@ -24,7 +29,7 @@ function dirOf(path: string): string {
  * Accent is reserved for state: pending inbox count, hover affordances.
  */
 export default function Home({
-  notes, inbox, titleOf, onOpenNote, onOpenInbox, onOpenFolder
+  notes, inbox, today, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify
 }: Props): React.JSX.Element {
   const latest = useMemo(
     () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12),
@@ -80,6 +85,8 @@ export default function Home({
           <span className="hstat-label">Inbox</span>
         </button>
       </div>
+
+      <TodaySection entry={today} onOpenToday={onOpenToday} onAppended={onTodayAppended} notify={notify} />
 
       <div className="home-grid">
         <section className="hsec" aria-label="Latest notes">
@@ -142,5 +149,111 @@ export default function Home({
         </aside>
       </div>
     </div>
+  )
+}
+
+/** Today's day-log at a glance: latest entries + a quick-append box. */
+function TodaySection({
+  entry, onOpenToday, onAppended, notify
+}: {
+  entry: NoteEntry | null
+  onOpenToday: () => void
+  onAppended: () => void
+  notify: (msg: string) => void
+}): React.JSX.Element {
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [sections, setSections] = useState<Array<{ time: string; text: string }>>([])
+
+  // Read the log's timestamped sections (`## HH:MM …`) for the preview.
+  useEffect(() => {
+    if (!entry) {
+      setSections([])
+      return
+    }
+    let live = true
+    window.api.notes
+      .get(entry.id)
+      .then((doc) => {
+        if (!live || !doc) return
+        const lines = doc.markdown.split('\n')
+        const secs: Array<{ time: string; text: string }> = []
+        for (let i = 0; i < lines.length; i++) {
+          const m = /^##\s+(.+?)\s*$/.exec(lines[i] ?? '')
+          if (!m) continue
+          let text = ''
+          for (let j = i + 1; j < lines.length; j++) {
+            const t = (lines[j] ?? '').trim()
+            if (t) {
+              text = t.slice(0, 120)
+              break
+            }
+          }
+          secs.push({ time: m[1] ?? '', text })
+        }
+        setSections(secs.slice(-3).reverse())
+      })
+      .catch(console.error)
+    return () => {
+      live = false
+    }
+  }, [entry?.id, entry?.updatedAt])
+
+  const append = async (): Promise<void> => {
+    const body = draft.trim()
+    if (!body || busy) return
+    setBusy(true)
+    try {
+      await window.api.daily.append(body, 'text')
+      setDraft('')
+      onAppended()
+      notify('Appended to Today ☀')
+    } catch (err: unknown) {
+      notify(`Append failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="hsec htoday" aria-label="Today's log">
+      <div className="htoday-head">
+        <h3 className="hsec-title">Today</h3>
+        <button className="hlink" onClick={onOpenToday}>
+          Open →
+        </button>
+      </div>
+      {sections.length === 0 && (
+        <p className="muted small hsec-empty">
+          {entry ? 'Log started — nothing appended yet.' : 'Nothing logged yet — jot the first update below.'}
+        </p>
+      )}
+      {sections.length > 0 && (
+        <ul className="hrows">
+          {sections.map((s, i) => (
+            <li key={`${s.time}-${i}`}>
+              <div className="hrow static">
+                <span className="hrow-title">{s.text || '(empty)'}</span>
+                <span className="hrow-time">{s.time}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="htoday-add">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void append()
+          }}
+          placeholder="Log an update to today…"
+          aria-label="Log an update to today"
+        />
+        <button className="btn mint sm" disabled={!draft.trim() || busy} onClick={() => void append()}>
+          {busy ? 'Appending…' : 'Append'}
+        </button>
+      </div>
+    </section>
   )
 }
