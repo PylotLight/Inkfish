@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-10-09
+
+### Added
+
+- In-note find, inbox delete, today entry point, inbox + capture cleanup ([1ed3edc](https://github.com/PylotLight/Inkfish/commit/1ed3edc5f2d9684cdd43d057fb0a1427ce815bb5))
+- Today section on home dashboard with quick-append ([b50876a](https://github.com/PylotLight/Inkfish/commit/b50876aa5ec332fd13fa783a4732037bc9bed8a0))
+- Single continuous live-preview editor, no blocks, no raw mode ([9b35b38](https://github.com/PylotLight/Inkfish/commit/9b35b3851f18dbaa32cf2244006d11dd03d761d6))
+
+### Fixed
+
+- Opaque popup/modal backgrounds so text can't bleed through ([e7d4d49](https://github.com/PylotLight/Inkfish/commit/e7d4d49a68d2c3982a901e6def7bf7abd4203003))
+- Revert capture restyle, keep original + hairline border ([9fcf119](https://github.com/PylotLight/Inkfish/commit/9fcf1198cb4a8728f05e776703d6cae241be3718))
+- Redux live captions resilience, visibility, warm-up ([033f5f7](https://github.com/PylotLight/Inkfish/commit/033f5f765969768f765b05dd529b6105ca9355b0))
+- Live view selection-safe blocks, dblclick/Enter/gutter to edit ([854d1ad](https://github.com/PylotLight/Inkfish/commit/854d1ad2758a6ccc9093bee12c173167bb43f70a))
+- Rendered bullets/tasks, tighter headings aligned to gutter ([7b274ac](https://github.com/PylotLight/Inkfish/commit/7b274acdac6f13f4a4ba2d6e25465cc784bc52db))
+- Near-body heading scale so gutter numbers sit with text ([6efeb8b](https://github.com/PylotLight/Inkfish/commit/6efeb8bc67b7040685a075a0b009dbdfca86ce2f))
+- Body-size bold headings so every line aligns with gutter ([dae5c1a](https://github.com/PylotLight/Inkfish/commit/dae5c1a974f0368d620e365c0160c67e99e17b5a))
+- Gutter numbers track content half-leading via --ed-fs ([2d4d2c2](https://github.com/PylotLight/Inkfish/commit/2d4d2c2d8fad8d419a354aa8d64214f42540ab3d))
+
+### Performance
+
+- **(android)** Speed up sidebar and vault refresh ([3dc5134](https://github.com/PylotLight/Inkfish/commit/3dc513407a1e79d3d6ba7a475c69ab0b0146ea9e))
+
 ## [0.2.4] - 2026-10-08
 
 ### Added
@@ -147,6 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.5]: https://github.com/PylotLight/Inkfish/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/PylotLight/Inkfish/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/PylotLight/Inkfish/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/PylotLight/Inkfish/compare/v0.2.1...v0.2.2
