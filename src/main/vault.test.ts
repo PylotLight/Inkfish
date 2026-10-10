@@ -13,7 +13,9 @@ beforeEach(async () => {
   process.env['INKFISH_DATA'] = dataDir
 })
 
-afterEach(() => {
+afterEach(async () => {
+  const db = await import('./db')
+  db.closeDb()
   rmSync(dir, { recursive: true, force: true })
   rmSync(dataDir, { recursive: true, force: true })
   delete process.env['INKFISH_VAULT']

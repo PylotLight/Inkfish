@@ -38,7 +38,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       # Newest Xcode on the image: Swift 6.2 + macOS 26 SDK enables the
       # SpeechAnalyzer engine (older SDKs build a stub). FluidAudio needs Swift 6.
@@ -115,7 +115,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: download macos artifacts
         uses: actions/download-artifact@v4
