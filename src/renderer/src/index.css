@@ -1590,8 +1590,11 @@ select.sm {
 
 .ed-head h2 {
   margin: 0;
-  font-size: 19px;
-  letter-spacing: -0.01em;
+  font-size: max(19px, calc(var(--ed-fs, 14px) * 1.75));
+  font-family: var(--text-font);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
 }
 
 .ed-head .muted {
@@ -1641,6 +1644,54 @@ select.sm {
 .cm-line.lp-h4 {
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+/* Obsidian-style heading scale — only without the gutter, since numbers pin
+ * to the top of each line box and would drift off scaled headings. */
+html[data-linenos='off'] .cm-line.lp-h1 { font-size: 1.6em; line-height: 1.3; padding-top: 0.5em; padding-bottom: 0.15em; }
+html[data-linenos='off'] .cm-line.lp-h2 { font-size: 1.35em; line-height: 1.3; padding-top: 0.45em; padding-bottom: 0.1em; }
+html[data-linenos='off'] .cm-line.lp-h3 { font-size: 1.17em; line-height: 1.35; padding-top: 0.35em; }
+html[data-linenos='off'] .cm-line.lp-h4 { font-size: 1.05em; padding-top: 0.25em; }
+html[data-linenos='off'] .ed-src .cm-gutters { display: none; }
+
+/* List lines: indent comes from --lp-depth (columns of hidden whitespace),
+ * the marker hangs so wrapped text lines up under the first word. */
+.ed-src .cm-line.lp-li {
+  --lp-hang: 1.1em;
+  padding-left: calc(6px + var(--lp-depth, 0) * 0.42em + var(--lp-hang));
+  text-indent: calc(-1 * var(--lp-hang));
+}
+.ed-src .cm-line.lp-li-task { --lp-hang: 2.15em; }
+.ed-src .cm-line.lp-li-ordered { --lp-hang: 1.5em; }
+.ed-src .lp-bullet,
+.ed-src .lp-taskbullet {
+  display: inline-block;
+  text-indent: 0;
+  width: 1.1em;
+}
+.ed-src .lp-taskbullet {
+  width: 2.15em;
+  white-space: nowrap;
+}
+.ed-src .lp-taskbullet::before {
+  content: '•';
+  display: inline-block;
+  width: 1.1em;
+}
+
+/* Readable line length: centre the note column like Obsidian. Uses the
+ * content font size so it scales with quick-zoom. */
+html[data-readable='on'] .ed-src .cm-content {
+  max-width: calc(var(--ed-fs, 14px) * 44);
+  margin: 0 auto;
+  flex-grow: 1;
+}
+html[data-readable='on'] .editor > .ed-head,
+html[data-readable='on'] .editor > .find-bar {
+  width: 100%;
+  max-width: calc(var(--ed-fs, 14px) * 44 + 12px);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .cm-line.lp-quote {
@@ -1986,7 +2037,9 @@ html[data-font='large'] {
 .ed-src .cm-content {
   caret-color: var(--text);
   font-family: var(--text-font);
-  line-height: 1.5;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 .ed-src .cm-cursor {
   border-left-color: var(--text) !important;
@@ -2009,7 +2062,7 @@ html[data-font='large'] {
   font-family: var(--mono-font);
 }
 .ed-src .cm-lineNumbers .cm-gutterElement {
-  padding: max(0px, calc((var(--ed-fs, 14px) * 1.5 - 17px) / 2)) 10px 0 2px;
+  padding: max(0px, calc((var(--ed-fs, 14px) * 1.6 - 17px) / 2)) 10px 0 2px;
   min-width: 40px;
   text-align: right;
 }

@@ -46,7 +46,7 @@ class BulletWidget extends WidgetType {
   override toDOM(): HTMLElement {
     const s = document.createElement('span')
     s.className = 'lp-bullet'
-    s.textContent = '• '
+    s.textContent = '•'
     return s
   }
 }
@@ -69,7 +69,6 @@ class TaskBulletWidget extends WidgetType {
   override toDOM(): HTMLElement {
     const s = document.createElement('span')
     s.className = 'lp-taskbullet'
-    s.textContent = '• '
     const input = document.createElement('input')
     input.type = 'checkbox'
     input.checked = this.checked
@@ -81,7 +80,6 @@ class TaskBulletWidget extends WidgetType {
       this.onToggle(this.pos)
     })
     s.appendChild(input)
-    s.appendChild(document.createTextNode(' '))
     return s
   }
 }
@@ -109,6 +107,21 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
   }
   const line = (at: number, cls: string): void => {
     ops.push({ from: at, to: at, deco: Decoration.line({ class: cls }) })
+  }
+  /**
+   * Obsidian-style list line: the raw indent is hidden and replaced by a
+   * padding proportional to its width, and the marker hangs in a negative
+   * text-indent so wrapped lines align under the text, not the bullet.
+   */
+  const listLine = (at: number, indent: string, cls: string): void => {
+    let cols = 0
+    for (const ch of indent) cols += ch === '\t' ? 4 : 1
+    hide(at, at + indent.length)
+    ops.push({
+      from: at,
+      to: at,
+      deco: Decoration.line({ class: `lp-li ${cls}`, attributes: { style: `--lp-depth: ${cols}` } })
+    })
   }
 
   let inFence = false
@@ -162,6 +175,7 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
     const tm = TASK_RE.exec(rest)
     if (tm) {
       const bulletLen = tm[1]?.length ?? 0
+      if (!quoted) listLine(restBase, /^\s*/.exec(rest)?.[0] ?? '', 'lp-li-task')
       const openBracket = restBase + bulletLen + 1
       const checkPos = openBracket + 1
       ops.push({
@@ -178,6 +192,7 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
         const indentLen = bm[1]?.length ?? 0
         const markerLen = 1 + (bm[3]?.length ?? 1)
         const wFrom = restBase + indentLen
+        if (!quoted) listLine(restBase, bm[1] ?? '', 'lp-li-bullet')
         ops.push({
           from: wFrom,
           to: wFrom + markerLen,
@@ -187,6 +202,7 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
       } else {
         const om = ORDERED_RE.exec(rest)
         if (om) {
+          if (!quoted) listLine(restBase, om[1] ?? '', 'lp-li-ordered')
           const numFrom = restBase + (om[1]?.length ?? 0)
           mark(numFrom, numFrom + (om[2]?.length ?? 0), 'lp-olist')
           claimed.push([numFrom, numFrom + (om[2]?.length ?? 0)])

@@ -29,6 +29,10 @@ export interface Prefs {
   quickZoom: boolean
   /** macOS vibrancy blur. */
   blur: boolean
+  /** Editor line-number gutter. Off = Obsidian-style prose view. */
+  lineNumbers: boolean
+  /** Cap the note column to a comfortable reading width and centre it. */
+  readableWidth: boolean
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -43,7 +47,9 @@ export const DEFAULT_PREFS: Prefs = {
   textFont: '',
   monoFont: '',
   quickZoom: true,
-  blur: true
+  blur: true,
+  lineNumbers: false,
+  readableWidth: true
 }
 
 export interface ThemeDef {
@@ -186,7 +192,9 @@ export function loadPrefs(): Prefs {
     textFont: cleanFontStack((base as Partial<Prefs>).textFont),
     monoFont: cleanFontStack((base as Partial<Prefs>).monoFont),
     quickZoom: (base as Partial<Prefs>).quickZoom !== false,
-    blur: base.blur !== false
+    blur: base.blur !== false,
+    lineNumbers: (base as Partial<Prefs>).lineNumbers === true,
+    readableWidth: (base as Partial<Prefs>).readableWidth !== false
   }
 }
 
@@ -205,6 +213,8 @@ export function applyPrefs(p: Prefs): void {
   el.dataset['density'] = p.density
   el.dataset['motion'] = p.motion
   el.dataset['font'] = p.font
+  el.dataset['linenos'] = p.lineNumbers ? 'on' : 'off'
+  el.dataset['readable'] = p.readableWidth ? 'on' : 'off'
   const vars = accentVars(p)
   for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
   // Content type scale — editing + reading views only, UI chrome untouched.

@@ -399,6 +399,42 @@ export default function SettingsView({
                   </button>
                 </div>
 
+                <div className="setting-row inline">
+                  <div className="setting-label">
+                    Readable line length
+                    <span className="muted small setting-hint">
+                      Keep notes in a centred column instead of stretching across the window.
+                    </span>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={prefs.readableWidth}
+                    className={`switch${prefs.readableWidth ? ' on' : ''}`}
+                    onClick={() => set({ readableWidth: !prefs.readableWidth })}
+                    aria-label="Readable line length"
+                  >
+                    <span className="knob" />
+                  </button>
+                </div>
+
+                <div className="setting-row inline">
+                  <div className="setting-label">
+                    Line numbers
+                    <span className="muted small setting-hint">
+                      Show line numbers beside the note. Headings stay body-sized while this is on so numbers line up.
+                    </span>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={prefs.lineNumbers}
+                    className={`switch${prefs.lineNumbers ? ' on' : ''}`}
+                    onClick={() => set({ lineNumbers: !prefs.lineNumbers })}
+                    aria-label="Line numbers"
+                  >
+                    <span className="knob" />
+                  </button>
+                </div>
+
               </section>
 
               <section className="settings-group">

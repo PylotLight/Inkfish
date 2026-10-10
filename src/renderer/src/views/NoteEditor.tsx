@@ -3,7 +3,6 @@ import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirr
 import {
   Decoration,
   EditorView,
-  highlightActiveLine,
   keymap,
   lineNumbers,
   type DecorationSet
@@ -148,10 +147,14 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
     }
   }, [findQuery, findIndex])
 
-  // Editor mounts once. Re-created with the current text if it remounts.
+  // Editor mounts when the mount div exists. On app launch the tabs restore
+  // before the note loads, so the first render is the `!doc` empty state and
+  // there is no mount div yet — `hasDoc` re-runs this once the note arrives
+  // (previously the editor never mounted until NoteEditor itself remounted).
   // Textarea fallback when CodeMirror fails.
+  const hasDoc = doc != null
   useEffect(() => {
-    if (cmFailed || !mountRef.current || viewRef.current) return
+    if (cmFailed || !hasDoc || !mountRef.current || viewRef.current) return
     let view: EditorView | null = null
     try {
       view = new EditorView({
@@ -160,7 +163,6 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
         extensions: [
           lineNumbers(),
           EditorView.lineWrapping,
-          highlightActiveLine(),
           history(),
           keymap.of([
             ...listKeys,
@@ -189,8 +191,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
               caretColor: 'var(--text)'
             },
             '.cm-cursor': { borderLeftColor: 'var(--text)' },
-            '.cm-gutters': { backgroundColor: 'transparent', border: 'none' },
-            '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--text) 4%, transparent)' }
+            '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
           })
         ]
       }),
@@ -226,7 +227,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
       viewRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmFailed])
+  }, [cmFailed, hasDoc])
 
   // Swap document content when selection changes — lifted draft wins over
   // saved markdown so tab switches keep unsaved edits.
