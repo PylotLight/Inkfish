@@ -35,8 +35,7 @@ export async function startRedux(
   shared = true
 ): Promise<LiveSession> {
   const open = async (useShared: boolean): Promise<LiveSession> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const speech: any = useShared
+    const speech: import('@karanganesan/vocule').Speech = useShared
       ? await reduxSpeech()
       : await (await import('@karanganesan/vocule')).createSpeech()
     const release = (): void => {
