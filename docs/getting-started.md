@@ -54,7 +54,8 @@ Overrides for testing: `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun r
 | `preview` | Serve the built renderer only |
 | `clean` | Remove `out/` |
 | `test` | `bun test` — vault/AI/DB unit tests (also runs in CI) |
-| `typecheck` | `tsc --noEmit` over `src/`, `scripts/`, and config |
+| `typecheck` | `bun check` (bun ≥1.4.3, tsc-compatible, no emit) over `src/`, `scripts/`, and config |
+| `typecheck:android` | `bun check -p android` — the Expo app (needs `npm ci` in `android/` first) |
 | `assets` | Regenerate tray PNGs from `assets/Inkfish_logo.png`, zero dependencies |
 | `icon` | Regenerate app icon (`build/icon.png` + `build/icon.icns`) from `assets/Inkfish_logo.png`, zero dependencies |
 | `dist` / `dist:mac` / `dist:linux` / `dist:ci` | Package via electron-builder → `release/` |

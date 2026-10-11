@@ -8,7 +8,7 @@
     "start": "expo start",
     "prebuild": "expo prebuild --platform android --clean",
     "android": "expo prebuild --platform android --clean && expo run:android",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun check"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

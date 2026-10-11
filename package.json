@@ -27,7 +27,8 @@
     "preview": "electron-vite preview",
     "clean": "rm -rf out",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
+    "typecheck:android": "bun check -p android",
     "assets": "bun scripts/make-tray-icon.ts",
     "icon": "bun scripts/make-app-icon.ts",
     "dist": "electron-builder",
@@ -114,7 +115,6 @@
     "electron-vite": "^5.0.0",
     "parakeet.js": "^1.4.4",
     "qrcode": "^1.5.4",
-    "typescript": "~5.9.2",
     "vite": "^8.3.2"
   },
   "dependencies": {
