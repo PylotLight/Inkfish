@@ -1,7 +1,8 @@
-import { RangeSetBuilder, type Extension } from '@codemirror/state'
+import { RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state'
 import { indentLess, indentMore } from '@codemirror/commands'
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
+import { findImages, imageCandidates } from '../../shared/images'
 
 /**
  * Obsidian-style live preview for one continuous CodeMirror document: the
@@ -10,12 +11,21 @@ import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
  * and content is styled in place. No block editors, no separate raw mode.
  *
  * Scope: headings, quotes, hr, tasks, bold/italic/strike, inline code, links,
- * fenced code styling. Images + tables stay as dimmed source (fully editable).
+ * images, fenced code styling. Tables stay as source (fully editable).
+ *
+ * Images: `![alt](src)` renders inline. While the caret/selection touches the
+ * ref its source is shown (dimmed) with the picture underneath, so it stays
+ * editable; elsewhere the source is replaced by the picture.
  */
 
 export interface LivePreviewOptions {
   /** Flip the ` `/`x` inside task brackets at `pos`. */
   onToggleTask: (pos: number) => void
+  /**
+   * Loadable URLs for an image ref, most likely first (vault-root, then
+   * note-relative). Defaults to resolving without a note path.
+   */
+  resolveImage?: (src: string) => string[]
 }
 
 /** Skip fancy decorations past this size — plain editing stays fast. */
@@ -84,6 +94,61 @@ class TaskBulletWidget extends WidgetType {
   }
 }
 
+/** Rendered `![alt](src)`: tries each candidate URL, then a "missing" chip. */
+export class ImageWidget extends WidgetType {
+  constructor(
+    readonly urls: string[],
+    readonly alt: string,
+    readonly src: string
+  ) {
+    super()
+  }
+  override eq(other: ImageWidget): boolean {
+    return (
+      other instanceof ImageWidget &&
+      other.alt === this.alt &&
+      other.src === this.src &&
+      other.urls.join('\n') === this.urls.join('\n')
+    )
+  }
+  override get estimatedHeight(): number {
+    return 160
+  }
+  override ignoreEvent(): boolean {
+    // Let CodeMirror place the caret on click — that reveals the source.
+    return false
+  }
+  override toDOM(view: EditorView): HTMLElement {
+    const wrap = document.createElement('span')
+    wrap.className = 'lp-img'
+    const missing = (): void => {
+      wrap.classList.add('lp-img-missing')
+      wrap.textContent = `🖼 ${this.alt || this.src} (not found)`
+      wrap.title = this.src
+      view.requestMeasure()
+    }
+    if (this.urls.length === 0) {
+      missing()
+      return wrap
+    }
+    const img = document.createElement('img')
+    img.alt = this.alt
+    img.title = this.alt || this.src
+    img.draggable = false
+    img.decoding = 'async'
+    let i = 0
+    img.addEventListener('load', () => view.requestMeasure())
+    img.addEventListener('error', () => {
+      i++
+      if (i < this.urls.length) img.src = this.urls[i] as string
+      else missing()
+    })
+    img.src = this.urls[0] as string
+    wrap.appendChild(img)
+    return wrap
+  }
+}
+
 interface Op {
   from: number
   to: number
@@ -95,9 +160,13 @@ function overlaps(claimed: Array<[number, number]>, from: number, to: number): b
   return false
 }
 
-function buildDecorations(view: EditorView, opts: LivePreviewOptions): DecorationSet {
-  const doc = view.state.doc
+/** Exported for tests — pure over the editor state, no DOM needed. */
+export function buildDecorations(state: EditorState, opts: LivePreviewOptions): DecorationSet {
+  const doc = state.doc
   if (doc.length > MAX_DECORATED_CHARS) return Decoration.none
+  const resolve = opts.resolveImage ?? ((src: string) => imageCandidates(src))
+  const ranges = state.selection.ranges
+  const touched = (from: number, to: number): boolean => ranges.some((r) => r.from <= to && r.to >= from)
   const ops: Op[] = []
   const hide = (from: number, to: number): void => {
     if (to > from) ops.push({ from, to, deco: Decoration.replace({}) })
@@ -221,6 +290,21 @@ function buildDecorations(view: EditorView, opts: LivePreviewOptions): Decoratio
       hide(spanTo - 1, spanTo)
       mark(spanFrom + 1, spanTo - 1, 'lp-codespan')
     }
+    // Images before links — LINK_RE would otherwise match the `[alt](src)`
+    // tail of `![alt](src)`, hide it, and leave a bare `!` on the line.
+    for (const im of findImages(rest)) {
+      const sFrom = restBase + im.index
+      const sTo = sFrom + im.length
+      if (overlaps(claimed, sFrom, sTo)) continue
+      claimed.push([sFrom, sTo])
+      const widget = new ImageWidget(resolve(im.src), im.alt, im.src)
+      if (touched(sFrom, sTo)) {
+        mark(sFrom, sTo, 'lp-imgsrc')
+        ops.push({ from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) })
+      } else {
+        ops.push({ from: sFrom, to: sTo, deco: Decoration.replace({ widget }) })
+      }
+    }
     // Links: hide brackets + URL, style the text.
     for (const m of rest.matchAll(LINK_RE)) {
       const i = m.index ?? 0
@@ -299,12 +383,17 @@ export function livePreview(opts: LivePreviewOptions): Extension {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet
+      hasImages: boolean
       constructor(view: EditorView) {
-        this.decorations = buildDecorations(view, opts)
+        this.hasImages = view.state.doc.toString().includes('![')
+        this.decorations = buildDecorations(view.state, opts)
       }
       update(update: ViewUpdate): void {
-        if (update.docChanged || update.viewportChanged) {
-          this.decorations = buildDecorations(update.view, opts)
+        if (update.docChanged) this.hasImages = update.state.doc.toString().includes('![')
+        // Selection matters only for revealing image source — skip the
+        // rebuild on caret moves in notes without images.
+        if (update.docChanged || update.viewportChanged || (update.selectionSet && this.hasImages)) {
+          this.decorations = buildDecorations(update.state, opts)
         }
       }
     },
