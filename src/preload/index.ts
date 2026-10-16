@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type { MenuBarSettings } from '../shared/menubar'
+import type { AppProfileInfo } from '../shared/profile'
 import type {
   ClassifyResult,
   GlassState,
@@ -142,6 +143,8 @@ const api = {
     open: (url: string): Promise<boolean> => ipcRenderer.invoke('shell:open', url)
   },
   app: {
+    /** Which app profile this is (release "Inkfish" vs "Inkfish Dev"…) — shared/profile.ts. */
+    profile: (): Promise<AppProfileInfo> => ipcRenderer.invoke('app:profile'),
     hide: (): Promise<boolean> => ipcRenderer.invoke('app:hide'),
     quit: (): Promise<void> => ipcRenderer.invoke('app:quit')
   },

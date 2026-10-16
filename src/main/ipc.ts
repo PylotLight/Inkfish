@@ -7,6 +7,8 @@ import { join, resolve } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
 import { hidePopover } from './popover'
+import { profile } from './profile'
+import { profileBadgeText, type AppProfileInfo } from '../shared/profile'
 import type {
   ClassifyResult,
   GlassState,
@@ -35,6 +37,7 @@ import {
   deleteInboxItem,
   ensureSeedProjects,
   ensureVault,
+  defaultVaultRoot,
   envManaged,
   listInbox,
   listProfiles,
@@ -219,9 +222,21 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle('dock:set-badge', (_event: IpcMainInvokeEvent, count: number): boolean => {
-    if (isMac) app.setBadgeCount(count)
-    return isMac
+    if (!isMac) return false
+    // A dev profile keeps its "dev" badge, with the count beside it.
+    if (profile.badge) app.dock?.setBadge(profileBadgeText(profile, count))
+    else app.setBadgeCount(count)
+    return true
   })
+
+  ipcMain.handle('app:profile', (): AppProfileInfo => ({
+    kind: profile.kind,
+    name: profile.name,
+    badge: profile.badge,
+    captureShortcut: profile.captureShortcut,
+    dailyShortcut: profile.dailyShortcut,
+    defaultVaultRoot: defaultVaultRoot()
+  }))
 
   ipcMain.handle('win:hide', () => getMainWindow()?.hide())
   ipcMain.handle('win:show', () => showWindow())
