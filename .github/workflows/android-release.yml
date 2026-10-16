@@ -27,7 +27,9 @@ concurrency:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    # Repo variable INKFISH_ANDROID_RUNNER points this at a self-hosted Linux runner
+    # (needs ~8 GB RAM for gradle). Default ubuntu-latest.
+    runs-on: ${{ vars.INKFISH_ANDROID_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     defaults:
       run:
@@ -60,9 +62,26 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # setup-gradle only writes its cache from the default branch unless told otherwise, and
+      # this workflow only runs on tags, so every release used to start with a cold gradle cache.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
-      - run: npm ci --no-audit --no-fund
+      # Self-hosted runners don't ship the Android SDK; hosted ones do (ANDROID_HOME set).
+      - name: android sdk (only if the runner lacks one)
+        if: env.ANDROID_HOME == ''
+        uses: android-actions/setup-android@v3
+
+      - name: restore android/node_modules
+        id: android-nm
+        uses: actions/cache@v4
+        with:
+          path: android/node_modules
+          key: android-nm-release-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('android/package-lock.json') }}
+
+      - if: steps.android-nm.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
 
       - name: keystore
         env:

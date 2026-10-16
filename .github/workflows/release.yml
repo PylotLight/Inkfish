@@ -29,10 +29,12 @@ jobs:
           #     os: ubuntu-latest
           #     target: --linux
           # (plus a libfuse apt step for AppImage — see git history).
+          # Repo variable INKFISH_MAC_RUNNER points this at a self-hosted Mac (default macos-15).
           - name: macos
-            os: macos-15
+            os: ${{ vars.INKFISH_MAC_RUNNER || 'macos-15' }}
             target: --mac
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -42,12 +44,34 @@ jobs:
 
       # Newest Xcode on the image: Swift 6.2 + macOS 26 SDK enables the
       # SpeechAnalyzer engine (older SDKs build a stub). FluidAudio needs Swift 6.
+      # Falls back to the current Xcode on a self-hosted Mac without sudo.
       - name: select xcode
         if: matrix.name == 'macos'
-        run: |
-          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
-          sudo xcode-select -s "$X"
-          xcrun swift --version
+        run: bash .github/scripts/select-xcode.sh
+
+      # SwiftPM build dir for the transcription helper: `bun run build` spends ~3 min
+      # compiling FluidAudio etc. from scratch otherwise. Tag builds can read caches saved
+      # on main (ci.yml's mac-stt job seeds it whenever stt/ changes).
+      - name: restore SwiftPM build cache
+        if: matrix.name == 'macos'
+        uses: actions/cache@v4
+        with:
+          path: stt/.build
+          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
+          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
+
+      # bun packages + the Electron zips @electron/get and electron-builder download.
+      - name: restore bun + electron caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: release-${{ runner.os }}-${{ runner.arch }}-
 
       - run: bun install --frozen-lockfile
       # Also builds the transcription helper (stt/bin/inkfish-stt), bundled as
@@ -72,6 +96,7 @@ jobs:
     name: github release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,6 +133,7 @@ jobs:
     name: homebrew cask
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
