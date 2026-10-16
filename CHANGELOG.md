@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-10-16
+
+### Added
+
+- **(editor)** Copy embedded images (right-click menu + click-select ⌘C) (#67) ([e1d0e69](https://github.com/PylotLight/Inkfish/commit/e1d0e6958f6ce4289b7211bb3afd30eaa82905ab))
+- **(notes)** Drag & drop in sidebar, Move to… folder picker, header breadcrumb + tag chips (#68) ([15d2bb9](https://github.com/PylotLight/Inkfish/commit/15d2bb93975cfd6577b89bec2c0041bea94b69a0))
+
 ## [0.2.9] - 2026-10-16
 
 ### Added
@@ -223,6 +230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.10]: https://github.com/PylotLight/Inkfish/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/PylotLight/Inkfish/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/PylotLight/Inkfish/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/PylotLight/Inkfish/compare/v0.2.6...v0.2.7
