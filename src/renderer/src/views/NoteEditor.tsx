@@ -374,14 +374,6 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
               </button>
             </>
           )}
-          <p
-            className="muted small"
-            title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
-          >
-            {doc.path} · {dirty ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
-            edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-            {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
-          </p>
         </div>
         <div className="row ed-actions">
           <button
@@ -411,6 +403,14 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
             Save ⌘S
           </button>
         </div>
+        <p
+          className="muted small ed-meta"
+          title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
+        >
+          {doc.path} · {dirty ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
+          edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+          {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+        </p>
       </div>}
       {findOpen && (
         <div className="find-bar" role="search" aria-label="Find in note">

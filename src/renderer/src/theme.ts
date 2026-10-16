@@ -9,6 +9,9 @@ export type AccentId = 'mint' | 'sky' | 'violet' | 'amber' | 'coral' | 'custom'
 export type DensityId = 'comfortable' | 'compact'
 export type MotionId = 'full' | 'reduced'
 export type FontId = 'compact' | 'default' | 'large'
+/** How wide the note column runs: the whole pane, a wide cap, or a centred reading column. */
+export type NoteWidthId = 'full' | 'wide' | 'readable'
+export const NOTE_WIDTHS: NoteWidthId[] = ['full', 'wide', 'readable']
 
 export interface Prefs {
   theme: ThemeId
@@ -31,8 +34,8 @@ export interface Prefs {
   blur: boolean
   /** Editor line-number gutter. Off = Obsidian-style prose view. */
   lineNumbers: boolean
-  /** Cap the note column to a comfortable reading width and centre it. */
-  readableWidth: boolean
+  /** Note column width. `full` (default) uses the whole pane; `wide`/`readable` cap + centre it. */
+  noteWidth: NoteWidthId
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -49,7 +52,7 @@ export const DEFAULT_PREFS: Prefs = {
   quickZoom: true,
   blur: true,
   lineNumbers: false,
-  readableWidth: true
+  noteWidth: 'full'
 }
 
 export interface ThemeDef {
@@ -194,8 +197,19 @@ export function loadPrefs(): Prefs {
     quickZoom: (base as Partial<Prefs>).quickZoom !== false,
     blur: base.blur !== false,
     lineNumbers: (base as Partial<Prefs>).lineNumbers === true,
-    readableWidth: (base as Partial<Prefs>).readableWidth !== false
+    noteWidth: noteWidthFrom(base as Record<string, unknown>)
   }
+}
+
+/**
+ * Note width from a stored prefs blob. Only an explicit `noteWidth` counts: the old
+ * `readableWidth` boolean was saved for everyone (applyPrefs writes the whole blob),
+ * so `true` can't tell "chose it" from "never touched it" — everyone lands on full
+ * width and can pick Readable again in Settings.
+ */
+export function noteWidthFrom(raw: Record<string, unknown> | null | undefined): NoteWidthId {
+  const v = raw?.['noteWidth']
+  return typeof v === 'string' && (NOTE_WIDTHS as string[]).includes(v) ? (v as NoteWidthId) : DEFAULT_PREFS.noteWidth
 }
 
 export function savePrefs(prefs: Prefs): void {
@@ -214,7 +228,7 @@ export function applyPrefs(p: Prefs): void {
   el.dataset['motion'] = p.motion
   el.dataset['font'] = p.font
   el.dataset['linenos'] = p.lineNumbers ? 'on' : 'off'
-  el.dataset['readable'] = p.readableWidth ? 'on' : 'off'
+  el.dataset['notewidth'] = p.noteWidth
   const vars = accentVars(p)
   for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
   // Content type scale — editing + reading views only, UI chrome untouched.

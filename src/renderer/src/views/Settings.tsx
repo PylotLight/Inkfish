@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type Prefs } from '../theme'
+import { ACCENTS, DEFAULT_PREFS, NOTE_WIDTHS, THEMES, type DensityId, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
@@ -414,20 +414,24 @@ export default function SettingsView({
 
                 <div className="setting-row inline">
                   <div className="setting-label">
-                    Readable line length
+                    Note width
                     <span className="muted small setting-hint">
-                      Keep notes in a centred column instead of stretching across the window.
+                      Full uses the whole pane. Wide and Readable keep notes in a centred column.
                     </span>
                   </div>
-                  <button
-                    role="switch"
-                    aria-checked={prefs.readableWidth}
-                    className={`switch${prefs.readableWidth ? ' on' : ''}`}
-                    onClick={() => set({ readableWidth: !prefs.readableWidth })}
-                    aria-label="Readable line length"
-                  >
-                    <span className="knob" />
-                  </button>
+                  <div className="seg-row" role="radiogroup" aria-label="Note width">
+                    {NOTE_WIDTHS.map((w) => (
+                      <button
+                        key={w}
+                        role="radio"
+                        aria-checked={prefs.noteWidth === w}
+                        className={`seg${prefs.noteWidth === w ? ' selected' : ''}`}
+                        onClick={() => set({ noteWidth: w })}
+                      >
+                        {w === 'full' ? 'Full' : w === 'wide' ? 'Wide' : 'Readable'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="setting-row inline">

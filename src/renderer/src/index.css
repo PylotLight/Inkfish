@@ -1669,10 +1669,30 @@ select.sm {
 
 .ed-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px 10px;
   margin-bottom: 10px;
+}
+
+/* Title row shares the top line with the buttons (pinned to the pane's right
+ * edge) and wraps inside itself; the buttons only drop under the title when the
+ * pane is too narrow for both. The meta line gets its own full-width row so it
+ * doesn't wrap just because the buttons sit beside it. */
+.ed-head .ed-title {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ed-head .ed-actions {
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ed-head p.ed-meta {
+  flex: 1 0 100%;
+  margin: -4px 0 0;
 }
 
 .ed-head h2 {
@@ -1766,17 +1786,40 @@ html[data-linenos='off'] .ed-src .cm-gutters { display: none; }
   width: 1.1em;
 }
 
-/* Readable line length: centre the note column like Obsidian. Uses the
- * content font size so it scales with quick-zoom. */
-html[data-readable='on'] .ed-src .cm-content {
-  max-width: calc(var(--ed-fs, 14px) * 44);
+/* Note width. Full (default) runs the note across the whole pane with responsive
+ * side padding; Wide / Readable cap the column and centre it (Obsidian-style).
+ * The cap scales with the content font size so it follows quick-zoom. Padding
+ * reads the editor's own width (container units), so a collapsed sidebar, mini
+ * window or narrow window all get sensible gutters without a fixed column. */
+.editor {
+  container-type: inline-size;
+  container-name: note;
+  --note-pad: clamp(6px, 4cqi - 20px, 56px);
+  --note-measure: 100000px;
+}
+html[data-notewidth='wide'] .editor {
+  --note-measure: calc(var(--ed-fs, 14px) * 64);
+}
+html[data-notewidth='readable'] .editor {
+  --note-measure: calc(var(--ed-fs, 14px) * 44);
+}
+html.mini-window .editor {
+  --note-pad: clamp(0px, 3cqi - 6px, 24px);
+}
+.editor .ed-src .cm-content {
+  box-sizing: border-box;
+  padding-left: var(--note-pad);
+  padding-right: var(--note-pad);
+  max-width: calc(var(--note-measure) + 2 * var(--note-pad));
   margin: 0 auto;
   flex-grow: 1;
+  min-width: 0;
 }
-html[data-readable='on'] .editor > .ed-head,
-html[data-readable='on'] .editor > .find-bar {
-  width: 100%;
-  max-width: calc(var(--ed-fs, 14px) * 44 + 12px);
+/* Header + find bar line up with the text: content padding + the 6px cm-line inset. */
+.editor > .ed-head,
+.editor > .find-bar {
+  box-sizing: border-box;
+  width: min(100% - 2 * var(--note-pad) - 12px, var(--note-measure) - 12px);
   margin-left: auto;
   margin-right: auto;
 }
@@ -4083,7 +4126,7 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
 .ed-src .lp-img img {
   display: block;
   max-width: 100%;
-  max-height: 520px;
+  max-height: min(72vh, 900px);
   height: auto;
   border-radius: 6px;
   object-fit: contain;
