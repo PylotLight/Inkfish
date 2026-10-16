@@ -11,6 +11,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
 import { listKeys, livePreview } from '../livePreview'
+import { imageCandidates, imageMarkdown } from '../../../shared/images'
 
 /** In-note find highlight for the editor pane. */
 const setFind = StateEffect.define<{ query: string; current: number }>()
@@ -93,6 +94,9 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
   dirtyRef.current = onDirty
   const draftRef = useRef(onDraft)
   draftRef.current = onDraft
+  /** Vault-relative path of the open note — image refs resolve against it. */
+  const notePathRef = useRef<string | null>(doc?.path ?? null)
+  notePathRef.current = doc?.path ?? null
 
   const handleText = useCallback((next: string): void => {
     setText(next)
@@ -182,7 +186,36 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           }),
           findQueryField,
           findDecoField,
-          livePreview({ onToggleTask: (pos) => toggleTaskRef.current(pos) }),
+          livePreview({
+            onToggleTask: (pos) => toggleTaskRef.current(pos),
+            resolveImage: (src) => imageCandidates(src, notePathRef.current)
+          }),
+          // Images: paste / drop → assets/, ref inserted on its own line.
+          // Handled here (not a DOM listener) so CodeMirror doesn't also
+          // paste the clipboard's text/html fallback for the same image.
+          EditorView.domEventHandlers({
+            paste: (e, v) => {
+              const files = imageFiles(e.clipboardData)
+              if (files.length === 0) return false
+              e.preventDefault()
+              void insertImages(v, files, v.state.selection.main.head)
+              return true
+            },
+            dragover: (e) => {
+              // Files aren't readable until drop — only allow the drop here.
+              if (!hasFileDrag(e.dataTransfer)) return false
+              e.preventDefault()
+              return true
+            },
+            drop: (e, v) => {
+              const files = imageFiles(e.dataTransfer)
+              if (files.length === 0) return false
+              e.preventDefault()
+              const at = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head
+              void insertImages(v, files, at)
+              return true
+            }
+          }),
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
             '.cm-content': {
@@ -203,26 +236,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
       return
     }
     viewRef.current = view
-
-    const onPaste = async (e: ClipboardEvent): Promise<void> => {
-      const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'))
-      if (!file) return
-      e.preventDefault()
-      try {
-        const rel = await window.api.assets.save(file.name || 'pasted.png', await toDataUrl(file))
-        const v = viewRef.current
-        if (!v) return
-        const pos = v.state.selection.main.head
-        v.dispatch({ changes: { from: pos, insert: `\n![](${rel})\n` } })
-      } catch (err) {
-        console.error('[editor] image paste failed:', err)
-      }
-    }
-    const dom = view.dom
-    const listener = (e: ClipboardEvent): void => void onPaste(e)
-    dom.addEventListener('paste', listener)
     return () => {
-      dom.removeEventListener('paste', listener)
       view.destroy()
       viewRef.current = null
     }
@@ -351,7 +365,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
             className="muted small"
             title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
           >
-            {doc.path} · {doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
+            {doc.path} · {dirty ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
             edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
             {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
           </p>
@@ -446,6 +460,42 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
       </div>
     </div>
   )
+}
+
+function imageFiles(dt: DataTransfer | null): File[] {
+  if (!dt) return []
+  return [...dt.files].filter((f) => f.type.startsWith('image/'))
+}
+
+function hasFileDrag(dt: DataTransfer | null): boolean {
+  return !!dt && [...dt.types].includes('Files')
+}
+
+/** Save each image to assets/ and insert its ref(s) on their own line at `at`. */
+async function insertImages(view: EditorView, files: File[], at: number): Promise<void> {
+  const refs: string[] = []
+  for (const f of files) {
+    try {
+      const ext = f.type.split('/')[1]?.replace('jpeg', 'jpg').replace(/\+.*$/, '') || 'png'
+      const rel = await window.api.assets.save(f.name || `pasted.${ext}`, await toDataUrl(f))
+      refs.push(imageMarkdown(rel))
+    } catch (err) {
+      console.error('[editor] image save failed:', err)
+    }
+  }
+  if (refs.length === 0) return
+  const doc = view.state.doc
+  const pos = Math.min(at, doc.length)
+  const line = doc.lineAt(pos)
+  const before = pos > line.from ? '\n' : ''
+  const after = pos < line.to ? '\n' : ''
+  const insert = `${before}${refs.join('\n')}${after}`
+  view.dispatch({
+    changes: { from: pos, insert },
+    selection: { anchor: pos + insert.length },
+    scrollIntoView: true
+  })
+  view.focus()
 }
 
 function toDataUrl(file: File): Promise<string> {

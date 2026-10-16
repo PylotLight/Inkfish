@@ -3971,3 +3971,41 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   background: rgba(250, 248, 243, 0.94);
   box-shadow: 0 24px 60px rgba(30, 25, 15, 0.28);
 }
+
+/* ---------- Inkfish: inline images (live preview + capture) ---------- */
+
+.ed-src .lp-img {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  padding: 4px 0;
+  cursor: text;
+}
+.ed-src .lp-img img {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  height: auto;
+  border-radius: 6px;
+  object-fit: contain;
+}
+.ed-src .lp-img-missing {
+  font-size: 0.85em;
+  color: var(--muted);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.ed-src .lp-imgsrc {
+  color: var(--muted);
+  font-size: 0.88em;
+}
+
+.cap-files .cap-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-right: 6px;
+  flex: none;
+}
