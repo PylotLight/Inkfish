@@ -112,3 +112,107 @@ describe('live preview: click-selected image', () => {
     expect(new ImageWidget(['u'], 'a', 's', 1, 1, true).eq(new ImageWidget(['u'], 'a', 's', 1, 1))).toBe(false)
   })
 })
+
+describe('live preview: block images (alone on their line) never render inline', () => {
+  function widgets(state: EditorState) {
+    const out: Array<{ from: number; to: number; block: boolean; replace: boolean; w: ImageWidget }> = []
+    buildDecorations(state, opts).between(0, state.doc.length, (from, to, d) => {
+      const w = d.spec.widget
+      if (w instanceof ImageWidget) out.push({ from, to, block: !!d.spec.block, replace: to > from, w })
+    })
+    return out
+  }
+  const doc = '- mouse icon should show as a button?\n![|725](assets/2026/10/a.png)\nnext'
+  const from = doc.indexOf('![')
+  const to = doc.indexOf('\nnext')
+
+  test('hidden: the ref is replaced by the picture (no block widget, no source)', () => {
+    const ws = widgets(EditorState.create({ doc, selection: EditorSelection.cursor(0) }))
+    expect(ws).toHaveLength(1)
+    expect(ws[0]).toMatchObject({ from, to, block: false, replace: true })
+    expect(ws[0]!.w.block).toBe(false)
+  })
+
+  test('revealed: source stays as text, picture is a block widget at the line end (below the line)', () => {
+    const s = EditorState.create({ doc, selection: EditorSelection.cursor(from + 3) })
+    const ws = widgets(s)
+    expect(ws).toHaveLength(1)
+    expect(ws[0]).toMatchObject({ from: to, to, block: true, replace: false })
+    expect(ws[0]!.w.block).toBe(true)
+    expect(ws[0]!.w.width).toBe(725)
+    expect(decorated(doc, from + 3).visible).toContain('![|725](assets/2026/10/a.png)')
+  })
+
+  test('revealed with surrounding spaces: still a block, placed after the trailing spaces', () => {
+    const d = 'a\n  ![](x.png)  \nb'
+    const lineEnd = d.indexOf('\nb')
+    const ws = widgets(EditorState.create({ doc: d, selection: EditorSelection.cursor(d.indexOf('![') + 1) }))
+    expect(ws[0]).toMatchObject({ from: lineEnd, block: true })
+  })
+
+  test('an image mixed with text stays inline when revealed', () => {
+    const d = 'see ![](x.png) here'
+    const end = d.indexOf(')') + 1
+    const ws = widgets(EditorState.create({ doc: d, selection: EditorSelection.cursor(6) }))
+    expect(ws[0]).toMatchObject({ from: end, to: end, block: false, replace: false })
+    expect(ws[0]!.w.block).toBe(false)
+  })
+
+  test('block vs inline widgets are distinct (re-render on reveal toggle)', () => {
+    const a = new ImageWidget(['u'], 'a', 's', 300, undefined, false, true)
+    expect(a.eq(new ImageWidget(['u'], 'a', 's', 300, undefined, false, true))).toBe(true)
+    expect(a.eq(new ImageWidget(['u'], 'a', 's', 300))).toBe(false)
+  })
+
+  test('livePreview() extension builds (decorations come from a StateField, block widgets allowed)', async () => {
+    const { livePreview } = await import('./livePreview')
+    let s = EditorState.create({ doc, selection: EditorSelection.cursor(0), extensions: [livePreview(opts)] })
+    s = s.update({ selection: { anchor: from + 3 } }).state
+    expect(s.doc.toString()).toBe(doc)
+  })
+})
+
+describe('live preview: plain click on a picture selects it without revealing the source', () => {
+  test('caret stays put, ring is set, source stays hidden; ⌘C target is the image', async () => {
+    const m = await import('./imageEdit')
+    const doc = 'hello\n![](assets/a.png)\nbye'
+    const from = doc.indexOf('![')
+    const to = doc.indexOf('\nbye')
+    let s = EditorState.create({
+      doc,
+      selection: EditorSelection.range(0, 3),
+      extensions: [m.imageGestureField, m.selectedImageField]
+    })
+    s = s.update(m.beginImageGestureSpec(s, { from, to })).state
+    s = s.update(m.imageClickSpec(s, { from, to })).state
+    expect(s.field(m.imageGestureField)).toBeNull()
+    // Collapsed to the old head, nowhere near the ref.
+    expect(s.selection.main.empty).toBe(true)
+    expect(s.selection.main.head).toBe(3)
+    expect(m.imageSourceRevealed(s, from, to)).toBe(false)
+    expect(m.selectedImageRef(s)).toEqual({ from, to })
+    const ws: Array<{ replace: boolean; selected: boolean }> = []
+    buildDecorations(s, opts).between(0, doc.length, (f, t, d) => {
+      if (d.spec.widget instanceof ImageWidget) ws.push({ replace: t > f, selected: d.spec.widget.selected })
+    })
+    expect(ws).toEqual([{ replace: true, selected: true }])
+    // Re-dispatching the same selection (e.g. focus) keeps the ring; moving away clears it.
+    expect(m.selectedImageRef(s.update({ selection: { anchor: 3 } }).state)).toEqual({ from, to })
+    expect(m.selectedImageRef(s.update({ selection: { anchor: 1 } }).state)).toBeNull()
+  })
+
+  test('clicking a picture whose source is already revealed keeps it revealed', async () => {
+    const m = await import('./imageEdit')
+    const doc = '![](assets/a.png)'
+    let s = EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(4),
+      extensions: [m.imageGestureField, m.selectedImageField]
+    })
+    s = s.update(m.beginImageGestureSpec(s, { from: 0, to: doc.length })).state
+    s = s.update(m.imageClickSpec(s, { from: 0, to: doc.length })).state
+    expect(s.selection.main.head).toBe(4)
+    expect(m.imageSourceRevealed(s, 0, doc.length)).toBe(true)
+    expect(m.selectedImageRef(s)).toEqual({ from: 0, to: doc.length })
+  })
+})

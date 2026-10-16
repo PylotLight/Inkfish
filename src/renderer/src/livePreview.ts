@@ -1,12 +1,13 @@
-import { RangeSetBuilder, type EditorState, type Extension, type TransactionSpec } from '@codemirror/state'
+import { RangeSetBuilder, StateField, type EditorState, type Extension, type TransactionSpec } from '@codemirror/state'
 import { indentLess, indentMore } from '@codemirror/commands'
-import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
-import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
+import { Decoration, EditorView, WidgetType } from '@codemirror/view'
+import type { DecorationSet, KeyBinding } from '@codemirror/view'
 import { findImages, imageCandidates, imageSourceOf, isBlockImage } from '../../shared/images'
 import { copyImage, copyImagePath, copyMarkdown, imageMenuItems, revealImage } from './imageActions'
 import {
   beginImageGestureSpec,
   endImageGestureSpec,
+  imageClickSpec,
   imageGestureField,
   imageRefNear,
   imageSourceRevealed,
@@ -15,7 +16,6 @@ import {
   resizeImageSpec,
   selectedImageField,
   selectedImageRef,
-  selectImage,
   setImageGesture
 } from './imageEdit'
 
@@ -28,11 +28,15 @@ import {
  * Scope: headings, quotes, hr, tasks, bold/italic/strike, inline code, links,
  * images, fenced code styling. Tables stay as source (fully editable).
  *
- * Images: `![alt](src)` renders inline; `![alt|300](src)` (Obsidian size
- * syntax, also `|300x200`) at that width. While the caret/selection touches
- * the ref its source is shown (dimmed) with the picture underneath, so it
- * stays editable; elsewhere the source is replaced by the picture. Pictures
- * can be resized from a hover handle and dragged to move (see ImageWidget).
+ * Images: `![alt](src)`; `![alt|300](src)` (Obsidian size syntax, also
+ * `|300x200`) at that width. Elsewhere the source is replaced by the picture.
+ * While the caret/selection touches the ref its source is shown (dimmed) so it
+ * stays editable: a ref alone on its line (a "block image") then renders as a
+ * block widget BELOW the source line at the left edge, never inline beside the
+ * text; a ref mixed with text keeps its picture inline after the source.
+ * Pictures can be resized from a hover handle and dragged to move (see
+ * ImageWidget). Decorations live in a StateField because block widgets can't
+ * come from a ViewPlugin.
  */
 
 export interface LivePreviewOptions {
@@ -120,23 +124,34 @@ let activeGestures = 0
 /** Stop the browser's native text selection for a press we own (pointerdown preventDefault doesn't). */
 const noSelect = (e: Event): void => e.preventDefault()
 
+interface GestureEnd {
+  (spec?: TransactionSpec | null): void
+  /** End as a plain click: select the picture `ref`, caret left where it was. */
+  click(ref: { from: number; to: number }): void
+}
+
 /** Freeze the ref's rendering + selection for a gesture; returns the matching end. */
-function beginGesture(
-  view: EditorView,
-  r: { from: number; to: number } | null
-): (spec?: TransactionSpec | null, keepSelection?: boolean) => void {
+function beginGesture(view: EditorView, r: { from: number; to: number } | null): GestureEnd {
   activeGestures++
   document.addEventListener('selectstart', noSelect, true)
   if (r) view.dispatch(beginImageGestureSpec(view.state, r))
   let ended = false
-  return (spec, keepSelection = false) => {
-    if (ended) return
+  const finish = (): boolean => {
+    if (ended) return false
     ended = true
     activeGestures = Math.max(0, activeGestures - 1)
     document.removeEventListener('selectstart', noSelect, true)
-    if (r) view.dispatch(endImageGestureSpec(view.state, spec ?? null, keepSelection))
-    else if (spec) view.dispatch(spec)
+    return true
   }
+  const end = ((spec?: TransactionSpec | null) => {
+    if (!finish()) return
+    if (r) view.dispatch(endImageGestureSpec(view.state, spec ?? null))
+    else if (spec) view.dispatch(spec)
+  }) as GestureEnd
+  end.click = (ref) => {
+    if (finish()) view.dispatch(imageClickSpec(view.state, ref))
+  }
+  return end
 }
 
 /**
@@ -146,8 +161,8 @@ function beginGesture(
  *   live px width, and writes `|N` into the ref on release (one undo step);
  *   double-click a handle, or right-click › Reset size, removes it;
  * - press-and-drag on the picture to move the ref elsewhere, with a drop caret.
- * A plain click still puts the caret on the ref (revealing its source) and also
- * selects the picture (ring), so ⌘C copies the image itself; shift/alt/meta-clicks
+ * A plain click selects the picture (ring) so ⌘C copies the image itself, without
+ * moving the caret onto the ref (the source stays hidden); shift/alt/meta-clicks
  * go to CodeMirror untouched, so selection works as before.
  * Right-click (any view) opens Copy image / Copy image path / Copy markdown /
  * Reveal in Finder / Reset size.
@@ -160,7 +175,9 @@ export class ImageWidget extends WidgetType {
     readonly width?: number,
     readonly height?: number,
     /** Click-selected (ring; ⌘C copies the picture). */
-    readonly selected = false
+    readonly selected = false,
+    /** Block widget under a revealed block-image source line (not inline). */
+    readonly block = false
   ) {
     super()
   }
@@ -172,6 +189,7 @@ export class ImageWidget extends WidgetType {
       other.width === this.width &&
       other.height === this.height &&
       other.selected === this.selected &&
+      other.block === this.block &&
       other.urls.join('\n') === this.urls.join('\n')
     )
   }
@@ -199,8 +217,9 @@ export class ImageWidget extends WidgetType {
     return false
   }
   override toDOM(view: EditorView): HTMLElement {
-    const wrap = document.createElement('span')
+    const wrap: HTMLElement = document.createElement(this.block ? 'div' : 'span')
     wrap.className = 'lp-img'
+    if (this.block) wrap.classList.add('lp-img-block')
     if (this.selected) wrap.classList.add('lp-img-selected')
     const ref = (): { from: number; to: number } | null => {
       let pos: number
@@ -209,7 +228,10 @@ export class ImageWidget extends WidgetType {
       } catch {
         return null
       }
-      return imageRefNear(view.state, pos, this.src)
+      const near = imageRefNear(view.state, pos, this.src)
+      if (near || !this.block) return near
+      // Block widget sits at the line end (after any trailing spaces).
+      return blockImageRefAt(view.state, pos, this.src)
     }
     let imgEl: HTMLImageElement | null = null
     wrap.addEventListener('contextmenu', (e) => this.openMenu(view, e, imgEl, ref))
@@ -433,7 +455,7 @@ export class ImageWidget extends WidgetType {
       target = r ? dropTarget(view, ev.clientX, ev.clientY, r) : null
       if (caret) placeCaret(caret, target)
     }
-    const finish = (commit: boolean, ev?: PointerEvent): void => {
+    const finish = (commit: boolean): void => {
       window.removeEventListener('pointermove', move, true)
       window.removeEventListener('pointerup', up, true)
       window.removeEventListener('pointercancel', cancel, true)
@@ -445,11 +467,9 @@ export class ImageWidget extends WidgetType {
       const r = ref()
       if (!r) return end()
       if (!dragging) {
-        // Plain click: caret onto the ref, revealing its source for editing.
+        // Plain click: select the picture (ring, ⌘C) without revealing its source.
         if (!commit) return end()
-        const at = ev ? view.posAtCoords({ x: ev.clientX, y: ev.clientY }) : null
-        const pos = at !== null && at >= r.from && at <= r.to ? at : r.to
-        end({ selection: { anchor: pos }, effects: selectImage.of(r), userEvent: 'select.pointer' }, true)
+        end.click(r)
         view.focus()
         return
       }
@@ -458,7 +478,7 @@ export class ImageWidget extends WidgetType {
       view.focus()
     }
     const up = (ev: PointerEvent): void => {
-      if (ev.pointerId === id) finish(true, ev)
+      if (ev.pointerId === id) finish(true)
     }
     const cancel = (): void => finish(false)
     const key = (ev: KeyboardEvent): void => {
@@ -473,6 +493,13 @@ export class ImageWidget extends WidgetType {
     window.addEventListener('blur', cancel)
     window.addEventListener('keydown', key, true)
   }
+}
+
+/** The image ref with `src` on the line at `pos` (block widgets sit at the line end). */
+function blockImageRefAt(state: EditorState, pos: number, src: string): { from: number; to: number } | null {
+  const l = state.doc.lineAt(Math.max(0, Math.min(pos, state.doc.length)))
+  const im = findImages(l.text).find((m) => m.src === src)
+  return im ? { from: l.from + im.index, to: l.from + im.index + im.length } : null
 }
 
 interface DropTarget {
@@ -727,11 +754,19 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       if (overlaps(claimed, sFrom, sTo)) continue
       claimed.push([sFrom, sTo])
       const selected = !!picked && picked.from === sFrom && picked.to === sTo
-      const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height, selected)
       if (imageSourceRevealed(state, sFrom, sTo)) {
         mark(sFrom, sTo, 'lp-imgsrc')
-        ops.push({ from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) })
+        // Alone on its (whole) line: picture as a block under the source line,
+        // at the left edge — never inline to the right of the source text.
+        const block = isBlockImage(text, sFrom - base, sTo - base)
+        const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height, selected, block)
+        ops.push(
+          block
+            ? { from: l.to, to: l.to, deco: Decoration.widget({ widget, side: 1, block: true }) }
+            : { from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) }
+        )
       } else {
+        const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height, selected)
         ops.push({ from: sFrom, to: sTo, deco: Decoration.replace({ widget }) })
       }
     }
@@ -810,29 +845,25 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
 
 /** Live-preview decorations as a CodeMirror extension. */
 export function livePreview(opts: LivePreviewOptions): Extension {
-  const plugin = ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet
-      hasImages: boolean
-      constructor(view: EditorView) {
-        this.hasImages = view.state.doc.toString().includes('![')
-        this.decorations = buildDecorations(view.state, opts)
+  // A StateField (not a ViewPlugin): revealed block images use block widgets,
+  // which CodeMirror only accepts from state-level decorations.
+  const field = StateField.define<{ decorations: DecorationSet; hasImages: boolean }>({
+    create: (state) => ({ decorations: buildDecorations(state, opts), hasImages: state.doc.toString().includes('![') }),
+    update(value, tr) {
+      const hasImages = tr.docChanged ? tr.state.doc.toString().includes('![') : value.hasImages
+      // Selection matters only for revealing image source — skip the
+      // rebuild on caret moves in notes without images.
+      const gesture =
+        tr.effects.some((e) => e.is(setImageGesture)) ||
+        tr.startState.field(selectedImageField, false) !== tr.state.field(selectedImageField, false)
+      if (tr.docChanged || gesture || (tr.selection && hasImages)) {
+        return { decorations: buildDecorations(tr.state, opts), hasImages }
       }
-      update(update: ViewUpdate): void {
-        if (update.docChanged) this.hasImages = update.state.doc.toString().includes('![')
-        // Selection matters only for revealing image source — skip the
-        // rebuild on caret moves in notes without images.
-        const gesture =
-          update.transactions.some((tr) => tr.effects.some((e) => e.is(setImageGesture))) ||
-          update.startState.field(selectedImageField, false) !== update.state.field(selectedImageField, false)
-        if (update.docChanged || update.viewportChanged || gesture || (update.selectionSet && this.hasImages)) {
-          this.decorations = buildDecorations(update.state, opts)
-        }
-      }
+      return value
     },
-    { decorations: (v) => v.decorations }
-  )
-  return [imageGestureField, selectedImageField, plugin, copySelectedImage]
+    provide: (f) => EditorView.decorations.from(f, (v) => v.decorations)
+  })
+  return [imageGestureField, selectedImageField, field, copySelectedImage]
 }
 
 /**
