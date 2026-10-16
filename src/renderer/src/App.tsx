@@ -13,10 +13,10 @@ import Onboarding from './views/Onboarding'
 import Meetings from './views/Meetings'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
-import SettingsView from './views/Settings'
-import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import type { PaletteMode } from '../../shared/command-palette'
+import SettingsView from './views/Settings'
+import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
