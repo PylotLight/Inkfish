@@ -10,6 +10,7 @@ import {
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { minimalEdit } from '../../../shared/mini-window'
+import PopOutIcon from './PopOutIcon'
 import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
 import { listKeys, livePreview } from '../livePreview'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
@@ -72,6 +73,10 @@ interface Props {
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
   compact?: boolean
+  /** Shows the header's pop-out-to-mini-window button. */
+  onPopOut?: () => void
+  /** Its tooltip (with the user's shortcuts). */
+  popOutTitle?: string
 }
 
 /**
@@ -83,7 +88,7 @@ interface Props {
  * (sidebar, lists, queue). Unsaved text is ALSO lifted via `onDraft` so
  * switching tabs keeps edits; the tab strip owns dirtiness.
  */
-function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore, compact }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore, compact, onPopOut, popOutTitle }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -385,6 +390,16 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           >
             ⌕
           </button>
+          {onPopOut && (
+            <button
+              className="btn ghost sm icon ed-pop"
+              title={popOutTitle ?? 'Pop out to mini window'}
+              aria-label="Pop out to mini window"
+              onClick={onPopOut}
+            >
+              <PopOutIcon size={13} />
+            </button>
+          )}
           <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
             Reveal
           </button>

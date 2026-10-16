@@ -60,6 +60,8 @@ const api = {
   mini: {
     /** Pop a note out (already out: bring it up). `focus` takes the keyboard. */
     open: (noteId: string, focus?: boolean): Promise<boolean> => ipcRenderer.invoke('mini:open', noteId, focus),
+    /** A tab dragged out of the tab strip: open it in a mini window under the pointer (focused). */
+    tearOut: (noteId: string): Promise<boolean> => ipcRenderer.invoke('mini:tear-out', noteId),
     /** The main window's open note — what the global toggle pops out when no mini is open. */
     setActive: (noteId: string | null): void => ipcRenderer.send('mini:active', noteId),
     /** From a mini: close it and open its note in the main window. */

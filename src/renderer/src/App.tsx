@@ -14,7 +14,9 @@ import Meetings from './views/Meetings'
 import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
+import PopOutIcon from './views/PopOutIcon'
 import { isPopKey } from '../../shared/mini-window'
+import { popOutTitle, tabDragPhase } from '../../shared/mini-window-tear'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
@@ -596,21 +598,54 @@ function Main(): React.JSX.Element {
     window.api.mini?.setActive(activeNoteId)
   }, [activeNoteId])
 
+  /**
+   * Pop a note out to a mini window. Unsaved text is saved first so the mini opens on exactly what
+   * the tab showed (nothing lost). `tear`: the tab was dragged out of the strip — open it under the
+   * pointer and move the tab out of this window (Surffish behaviour); the mini's ⤢ brings it back.
+   */
   const popOut = useCallback(
-    (id: string | null) => {
+    (id: string | null, opts?: { tear?: boolean }) => {
       if (!id) {
         notify('Open a note to pop it out')
         return
       }
-      window.api.mini
-        .open(id)
-        .then((ok) => {
-          if (!ok) notify('Too many mini windows open — close one first')
-        })
-        .catch((err: unknown) => notify(`Mini window failed: ${String(err)}`))
+      const run = async (): Promise<void> => {
+        const pending = draftsRef.current[id]
+        if (pending !== undefined) {
+          const saved = await window.api.notes.save(id, pending).catch(() => null)
+          if (!saved) {
+            notify('Could not save this note, so it stays here — save it and try again')
+            return
+          }
+          setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
+          if (docRef.current?.id === saved.id) setDoc(saved)
+          setDrafts((prev) => {
+            if (prev[id] !== pending) return prev
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+        }
+        const ok = opts?.tear ? await window.api.mini.tearOut(id) : await window.api.mini.open(id)
+        if (!ok) {
+          notify('Too many mini windows open — close one first')
+          return
+        }
+        if (opts?.tear) removeTab(id)
+      }
+      run().catch((err: unknown) => notify(`Mini window failed: ${String(err)}`))
     },
-    [notify]
+    [notify, removeTab]
   )
+  /** The global show/hide toggle (Settings → Mini Window), for the pop-out tooltips. */
+  const [miniShortcut, setMiniShortcut] = useState<string | null>(null)
+  useEffect(() => {
+    window.api.mini
+      ?.settings()
+      .then((st) => setMiniShortcut(st.settings.shortcut || null))
+      .catch(() => undefined)
+  }, [settingsOpen])
+  const popTitle = popOutTitle(miniShortcut, navigator.platform.toUpperCase().includes('MAC'))
 
   // ⌘⇧M pops the open note out to a mini window.
   useEffect(() => {
@@ -1021,7 +1056,7 @@ function Main(): React.JSX.Element {
     { id: 'go-inbox', title: 'Go to Inbox', section: 'Navigate', keywords: ['captures', 'queue'], run: () => { leaveSettings(); pickScope('inbox') } },
     { id: 'meetings', title: 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture'], run: () => { leaveSettings(); setShowMeeting(true) } },
     { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
-    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
+    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
     { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
     { id: 'close-other-tabs', title: 'Close Other Tabs', section: 'Tabs', enabled: !!activeTab && tabs.length > 1, run: () => activeTab && closeOthers(activeTab.id) },
     { id: 'pin-tab', title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && togglePin(activeTab.id) },
@@ -1304,6 +1339,9 @@ function Main(): React.JSX.Element {
                   onTogglePin={togglePin}
                   onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
                   onNew={() => doCreateFile(targetDir)}
+                  onPopOut={(id) => popOut(id)}
+                  onTearOut={(id) => popOut(id, { tear: true })}
+                  popTitle={popTitle}
                 />
                 {sel?.origin === 'inbox' && activeItem && (
                   <InboxBar
@@ -1329,6 +1367,8 @@ function Main(): React.JSX.Element {
                     if (doc) renameNote(doc.id, t)
                   }}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
+                  onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
+                  popOutTitle={popTitle}
                 />
               </main>
             )}
@@ -1412,10 +1452,10 @@ function Main(): React.JSX.Element {
   )
 }
 
-/** Obsidian-style tab strip: pinned files stay, × closes, right-click for more. */
+/** Obsidian-style tab strip: pinned files stay, × closes, right-click for more, drag out → mini window. */
 function TabBar({
   tabs, activeId, drafts, allNotes, titles, titleOf,
-  onActivate, onClose, onTogglePin, onMenu, onNew
+  onActivate, onClose, onTogglePin, onMenu, onNew, onPopOut, onTearOut, popTitle
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -1428,12 +1468,29 @@ function TabBar({
   onTogglePin: (id: string) => void
   onMenu: (id: string, x: number, y: number) => void
   onNew: () => void
+  onPopOut: (id: string) => void
+  onTearOut: (id: string) => void
+  popTitle: string
 }): React.JSX.Element {
+  const barRef = useRef<HTMLDivElement>(null)
+  /** A press on a tab that may become a tear-off drag (pointer captured, so it tracks outside the window). */
+  const dragRef = useRef<{ id: string; pointerId: number; start: { x: number; y: number }; moved: boolean } | null>(null)
+  /** Swallow the click that follows a drag. */
+  const suppressClick = useRef(false)
+  const [tearing, setTearing] = useState<{ id: string; x: number; y: number; label: string } | null>(null)
   const byId = new Map(allNotes.map((n) => [n.id, n]))
   const ordered = [...tabs].sort((a, b) => Number(b.pinned) - Number(a.pinned))
   if (ordered.length === 0) return <div className="tabbar empty" aria-hidden />
+
+  const phaseAt = (x: number, y: number): ReturnType<typeof tabDragPhase> => {
+    const d = dragRef.current
+    const r = barRef.current?.getBoundingClientRect()
+    if (!d || !r) return 'press'
+    return tabDragPhase(d.start, { x, y }, r, { width: window.innerWidth, height: window.innerHeight })
+  }
+
   return (
-    <div className="tabbar" role="tablist" aria-label="Open notes">
+    <div className="tabbar" role="tablist" aria-label="Open notes" ref={barRef}>
       {ordered.map((t) => {
         const entry = byId.get(t.id)
         const label = titleOf({ id: t.id, path: entry?.path ?? t.path, title: entry?.title ?? '' })
@@ -1445,9 +1502,15 @@ function TabBar({
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
-            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${isDirty ? ' dirty' : ''}`}
-            title={`${entry?.path ?? t.path}${isDirty ? ' • unsaved' : ''}`}
-            onClick={() => onActivate(t.id)}
+            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${isDirty ? ' dirty' : ''}${tearing?.id === t.id ? ' tearing' : ''}`}
+            title={`${entry?.path ?? t.path}${isDirty ? ' • unsaved' : ''}\nDrag out of the tab bar to pop into a mini window`}
+            onClick={() => {
+              if (suppressClick.current) {
+                suppressClick.current = false
+                return
+              }
+              onActivate(t.id)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onActivate(t.id)
             }}
@@ -1460,6 +1523,38 @@ function TabBar({
                 e.preventDefault()
                 onClose(t.id)
               }
+            }}
+            onPointerDown={(e) => {
+              if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
+              dragRef.current = { id: t.id, pointerId: e.pointerId, start: { x: e.clientX, y: e.clientY }, moved: false }
+              suppressClick.current = false
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId)
+              } catch {
+                // no capture: the drag just ends at the window edge
+              }
+            }}
+            onPointerMove={(e) => {
+              const d = dragRef.current
+              if (!d || d.pointerId !== e.pointerId) return
+              const phase = phaseAt(e.clientX, e.clientY)
+              if (phase !== 'press') d.moved = true
+              if (phase === 'tear') setTearing({ id: t.id, x: e.clientX, y: e.clientY, label })
+              else setTearing((prev) => (prev ? null : prev))
+            }}
+            onPointerUp={(e) => {
+              const d = dragRef.current
+              if (!d || d.pointerId !== e.pointerId) return
+              const phase = phaseAt(e.clientX, e.clientY)
+              dragRef.current = null
+              setTearing(null)
+              if (!d.moved) return
+              suppressClick.current = true
+              if (phase === 'tear') onTearOut(d.id)
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null
+              setTearing(null)
             }}
           >
             {t.pinned && (
@@ -1480,6 +1575,17 @@ function TabBar({
             <span className="tab-label">{label}</span>
             {isDirty && <span className="tab-dot" aria-label="Unsaved changes" />}
             <button
+              className="tab-pop"
+              title={popTitle}
+              aria-label={`Pop ${label} out to a mini window`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPopOut(t.id)
+              }}
+            >
+              <PopOutIcon />
+            </button>
+            <button
               className="tab-x"
               title="Close tab"
               aria-label={`Close ${label}`}
@@ -1496,6 +1602,13 @@ function TabBar({
       <button className="tab-new" onClick={onNew} title="New note" aria-label="New note">
         +
       </button>
+      {tearing && (
+        <div className="tab-tear-ghost glass" style={{ left: tearing.x + 12, top: tearing.y + 10 }} aria-hidden>
+          <PopOutIcon />
+          <span>{tearing.label}</span>
+          <span className="muted">→ mini window</span>
+        </div>
+      )}
     </div>
   )
 }

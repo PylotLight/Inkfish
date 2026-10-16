@@ -4,6 +4,7 @@ import { MINI_WINDOW_REVEAL_ZONE, isPopKey, noteIdFromMiniHash } from '../../../
 import { applyPrefs, loadPrefs } from '../theme'
 import { baseName } from '../text'
 import NoteEditor from './NoteEditor'
+import { MINI_HINT_KEY, MINI_HINT_MS, miniHintText, shouldShowMiniHint } from '../../../shared/mini-window-tear'
 
 type HeaderState = Awaited<ReturnType<typeof window.api.mini.state>>
 
@@ -110,6 +111,41 @@ export default function MiniNote(): React.JSX.Element {
     return window.api.mini.onState(setState)
   }, [])
 
+  // One-time hint: tucking to the edge isn't discoverable from a hidden header. Shown once ever
+  // (marked seen as soon as it shows), gone after a few seconds, on ×, or once the note is tucked.
+  const [hint, setHint] = useState<string | null>(null)
+  const hintChecked = useRef(false)
+  useEffect(() => {
+    if (hintChecked.current || !state) return
+    hintChecked.current = true
+    let seen: string | null = null
+    try {
+      seen = localStorage.getItem(MINI_HINT_KEY)
+    } catch {
+      seen = '1'
+    }
+    if (!shouldShowMiniHint(seen, state)) return
+    try {
+      localStorage.setItem(MINI_HINT_KEY, '1')
+    } catch {
+      // can't remember it: still show it this once
+    }
+    const isMac = navigator.platform.toUpperCase().includes('MAC')
+    setHint(miniHintText(null, isMac))
+    window.api.mini
+      .settings()
+      .then((st) => setHint((h) => (h === null ? h : miniHintText(st.settings.shortcut, isMac))))
+      .catch(() => undefined)
+  }, [state])
+  useEffect(() => {
+    if (hint === null) return
+    const t = window.setTimeout(() => setHint(null), MINI_HINT_MS)
+    return () => window.clearTimeout(t)
+  }, [hint])
+  useEffect(() => {
+    if (state?.docked) setHint(null)
+  }, [state?.docked])
+
   // ⌘⇧M hands the note back to the main window.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -143,7 +179,7 @@ export default function MiniNote(): React.JSX.Element {
 
   return (
     <div
-      className={`mini-shell${revealed ? ' revealed' : ''}`}
+      className={`mini-shell${revealed || hint !== null ? ' revealed' : ''}`}
       onMouseMove={(e) => reveal(e.clientY <= MINI_WINDOW_REVEAL_ZONE)}
       onMouseLeave={() => reveal(false)}
     >
@@ -176,6 +212,14 @@ export default function MiniNote(): React.JSX.Element {
           </button>
         </div>
       </header>
+      {hint !== null && (
+        <div className="mini-hint glass" role="status">
+          <span>{hint}</span>
+          <button className="mini-btn" title="Got it" aria-label="Dismiss hint" onClick={() => setHint(null)}>
+            ×
+          </button>
+        </div>
+      )}
       <div className="mini-body">
         {missing ? (
           <div className="editor-empty">

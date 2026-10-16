@@ -4172,3 +4172,81 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   display: inline-block;
   margin-left: 4px;
 }
+
+/* ---------- Inkfish: mini window discoverability (pop-out buttons, tab tear-off, tuck hint) ---------- */
+
+.tab .tab-pop {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 3px;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity 0.12s ease;
+}
+.tab:hover .tab-pop,
+.tab.on .tab-pop,
+.tab .tab-pop:focus-visible {
+  opacity: 0.55;
+}
+.tab .tab-pop:hover {
+  opacity: 1;
+  background: var(--panel-strong);
+}
+.tab.tearing {
+  opacity: 0.45;
+}
+.tab-tear-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+.tab-tear-ghost span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ed-pop svg {
+  display: block;
+}
+.mini-hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 6px 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.mini-hint span {
+  flex: 1;
+}
+.tabbar .tab {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}

@@ -57,6 +57,7 @@ import {
   type MiniDockEdge
 } from '../shared/mini-window-dock'
 import { createPeekDriver, type PeekDriver, type PeekPoint } from '../shared/mini-window-peek'
+import { tearOutBounds } from '../shared/mini-window-tear'
 import { lerpRect, motionDuration } from '../shared/mini-window-motion'
 import { motion, placeWindow } from './mini-window-motion'
 import { MINI_WINDOW_HANDLE_HTML } from './mini-window-handle-page'
@@ -569,22 +570,37 @@ function present(m: Mini, focus: boolean): void {
   if (m.dock) placeHandle(m, m.win.getBounds())
 }
 
+/** A tab torn out of the main window: the slot's usual size, under the pointer on that display. */
+function tearOutOpening(slot: number, at: PeekPoint): { bounds: MiniRect; display: Display } {
+  const display = screen.getDisplayNearestPoint(at)
+  const saved = geometrySlots()[slot]?.[miniDisplayKey(display.workArea)]
+  const base = initialMiniBounds(display.workArea, saved)
+  return { bounds: tearOutBounds(at, base, display.workArea), display }
+}
+
 /**
  * Pop `noteId` out into a mini window (already in one: bring that one up). `focus`: take the
  * keyboard (global shortcut); pop-out from the main window shows it inactive so focus stays put.
+ * `at`: a tab torn out of the main window — open at that screen point, not docked.
  */
-export function openMini(noteId: string, focus = false): boolean {
+export function openMini(noteId: string, focus = false, at?: PeekPoint): boolean {
   const existing = minis.find((m) => alive(m) && m.noteId === noteId)
   if (existing) {
     lastActive = existing
+    if (at && !existing.dock && !existing.tucked) {
+      const display = screen.getDisplayNearestPoint(at)
+      setOwnBounds(existing, tearOutBounds(at, size(existing), display.workArea))
+      scheduleGeometrySave(existing)
+    }
     present(existing, focus)
     return true
   }
   const slot = freeMiniSlot(minis.filter(alive).map((m) => m.slot))
   if (slot === null) return false
-  const { bounds: opening, display } = openingBounds(slot)
+  const { bounds: opening, display } = at ? tearOutOpening(slot, at) : openingBounds(slot)
   const s = getMiniSettings()
-  const savedDock = s.tuckToEdge ? dockSlots()[slot]?.[miniDisplayKey(display.workArea)] : undefined
+  // Torn out to a spot the user picked: open there, not back in the slot's saved dock.
+  const savedDock = s.tuckToEdge && !at ? dockSlots()[slot]?.[miniDisplayKey(display.workArea)] : undefined
   const dock = savedDock ? reconcileDock(savedDock, opening, displayInfo(display), allDisplays()) : null
   const bounds = dock ? dockedBounds(opening, dock, display.workArea, false) : opening
   const win = new BrowserWindow({
@@ -802,6 +818,10 @@ export function registerMiniWindow(): void {
 
   ipcMain.handle('mini:open', (_e: IpcMainInvokeEvent, noteId: string, focus?: boolean): boolean =>
     typeof noteId === 'string' && noteId.length > 0 ? openMini(noteId, focus === true) : false
+  )
+  // A tab dragged out of the main window's tab strip: open it where the pointer let go.
+  ipcMain.handle('mini:tear-out', (_e: IpcMainInvokeEvent, noteId: unknown): boolean =>
+    typeof noteId === 'string' && noteId.length > 0 ? openMini(noteId, true, screen.getCursorScreenPoint()) : false
   )
   ipcMain.on('mini:active', (_e: IpcMainEvent, noteId: unknown) => {
     activeNoteId = typeof noteId === 'string' && noteId ? noteId : null
