@@ -83,6 +83,9 @@ app.whenReady().then(() => {
   // Mic: route renderer getUserMedia through the macOS TCC prompt (needs
   // NSMicrophoneUsageDescription in Info.plist — see package.json extendInfo).
   // Every other permission keeps Electron's default (granted).
+  // Electron 45+: getDisplayMedia (meeting capture) arrives as 'display-capture' instead of 'media'
+  // with empty mediaTypes, so it no longer runs through the mic check below; it stays granted here
+  // and setDisplayMediaRequestHandler picks the source. 'media' is now only camera/microphone.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
     if (permission !== 'media' || process.platform !== 'darwin') {
       callback(true)
