@@ -1,16 +1,31 @@
 /**
  * Core sidebar collapse: persisted flag + the ⌘\ / Ctrl+\ shortcut. Pure, so it is unit tested.
  *
- * Layout notes (index.css): the expand control lives in `.side-rail`, a slim drag strip that only
- * renders while collapsed. On macOS it starts right of the inset traffic lights
- * (window.ts: `trafficLightPosition { x: 16, y: 16 }`), which is exactly where the old topbar
- * toggle ended up once the sidebar was gone — under the window buttons, inside a drag region.
+ * Layout notes (index.css): the toggle is `.titlebar-toggle`, Obsidian-style — `position: fixed`
+ * in the titlebar strip just right of the inset traffic lights
+ * (window.ts: `trafficLightPosition { x: 16, y: 16 }` → three 12px buttons ending ≈x68, centred
+ * on y≈23). It sits at the same spot whether the sidebar is open or collapsed, and is `no-drag`
+ * so macOS doesn't treat the click as a window drag. Collapsed, a 48px icon ribbon
+ * (`.side-ribbon`) keeps navigation reachable; `.side-rail` (the content's top drag strip)
+ * carries the live-recording chip beside the toggle.
  */
 
 export const SIDE_COLLAPSED_KEY = 'inkfish.side.collapsed'
 
-/** Left edge (px) the collapsed rail's controls start at, clear of the macOS traffic lights. */
-export const SIDE_RAIL_INSET_MAC = 84
+/** Fixed titlebar toggle box (px, window coords). Mac: clear of the traffic lights, vertically
+ *  centred on them; elsewhere: centred over the 48px collapsed ribbon. Mirrors index.css. */
+export const SIDE_TOGGLE_MAC = { left: 80, top: 9, width: 30, height: 28 } as const
+export const SIDE_TOGGLE = { left: 9, top: 6, width: 30, height: 28 } as const
+/** Collapsed icon ribbon width (px). */
+export const SIDE_RIBBON_WIDTH = 48
+
+export function sideTogglePos(platform: string | undefined): { left: number; top: number; width: number; height: number } {
+  return platform === 'darwin' ? SIDE_TOGGLE_MAC : SIDE_TOGGLE
+}
+
+/** Left padding (px) of the collapsed content's top strip: content starts after the ribbon, and
+ *  the recording chip must start right of the fixed toggle on mac. */
+export const SIDE_RAIL_INSET_MAC = SIDE_TOGGLE_MAC.left + SIDE_TOGGLE_MAC.width - SIDE_RIBBON_WIDTH + 10
 export const SIDE_RAIL_INSET = 16
 
 export function sideRailInset(platform: string | undefined): number {

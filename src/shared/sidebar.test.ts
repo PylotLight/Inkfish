@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   SIDE_RAIL_INSET_MAC,
+  SIDE_RIBBON_WIDTH,
+  SIDE_TOGGLE,
+  SIDE_TOGGLE_MAC,
+  sideTogglePos,
   isSidebarToggleKey,
   parseSideCollapsed,
   serializeSideCollapsed,
@@ -52,10 +56,19 @@ describe('isSidebarToggleKey', () => {
   })
 })
 
-describe('collapsed rail layout', () => {
-  test('mac controls start right of the inset traffic lights', () => {
+describe('sidebar toggle + collapsed rail layout', () => {
+  test('mac toggle sits right of the inset traffic lights, centred on them', () => {
     // window.ts: trafficLightPosition { x: 16, y: 16 } — three 12px buttons + gaps end near x≈70.
-    expect(sideRailInset('darwin')).toBeGreaterThanOrEqual(80)
+    expect(SIDE_TOGGLE_MAC.left).toBeGreaterThanOrEqual(76)
+    expect(SIDE_TOGGLE_MAC.top + SIDE_TOGGLE_MAC.height / 2).toBeCloseTo(23, 0)
+    expect(sideTogglePos('darwin')).toBe(SIDE_TOGGLE_MAC)
+    expect(sideTogglePos('linux')).toBe(SIDE_TOGGLE)
+  })
+  test('non-mac toggle is centred over the collapsed ribbon', () => {
+    expect(SIDE_TOGGLE.left + SIDE_TOGGLE.width / 2).toBe(SIDE_RIBBON_WIDTH / 2)
+  })
+  test('recording chip starts right of the fixed toggle on mac', () => {
+    expect(SIDE_RIBBON_WIDTH + sideRailInset('darwin')).toBeGreaterThan(SIDE_TOGGLE_MAC.left + SIDE_TOGGLE_MAC.width)
     expect(sideRailInset('linux')).toBeLessThan(sideRailInset('darwin'))
   })
 
@@ -70,6 +83,21 @@ describe('collapsed rail layout', () => {
   }
   test('toggle buttons opt out of the window drag region', () => {
     expect(rule('.side-toggle')).toContain('-webkit-app-region: no-drag')
+    expect(rule('.ribbon-btn')).toContain('-webkit-app-region: no-drag')
+  })
+  test('toggle is pinned (fixed) at the shared coordinates on every platform', () => {
+    const base = rule('.titlebar-toggle')
+    expect(base).toContain('position: fixed')
+    expect(base).toContain(`left: ${SIDE_TOGGLE.left}px`)
+    expect(base).toContain(`top: ${SIDE_TOGGLE.top}px`)
+    const mac = rule(".shell[data-platform='darwin'] .titlebar-toggle")
+    expect(mac).toContain(`left: ${SIDE_TOGGLE_MAC.left}px`)
+    expect(mac).toContain(`top: ${SIDE_TOGGLE_MAC.top}px`)
+    expect(rule('.side-toggle')).toContain(`width: ${SIDE_TOGGLE.width}px`)
+    expect(rule('.side-toggle')).toContain(`height: ${SIDE_TOGGLE.height}px`)
+  })
+  test('ribbon width matches the shared constant', () => {
+    expect(rule('.side-ribbon')).toContain(`width: ${SIDE_RIBBON_WIDTH}px`)
   })
   test('mac rail clears the traffic lights', () => {
     expect(rule(".shell[data-platform='darwin'] .side-rail")).toContain(`padding-left: ${SIDE_RAIL_INSET_MAC}px`)

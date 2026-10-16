@@ -55,6 +55,11 @@
   --ui-font: ui-sans-serif, system-ui, -apple-system, 'SF Pro Text', sans-serif;
   --text-font: ui-sans-serif, system-ui, -apple-system, 'SF Pro Text', sans-serif;
   --mono-font: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Sidebar rows: tints derived from --text so they read on dark and paper themes alike. */
+  --row-hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --row-active: color-mix(in srgb, var(--text) 11%, transparent);
+  --text-soft: color-mix(in srgb, var(--text) 84%, transparent);
+  --guide: color-mix(in srgb, var(--text) 11%, transparent);
   font-family: var(--ui-font);
 }
 
@@ -165,6 +170,8 @@ code {
 
 .side-foot {
   margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2208,8 +2215,9 @@ html[data-motion='reduced'] *::after {
 /* ---------- Inkfish: core sidebar + note stage ---------- */
 
 .sidebar.core {
-  width: 324px;
+  width: 288px;
   gap: 0;
+  padding: 0 10px 8px;
   transition:
     width 0.18s ease,
     padding 0.18s ease,
@@ -2253,7 +2261,9 @@ html[data-motion='reduced'] *::after {
 }
 
 .shell[data-platform='darwin'] .side-rail {
-  padding-left: 84px;
+  /* Collapsed, the content starts after the 48px ribbon; clear the fixed titlebar toggle
+     (80px + 30px on mac, shared/sidebar.ts) so the recording chip sits beside it. */
+  padding-left: 72px;
 }
 
 .shell.side-collapsed .side-rail {
@@ -2268,13 +2278,10 @@ html[data-motion='reduced'] *::after {
   position: relative;
 }
 
-.side-rail .side-toggle {
-  width: 26px;
-  height: 26px;
-}
-
 .side-rail .rail-chip {
   width: auto;
+  height: 26px;
+  gap: 6px;
   padding: 0 10px;
   font-size: 12px;
   font-weight: 600;
@@ -2291,69 +2298,191 @@ html[data-motion='reduced'] *::after {
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
-  border: 1px solid var(--border);
+  height: 28px;
+  border: none;
   background: transparent;
   color: var(--muted);
-  border-radius: 9px;
-  font-size: 15px;
+  border-radius: 7px;
   cursor: pointer;
   flex-shrink: 0;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .side-toggle:hover {
   color: var(--text);
-  background: var(--panel);
+  background: var(--row-hover);
 }
 
-.brand-row {
+/* Obsidian-style sidebar toggle: one fixed spot in the titlebar strip, right of the macOS traffic
+   lights (window.ts trafficLightPosition 16,16 → buttons end ≈x68, centred on y≈23). Never moves
+   when the sidebar opens/collapses; must stay no-drag (inherited from .side-toggle) or macOS eats
+   the click as a window drag. Positions mirror shared/sidebar.ts. */
+.titlebar-toggle {
+  position: fixed;
+  top: 6px;
+  left: 9px;
+  z-index: 60;
+}
+
+.shell[data-platform='darwin'] .titlebar-toggle {
+  top: 9px;
+  left: 80px;
+}
+
+.titlebar-toggle[aria-expanded='true'] {
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+/* Titlebar strip at the top of the open sidebar: drag handle, small logo at the far end. */
+.side-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
+  gap: 8px;
+  height: 40px;
+  flex-shrink: 0;
+  padding-right: 2px;
+  -webkit-app-region: drag;
+}
+
+.shell[data-platform='darwin'] .side-head {
+  height: 46px;
+}
+
+.side-head .flex-sp,
+.side-ribbon .flex-sp {
+  flex: 1;
+}
+
+.side-head .profile-pill,
+.side-head .brand-logo-frame {
   -webkit-app-region: no-drag;
+}
+
+/* Collapsed sidebar → slim icon ribbon (Obsidian). Same translucent tint as the sidebar so the
+   native vibrancy shows through — no CSS backdrop blur. */
+.side-ribbon {
+  width: 48px;
+  flex-shrink: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 44px 0 10px;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  -webkit-app-region: drag;
+}
+
+.shell[data-platform='darwin'] .side-ribbon {
+  padding-top: 50px;
+}
+
+.ribbon-btn {
+  position: relative;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.ribbon-btn:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.ribbon-btn.on {
+  color: var(--text);
+  background: var(--row-active);
+}
+
+.ribbon-btn.rec-live {
+  color: var(--danger);
+}
+
+.ribbon-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+.ribbon-sep {
+  width: 18px;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 /* Sidebar quick actions: Today + Meetings (moved out of the old topbar). */
 .side-actions {
   display: flex;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 8px;
   -webkit-app-region: no-drag;
 }
 
 .side-action {
   flex: 1;
   min-width: 0;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 10px;
-  padding: 6px 8px;
+  gap: 7px;
+  border: none;
+  background: var(--row-hover);
+  color: var(--text-soft);
+  border-radius: 8px;
+  padding: 0 10px;
+  font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.side-action svg {
+  flex-shrink: 0;
+  color: var(--muted);
 }
 
 .side-action:hover {
   color: var(--text);
-  background: var(--panel);
+  background: var(--row-active);
 }
 
 .side-action.on {
   color: var(--text);
-  background: var(--panel-strong);
+  background: var(--row-active);
 }
 
-.brand-row .brand h1 {
-  font-size: 22px;
+.side-action.rec-live svg,
+.side-action.on svg {
+  color: inherit;
 }
 
 /* Dev / custom profile marker beside the brand ("dev"), so the two apps never get mixed up. */
@@ -2369,9 +2498,9 @@ html[data-motion='reduced'] *::after {
 }
 
 .brand-logo-frame {
-  width: 48px;
-  height: 48px;
-  border-radius: 13px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   /* The logo carries its own tile — keep the frame chrome-free. */
   background: transparent;
   border: none;
@@ -2381,6 +2510,8 @@ html[data-motion='reduced'] *::after {
   justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
+  opacity: 0.9;
+  cursor: default;
 }
 
 .brand-logo-img {
@@ -2388,7 +2519,7 @@ html[data-motion='reduced'] *::after {
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 13px;
+  border-radius: 6px;
 }
 
 .btn.icon {
@@ -2396,37 +2527,68 @@ html[data-motion='reduced'] *::after {
   font-size: 15px;
 }
 
-.side-search {
-  margin-top: 12px;
+input.side-search {
   width: 100%;
-  height: 38px;
+  height: 32px;
   /* .search sets flex:1 for the row topbar — in this column sidebar that
      would stretch the input vertically to fill all space. */
   flex: none;
   flex-shrink: 0;
+  padding: 0 10px 0 32px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: var(--row-hover);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
   -webkit-app-region: no-drag;
+}
+
+input.side-search:focus {
+  background: var(--inset-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.side-search-wrap {
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.side-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
 }
 
 .scope-tabs {
   display: flex;
-  gap: 4px;
-  margin-top: 12px;
-  background: var(--inset-soft);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 3px;
+  gap: 2px;
+  margin-top: 8px;
+  background: var(--row-hover);
+  border: none;
+  border-radius: 9px;
+  padding: 2px;
   -webkit-app-region: no-drag;
 }
 
 .scope-tabs button {
   flex: 1;
+  height: 28px;
   border: none;
   background: transparent;
   color: var(--muted);
-  border-radius: 9px;
-  padding: 7px 8px;
-  font-size: 13.5px;
-  font-weight: 600;
+  border-radius: 7px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2437,9 +2599,21 @@ html[data-motion='reduced'] *::after {
     color 0.14s ease;
 }
 
-.scope-tabs button.on {
-  background: var(--panel-strong);
+.scope-tabs button:hover {
   color: var(--text);
+}
+
+.scope-tabs button.on {
+  background: var(--row-active);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.scope-tabs .badge {
+  min-width: 17px;
+  height: 17px;
+  font-size: 10.5px;
+  padding: 0 5px;
 }
 
 .badge {
@@ -2460,8 +2634,9 @@ html[data-motion='reduced'] *::after {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin-top: 12px;
-  padding-bottom: 12px;
+  margin: 12px -4px 0;
+  padding: 0 4px 12px;
+  scrollbar-width: thin;
   -webkit-app-region: no-drag;
 }
 
@@ -2869,40 +3044,57 @@ html[data-motion='reduced'] *::after {
 
 .side-foot-row {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 }
 
 .settings-btn {
-  flex: 1;
+  flex: none;
+  height: 30px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 7px;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   color: var(--muted);
-  border-radius: 10px;
-  padding: 7px 10px;
+  border-radius: 7px;
+  padding: 0 8px;
+  font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition:
     background 0.14s ease,
     color 0.14s ease;
 }
 
+.side-foot .status-sub {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 11.5px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-btn:hover {
-  background: var(--panel);
+  background: var(--row-hover);
   color: var(--text);
 }
 
 .quit-btn {
-  width: 36px;
-  border: 1px solid transparent;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
   background: transparent;
   color: var(--muted);
-  border-radius: 10px;
-  font-size: 14px;
+  border-radius: 7px;
   cursor: pointer;
   transition:
     color 0.14s ease,
@@ -2911,7 +3103,7 @@ html[data-motion='reduced'] *::after {
 
 .quit-btn:hover {
   color: var(--danger);
-  background: var(--panel);
+  background: var(--row-hover);
 }
 
 /* Slim icon toolbar above the tree (Obsidian-style). */
@@ -2919,7 +3111,7 @@ html[data-motion='reduced'] *::after {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 2px 8px;
+  padding: 0 0 6px;
 }
 
 .tree-tool {
@@ -2927,28 +3119,40 @@ html[data-motion='reduced'] *::after {
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: 28px;
   border: none;
   background: transparent;
   color: var(--muted);
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
   transition:
-    background 0.14s ease,
-    color 0.14s ease;
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.tree-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .tree-tool:hover {
   color: var(--text);
-  background: var(--panel);
+  background: var(--row-hover);
+}
+
+.tree-tool:disabled:hover {
+  color: var(--muted);
+  background: transparent;
 }
 
 .tree-target {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--muted);
-  opacity: 0.85;
-  max-width: 140px;
+  max-width: 110px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--row-hover);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2965,9 +3169,13 @@ html[data-motion='reduced'] *::after {
 
 /* Nesting indent + guide rule — indent accumulates per level. */
 .fkids {
+  /* Indent guide sits under the parent's chevron centre (2px pad + 9px). */
   margin-left: 11px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
+  padding-left: 7px;
+  border-left: 1px solid var(--guide);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .frow {
@@ -2975,45 +3183,54 @@ html[data-motion='reduced'] *::after {
   align-items: center;
   gap: 2px;
   width: 100%;
-  border: 1px solid transparent;
+  height: 30px;
+  border: none;
   background: transparent;
   color: var(--text);
-  border-radius: 9px;
-  padding: 7px 8px;
-  font-size: 13.5px;
-  font-weight: 600;
+  border-radius: 6px;
+  padding: 0 8px 0 2px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
 }
 
 .frow:hover {
   color: var(--text);
-  background: var(--panel);
-}
-
-button.frow:hover {
-  color: var(--text);
-  background: var(--panel);
+  background: var(--row-hover);
 }
 
 button.frow.on,
 .frow.on {
   color: var(--text);
-  background: var(--panel-strong);
-  border-color: var(--border);
+  background: var(--row-active);
 }
 
 .frow .caret {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
-  opacity: 0.7;
-  font-size: 11px;
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+}
+
+.frow .caret svg {
+  transition: transform 0.14s ease;
+}
+
+.frow.open .caret svg {
+  transform: rotate(90deg);
+}
+
+.frow:hover .caret {
+  color: var(--text);
 }
 
 .frow .caret.leaf {
@@ -3024,14 +3241,14 @@ button.frow.on,
 .frow .fmain {
   flex: 1;
   min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   border: none;
   background: transparent;
   color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
+  font: inherit;
   cursor: pointer;
   padding: 0;
   text-align: left;
@@ -3048,24 +3265,41 @@ button.frow.on,
 /* Subtle subtree count — marks a row as a folder, not a note. */
 .frow .fcount {
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
-  opacity: 0.8;
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+
+.frow:hover .fcount {
+  opacity: 0.9;
 }
 
 .chips.kinds {
-  margin: 2px 0 4px;
+  margin: 0 0 8px;
+  gap: 4px;
   flex-wrap: nowrap;
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
 .chips.kinds button {
-  padding: 4px 10px;
+  height: 24px;
+  padding: 0 9px;
+  gap: 5px;
   font-size: 12px;
+  font-weight: 500;
+  border-color: transparent;
+  background: var(--row-hover);
   flex-shrink: 0;
+}
+
+.chips.kinds button.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
 /* ---------- Inkfish: home dashboard ----------
@@ -3391,16 +3625,6 @@ html[data-density='compact'] .hrow {
   padding: 7px 10px;
 }
 
-/* Sparing accent elsewhere: active scope tab + selected tree row. */
-.scope-tabs button.on {
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-button.frow.on,
-.frow.on {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
 /* ---------- Inkfish: compact density ---------- */
 
 html[data-density='compact'] .nlist button {
@@ -3413,8 +3637,13 @@ html[data-density='compact'] .nlist .muted.small {
 }
 
 html[data-density='compact'] .frow {
-  padding: 4px 8px;
-  font-size: 12.5px;
+  height: 26px;
+  font-size: 13px;
+}
+
+html[data-density='compact'] .filerow.bare {
+  height: 26px;
+  font-size: 13px;
 }
 
 html[data-density='compact'] .side-scroll {
@@ -3529,22 +3758,22 @@ html[data-density='compact'] .note-stage {
   gap: 10px;
   width: 100%;
   text-align: left;
-  border: 1px solid transparent;
+  border: none;
   background: transparent;
   color: var(--text);
-  border-radius: 9px;
-  padding: 7px 10px;
-  font-size: 13px;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
   cursor: pointer;
 }
 
 .filerow:hover {
-  background: var(--panel);
+  background: var(--row-hover);
 }
 
 .filerow.on {
-  background: var(--panel-strong);
-  border-color: var(--border);
+  background: var(--row-active);
 }
 
 .filerow .ficon,
@@ -3573,7 +3802,7 @@ html[data-density='compact'] .note-stage {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -3581,13 +3810,15 @@ html[data-density='compact'] .note-stage {
  * folder rows — regular weight + smaller size, and left-aligned with
  * sibling folder labels (caret width + gaps) so files read as children. */
 .filerow.bare {
-  padding: 6px 10px 6px 30px;
+  /* Aligned with sibling folder labels: 2px pad + 18px chevron + 2px gap. */
+  height: 30px;
+  padding: 0 8px 0 22px;
 }
 
 .filerow.bare .fname {
   font-weight: 400;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: inherit;
+  color: var(--text-soft);
 }
 
 .filerow.bare:hover .fname {
@@ -3596,7 +3827,6 @@ html[data-density='compact'] .note-stage {
 
 .filerow.bare.on .fname {
   color: var(--text);
-  font-weight: 500;
 }
 
 .filerow.bare .ftext {
@@ -3607,7 +3837,7 @@ html[data-density='compact'] .note-stage {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.4;
   color: var(--muted);
   opacity: 0.85;
