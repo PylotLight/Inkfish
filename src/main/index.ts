@@ -3,7 +3,8 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { registerSysTap, stopSysTap } from './systap'
-import { createAppTray, destroyTray } from './tray'
+import { destroyTray } from './tray'
+import { startMenuBar } from './menubar'
 import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
@@ -115,11 +116,12 @@ app.whenReady().then(() => {
   registerAssetProtocol()
   createWindow()
   createPopover()
-  createAppTray({
+  // Tray (unless turned off in Settings → Menu bar) + menu-bar-only Dock mode.
+  startMenuBar({
     onShow: showWindow,
     onCapture: togglePopover,
-    onCaptureAt: (x, y, w) => togglePopoverAtTray(x, y, w),
-    onDailyAt: (x, y, w) => toggleDailyAtTray(x, y, w),
+    onCaptureAt: (x, y, w, h) => togglePopoverAtTray(x, y, w, h),
+    onDailyAt: (x, y, w, h) => toggleDailyAtTray(x, y, w, h),
     onOpenToday: () => {
       showWindow()
       getMainWindow()?.webContents.send('inkfish:open-today')

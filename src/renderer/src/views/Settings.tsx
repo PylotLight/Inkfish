@@ -4,6 +4,7 @@ import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
 import VoiceEngineSettings from './VoiceEngineSettings'
+import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
 
@@ -456,6 +457,8 @@ export default function SettingsView({
                   </button>
                 </div>
               </section>
+
+              <MenuBarSettings />
             </>
           )}
 

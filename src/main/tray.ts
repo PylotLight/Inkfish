@@ -1,4 +1,4 @@
-import { Tray, Menu, Notification, nativeImage, type NativeImage } from 'electron'
+import { Tray, Menu, Notification, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import { join } from 'node:path'
 import { APP_NAME, TRAY_TOOLTIP } from '../shared/config'
 
@@ -9,6 +9,8 @@ export interface TrayCallbacks {
   onDailyAt(x?: number, y?: number, w?: number, h?: number): void
   onOpenToday(): void
   onQuit(): void
+  /** Extra right-click items (menu bar mode adds the Dock toggle). */
+  menuExtras?(): MenuItemConstructorOptions[]
 }
 
 let tray: Tray | null = null
@@ -48,6 +50,7 @@ export function createAppTray(cb: TrayCallbacks): void {
       { label: 'Open today', click: cb.onOpenToday },
       { label: 'Show Inkfish', click: cb.onShow },
       { type: 'separator' },
+      ...(cb.menuExtras?.() ?? []),
       {
         label: 'Send test notification',
         click: () => {
@@ -66,6 +69,10 @@ export function createAppTray(cb: TrayCallbacks): void {
     cb.onCaptureAt(b?.x, b?.y, b?.width, b?.height)
   })
   tray.on('right-click', () => tray?.popUpContextMenu(buildMenu()))
+}
+
+export function hasTray(): boolean {
+  return tray !== null && !tray.isDestroyed()
 }
 
 export function destroyTray(): void {
