@@ -22,7 +22,8 @@ export function settingsOnly(s: StoredAi): AiProviderSettings {
     model: s.model,
     models: s.models,
     actionModels: s.actionModels,
-    includeImages: s.includeImages
+    includeImages: s.includeImages,
+    api: s.api
   }
 }
 
