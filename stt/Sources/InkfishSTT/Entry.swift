@@ -6,6 +6,8 @@
 //   inkfish-stt remove --engine ID              → deletes downloaded models, {ok}
 //   inkfish-stt ai status                       → Apple Intelligence availability JSON
 //   inkfish-stt ai run   (JSON request on stdin) → cleanup / organise / summarise JSON
+//   inkfish-stt audio-apps                      → [AudioProc] JSON (who's playing audio)
+//   inkfish-stt tap [--apps id,id]              → PCM stream (all audio, or just those apps)
 //   options: --locale en-AU, --allow-network (apple-speech only)
 //
 // Engines: apple-speech (SFSpeechRecognizer), apple-analyzer (SpeechAnalyzer,
@@ -78,6 +80,8 @@ func progressLine(downloadWeight w: Double) -> ProgressHandler {
 struct Options {
   var locale: Locale = .current
   var allowNetwork = ProcessInfo.processInfo.environment["INKFISH_STT_ALLOW_NETWORK"] == "1"
+  /// `tap --apps a,b`: owning-app bundle ids to tap (nil = all system audio).
+  var tapApps: [String]? = nil
 }
 
 struct STTError: Error, CustomStringConvertible {
@@ -147,6 +151,10 @@ struct InkfishSTT {
       case "--engine": engine = args.isEmpty ? engine : args.removeFirst()
       case "--locale": if !args.isEmpty { opts.locale = Locale(identifier: args.removeFirst()) }
       case "--allow-network": opts.allowNetwork = true
+      case "--apps":
+        let ids = (args.isEmpty ? "" : args.removeFirst()).split(separator: ",")
+          .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        opts.tapApps = ids.isEmpty ? nil : ids
       case "--json": break
       default: positional.append(a)
       }
@@ -174,7 +182,10 @@ struct InkfishSTT {
         }
       case "tap":
         guard #available(macOS 14.2, *) else { throw STTError("system audio capture needs macOS 14.2+", code: 64) }
-        try SystemTap.run()
+        try SystemTap(targets: opts.tapApps.map { Set($0) }).run()
+      case "audio-apps":
+        // Processes Core Audio knows about, resolved to their app (no permission needed).
+        if #available(macOS 14.2, *) { emit(AudioApps.list()) } else { emit([AudioProc]()) }
       case "prepare":
         guard let model = Fluid.Model(rawValue: engine) else {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
@@ -197,7 +208,7 @@ struct InkfishSTT {
         if !cmd.isEmpty, FileManager.default.fileExists(atPath: cmd) {
           emit(try await transcribe(URL(fileURLWithPath: cmd), engine: engine, opts))
         } else {
-          fail("usage: inkfish-stt engines | transcribe <audio> --engine ID | prepare --engine ID | ai status | ai run", 64)
+          fail("usage: inkfish-stt engines | audio-apps | tap [--apps ids] | transcribe <audio> --engine ID | prepare --engine ID | ai status | ai run", 64)
         }
       }
     } catch let e as STTError {

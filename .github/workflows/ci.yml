@@ -156,3 +156,6 @@ jobs:
       # plain node: imports only, no bun install needed
       - run: bun scripts/build-stt.ts --force
       - run: ls -la stt/bin && file stt/bin/inkfish-stt
+      # Smoke the per-app audio listing (Core Audio metadata only, no TCC prompt needed).
+      - name: smoke audio-apps
+        run: stt/bin/inkfish-stt audio-apps
