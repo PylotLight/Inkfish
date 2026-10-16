@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
 import type { SyncLogEntry } from '../shared/sync'
+import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -469,23 +470,52 @@ export function registerIpc(): void {
     if (!vaultConfigured()) return []
     return relatedNotes(id)
   })
-  ipcMain.handle('notes:save', (_e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null => {
+  // Autosave writes land here (debounced in the renderer, flushed on switch/blur/quit).
+  const saveNoteText = (sender: WebContents, id: unknown, markdown: unknown): NoteDoc | null => {
+    if (typeof id !== 'string' || typeof markdown !== 'string' || !vaultConfigured()) return null
     const paths = requireNotes()
     const doc = getNote(id, paths.root)
     if (!doc) return null
     const abs = resolveNoteAbs(doc.path, paths)
     if (!existsSync(abs)) return null
-    writeFileSync(abs, markdown, 'utf8')
+    // Identical text: no write, no reindex, no watcher churn — just confirm.
+    if (doc.markdown === markdown) return doc
+    // The editor edits the body; keep the file's front matter (see keepFrontmatter).
+    let existing = ''
+    try {
+      existing = readFileSync(abs, 'utf8')
+    } catch {
+      // unreadable → write the body as-is
+    }
+    writeFileSync(abs, keepFrontmatter(existing, markdown), 'utf8')
     removeNote(id)
     indexFile(abs, doc.path)
     const saved = getNote(id, paths.root)
     // Mini windows: every other window showing this note picks up the save.
     if (saved) {
       for (const w of BrowserWindow.getAllWindows()) {
-        if (!w.isDestroyed() && w.webContents !== _e.sender) w.webContents.send('inkfish:note-saved', saved)
+        if (!w.isDestroyed() && w.webContents !== sender) w.webContents.send('inkfish:note-saved', saved)
       }
     }
     return saved
+  }
+  ipcMain.handle('notes:save', (e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null =>
+    saveNoteText(e.sender, id, markdown)
+  )
+  // Last-chance synchronous save from `beforeunload` (window closing / reloading), where an
+  // async invoke may never get its reply.
+  ipcMain.on('notes:save-sync', (e: IpcMainEvent, items: unknown) => {
+    let ok = 0
+    try {
+      if (Array.isArray(items)) {
+        for (const it of items as Array<{ id?: unknown; markdown?: unknown }>) {
+          if (saveNoteText(e.sender, it?.id, it?.markdown)) ok++
+        }
+      }
+    } catch (err) {
+      console.error('[inkfish] sync save failed:', err)
+    }
+    e.returnValue = ok
   })
   ipcMain.handle('notes:reveal', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()

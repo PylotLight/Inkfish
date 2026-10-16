@@ -15,6 +15,7 @@ import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
+import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed } from '../../shared/sidebar'
 import SettingsView from './views/Settings'
@@ -104,7 +105,7 @@ function Main(): React.JSX.Element {
   /** Unrestored active tab from storage — opened once notes load. */
   const [pendingActive] = useState<string | null>(() => loadTabs().activeId)
   const [restored, setRestored] = useState(false)
-  /** Unsaved per-tab edits — the source of dirtiness, survives tab switches. */
+  /** Per-note text not yet confirmed on disk (autosave clears each entry once written). */
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
@@ -134,10 +135,6 @@ function Main(): React.JSX.Element {
     }
   })
 
-  // Dirtiness is derived from lifted drafts (per-tab, survives switches).
-  const dirty = sel !== null && drafts[sel.id] !== undefined
-  const dirtyCount = Object.keys(drafts).length
-
   // Refs so tab callbacks stay stable without re-creating per keystroke.
   const allNotesRef = useRef<NoteEntry[]>([])
   allNotesRef.current = allNotes
@@ -151,6 +148,22 @@ function Main(): React.JSX.Element {
   selRef.current = sel
   const draftsRef = useRef<Record<string, string>>({})
   draftsRef.current = drafts
+
+  // --- autosave (Obsidian-style: no Save button, nothing is ever "unsaved") ------------------
+  /** Set below once its deps exist; the controller calls through these refs. */
+  const savedHandlerRef = useRef<(id: string, markdown: string, saved: NoteDoc) => void>(() => undefined)
+  const saveErrorRef = useRef<(id: string, err: unknown) => void>(() => undefined)
+  const autosaveRef = useRef<Autosave | null>(null)
+  if (!autosaveRef.current) {
+    autosaveRef.current = createAutosave<NoteDoc>({
+      save: (id, markdown) => window.api.notes.save(id, markdown),
+      onSaved: (id, markdown, saved) => savedHandlerRef.current(id, markdown, saved),
+      onError: (id, err) => saveErrorRef.current(id, err)
+    })
+  }
+  const autosave = autosaveRef.current
+  /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
+  const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
 
   useEffect(() => {
     applyPrefs(prefs)
@@ -291,32 +304,24 @@ function Main(): React.JSX.Element {
 
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
+      // Leaving a note (or re-opening one) writes everything pending first.
+      void autosave.flushAll()
       setSel({ id, origin })
       if (origin === 'note') {
         // Cache-first: tab switches are instant; refresh in background.
         const cached = docsCacheRef.current[id]
-        if (cached) {
-          setDoc(cached)
-          window.api.notes
-            .get(id)
-            .then((fresh) => {
-              if (fresh) {
-                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
-                if (selRef.current?.id === id) setDoc(fresh)
-              }
-            })
-            .catch(console.error)
-        } else {
-          window.api.notes
-            .get(id)
-            .then((fresh) => {
-              if (fresh) {
-                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
-                if (selRef.current?.id === id) setDoc(fresh)
-              }
-            })
-            .catch(console.error)
-        }
+        if (cached) setDoc(cached)
+        window.api.notes
+          .get(id)
+          .then((fresh) => {
+            if (!fresh) return
+            // A read that raced an autosave of this note is stale — the save result wins.
+            if (autosave.pending(id) !== undefined) return
+            autosave.noteSaved(id, fresh.markdown)
+            setDocsCache((prev) => ({ ...prev, [id]: fresh }))
+            if (selRef.current?.id === id) setDoc(fresh)
+          })
+          .catch(console.error)
         // Keep the file open as a tab (no duplicates).
         setTabs((prev) => {
           if (prev.some((t) => t.id === id)) return prev
@@ -342,44 +347,37 @@ function Main(): React.JSX.Element {
     [inbox]
   )
 
-  const saveDoc = useCallback(
-    (id: string, markdown: string) => {
-      window.api.notes
-        .save(id, markdown)
-        .then((saved) => {
-          if (saved) {
-            setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
-            // Renames (id = path by default) move the doc — follow it.
-            if (saved.id !== id) {
-              setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, id: saved.id, path: saved.path } : t)))
-              setDrafts((prev) => {
-                if (prev[id] === undefined) return prev
-                const next = { ...prev }
-                delete next[id]
-                return next
-              })
-              setSel((cur) => (cur?.id === id ? { ...cur, id: saved.id } : cur))
-            } else {
-              setDrafts((prev) => {
-                if (prev[id] === undefined) return prev
-                const next = { ...prev }
-                delete next[id]
-                return next
-              })
-            }
-            setDoc(saved)
-            if (sel?.origin === 'note') refreshNotes()
-            else refreshAll()
-            notify('Saved ✓')
-          }
-        })
-        .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
-    },
-    [sel, refreshNotes, refreshAll, notify]
-  )
+  /** An autosave landed: cache it, follow a moved id, and clear the draft it covered. */
+  savedHandlerRef.current = (id: string, markdown: string, saved: NoteDoc): void => {
+    setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
+    const dropCovered = (prev: Record<string, string>): Record<string, string> => {
+      const cur = prev[id]
+      if (cur === undefined) return prev
+      const next = { ...prev }
+      delete next[id]
+      // Typed more while the save was in flight: keep the newer text (moved with the id).
+      if (cur !== markdown) next[saved.id] = cur
+      return next
+    }
+    if (saved.id !== id) {
+      // Renames (id = path by default) move the doc — follow it.
+      autosave.rename(id, saved.id)
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, id: saved.id, path: saved.path } : t)))
+      setSel((cur) => (cur?.id === id ? { ...cur, id: saved.id } : cur))
+    }
+    setDrafts(dropCovered)
+    // Only the note on screen — a background flush of the tab we just left must not replace it.
+    const shown = docRef.current?.id
+    if (shown === id || shown === saved.id) setDoc(saved)
+    refreshNotes()
+  }
+  saveErrorRef.current = (id: string, err: unknown): void => {
+    console.error(`[autosave] ${id}:`, err)
+    notify(`Couldn't save ${id.split('/').pop() ?? id} — will retry`)
+  }
 
-  /** Lifted unsaved text per tab — typing never loses edits on switch. */
-  const handleDraft = useCallback((id: string, markdown: string) => {
+  /** Lift `markdown` as `id`'s live text (shared across tabs and mini windows). */
+  const liftDraft = useCallback((id: string, markdown: string) => {
     const saved = docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
     setDrafts((prev) => {
       if (markdown === saved) {
@@ -391,6 +389,40 @@ function Main(): React.JSX.Element {
       return prev[id] === markdown ? prev : { ...prev, [id]: markdown }
     })
   }, [])
+
+  /** A local edit in this window's editor: lift it and autosave it. */
+  const handleDraft = useCallback(
+    (id: string, markdown: string) => {
+      liftDraft(id, markdown)
+      // Inbox captures are shown as their body only (no front matter) — writing that back
+      // would strip the capture's metadata, so only vault notes autosave.
+      if (selRef.current?.origin === 'note') autosave.schedule(id, markdown)
+    },
+    [liftDraft, autosave]
+  )
+
+  // Flush whenever the window stops being the place you type, and on quit/close.
+  useEffect(() => {
+    const onBlur = (): void => void autosave.flushAll()
+    const onHide = (): void => {
+      if (document.visibilityState === 'hidden') void autosave.flushAll()
+    }
+    // Last chance (window closing / reloading): synchronous, so it can't be cut off.
+    const onUnload = (): void => {
+      const items = autosave.drain()
+      if (items.length > 0) window.api.notes.saveSync(items)
+    }
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('beforeunload', onUnload)
+    const offFlush = window.api.onFlushRequest(() => autosave.flushAll())
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('beforeunload', onUnload)
+      offFlush()
+    }
+  }, [autosave])
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -476,43 +508,25 @@ function Main(): React.JSX.Element {
   }, [activateNeighbor])
 
   const closeTab = useCallback((id: string) => {
-    if (draftsRef.current[id] !== undefined) {
-      setConfirm({
-        title: 'Close without saving?',
-        body: 'This tab has unsaved changes. They will be discarded.',
-        confirm: 'Discard changes',
-        onConfirm: () => {
-          setDrafts((d) => {
-            const next = { ...d }
-            delete next[id]
-            return next
-          })
-          removeTab(id)
-        }
-      })
-      return
-    }
+    // Autosave: closing writes the tab's text — there is nothing to discard or confirm.
+    void autosave.flush(id)
     removeTab(id)
-  }, [removeTab])
+  }, [removeTab, autosave])
 
   const togglePin = useCallback((id: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
   }, [])
 
-  /** Close a set of tabs; blocked when any of them is dirty (save first). */
+  /** Close a set of tabs (their pending text is written first). */
   const closeTabsGuarded = useCallback((ids: string[], what: string) => {
-    const dirtyClosing = ids.filter((id) => draftsRef.current[id] !== undefined)
-    if (dirtyClosing.length > 0) {
-      notify(`Unsaved changes in ${dirtyClosing.length} tab${dirtyClosing.length === 1 ? '' : 's'} — save first`)
-      return
-    }
+    for (const id of ids) void autosave.flush(id)
     const keep = new Set(ids)
     const remaining = tabsRef.current.filter((t) => !keep.has(t.id))
     setTabs(remaining)
     const active = selRef.current
     if (active && keep.has(active.id)) activateNeighbor(active.id, remaining)
     notify(what)
-  }, [activateNeighbor, notify])
+  }, [activateNeighbor, notify, autosave])
 
   const closeOthers = useCallback((id: string) => {
     // Pinned tabs survive "close others" (Obsidian-style).
@@ -632,18 +646,21 @@ function Main(): React.JSX.Element {
     selectNote(id)
   }), [selectNote])
 
-  // Live sync: unsaved text typed in a mini shows up in this note's tab.
+  // Live sync: text typed in a mini shows up in this note's tab. The mini that typed it owns
+  // the save, so any older pending text of ours is dropped rather than written over it.
   useEffect(
     () =>
       window.api.mini?.onDraft(({ id, markdown }) => {
-        if (tabsRef.current.some((t) => t.id === id) || selRef.current?.id === id) handleDraft(id, markdown)
+        autosave.cancel(id)
+        if (tabsRef.current.some((t) => t.id === id) || selRef.current?.id === id) liftDraft(id, markdown)
       }),
-    [handleDraft]
+    [liftDraft, autosave]
   )
   // A mini saved: refresh the cached doc and drop the matching draft.
   useEffect(
     () =>
       window.api.mini?.onSaved((saved) => {
+        autosave.noteSaved(saved.id, saved.markdown)
         setDocsCache((prev) => (prev[saved.id] ? { ...prev, [saved.id]: saved } : prev))
         if (selRef.current?.id === saved.id) setDoc(saved)
         setDrafts((prev) => {
@@ -654,7 +671,7 @@ function Main(): React.JSX.Element {
         })
         refreshNotes()
       }),
-    [refreshNotes]
+    [refreshNotes, autosave]
   )
 
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
@@ -686,16 +703,15 @@ function Main(): React.JSX.Element {
   )
 
   // --- file CRUD ---------------------------------------------------------------
-  const guardDirty = (): boolean => {
-    if (dirtyCount > 0) {
-      notify(`Unsaved changes in ${dirtyCount} tab${dirtyCount === 1 ? '' : 's'} — save first`)
-      return true
-    }
-    return false
+  /** File ops act on disk: write pending text first so a rename/trash never strands an edit. */
+  const flushBeforeFileOp = (): void => {
+    void autosave.flushAll()
   }
 
   const doCreateFile = useCallback(
     (dirRel: string) => {
+      // New note: the one you were typing in is written before the new tab opens.
+      void autosave.flushAll()
       window.api.files
         .create(dirRel)
         .then((rel) => {
@@ -713,7 +729,7 @@ function Main(): React.JSX.Element {
         })
         .catch((err: unknown) => notify(`Create failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, selectNote]
+    [notify, refreshInbox, refreshProjects, selectNote, autosave]
   )
 
   const doCreateFolder = useCallback(() => {
@@ -738,7 +754,7 @@ function Main(): React.JSX.Element {
 
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
-      if (guardDirty()) return
+      flushBeforeFileOp()
       const current = rel.split('/').pop() ?? rel
       // Path of the open note before the rename (to follow it across).
       const openPath = sel?.origin === 'note'
@@ -800,7 +816,7 @@ function Main(): React.JSX.Element {
 
   const doTrash = useCallback(
     (rel: string, name: string) => {
-      if (guardDirty()) return
+      flushBeforeFileOp()
       setConfirm({
         title: `Delete ${name}?`,
         body: 'It moves to Trash for 7 days. Restore it any time from Settings › Trash.',
@@ -949,6 +965,7 @@ function Main(): React.JSX.Element {
   const pickScope = (s: Scope): void => {
     setScope(s)
     if (s === 'home') {
+      void autosave.flushAll()
       // Tabs stay open (Obsidian-style) — just park the active selection.
       setSel(null)
       setDoc(null)
@@ -1335,7 +1352,6 @@ function Main(): React.JSX.Element {
                 <TabBar
                   tabs={tabs}
                   activeId={sel?.origin === 'note' ? sel.id : null}
-                  drafts={drafts}
                   allNotes={allNotes}
                   titles={titles}
                   titleOf={titleOf}
@@ -1360,11 +1376,9 @@ function Main(): React.JSX.Element {
                 <NoteEditor
                   doc={doc}
                   title={doc ? titleOf(doc) : ''}
-                  dirty={dirty}
-                  draft={sel ? drafts[sel.id] : undefined}
+                  draft={draftForEditor(doc, drafts)}
                   onDraft={handleDraft}
-                  onDirty={() => undefined}
-                  onSave={saveDoc}
+                  onFlush={() => void flushAll()}
                   onRename={(t) => {
                     if (doc) renameNote(doc.id, t)
                   }}
@@ -1454,12 +1468,11 @@ function Main(): React.JSX.Element {
 
 /** Obsidian-style tab strip: pinned files stay, × closes, right-click for more. */
 function TabBar({
-  tabs, activeId, drafts, allNotes, titles, titleOf,
+  tabs, activeId, allNotes, titles, titleOf,
   onActivate, onClose, onTogglePin, onMenu, onNew
 }: {
   tabs: Tab[]
   activeId: string | null
-  drafts: Record<string, string>
   allNotes: NoteEntry[]
   titles: Record<string, string>
   titleOf: (e: { id: string; path: string; title: string }) => string
@@ -1478,15 +1491,14 @@ function TabBar({
         const entry = byId.get(t.id)
         const label = titleOf({ id: t.id, path: entry?.path ?? t.path, title: entry?.title ?? '' })
         const isActive = t.id === activeId
-        const isDirty = drafts[t.id] !== undefined
         return (
           <div
             key={t.id}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
-            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${isDirty ? ' dirty' : ''}`}
-            title={`${entry?.path ?? t.path}${isDirty ? ' • unsaved' : ''}`}
+            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}`}
+            title={entry?.path ?? t.path}
             onClick={() => onActivate(t.id)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onActivate(t.id)
@@ -1518,7 +1530,6 @@ function TabBar({
               </button>
             )}
             <span className="tab-label">{label}</span>
-            {isDirty && <span className="tab-dot" aria-label="Unsaved changes" />}
             <button
               className="tab-x"
               title="Close tab"
