@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-10-16
+
+### Added
+
+- Pop notes out to a floating mini window (ported from Surffish) (#45) ([3c73cda](https://github.com/PylotLight/Inkfish/commit/3c73cda53ffa317cee03a5d2e61ad7a199daf4b8))
+- Menu bar mode (tray icon toggle, click action, menu-bar-only / hide Dock) (#47) ([7b5d2d4](https://github.com/PylotLight/Inkfish/commit/7b5d2d4cfe83a9330159942a0c7c9bd78802e09e))
+- Separate dev profile so dev runs beside the release app (#50) ([fe76cdc](https://github.com/PylotLight/Inkfish/commit/fe76cdcee202086129d59970abea074a6674e235))
+- **(window)** Remember main window size/position (from Surffish) (#49) ([26a53ad](https://github.com/PylotLight/Inkfish/commit/26a53ad8bdd8f16b77c72263a75e4de69d9d55e3))
+- Secret logo easter egg (triple-click the Inkfish logo) (#52) ([6806ebe](https://github.com/PylotLight/Inkfish/commit/6806ebe9af47ec93ad351f6c5d1a930dc4afdef5))
+- **(updates)** Release notifications + About & updates (from Surffish) (#51) ([45392e1](https://github.com/PylotLight/Inkfish/commit/45392e1b09431292af5f572588e271fade1469e2))
+- ⌘K command palette + ⌘O note switcher (from Surffish) (#53) ([e505418](https://github.com/PylotLight/Inkfish/commit/e505418ced514a0080e631f7ff822f222f162d51))
+
+### Fixed
+
+- **(editor)** Mount CodeMirror when the note loads after launch; Obsidian-style reading layout (#40) ([c858b11](https://github.com/PylotLight/Inkfish/commit/c858b110be4f10730e7bb21900b5721ecf34583f))
+- **(editor)** Render pasted/dropped images inline instead of a bare "!" (#42) ([90217c8](https://github.com/PylotLight/Inkfish/commit/90217c84edae277ea60422cdf89e8be4a516c7f5))
+- **(stability)** Crash guard + ordered shutdown (from Surffish) (#48) ([92e26ab](https://github.com/PylotLight/Inkfish/commit/92e26ab4a61579111f55dba2990de26fe2fafd5f))
+
 ## [0.2.5] - 2026-10-09
 
 ### Added
@@ -170,6 +188,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.6]: https://github.com/PylotLight/Inkfish/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/PylotLight/Inkfish/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/PylotLight/Inkfish/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/PylotLight/Inkfish/compare/v0.2.2...v0.2.3
