@@ -9,7 +9,8 @@ import {
   type AiProviderSettings,
   type AiTestResult
 } from '../shared/ai-api'
-import type { DiscoveryResult } from '../shared/ai-models'
+import { AI_APIS, learnEndpoint, type AiApi, type AiEndpoint, type DiscoveryResult } from '../shared/ai-models'
+import { formatAiError, scrubDetail, toErrorDetail, type AiErrorDetail } from '../shared/ai-errors'
 import { discoverModels } from './ai-discovery'
 import { applySettingsPatch, parseStoredAi, settingsOnly, type StoredAi } from './ai-store'
 import { parseProcessedEntry, type ProcessedEntry } from '../shared/ai-process'
@@ -96,7 +97,48 @@ async function decryptKey(): Promise<string | null> {
 
 async function providerConfig(): Promise<ProviderConfig> {
   const s = load()
-  return { kind: s.kind, baseUrl: s.baseUrl, model: s.model, models: s.models, apiKey: await decryptKey() }
+  return { kind: s.kind, baseUrl: s.baseUrl, model: s.model, models: s.models, api: s.api, apiKey: await decryptKey() }
+}
+
+/**
+ * Auto API learned that `modelId` needs `endpoint` (a responses-only model): save it on the model
+ * so the next request goes straight there. Not a user edit; Re-detect may refine it.
+ */
+export function rememberEndpoint(modelId: string, endpoint: AiEndpoint): void {
+  const cur = load()
+  if (!cur.models.some((m) => m.id === modelId)) return
+  if (cur.models.find((m) => m.id === modelId)?.endpoint === endpoint) return
+  persist({ ...cur, models: learnEndpoint(cur.models, modelId, endpoint) })
+  console.log(`[ai] ${modelId}: using ${endpoint === 'responses' ? 'the Responses API' : 'Chat Completions'} from now on (Auto)`)
+  // Keep the handler's copy in step (learned in Test connection, or confirm the child's own).
+  void applyAi()
+}
+
+/** The handler's last failed request (scrubbed), for a renderer that only got Electron's kErrorUnknown. */
+let lastError: { detail: AiErrorDetail; at: number } | null = null
+const lastErrorWaiters = new Set<() => void>()
+
+function setLastError(detail: AiErrorDetail, at = Date.now()): void {
+  lastError = { detail: scrubDetail(detail), at }
+  console.warn(`[ai] request failed: ${formatAiError(lastError.detail)}`)
+  for (const w of lastErrorWaiters) w()
+  lastErrorWaiters.clear()
+}
+
+/** Last error newer than `since` (ms epoch); waits up to `waitMs` for one still in flight. */
+export async function getLastError(since = 0, waitMs = 1500): Promise<AiErrorDetail | null> {
+  const fresh = (): AiErrorDetail | null => (lastError && lastError.at >= since ? lastError.detail : null)
+  if (fresh() || waitMs <= 0) return fresh()
+  await new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(t)
+      lastErrorWaiters.delete(done)
+      resolve()
+    }
+    const t = setTimeout(done, waitMs)
+    lastErrorWaiters.add(done)
+  })
+  return fresh()
 }
 
 export async function aiStatus(): Promise<AiApiStatus> {
@@ -127,6 +169,11 @@ function ensureChild(): UtilityProcess | null {
   }
   respawns.push(now)
   const forked = utilityProcess.fork(path, [], { serviceName: 'Inkfish AI', stdio: 'inherit' })
+  forked.on('message', (msg: { type?: string; model?: unknown; endpoint?: unknown; detail?: AiErrorDetail; at?: number }) => {
+    if (msg?.type === 'learned' && typeof msg.model === 'string' && (msg.endpoint === 'chat' || msg.endpoint === 'responses'))
+      rememberEndpoint(msg.model, msg.endpoint)
+    else if (msg?.type === 'error' && msg.detail && typeof msg.detail.message === 'string') setLastError(msg.detail, Number(msg.at) || Date.now())
+  })
   forked.once('exit', (code) => {
     if (child !== forked) return
     child = null
@@ -185,25 +232,47 @@ export async function clearAiKey(): Promise<AiApiStatus> {
   return aiStatus()
 }
 
-/** One tiny request with the saved (or patched, unsaved) settings. */
+/**
+ * One tiny request with the saved (or patched, unsaved) settings. `patch.testModel` picks the model
+ * (default: the active one) and `patch.testApi` forces an API for this test; otherwise the model's
+ * own setting applies (Auto may switch to Responses and remember it, like a real run).
+ */
 export async function testAi(patch?: unknown): Promise<AiTestResult> {
   const cur = load()
-  const s = parseAiSettings(typeof patch === 'object' && patch !== null ? patch : {}, settingsOnly(cur))
+  const p = typeof patch === 'object' && patch !== null ? (patch as Record<string, unknown>) : {}
+  const s = parseAiSettings(p, settingsOnly(cur))
+  const modelId = typeof p.testModel === 'string' && p.testModel ? p.testModel : s.model
+  const forced = AI_APIS.includes(p.testApi as AiApi) ? (p.testApi as AiApi) : undefined
   const t0 = Date.now()
+  const cfg: ProviderConfig = {
+    kind: s.kind,
+    baseUrl: s.baseUrl,
+    model: modelId,
+    models: s.models.map((m) => ({ ...m })),
+    api: s.api,
+    apiKey: await decryptKey(),
+    onLearn: (id, endpoint) => rememberEndpoint(id, endpoint)
+  }
+  const provider = createProvider(cfg)
+  const endpointLabel = (): string | undefined => {
+    const e = provider.lastRequest?.endpoint
+    return e === 'responses' ? 'Responses' : e === 'chat' ? 'Chat Completions' : e === 'messages' ? 'Messages' : undefined
+  }
+  const run = forced && forced !== 'auto' ? { model: modelId, api: forced } : { model: modelId }
   try {
-    const provider = createProvider({ kind: s.kind, baseUrl: s.baseUrl, model: s.model, models: s.models, apiKey: await decryptKey() })
     const reply = await complete(
       provider,
       [
         { role: 'system', content: 'You are a connection test. Reply with the single word OK.' },
         { role: 'user', content: 'Say OK.' }
       ],
-      AbortSignal.timeout(20_000)
+      AbortSignal.timeout(30_000),
+      run
     )
-    return { ok: true, ms: Date.now() - t0, detail: reply.trim().slice(0, 80) || '(empty reply)' }
+    return { ok: true, ms: Date.now() - t0, detail: reply.trim().slice(0, 80) || '(empty reply)', model: modelId, endpoint: endpointLabel() }
   } catch (err) {
-    const msg = err instanceof Error ? (err.name === 'TimeoutError' ? 'Timed out after 20 s' : err.message) : String(err)
-    return { ok: false, ms: Date.now() - t0, detail: msg }
+    const detail = scrubDetail(toErrorDetail(err, { provider: s.kind === 'anthropic' ? 'Anthropic' : 'AI provider', model: modelId }), cfg.apiKey)
+    return { ok: false, ms: Date.now() - t0, detail: formatAiError(detail), model: modelId, endpoint: endpointLabel(), error: detail }
   }
 }
 
@@ -261,6 +330,7 @@ export function initAiApi(): void {
   ipcMain.handle('ai-api:set-key', (_e: IpcMainInvokeEvent, key: string) => setAiKey(key))
   ipcMain.handle('ai-api:clear-key', () => clearAiKey())
   ipcMain.handle('ai-api:test', (_e: IpcMainInvokeEvent, patch?: unknown) => testAi(patch))
+  ipcMain.handle('ai-api:last-error', (_e: IpcMainInvokeEvent, since?: number) => getLastError(Number(since) || 0))
   ipcMain.handle('ai-api:discover', (_e: IpcMainInvokeEvent, patch?: unknown) => discoverAi(patch))
   ipcMain.handle('ai-api:processed-get', (_e: IpcMainInvokeEvent, noteId: string) => getProcessed(String(noteId)))
   ipcMain.handle('ai-api:processed-set', (_e: IpcMainInvokeEvent, entry: unknown) => setProcessed(entry))

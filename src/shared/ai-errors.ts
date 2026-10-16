@@ -98,8 +98,9 @@ export function toErrorDetail(e: unknown, fallback: Partial<AiErrorDetail> = {})
 
 // --- the sentinel chunk across the Prompt API ---------------------------------------------------
 
-export const ERROR_SENTINEL = '\n[[inkfish-error '
-const SENTINEL_RE = /\n\[\[inkfish-error (\{[\s\S]*\})\]\]\s*$/
+/** U+2063 (invisible separator) + tag: never typed, survives Electron's UTF-8 chunk path. */
+export const ERROR_SENTINEL = '\u2063[[inkfish-error '
+const SENTINEL_RE = /^\u2063\[\[inkfish-error (\{[\s\S]*\})\]\]\s*$/
 
 export function encodeErrorSentinel(d: AiErrorDetail): string {
   return `${ERROR_SENTINEL}${JSON.stringify(d)}]]`

@@ -1,5 +1,6 @@
 import { estimateTokens, toChat, type ChatMessage, type PromptMessage } from '../shared/ai-api'
 import { untagSystemPrompt, type ModelMeta, type RunOptions } from '../shared/ai-models'
+import { encodeErrorSentinel, scrubDetail, toErrorDetail, type AiErrorDetail } from '../shared/ai-errors'
 import type { AiProvider } from './ai-providers'
 
 /**
@@ -29,7 +30,9 @@ export function createLanguageModelClass<B extends LanguageModelBase>(
   Base: B,
   getProvider: () => AiProvider | null,
   /** The model config a run resolves to (its context window becomes `contextWindow`). */
-  getModel: (run: RunOptions) => ModelMeta | null = () => null
+  getModel: (run: RunOptions) => ModelMeta | null = () => null,
+  /** Called with every failed request's detail (handler → main `last-error`). */
+  onError: (detail: AiErrorDetail) => void = () => undefined
 ) {
   class InkfishLanguageModel extends Base {
     history: ChatMessage[] = []
@@ -79,7 +82,19 @@ export function createLanguageModelClass<B extends LanguageModelBase>(
             answer += value
             controller.enqueue(value)
           } catch (err) {
-            controller.error(err instanceof Error ? err : new Error(String(err)))
+            const aborted = signal.aborted || (err instanceof Error && err.name === 'AbortError')
+            if (aborted) {
+              controller.error(err instanceof Error ? err : new Error(String(err)))
+              return
+            }
+            // Electron reduces a stream error to kErrorUnknown, so Inkfish's own sessions get the
+            // real error as a sentinel chunk instead (see shared/ai-errors.ts).
+            const detail = scrubDetail(toErrorDetail(err, { provider: provider.kind === 'anthropic' ? 'Anthropic' : 'AI provider' }))
+            onError(detail)
+            if (this.run.errors === 'inline') {
+              controller.enqueue(encodeErrorSentinel(detail))
+              controller.close()
+            } else controller.error(err instanceof Error ? err : new Error(String(err)))
           }
         },
         cancel: async () => {
