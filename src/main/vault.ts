@@ -643,10 +643,23 @@ export function purgeTrash(): number {
   return purged
 }
 
+// Default notes-home folder under ~ (suggested in onboarding, adopted if it already exists).
+// A dev profile sets "Inkfish Dev" so it never silently adopts the release app's ~/Inkfish;
+// picking that folder in onboarding / Settings is still allowed, it just has to be explicit.
+let defaultVaultName = 'Inkfish'
+
+export function setDefaultVaultName(name: string): void {
+  defaultVaultName = name.trim() || 'Inkfish'
+}
+
+export function defaultVaultRoot(): string {
+  return join(homedir(), defaultVaultName)
+}
+
 export function resolveVaultRoot(): string {
   const override = process.env['INKFISH_VAULT']
   if (override && override.trim()) return resolve(override)
-  return readStoredRoot() ?? join(homedir(), 'Inkfish')
+  return readStoredRoot() ?? defaultVaultRoot()
 }
 
 /** Has a vault home been established? Stored choice, env override, or a
@@ -655,7 +668,7 @@ export function resolveVaultRoot(): string {
 export function vaultConfigured(): boolean {
   if (envManaged()) return true
   if (readStoredRoot()) return true
-  return existsSync(join(homedir(), 'Inkfish'))
+  return existsSync(defaultVaultRoot())
 }
 
 export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {

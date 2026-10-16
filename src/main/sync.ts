@@ -17,7 +17,6 @@ import { dirname, join, relative, sep } from 'node:path'
 import QRCode from 'qrcode'
 import {
   createHandler,
-  DEFAULT_PORT,
   encodePairUri,
   ignored,
   appendCapped,
@@ -33,6 +32,7 @@ import {
   type SyncLogEntry
 } from '../shared/sync'
 import { indexFile } from './db'
+import { profile } from './profile'
 import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
 
 /**
@@ -89,12 +89,18 @@ function load(): Stored {
   }
   store = {
     deviceId: s.deviceId ?? `mac-${randomBytes(9).toString('base64url')}`,
-    deviceName: s.deviceName ?? (hostname().replace(/\.local$/, '') || 'Mac'),
-    port: s.port ?? DEFAULT_PORT,
+    deviceName: s.deviceName ?? defaultDeviceName(),
+    // Dev / custom profiles prefer DEFAULT_PORT + 1 so they never take the release app's :47821.
+    port: s.port ?? profile.syncPort,
     peers: s.peers ?? []
   }
   if (!s.deviceId) save()
   return store
+}
+
+function defaultDeviceName(): string {
+  const host = hostname().replace(/\.local$/, '') || 'Mac'
+  return profile.badge ? `${host} (${profile.name})` : host
 }
 
 function save(): void {
