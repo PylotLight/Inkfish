@@ -1,6 +1,7 @@
 import { Tray, Menu, Notification, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import { join } from 'node:path'
-import { APP_NAME, TRAY_TOOLTIP } from '../shared/config'
+import { profile } from './profile'
+import { shortcutLabel } from '../shared/profile'
 
 export interface TrayCallbacks {
   onShow(): void
@@ -35,7 +36,9 @@ function resolveIcon(): NativeImage {
 export function createAppTray(cb: TrayCallbacks): void {
   if (tray) return
   tray = new Tray(resolveIcon())
-  tray.setToolTip(TRAY_TOOLTIP)
+  tray.setToolTip(`${profile.name} — click for menu`)
+  // macOS: a dev profile's tray icon carries its badge text so it's never mistaken for the release app's.
+  if (profile.badge && process.platform === 'darwin') tray.setTitle(profile.badge)
   const atTray = (): [number | undefined, number | undefined, number | undefined, number | undefined] => {
     const b = tray?.getBounds()
     return [b?.x, b?.y, b?.width, b?.height]
@@ -43,19 +46,21 @@ export function createAppTray(cb: TrayCallbacks): void {
   // NOTE: no `setContextMenu` — on macOS a bound menu also fires on
   // left-click, which popped the menu *and* the capture window together.
   // The menu is built on demand for right-click only.
+  const isMac = process.platform === 'darwin'
+  const hint = (accel: string): string => (accel ? `  (${shortcutLabel(accel, isMac)})` : '')
   const buildMenu = (): Menu =>
     Menu.buildFromTemplate([
-      { label: 'New note  (⌥Space)', click: cb.onCapture },
-      { label: 'Append to today  (⇧⌥Space)', click: () => cb.onDailyAt(...atTray()) },
+      { label: `New note${hint(profile.captureShortcut)}`, click: cb.onCapture },
+      { label: `Append to today${hint(profile.dailyShortcut)}`, click: () => cb.onDailyAt(...atTray()) },
       { label: 'Open today', click: cb.onOpenToday },
-      { label: 'Show Inkfish', click: cb.onShow },
+      { label: `Show ${profile.name}`, click: cb.onShow },
       { type: 'separator' },
       ...(cb.menuExtras?.() ?? []),
       {
         label: 'Send test notification',
         click: () => {
           if (Notification.isSupported()) {
-            new Notification({ title: APP_NAME, body: 'Hello from the tray!' }).show()
+            new Notification({ title: profile.name, body: 'Hello from the tray!' }).show()
           }
         }
       },
