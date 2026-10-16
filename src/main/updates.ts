@@ -256,6 +256,7 @@ export function initializeUpdates(): void {
   initialized = true
   loadPreferences()
   scheduleNextCheck(UPDATE_INITIAL_DELAY_MS)
+  app.once('will-quit', disposeUpdates)
 }
 
 export function disposeUpdates(): void {

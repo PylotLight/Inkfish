@@ -13,7 +13,7 @@ import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { startSync, stopSync, appendSyncLog } from './sync'
-import { disposeUpdates, initializeUpdates, registerUpdateIpc } from './updates'
+import { initializeUpdates, registerUpdateIpc } from './updates'
 
 // Custom protocols must be privileged before the app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -157,7 +157,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => closeAllMinis())
 
 app.on('will-quit', () => {
-  disposeUpdates()
   globalShortcut.unregisterAll()
   stopSysTap()
   stopSync()
