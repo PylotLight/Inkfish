@@ -8,6 +8,7 @@ import {
   type PaletteMode,
   type PaletteNote
 } from '../../../shared/command-palette'
+import './CommandPalette.css'
 
 const RECENT_KEY = 'inkfish.palette.recent.v1'
 
