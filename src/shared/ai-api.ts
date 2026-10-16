@@ -101,7 +101,13 @@ export function parseAiSettings(value: unknown, fallback: AiProviderSettings = D
   const kind = AI_PROVIDER_KINDS.includes(raw.kind as AiProviderKind) ? (raw.kind as AiProviderKind) : fallback.kind
   const baseRaw = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim().replace(/\/+$/, '') : null
   const baseUrl = baseRaw === '' ? DEFAULT_BASE_URL[kind] : baseRaw && isHttpUrl(baseRaw) ? baseRaw : fallback.baseUrl
-  const models = Array.isArray(raw.models) ? parseModels(raw.models) : fallback.models.map((m) => ({ ...m }))
+  // No list: a patch keeps the current list; a stored file from before the Models list (parsed
+  // against the defaults) starts from its single `model` alone.
+  const models = Array.isArray(raw.models)
+    ? parseModels(raw.models)
+    : fallback === DEFAULT_AI_SETTINGS
+      ? []
+      : fallback.models.map((m) => ({ ...m }))
   const modelRaw = typeof raw.model === 'string' ? raw.model.trim().slice(0, 200) : null
   // Empty = the provider's default model (as before the Models list).
   const model = modelRaw === '' ? DEFAULT_MODEL[kind] : modelRaw || fallback.model || models[0]?.id || DEFAULT_MODEL[kind]
