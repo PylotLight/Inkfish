@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   AiProcessError,
+  splitChunks,
   buildPrompt,
   cleanReply,
   contentHash,
@@ -137,5 +138,74 @@ describe('helpers', () => {
   test('parseProcessedEntry validates', () => {
     expect(parseProcessedEntry({ noteId: 'a', rawHash: 'h', text: 't' })?.action).toBe('tidy')
     expect(parseProcessedEntry({ noteId: 'a' })).toBeNull()
+  })
+})
+
+describe('long notes vs the model limits', () => {
+  const para = (i: number): string => `Paragraph ${i} ${'lorem ipsum '.repeat(30).trim()}`
+  const long = Array.from({ length: 10 }, (_, i) => para(i)).join('\n\n')
+
+  test('splitChunks: paragraph boundaries, never inside a code fence, nothing lost', () => {
+    const fence = '```\ncode line\n\nstill code\n```'
+    const text = `${para(1)}\n\n${fence}\n\n${para(2)}`
+    const parts = splitChunks(text, 100)
+    expect(parts.some((p) => p.includes(fence))).toBe(true)
+    expect(parts.join('\n\n')).toBe(text)
+    expect(splitChunks(long, 200).every((p) => p.length <= 800)).toBe(true)
+    // One huge line still splits.
+    expect(splitChunks('x'.repeat(1000), 50).length).toBeGreaterThan(1)
+  })
+
+  test('no limits known: one request, no notices (as before)', async () => {
+    let calls = 0
+    const r = await processText({ action: 'typos', text: long }, async (p) => (calls++, p.user))
+    expect(calls).toBe(1)
+    expect(r.notices).toEqual([])
+  })
+
+  test('rewrite action over the budget: processed in parts, joined in order, with a notice', async () => {
+    const users: string[] = []
+    const systems: string[] = []
+    const r = await processText({ action: 'tidy', text: `---\nt: 1\n---\n${long}`, model: { contextWindow: 1500, maxOutputTokens: 400 } }, async (p) => {
+      users.push(p.user)
+      systems.push(p.system)
+      return p.user
+    })
+    expect(users.length).toBeGreaterThan(2)
+    expect(systems[0]).toContain('one consecutive part of a longer note')
+    expect(r.text).toBe(`---\nt: 1\n---\n${long}\n`)
+    expect(r.notices[0]).toMatch(/processed in \d+ parts/)
+  })
+
+  test('summarise over the budget: only the first part is sent, with a notice', async () => {
+    let sent = ''
+    const r = await processText({ action: 'summarize', text: long, model: { contextWindow: 1200, maxOutputTokens: 200 } }, async (p) => {
+      sent = p.user
+      return '- summary'
+    })
+    expect(sent.length).toBeLessThan(long.length)
+    expect(long.startsWith(sent)).toBe(true)
+    expect(r.notices[0]).toMatch(/Only the first part was sent/)
+  })
+
+  test('streaming across parts shows the finished parts plus the current one', async () => {
+    const seen: string[] = []
+    await processText(
+      { action: 'typos', text: long, model: { contextWindow: 1500, maxOutputTokens: 400 }, onChunk: (t) => seen.push(t) },
+      async (p, onChunk) => {
+        onChunk?.(p.user)
+        return p.user
+      }
+    )
+    expect(seen.length).toBeGreaterThan(1)
+    expect(seen[1]!.startsWith(seen[0]!)).toBe(true)
+  })
+
+  test('image refs ride along only when asked', async () => {
+    const refs: Array<string[] | undefined> = []
+    const text = 'a ![](assets/x.png) b'
+    await processText({ action: 'typos', text }, async (p) => (refs.push(p.imageRefs), p.user))
+    await processText({ action: 'typos', text, includeImages: true }, async (p) => (refs.push(p.imageRefs), p.user))
+    expect(refs).toEqual([undefined, ['assets/x.png']])
   })
 })
