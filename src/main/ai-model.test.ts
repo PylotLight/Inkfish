@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createLanguageModelClass, CONTEXT_WINDOW } from './ai-model'
 import type { AiProvider } from './ai-providers'
 import type { ChatMessage, PromptMessage } from '../shared/ai-api'
-import { tagSystemPrompt } from '../shared/ai-models'
+import { tagImages, tagSystemPrompt } from '../shared/ai-models'
 
 /** Stand-in for Electron's LanguageModelUtility base class. */
 class FakeBase {
@@ -114,7 +114,7 @@ describe('per-run model + context window', () => {
     expect((await plain.clone()).run).toEqual({})
   })
 
-  test('image parts arrive as bytes and become ChatMessage images', async () => {
+  test('images: tagged data URLs (and encoded byte parts) become ChatMessage images; raw pixels are dropped', async () => {
     const seen: ChatMessage[][] = []
     const provider: AiProvider = {
       kind: 'openai',
@@ -128,5 +128,9 @@ describe('per-run model + context window', () => {
     const m = await LM.create()
     await drain(await m.prompt([{ role: 'user', content: [{ type: 'text', value: 'look' }, { type: 'image', value: png }] }]))
     expect(seen[0]?.[0]).toEqual({ role: 'user', content: 'look', images: [{ mime: 'image/png', data: 'iVBORw0KGgoAAAAN' }] })
+    await drain(await m.prompt([user(tagImages('see', ['data:image/jpeg;base64,/9j/4AAQ']))]))
+    expect(seen[1]?.at(-1)).toEqual({ role: 'user', content: 'see', images: [{ mime: 'image/jpeg', data: '/9j/4AAQ' }] })
+    await drain(await m.prompt([{ role: 'user', content: [{ type: 'text', value: 'raw' }, { type: 'image', value: new ArrayBuffer(64) }] }]))
+    expect(seen[2]?.at(-1)).toEqual({ role: 'user', content: 'raw' })
   })
 })

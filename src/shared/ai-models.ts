@@ -323,3 +323,24 @@ export function untagSystemPrompt(system: string): { system: string; run: RunOpt
   }
   return { system: system.slice(m[0].length), run }
 }
+
+/**
+ * Images across the Prompt API. Electron 45 hands `{ type: 'image' }` parts to the utility process as
+ * decoded pixels without dimensions, which can't be re-encoded for a provider. So the renderer sends a
+ * note's images as tagged data: URLs inside the user turn, and the handler lifts them back out into
+ * `ChatMessage.images` (then dropped by the provider unless the model has image input).
+ */
+const IMAGE_TAG_RE = /\n?\[\[inkfish-image (data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\]\]/gi
+
+export function tagImages(text: string, dataUrls: string[]): string {
+  return dataUrls.length ? `${text}${dataUrls.map((u) => `\n[[inkfish-image ${u}]]`).join('')}` : text
+}
+
+export function untagImages(text: string): { text: string; dataUrls: string[] } {
+  const dataUrls: string[] = []
+  const out = text.replace(IMAGE_TAG_RE, (_m, url: string) => {
+    dataUrls.push(url)
+    return ''
+  })
+  return { text: out, dataUrls }
+}

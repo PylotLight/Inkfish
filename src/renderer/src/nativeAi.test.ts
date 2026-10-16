@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { DEFAULT_AI_SETTINGS, parseAiSettings, type AiProviderSettings } from '../../shared/ai-api'
-import { untagSystemPrompt } from '../../shared/ai-models'
+import { untagImages, untagSystemPrompt } from '../../shared/ai-models'
 import { AiNotConnectedError, runAiProcess } from './nativeAi'
 
 type G = { window?: unknown; LanguageModel?: unknown; fetch: typeof fetch }
@@ -143,10 +143,9 @@ describe('Prompt API path (renderer)', () => {
     setStatus(true, parseAiSettings({ model: 'v', models: vision, includeImages: true }))
     calls = recorder((u) => u)
     await runAiProcess({ action: 'summarize', text: note }, undefined, { notePath: 'inbox/n.md' })
-    const parts = (calls[0]!.input as Array<{ content: Array<{ type: string; value: unknown }> }>)[0]!.content
-    expect(parts.map((p) => p.type)).toEqual(['text', 'image'])
-    expect(parts[1]!.value).toBeInstanceOf(Blob)
-    expect(calls[0]!.expectedInputs).toEqual([{ type: 'text' }, { type: 'image' }])
+    const u = untagImages(calls[0]!.input as string)
+    expect(u.text).toBe(note)
+    expect(u.dataUrls).toEqual(['data:image/png;base64,iVBORw0KGgoAAAAA'])
     expect(fetched[0]).toBe('asset://vault/assets/a.png')
   })
 })

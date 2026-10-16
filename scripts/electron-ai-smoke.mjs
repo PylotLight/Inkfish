@@ -31,7 +31,17 @@ app.whenReady().then(async () => {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r))
   const port = srv.address().port
   const child = utilityProcess.fork(HANDLER, [], { serviceName: 'Inkfish AI', stdio: 'inherit' })
-  child.postMessage({ type: 'config', config: { kind: 'openai', baseUrl: `http://127.0.0.1:${port}/v1`, model: 'm', apiKey: 'sk-smoke' } })
+  child.postMessage({
+    type: 'config',
+    config: {
+        kind: 'openai',
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: 'm',
+        apiKey: 'sk-smoke',
+        // Settings › AI › Models: 'v' is a vision model with limits + a reasoning level.
+        models: [{ id: 'm' }, { id: 'v', contextWindow: 32000, maxOutputTokens: 4000, reasoning: 'low', input: ['text', 'image'] }]
+      }
+    })
   session.defaultSession.registerLocalAIHandler(child)
   const w = new BrowserWindow({ show: false, webPreferences: { enableBlinkFeatures: 'AIPromptAPI' } })
   writeFileSync(join(DIR, 'blank.html'), '<html><body>x</body></html>')
@@ -45,6 +55,14 @@ app.whenReady().then(async () => {
     results.streaming = await w.webContents.executeJavaScript(
       `LanguageModel.create().then(async m => { const r = m.promptStreaming('hi').getReader(); let o=''; for(;;){const {done,value}=await r.read(); if(done) return o; o+=value} })`
     )
+    // Per-run model tag + an image part (what NoteAi sends for a vision model with Include images on).
+    results.vision = await w.webContents.executeJavaScript(`(async () => {
+      const c = new OffscreenCanvas(4, 4); const g = c.getContext('2d'); g.fillStyle = '#f00'; g.fillRect(0, 0, 4, 4)
+      const blob = await c.convertToBlob({ type: 'image/png' })
+      const url = await new Promise((r) => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob) })
+      const m = await LanguageModel.create({ initialPrompts: [{ role: 'system', content: '[[inkfish-run {"model":"v"}]]\\nsys2' }] })
+      return m.prompt('look\\n[[inkfish-image ' + url + ']]')
+    })()`)
     // Origin gate: an opaque data: page must not get a session.
     const d = new BrowserWindow({ show: false, webPreferences: { enableBlinkFeatures: 'AIPromptAPI' } })
     await d.loadURL('data:text/html,<p>x</p>')
@@ -59,7 +77,18 @@ app.whenReady().then(async () => {
   } catch (e) {
     results.error = String(e)
   }
-  results.server = seen.map((s) => ({ url: s.url, auth: s.auth, messages: s.body.messages }))
+  results.server = seen.map((s) => ({
+    url: s.url,
+    auth: s.auth,
+    model: s.body.model,
+    max_tokens: s.body.max_tokens,
+    reasoning_effort: s.body.reasoning_effort,
+    messages: s.body.messages.map((m) => ({
+      role: m.role,
+      content: Array.isArray(m.content) ? m.content.map((p) => (p.type === 'image_url' ? `image_url:${p.image_url.url.slice(0, 22)}…` : p.text)) : m.content
+    }))
+  }))
+  const v = results.server.find((s) => s.model === 'v')
   console.log('SMOKE', JSON.stringify(results))
   const ok =
     results.availability === 'available' &&
@@ -68,7 +97,14 @@ app.whenReady().then(async () => {
     results.dataOrigin === 'rejected' &&
     String(results.afterOff).startsWith('rejected') &&
     results.server[0]?.auth === 'Bearer sk-smoke' &&
-    results.server[0]?.messages[0]?.role === 'system'
+    results.server[0]?.messages[0]?.role === 'system' &&
+    results.vision === '# Tidy note' &&
+    v?.messages[0]?.content === 'sys2' &&
+    v?.reasoning_effort === 'low' &&
+    v?.max_tokens > 0 &&
+    v?.max_tokens <= 4000 &&
+    Array.isArray(v?.messages[1]?.content) &&
+    String(v.messages[1].content[1]).startsWith('image_url:data:image/png')
   console.log(ok ? 'SMOKE PASS' : 'SMOKE FAIL')
   clearTimeout(timer)
   child.kill()

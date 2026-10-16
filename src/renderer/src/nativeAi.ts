@@ -1,5 +1,5 @@
-import { resolveModel } from '../../shared/ai-api'
-import { supportsInput, tagSystemPrompt } from '../../shared/ai-models'
+import { imagePart, resolveModel } from '../../shared/ai-api'
+import { supportsInput, tagImages, tagSystemPrompt } from '../../shared/ai-models'
 import { imageCandidates } from '../../shared/images'
 import { processText, type Complete, type ProcessInput, type ProcessResult } from '../../shared/ai-process'
 
@@ -11,16 +11,14 @@ import { processText, type Complete, type ProcessInput, type ProcessResult } fro
  * so before calling anything.
  */
 
-type PromptContent = Array<{ type: 'text'; value: string } | { type: 'image'; value: Blob }>
 interface PromptModel {
-  promptStreaming(input: string | Array<{ role: 'user'; content: PromptContent }>, options?: { signal?: AbortSignal }): ReadableStream<string>
+  promptStreaming(input: string, options?: { signal?: AbortSignal }): ReadableStream<string>
   destroy(): void
 }
 interface LanguageModelStatic {
   availability(options?: unknown): Promise<string>
   create(options?: {
     initialPrompts?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
-    expectedInputs?: Array<{ type: 'text' | 'image' }>
     signal?: AbortSignal
   }): Promise<PromptModel>
 }
@@ -36,9 +34,12 @@ export interface CompleteOptions {
 const MAX_IMAGES = 8
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
-/** Load a note's images (asset:// refs) as blobs; ones that fail or are too big are skipped. */
-async function loadImages(refs: string[], notePath?: string | null): Promise<Blob[]> {
-  const out: Blob[] = []
+/**
+ * Load a note's images (asset:// refs) as data: URLs; ones that fail, are too big or aren't
+ * PNG/JPEG/GIF/WebP are skipped.
+ */
+async function loadImages(refs: string[], notePath?: string | null): Promise<string[]> {
+  const out: string[] = []
   for (const src of refs.slice(0, MAX_IMAGES)) {
     for (const url of imageCandidates(src, notePath)) {
       if (/^https?:/i.test(url)) break // remote images are not fetched
@@ -46,7 +47,10 @@ async function loadImages(refs: string[], notePath?: string | null): Promise<Blo
         const res = await fetch(url)
         if (!res.ok) continue
         const blob = await res.blob()
-        if (blob.size > 0 && blob.size <= MAX_IMAGE_BYTES && blob.type.startsWith('image/')) out.push(blob)
+        if (blob.size > 0 && blob.size <= MAX_IMAGE_BYTES) {
+          const img = imagePart(new Uint8Array(await blob.arrayBuffer()))
+          if (img) out.push(`data:${img.mime};base64,${img.data}`)
+        }
         break
       } catch {
         // try the next candidate
@@ -87,14 +91,11 @@ export function promptApiComplete(signal?: AbortSignal, opts: CompleteOptions = 
     const images = prompt.imageRefs?.length ? await loadImages(prompt.imageRefs, opts.notePath) : []
     const model = await lm.create({
       initialPrompts: [{ role: 'system', content: tagSystemPrompt(prompt.system, { model: opts.model }) }],
-      ...(images.length ? { expectedInputs: [{ type: 'text' as const }, { type: 'image' as const }] } : {}),
       signal
     })
     try {
-      const input = images.length
-        ? [{ role: 'user' as const, content: [{ type: 'text' as const, value: prompt.user }, ...images.map((value) => ({ type: 'image' as const, value }))] }]
-        : prompt.user
-      const reader = model.promptStreaming(input, { signal }).getReader()
+      // Images ride as tagged data: URLs (see tagImages in shared/ai-models.ts); the handler lifts them out.
+      const reader = model.promptStreaming(tagImages(prompt.user, images), { signal }).getReader()
       let out = ''
       while (true) {
         const { done, value } = await reader.read()

@@ -12,7 +12,7 @@
  */
 
 import { AI_ACTIONS, type AiAction } from './ai-process'
-import { parseModels, type AiModel } from './ai-models'
+import { parseModels, untagImages, type AiModel } from './ai-models'
 
 export const AI_PROVIDER_KINDS = ['openai', 'anthropic'] as const
 export type AiProviderKind = (typeof AI_PROVIDER_KINDS)[number]
@@ -214,13 +214,27 @@ export function messageText(message: PromptMessage): string {
     .join('')
 }
 
+/**
+ * Prompt API messages → provider chat turns. Images come from `[[inkfish-image data:…]]` tags in a
+ * user turn (see `untagImages`), or from image parts that arrive as encoded bytes; raw pixel buffers
+ * (what Electron 45 passes for Blob/canvas images) can't be encoded and are dropped.
+ */
 export function toChat(messages: PromptMessage[]): ChatMessage[] {
   return messages.map((m) => {
-    const images = m.content
+    const parts = m.content
       .filter((p) => p.type === 'image')
       .map((p) => imagePart(p.value))
       .filter((x): x is ChatImage => !!x)
-    return images.length ? { role: m.role, content: messageText(m), images } : { role: m.role, content: messageText(m) }
+    let content = messageText(m)
+    if (m.role === 'user') {
+      const u = untagImages(content)
+      content = u.text
+      for (const url of u.dataUrls) {
+        const img = imagePart(url)
+        if (img) parts.push(img)
+      }
+    }
+    return parts.length ? { role: m.role, content, images: parts } : { role: m.role, content }
   })
 }
 
