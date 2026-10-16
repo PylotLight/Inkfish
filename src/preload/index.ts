@@ -27,6 +27,7 @@ import type { SyncLogEntry } from '../shared/sync'
 import type { TrashEntry as TrashItem } from '../main/vault'
 import type { MiniHeaderState, MiniSettingsState } from '../main/mini-window'
 import type { MiniWindowSettings } from '../shared/mini-window'
+import type { UpdateSettingsResult, UpdateState } from '../shared/update-feed'
 
 export interface Versions {
   node: () => string
@@ -102,6 +103,29 @@ const api = {
       handleClick: (): void => ipcRenderer.send('mini:handle-click'),
       handleHover: (inside: boolean): void => ipcRenderer.send('mini:handle-hover', inside),
       handleDrag: (active: boolean): void => ipcRenderer.send('mini:handle-drag', active)
+    }
+  },
+  /** Update notifications from the GitHub releases feed (main/updates.ts). */
+  updates: {
+    get: (): Promise<UpdateState> => ipcRenderer.invoke('updates:get'),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke('updates:check'),
+    skip: (version: string): Promise<UpdateState> => ipcRenderer.invoke('updates:skip', version),
+    remindLater: (): Promise<UpdateState> => ipcRenderer.invoke('updates:remind-later'),
+    setSettings: (patch: { feedUrl?: string; betaChannel?: boolean }): Promise<UpdateSettingsResult> =>
+      ipcRenderer.invoke('updates:settings:set', patch),
+    download: (): Promise<boolean> => ipcRenderer.invoke('updates:download'),
+    openRelease: (): Promise<boolean> => ipcRenderer.invoke('updates:open-release'),
+    copyBrew: (): Promise<boolean> => ipcRenderer.invoke('updates:copy-brew'),
+    onChanged: (cb: (s: UpdateState) => void): (() => void) => {
+      const fn = (_e: unknown, s: UpdateState): void => cb(s)
+      ipcRenderer.on('updates:changed', fn)
+      return () => ipcRenderer.removeListener('updates:changed', fn)
+    },
+    /** A notification click asks the window to open Settings → About & updates. */
+    onReveal: (cb: () => void): (() => void) => {
+      const fn = (): void => cb()
+      ipcRenderer.on('updates:reveal', fn)
+      return () => ipcRenderer.removeListener('updates:reveal', fn)
     }
   },
   glass: {
