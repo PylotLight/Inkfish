@@ -15,6 +15,7 @@ import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
+import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -81,6 +82,7 @@ export default function App(): React.JSX.Element {
 
 function Main(): React.JSX.Element {
   const [sys, setSys] = useState<SysInfo | null>(null)
+  const brandEgg = useBrandTripleClick()
   const [projects, setProjects] = useState<Project[]>([])
   const [allNotes, setAllNotes] = useState<NoteEntry[]>([])
   const [inbox, setInbox] = useState<InboxItem[]>([])
@@ -956,8 +958,9 @@ function Main(): React.JSX.Element {
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
-          <div className="brand-logo-frame">
-            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" />
+          {/* Psst: triple-click the logo (views/easter-egg). */}
+          <div className="brand-logo-frame" onClick={brandEgg.onClick}>
+            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" draggable={false} />
           </div>
           <div className="brand">
             <h1>{APP_NAME}</h1>
@@ -1253,6 +1256,7 @@ function Main(): React.JSX.Element {
         />
       )}
       {toast && <div className="toast glass">{toast}</div>}
+      {brandEgg.open && <BrandEasterEgg logoUrl={logoUrl} onClose={brandEgg.close} />}
     </div>
   )
 }

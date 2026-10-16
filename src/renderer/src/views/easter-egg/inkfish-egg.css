@@ -1,0 +1,254 @@
+/* Logo easter egg (triple-click the sidebar's Inkfish logo). Loaded with its own chunk. */
+.inkfish-egg {
+  position: fixed;
+  /* Edge to edge: the whole window becomes the scene (the macOS traffic lights sit on top). */
+  inset: 0;
+  z-index: 2147483000;
+  overflow: hidden;
+  container-type: size;
+  background:
+    radial-gradient(110% 70% at 50% 0%, rgba(110, 200, 220, 0.18), transparent 60%),
+    radial-gradient(90% 60% at 50% 115%, rgba(40, 150, 170, 0.32), transparent 70%),
+    linear-gradient(180deg, #050b12 0%, #0a1b26 55%, #0b2633 100%);
+  color: #e8f8fb;
+  cursor: pointer;
+  outline: none;
+  -webkit-app-region: no-drag;
+  animation: inkfish-egg-in 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+@keyframes inkfish-egg-in {
+  from { opacity: 0; transform: scale(1.03); }
+  to { opacity: 1; transform: none; }
+}
+
+.inkfish-egg-water,
+.inkfish-egg-sea {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Squid ink: soft dark clouds that bloom out and thin away. */
+.inkfish-egg-puff {
+  position: absolute;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(1, 4, 9, 0.9) 0%, rgba(3, 10, 20, 0.6) 35%, transparent 70%);
+  filter: blur(6px);
+  transform: translate(-50%, -50%) scale(0.2);
+  opacity: 0;
+  animation: inkfish-egg-bloom 6s ease-out infinite;
+}
+@keyframes inkfish-egg-bloom {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
+  15% { opacity: 0.95; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6) rotate(40deg); }
+}
+
+/* Ink drops: fall from the top, land as a spreading ring. */
+.inkfish-egg-drop {
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 100%;
+}
+.inkfish-egg-drop::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -12px;
+  width: 8px;
+  height: 11px;
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  background: #9fe3ec;
+  box-shadow: 0 0 10px rgba(140, 225, 235, 0.8);
+  animation: inkfish-egg-fall 5s cubic-bezier(0.5, 0, 0.9, 0.6) infinite;
+  animation-delay: inherit;
+}
+.inkfish-egg-drop i {
+  position: absolute;
+  left: 0;
+  top: 78%;
+  width: 70px;
+  height: 18px;
+  border: 1.5px solid rgba(160, 230, 240, 0.75);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  animation: inkfish-egg-ring 5s ease-out infinite;
+  animation-delay: inherit;
+}
+@keyframes inkfish-egg-fall {
+  0% { transform: translateY(0); opacity: 0; }
+  5% { opacity: 1; }
+  44% { transform: translateY(78cqh); opacity: 1; }
+  45%, 100% { transform: translateY(78cqh); opacity: 0; }
+}
+@keyframes inkfish-egg-ring {
+  0%, 44% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  46% { opacity: 0.9; }
+  80%, 100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+}
+
+.inkfish-egg-stage {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  width: min(80cqw, 115cqh, 920px);
+  aspect-ratio: 2 / 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.inkfish-egg-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(120, 215, 230, 0.42), rgba(60, 150, 180, 0.1) 55%, transparent 70%);
+  transform: translate(-50%, -50%);
+  animation: inkfish-egg-pulse 4.5s ease-in-out infinite;
+}
+@keyframes inkfish-egg-pulse {
+  0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.92); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+}
+.inkfish-egg-swim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.inkfish-egg-trail {
+  fill: none;
+  stroke: rgba(150, 228, 238, 0.85);
+  stroke-width: 7;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(120, 215, 230, 0.7));
+}
+.inkfish-egg-trail.is-faint {
+  stroke: rgba(150, 228, 238, 0.1);
+  stroke-width: 2;
+  stroke-dasharray: 1 3;
+  filter: none;
+}
+.inkfish-egg-squid {
+  filter: drop-shadow(0 0 8px rgba(150, 230, 240, 0.9));
+}
+.inkfish-egg-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  perspective: 900px;
+  animation: inkfish-egg-bob 6s ease-in-out infinite;
+}
+.inkfish-egg-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 22%;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 30px rgba(120, 215, 230, 0.4));
+  animation: inkfish-egg-tilt 9s ease-in-out infinite;
+}
+.inkfish-egg-shine {
+  position: absolute;
+  inset: 6%;
+  overflow: hidden;
+  border-radius: 20%;
+}
+.inkfish-egg-shine::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -60%;
+  width: 40%;
+  height: 140%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: rotate(18deg);
+  animation: inkfish-egg-shine 5.5s ease-in-out infinite;
+}
+@keyframes inkfish-egg-bob {
+  0%, 100% { transform: translate(-50%, -52%); }
+  50% { transform: translate(-50%, -47%); }
+}
+@keyframes inkfish-egg-tilt {
+  0%, 100% { transform: rotateY(-10deg) rotateX(4deg); }
+  50% { transform: rotateY(10deg) rotateX(-4deg); }
+}
+@keyframes inkfish-egg-shine {
+  0%, 55% { left: -60%; }
+  85%, 100% { left: 130%; }
+}
+
+.inkfish-egg-bubble {
+  position: absolute;
+  bottom: -20px;
+  border: 1.5px solid rgba(190, 240, 245, 0.7);
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.05) 60%);
+  animation: inkfish-egg-rise linear infinite;
+  opacity: 0;
+}
+@keyframes inkfish-egg-rise {
+  0% { opacity: 0; transform: translate(0, 0); }
+  10% { opacity: 0.9; }
+  50% { transform: translate(14px, -45cqh); }
+  90% { opacity: 0.7; }
+  100% { opacity: 0; transform: translate(-10px, -90cqh); }
+}
+
+.inkfish-egg-caption {
+  position: absolute;
+  bottom: 9%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  text-align: center;
+}
+.inkfish-egg-caption strong {
+  background: linear-gradient(90deg, #8fdbe6, #ffffff, #5fb9c9, #ffffff, #8fdbe6);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(28px, 5cqw, 56px);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  animation: inkfish-egg-shimmer 6s linear infinite;
+}
+.inkfish-egg-caption span {
+  color: rgba(225, 245, 250, 0.82);
+  text-shadow: 0 1px 6px rgba(0, 20, 30, 0.8);
+  font-size: 13px;
+}
+@keyframes inkfish-egg-shimmer {
+  to { background-position: 300% 0; }
+}
+
+/* Same scene, still: a couple of ink clouds and bubbles frozen mid-bloom. */
+.inkfish-egg.is-still,
+.inkfish-egg.is-still * {
+  animation: none !important;
+}
+.inkfish-egg.is-still .inkfish-egg-puff { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+.inkfish-egg.is-still .inkfish-egg-bubble { opacity: 0.5; bottom: 30%; }
+.inkfish-egg.is-still .inkfish-egg-drop { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .inkfish-egg,
+  .inkfish-egg * {
+    animation: none !important;
+  }
+  .inkfish-egg-puff { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+  .inkfish-egg-bubble { opacity: 0.5; bottom: 30%; }
+  .inkfish-egg-drop { display: none; }
+}
