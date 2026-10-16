@@ -1,5 +1,5 @@
 /* ⌘K command palette / ⌘O note switcher (CommandPalette.tsx) */
-.palette-backdrop {
+.modal-backdrop.palette-backdrop {
   align-items: flex-start;
   padding-top: 12vh;
   z-index: 60;
