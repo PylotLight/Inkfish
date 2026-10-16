@@ -1,7 +1,7 @@
-// Crash guard first: catches errors thrown while the other modules load.
-import './crash-guard'
 import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session, systemPreferences } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
+// Crash guard before the app's own modules: catches errors thrown while they load.
+import './crash-guard'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { registerSysTap, stopSysTap } from './systap'
@@ -11,10 +11,11 @@ import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
 import { closeAllMinis, registerMiniWindow } from './mini-window'
-import { closeDb, openDb, reindexStaging, reindexVault } from './db'
-import { createShutdown } from '../shared/stability'
+import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
+import { closeDb } from './db'
+import { createShutdown } from '../shared/stability'
 import { startSync, stopSync, appendSyncLog } from './sync'
 
 // Custom protocols must be privileged before the app is ready.
