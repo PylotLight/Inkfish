@@ -136,7 +136,12 @@ export function anthropicBody(cfg: ProviderConfig, messages: ChatMessage[], run?
 type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
 /** Concatenate a whole stream (Test connection, non-streaming callers). */
-export async function complete(provider: AiProvider, messages: ChatMessage[], signal?: AbortSignal, run?: RunOptions): Promise<string> {
+export async function complete(
+  provider: AiProvider,
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  run?: RunOptions & { api?: AiApi }
+): Promise<string> {
   let out = ''
   for await (const delta of provider.stream(messages, signal, run)) out += delta
   return out

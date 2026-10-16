@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { DEFAULT_AI_SETTINGS, parseAiSettings, type AiProviderSettings } from '../../shared/ai-api'
 import { untagImages, untagSystemPrompt } from '../../shared/ai-models'
-import { AiNotConnectedError, runAiProcess } from './nativeAi'
+import { AiNotConnectedError, AiRunError, aiErrorDetails, runAiProcess } from './nativeAi'
 
 type G = { window?: unknown; LanguageModel?: unknown; fetch: typeof fetch }
 const g = globalThis as unknown as G
@@ -147,5 +147,87 @@ describe('Prompt API path (renderer)', () => {
     expect(u.text).toBe(note)
     expect(u.dataUrls).toEqual(['data:image/png;base64,iVBORw0KGgoAAAAA'])
     expect(fetched[0]).toBe('asset://vault/assets/a.png')
+  })
+})
+
+describe('Prompt API errors (renderer)', () => {
+  const detail = {
+    provider: 'OpenAI',
+    status: 400,
+    kind: 'http' as const,
+    message: 'This model is only supported in v1/responses and not in v1/chat/completions.',
+    endpoint: 'POST /chat/completions',
+    model: 'openai.gpt-6-luna'
+  }
+  const streaming = (chunks: string[] | (() => never)) => ({
+    availability: async () => 'available',
+    create: async (opts: { initialPrompts: Array<{ content: string }> }) => ({
+      system: opts.initialPrompts[0]?.content,
+      promptStreaming: () =>
+        new ReadableStream<string>({
+          start(c) {
+            if (typeof chunks === 'function') {
+              c.error(new DOMException('An unknown error occurred: kErrorUnknown', 'UnknownError'))
+              return
+            }
+            for (const x of chunks) c.enqueue(x)
+            c.close()
+          }
+        }),
+      destroy: () => undefined
+    })
+  })
+
+  test('the handler sentinel becomes a readable AiRunError (never shown as text) + Copy details', async () => {
+    setStatus(true)
+    const { encodeErrorSentinel } = await import('../../shared/ai-errors')
+    const sentinel = encodeErrorSentinel(detail)
+    let systemSeen = ''
+    const lm = streaming(['# par', sentinel.slice(0, 4), sentinel.slice(4)])
+    const create = lm.create
+    lm.create = async (o) => {
+      const m = await create(o)
+      systemSeen = m.system ?? ''
+      return m
+    }
+    g.LanguageModel = lm
+    const chunks: string[] = []
+    const err = await runAiProcess({ action: 'tidy', text: '# hi', onChunk: (c) => chunks.push(c) }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(AiRunError)
+    expect((err as Error).message).toBe(
+      'OpenAI 400: This model is only supported in v1/responses and not in v1/chat/completions. (POST /chat/completions, openai.gpt-6-luna)'
+    )
+    expect(chunks.every((c) => !c.includes('inkfish-error'))).toBe(true)
+    expect(untagSystemPrompt(systemSeen).run.errors).toBe('inline')
+    const copied = JSON.parse(aiErrorDetails(err))
+    expect(copied.detail).toMatchObject({ status: 400, endpoint: 'POST /chat/completions', model: 'openai.gpt-6-luna' })
+  })
+
+  test("Electron's bare kErrorUnknown → the handler's last error from main", async () => {
+    let asked = 0
+    g.window = {
+      api: {
+        aiApi: {
+          status: async () => ({ connected: true, settings: DEFAULT_AI_SETTINGS }),
+          lastError: async () => (asked++, detail)
+        }
+      }
+    }
+    g.LanguageModel = streaming(() => {
+      throw new Error('unreachable')
+    })
+    const err = await runAiProcess({ action: 'tidy', text: '# hi' }).catch((e: unknown) => e)
+    expect(asked).toBe(1)
+    expect(err).toBeInstanceOf(AiRunError)
+    expect((err as Error).message).toContain('OpenAI 400')
+  })
+
+  test('kErrorUnknown and nothing in main: says so instead of the raw Chromium text', async () => {
+    g.window = { api: { aiApi: { status: async () => ({ connected: true, settings: DEFAULT_AI_SETTINGS }), lastError: async () => null } } }
+    g.LanguageModel = streaming(() => {
+      throw new Error('unreachable')
+    })
+    const err = await runAiProcess({ action: 'tidy', text: '# hi' }).catch((e: unknown) => e)
+    expect((err as Error).message).toContain('without details (Electron: kErrorUnknown)')
   })
 })
