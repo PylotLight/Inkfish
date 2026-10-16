@@ -1,6 +1,6 @@
 import { isolateHistory } from '@codemirror/commands'
 import {
-  type EditorSelection,
+  EditorSelection,
   type EditorState,
   StateEffect,
   StateField,
@@ -158,7 +158,8 @@ export const selectedImageField = StateField.define<{ from: number; to: number }
     for (const e of tr.effects) if (e.is(selectImage)) return e.value
     if (!value) return null
     if (tr.docChanged) return null
-    if (tr.selection) {
+    // A re-dispatch of the same selection (focus, gesture end) keeps the ring.
+    if (tr.selection && !tr.state.selection.eq(tr.startState.selection)) {
       const inside = tr.state.selection.ranges.every((r) => r.empty && r.from >= value.from && r.to <= value.to)
       if (!inside) return null
     }
@@ -171,4 +172,21 @@ export function selectedImageRef(state: EditorState): { from: number; to: number
   const sel = state.field(selectedImageField, false)
   if (!sel) return null
   return state.selection.ranges.every((r) => r.empty) ? sel : null
+}
+
+/**
+ * End a plain click on a picture: select it (ring; ⌘C copies the image) but
+ * do NOT move the caret onto its ref, so the source stays hidden. The
+ * pre-gesture selection is collapsed to its head (an empty selection is what
+ * lets Copy take the picture). Putting the caret on the line by keyboard or by
+ * clicking the text is what reveals the source.
+ */
+export function imageClickSpec(state: EditorState, ref: { from: number; to: number }): TransactionSpec {
+  const g = state.field(imageGestureField, false)
+  const prev = g ? g.selection : state.selection
+  return endImageGestureSpec(
+    state,
+    { selection: EditorSelection.cursor(prev.main.head), effects: selectImage.of(ref), userEvent: 'select.pointer' },
+    true
+  )
 }

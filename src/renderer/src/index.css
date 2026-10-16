@@ -4569,6 +4569,14 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   border-radius: 6px;
   padding: 2px 8px;
 }
+/* Revealed block image: picture as its own block under the source line, left edge. */
+.ed-src .lp-img-block {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 0 4px;
+  cursor: default;
+}
 .ed-src .lp-imgsrc {
   color: var(--muted);
   font-size: 0.88em;
