@@ -159,3 +159,10 @@ jobs:
       # Smoke the per-app audio listing (Core Audio metadata only, no TCC prompt needed).
       - name: smoke audio-apps
         run: stt/bin/inkfish-stt audio-apps
+      # Best effort: targeted tap with no matching app should announce RATE and wait (silence), not crash.
+      # Hosted runners have no TCC grant, so this only reports what happens.
+      - name: smoke tap --apps (informational)
+        continue-on-error: true
+        run: |
+          (stt/bin/inkfish-stt tap --apps com.example.none > /dev/null 2> tap.err & echo $! > tap.pid; sleep 4; kill "$(cat tap.pid)" 2>/dev/null) || true
+          cat tap.err
