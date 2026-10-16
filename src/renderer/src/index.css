@@ -4572,3 +4572,9 @@ input[type='password'].text-input {
 .ai-models select {
   max-width: 260px;
 }
+.ai-picker .link-btn {
+  font: inherit;
+}
+.ai-picker-foot .btn.mint {
+  margin-left: auto;
+}
