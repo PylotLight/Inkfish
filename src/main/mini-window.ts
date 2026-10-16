@@ -625,7 +625,7 @@ export function openMini(noteId: string, focus = false, at?: PeekPoint): boolean
     visualEffectState: IS_MAC ? 'active' : undefined,
     roundedCorners: true,
     backgroundColor: IS_MAC ? '#00000000' : '#14181d',
-    webPreferences: { preload: preloadPath(), sandbox: false, contextIsolation: true }
+    webPreferences: { preload: preloadPath(), sandbox: false, contextIsolation: true, enableBlinkFeatures: 'AIPromptAPI' }
   })
   setFloating(win)
   if (process.platform !== 'linux') win.setOpacity(s.opacity)

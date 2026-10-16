@@ -12,6 +12,7 @@ import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
 import Meetings from './views/Meetings'
 import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
+import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import PopOutIcon from './views/PopOutIcon'
@@ -924,6 +925,8 @@ function Main(): React.JSX.Element {
         const name = titleOf(doc)
         return [
           { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(doc.id) },
+          { label: 'Raw / Processed view  ⇧⌥P', action: () => sendAiCommand('toggle-view') },
+          { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
           { label: 'Rename…', action: () => doRename(rel, false) },
           { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(rel, name) }
@@ -1068,6 +1071,9 @@ function Main(): React.JSX.Element {
     { id: 'meetings', title: meetingLive ? 'Meetings (recording)' : 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'], run: () => { leaveSettings(); setShowMeeting(true) } },
     { id: 'meeting-record', title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…', section: 'Meetings', keywords: ['start', 'capture', 'transcribe', 'mic'], run: () => { leaveSettings(); setShowMeeting(true) } },
     { id: 'meeting-close', title: 'Close Meetings', section: 'Meetings', enabled: showMeeting, keywords: ['back', 'exit'], run: () => setShowMeeting(false) },
+    { id: 'ai-toggle-view', title: 'AI: Raw / Processed View', section: 'AI', accelerator: 'Shift+Alt+P', keywords: ['format', 'tidy', 'processed', 'raw', 'llm'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('toggle-view') } },
+    { id: 'ai-process-note', title: 'AI: Process Note', section: 'AI', keywords: ['format', 'tidy', 'summarise', 'summarize', 'checklist', 'typos'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-note') } },
+    { id: 'ai-process-selection', title: 'AI: Process Selection…', section: 'AI', accelerator: 'Shift+Alt+S', keywords: ['format', 'rewrite', 'fix', 'selected'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-selection') } },
     { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
     { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
     { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
@@ -1082,6 +1088,7 @@ function Main(): React.JSX.Element {
       ['trash', 'Trash', ['deleted', 'restore']],
       ['audio', 'Audio', ['microphone', 'input']],
       ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
+      ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
       ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
     ] as Array<[string, string, string[]]>).map(([tab, label, keywords]): RunnableCommand => ({
       id: `settings-${tab}`,
@@ -1104,6 +1111,14 @@ function Main(): React.JSX.Element {
   paletteRef.current = palette
   const openSettingsRef = useRef(openSettings)
   openSettingsRef.current = openSettings
+  // "Open Settings › AI" from an AI error in the editor.
+  const openSettingsAtRef = useRef(openSettingsAt)
+  openSettingsAtRef.current = openSettingsAt
+  useEffect(() => {
+    const onOpen = (e: Event): void => openSettingsAtRef.current(String((e as CustomEvent<string>).detail || 'ai'))
+    window.addEventListener('inkfish:open-settings', onOpen)
+    return () => window.removeEventListener('inkfish:open-settings', onOpen)
+  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return

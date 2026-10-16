@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
+import type { DiscoveryResult } from '../shared/ai-models'
+import type { ProcessedEntry } from '../shared/ai-process'
 import type { MenuBarSettings } from '../shared/menubar'
 import type { AppProfileInfo } from '../shared/profile'
 import type {
@@ -265,6 +268,20 @@ const api = {
     summarize: (text: string): Promise<{ text: string; provider: string }> => ipcRenderer.invoke('ai:summarize', text),
     speak: (text: string): Promise<boolean> => ipcRenderer.invoke('ai:speak', text),
     stopSpeak: (): Promise<boolean> => ipcRenderer.invoke('ai:stop-speak')
+  },
+  /** Settings › AI provider (served to the Prompt API by the local AI handler). The key never comes back. */
+  aiApi: {
+    status: (): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:status'),
+    set: (patch: Partial<AiProviderSettings>): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:set', patch),
+    setKey: (key: string): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:set-key', key),
+    clearKey: (): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:clear-key'),
+    /** Unsaved `patch` fields override the saved settings for this test only. */
+    test: (patch?: Partial<AiProviderSettings>): Promise<AiTestResult> => ipcRenderer.invoke('ai-api:test', patch),
+    /** Find models on the provider (main does the requests; the key never reaches the renderer). */
+    discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> => ipcRenderer.invoke('ai-api:discover', patch),
+    processedGet: (noteId: string): Promise<ProcessedEntry | null> => ipcRenderer.invoke('ai-api:processed-get', noteId),
+    processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
+    processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId)
   },
   intel: {
     /** Apple Intelligence availability; `fresh` skips the 1-minute cache. */

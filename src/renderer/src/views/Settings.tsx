@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ACCENTS, DEFAULT_PREFS, NOTE_WIDTHS, THEMES, type DensityId, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
+import { isLoopbackUrl } from '../../../shared/ai-api'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
+import AiApiSettings from './AiApiSettings'
 import VoiceEngineSettings from './VoiceEngineSettings'
 import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
@@ -129,7 +131,7 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'mini-window' | 'about'
+type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
@@ -141,7 +143,8 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof
   { id: 'about', label: 'About & updates', icon: 'ⓘ', group: 'Configure' },
   { id: 'audio', label: 'Audio', icon: '♪', group: 'Voice' },
   { id: 'voice', label: 'Voice Engine', icon: '≋', group: 'Voice' },
-  { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' }
+  { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' },
+  { id: 'ai', label: 'AI provider', icon: '⌁', group: 'Intelligence' }
 ]
 
 /**
@@ -180,6 +183,17 @@ export default function SettingsView({
   // An update notification click while Settings is already open jumps to About & updates.
   useEffect(() => window.api.updates.onReveal(() => go('about')), [])
   const [updateBadge, setUpdateBadge] = useState(false)
+  // A connected remote AI provider means note text does leave the machine — say where.
+  const [aiHost, setAiHost] = useState<string | null>(null)
+  useEffect(() => {
+    window.api.aiApi
+      ?.status()
+      .then((st) => {
+        const remote = st.connected && !isLoopbackUrl(st.settings.baseUrl)
+        setAiHost(remote ? new URL(st.settings.baseUrl).host : null)
+      })
+      .catch(() => setAiHost(null))
+  }, [tab])
   useEffect(() => {
     void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
     return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
@@ -191,7 +205,11 @@ export default function SettingsView({
         <div>
           <span className="eyebrow">Inkfish</span>
           <h2 className="settings-title">Settings</h2>
-          <p className="muted small settings-sub">Stored locally in this app — nothing leaves your machine.</p>
+          <p className="muted small settings-sub">
+            {aiHost
+              ? `Stored locally in this app — AI requests go to ${aiHost} while it's connected.`
+              : 'Stored locally in this app — nothing leaves your machine.'}
+          </p>
         </div>
         <button className="btn ghost small" onClick={onBack}>
           ← Back
@@ -485,6 +503,7 @@ export default function SettingsView({
           {tab === 'voice' && <VoiceEngineSettings />}
 
           {tab === 'apple-intelligence' && <IntelligenceSettings />}
+          {tab === 'ai' && <AiApiSettings />}
 
           {tab === 'sync' && <SyncSettings />}
           {tab === 'trash' && <TrashSettings />}

@@ -7,6 +7,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import './crash-guard'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
+import { initAiApi } from './ai-api'
 import { registerSysTap, stopSysTap } from './systap'
 import { destroyTray } from './tray'
 import { startMenuBar } from './menubar'
@@ -128,6 +129,8 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  // Settings › AI: Electron 45 local AI handler for the Prompt API (off until a provider is connected).
+  initAiApi()
   registerUpdateIpc()
   registerMiniWindow()
   // LAN sync listener for paired phones (no-op until a vault exists).
