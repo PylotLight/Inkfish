@@ -3,7 +3,6 @@ import {
   AI_PROVIDER_KINDS,
   DEFAULT_AI_SETTINGS,
   DEFAULT_BASE_URL,
-  DEFAULT_MODEL,
   isLoopbackUrl,
   type AiApiStatus,
   type AiProviderKind,
@@ -11,6 +10,7 @@ import {
   type AiTestResult
 } from '../../../shared/ai-api'
 import { ipcError } from '../audio'
+import AiModelsSettings from './AiModelsSettings'
 
 const KIND_LABEL: Record<AiProviderKind, string> = {
   openai: 'OpenAI-compatible',
@@ -57,11 +57,11 @@ export default function AiApiSettings(): React.JSX.Element {
   }
 
   const pickKind = (kind: AiProviderKind): void => {
-    // Switching provider resets URL/model to that provider's defaults unless the user had custom ones.
+    // Switching provider resets the URL to that provider's default unless the user had a custom one.
+    // Main keeps each provider's model list and restores it when switching back.
     const next = {
       kind,
-      baseUrl: form.baseUrl === DEFAULT_BASE_URL[form.kind] ? DEFAULT_BASE_URL[kind] : form.baseUrl,
-      model: form.model === DEFAULT_MODEL[form.kind] ? DEFAULT_MODEL[kind] : form.model
+      baseUrl: form.baseUrl === DEFAULT_BASE_URL[form.kind] ? DEFAULT_BASE_URL[kind] : form.baseUrl
     }
     setForm((f) => ({ ...f, ...next }))
     void save(next)
@@ -87,7 +87,7 @@ export default function AiApiSettings(): React.JSX.Element {
   const runTest = async (): Promise<void> => {
     setTest({ running: true })
     try {
-      setTest(await window.api.aiApi.test({ kind: form.kind, baseUrl: form.baseUrl, model: form.model }))
+      setTest(await window.api.aiApi.test({ kind: form.kind, baseUrl: form.baseUrl }))
     } catch (e) {
       setTest({ ok: false, ms: 0, detail: ipcError(e) })
     }
@@ -162,19 +162,6 @@ export default function AiApiSettings(): React.JSX.Element {
         </div>
 
         <div className="setting-row stacked">
-          <span className="setting-label">Model</span>
-          <input
-            className="text-input"
-            value={form.model}
-            spellCheck={false}
-            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-            onBlur={() => void save({ model: form.model })}
-            placeholder={DEFAULT_MODEL[form.kind]}
-            aria-label="Model"
-          />
-        </div>
-
-        <div className="setting-row stacked">
           <span className="setting-label">
             API key
             <span className="muted small setting-hint">
@@ -228,7 +215,7 @@ export default function AiApiSettings(): React.JSX.Element {
                   ? test.ok
                     ? `OK in ${(test.ms / 1000).toFixed(1)} s · “${test.detail}”`
                     : test.detail
-                  : 'Sends one tiny request with these settings.'}
+                  : 'Sends one tiny request to the default model.'}
             </span>
           </div>
           <button
@@ -245,6 +232,8 @@ export default function AiApiSettings(): React.JSX.Element {
           </p>
         )}
       </section>
+
+      <AiModelsSettings settings={form} save={save} />
 
       <section className="settings-group">
         <h4>Coming later</h4>
