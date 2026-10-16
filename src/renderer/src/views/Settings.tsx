@@ -7,6 +7,7 @@ import VoiceEngineSettings from './VoiceEngineSettings'
 import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
+import MiniWindowSettings from './MiniWindowSettings'
 
 interface Props {
   prefs: Prefs
@@ -127,11 +128,12 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence'
+type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'mini-window'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
   { id: 'appearance', label: 'Appearance', icon: '◐', group: 'Configure' },
+  { id: 'mini-window', label: 'Mini window', icon: '⧉', group: 'Configure' },
   { id: 'notes', label: 'Notes', icon: '▤', group: 'Configure' },
   { id: 'sync', label: 'Sync', icon: '⇅', group: 'Configure' },
   { id: 'trash', label: 'Trash', icon: '⌫', group: 'Configure' },
@@ -461,6 +463,8 @@ export default function SettingsView({
               <MenuBarSettings />
             </>
           )}
+
+          {tab === 'mini-window' && <MiniWindowSettings />}
 
           {tab === 'audio' && <AudioSettings />}
 

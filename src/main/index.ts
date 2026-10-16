@@ -8,6 +8,7 @@ import { startMenuBar } from './menubar'
 import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
+import { closeAllMinis, registerMiniWindow } from './mini-window'
 import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
@@ -110,6 +111,7 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  registerMiniWindow()
   // LAN sync listener for paired phones (no-op until a vault exists).
   startSync()
   registerSysTap()
@@ -147,6 +149,8 @@ app.on('second-instance', () => showWindow())
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+app.on('before-quit', () => closeAllMinis())
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()

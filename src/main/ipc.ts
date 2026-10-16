@@ -463,7 +463,14 @@ export function registerIpc(): void {
     writeFileSync(abs, markdown, 'utf8')
     removeNote(id)
     indexFile(abs, doc.path)
-    return getNote(id, paths.root)
+    const saved = getNote(id, paths.root)
+    // Mini windows: every other window showing this note picks up the save.
+    if (saved) {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed() && w.webContents !== _e.sender) w.webContents.send('inkfish:note-saved', saved)
+      }
+    }
+    return saved
   })
   ipcMain.handle('notes:reveal', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { assetUrl, imageMarkdown } from '../../../shared/images'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 import { LIVE_ENGINE, liveAvailable, startLive, type LiveSession } from '../liveCaptions'
@@ -70,10 +71,10 @@ export default function Capture(): React.JSX.Element {
       const hasImage = attachments.some((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a))
       const kind: NoteKind = hasAudio ? 'voice' : hasImage ? 'image' : 'text'
       if (dest === 'today') {
-        const body =
-          attachments.length > 0
-            ? `${raw.trim()}\n${attachments.map((a) => `![](${a})`).join('\n')}`.trim()
-            : raw.trim()
+        // Image refs are already inline in `raw` (ingestFile appends them);
+        // only add refs for attachments the user removed from the text.
+        const missing = attachments.filter((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a) && !raw.includes(a))
+        const body = [raw.trim(), ...missing.map(imageMarkdown)].filter(Boolean).join('\n')
         await window.api.daily.append(body, kind)
       } else {
         await window.api.inbox.add({
@@ -243,7 +244,7 @@ export default function Capture(): React.JSX.Element {
     }
     const rel = await window.api.assets.save(file.name, await blobToDataUrl(file))
     setAttachments((prev) => [...prev, rel])
-    if (isImage) appendText(`![](${rel})`)
+    if (isImage) appendText(imageMarkdown(rel))
     else appendText(`🎙 \`${rel}\``)
   }
 
@@ -376,6 +377,9 @@ export default function Capture(): React.JSX.Element {
         <ul className="cap-files">
           {attachments.map((a) => (
             <li key={a}>
+              {/\.(png|jpe?g|gif|webp|svg)$/i.test(a) && (
+                <img className="cap-thumb" src={assetUrl(a)} alt="" draggable={false} />
+              )}
               <span>{a.split('/').slice(-1)[0]}</span>
               <button
                 aria-label={`Remove ${a}`}
