@@ -11,7 +11,14 @@
  * - Image refs (`![](assets/…)`) and link URLs must survive the "keep everything" actions
  *   (tidy, typos, checklist); if the model drops one the result is refused, not shown.
  *   Summarise / custom may legitimately drop them, so there they come back as warnings.
+ *
+ * Long notes: when the model's context window / max output are known (Settings › AI › Models),
+ * rewrite actions are split into parts at paragraph boundaries and processed one by one; summarise
+ * and custom get the part that fits plus a notice. Unknown limits = one request, as before.
  */
+
+import { findImages } from './images'
+import { estimateTextTokens, formatTokens, inputBudget, type ModelMeta } from './ai-models'
 
 export const AI_ACTIONS = ['tidy', 'typos', 'summarize', 'checklist', 'custom'] as const
 export type AiAction = (typeof AI_ACTIONS)[number]
@@ -71,15 +78,21 @@ const ACTION_RULES: Record<Exclude<AiAction, 'custom'>, string> = {
 export interface PromptPair {
   system: string
   user: string
+  /** Image srcs (`assets/…`) in `user`, set only when the caller asked to include images. */
+  imageRefs?: string[]
 }
 
+export type PromptScope = 'note' | 'selection' | 'part'
+
 /** The system + user prompt for one action on `text` (body only, never front matter). */
-export function buildPrompt(action: AiAction, text: string, instruction = '', scope: 'note' | 'selection' = 'note'): PromptPair {
+export function buildPrompt(action: AiAction, text: string, instruction = '', scope: PromptScope = 'note'): PromptPair {
   const rules = action === 'custom' ? `Follow this instruction from the user:\n${instruction.trim() || 'Tidy the text.'}` : ACTION_RULES[action]
   const scopeLine =
     scope === 'selection'
       ? 'The input is a selection from a larger note; reply with the replacement for that selection only.'
-      : 'The input is a whole note.'
+      : scope === 'part'
+        ? 'The input is one consecutive part of a longer note; reply with the result for this part only, nothing about the rest.'
+        : 'The input is a whole note.'
   return { system: `${BASE_RULES}\n${scopeLine}\n\n${rules}`, user: text }
 }
 
@@ -116,6 +129,68 @@ export function missingRefs(input: string, output: string): string[] {
   return missing
 }
 
+// --- long notes ------------------------------------------------------------------------------
+
+/** Blocks separated by blank lines; a fenced code block is never split. */
+function blocks(text: string): string[] {
+  const out: string[] = []
+  let cur: string[] = []
+  let fence = false
+  for (const line of text.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    if (!fence && line.trim() === '' && cur.length) {
+      out.push(cur.join('\n'))
+      cur = []
+      continue
+    }
+    if (!fence && line.trim() === '' && !cur.length) continue
+    cur.push(line)
+  }
+  if (cur.length) out.push(cur.join('\n'))
+  return out
+}
+
+/** Hard-split one oversized block by lines, then characters. */
+function splitBlock(block: string, maxChars: number): string[] {
+  if (block.length <= maxChars) return [block]
+  const out: string[] = []
+  let cur = ''
+  for (const line of block.split('\n')) {
+    if (line.length > maxChars) {
+      if (cur) out.push(cur)
+      cur = ''
+      for (let i = 0; i < line.length; i += maxChars) out.push(line.slice(i, i + maxChars))
+      continue
+    }
+    if (cur && cur.length + 1 + line.length > maxChars) {
+      out.push(cur)
+      cur = line
+    } else cur = cur ? `${cur}\n${line}` : line
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+/** Split `text` into parts of at most ~`maxTokens` each, at paragraph boundaries where possible. */
+export function splitChunks(text: string, maxTokens: number): string[] {
+  const maxChars = Math.max(64, maxTokens * 4)
+  const parts: string[] = []
+  let cur = ''
+  for (const b of blocks(text).flatMap((x) => splitBlock(x, maxChars))) {
+    if (cur && cur.length + 2 + b.length > maxChars) {
+      parts.push(cur)
+      cur = b
+    } else cur = cur ? `${cur}\n\n${b}` : b
+  }
+  if (cur) parts.push(cur)
+  return parts.length ? parts : ['']
+}
+
+/** The leading part of `text` that fits ~`maxTokens` (paragraph boundary when possible). */
+export function truncateToTokens(text: string, maxTokens: number): string {
+  return splitChunks(text, maxTokens)[0] ?? ''
+}
+
 // --- reply cleanup -------------------------------------------------------------------------
 
 /** Strip a wrapping ``` fence or a "Here is…" preamble line some models add anyway. */
@@ -144,6 +219,10 @@ export interface ProcessInput {
   instruction?: string
   scope?: 'note' | 'selection'
   onChunk?: (textSoFar: string) => void
+  /** The model's limits (Settings › AI › Models); unknown = one request, no chunking. */
+  model?: ModelMeta
+  /** Pass image refs along with each prompt (the caller only sets this for vision models). */
+  includeImages?: boolean
 }
 
 export interface ProcessResult {
@@ -151,6 +230,8 @@ export interface ProcessResult {
   text: string
   /** Refs the model dropped on a non-strict action (shown to the user; they decide). */
   warnings: string[]
+  /** Informational: the note was split into parts, or only its first part fit the model. */
+  notices: string[]
 }
 
 export class AiProcessError extends Error {
@@ -168,11 +249,49 @@ export async function processText(input: ProcessInput, complete: Complete): Prom
   const scope = input.scope ?? 'note'
   const { frontMatter, body } = scope === 'note' ? splitFrontMatter(input.text) : { frontMatter: '', body: input.text }
   if (!body.trim()) throw new AiProcessError('Nothing to process: the note body is empty.', 'empty')
-  const prompt = buildPrompt(input.action, body.trim(), input.instruction ?? '', scope)
-  const reply = cleanReply(await complete(prompt, input.onChunk))
-  if (!reply) throw new AiProcessError('The AI returned an empty reply.', 'no-reply')
-  const missing = missingRefs(body, reply)
-  if (missing.length && AI_ACTION_INFO[input.action].strict) {
+  const info = AI_ACTION_INFO[input.action]
+  const instruction = input.instruction ?? ''
+  const notices: string[] = []
+  const trimmed = body.trim()
+
+  // Fit the model: rewrite actions (strict) answer with as much as they get, so they split into
+  // parts; summarise / custom need the whole text in one go, so they get what fits.
+  const sysTokens = estimateTextTokens(buildPrompt(input.action, '', instruction, 'part').system)
+  const budget = inputBudget(input.model, sysTokens, info.strict)
+  const tokens = estimateTextTokens(trimmed)
+  let parts = [trimmed]
+  let sent = body
+  if (budget && tokens > budget) {
+    if (info.strict) {
+      parts = splitChunks(trimmed, budget)
+      notices.push(
+        `Long ${scope === 'note' ? 'note' : 'selection'} (~${formatTokens(tokens)} tokens): processed in ${parts.length} parts to fit the model (~${formatTokens(budget)} tokens a request).`
+      )
+    } else {
+      parts = [truncateToTokens(trimmed, budget)]
+      sent = parts[0] ?? ''
+      notices.push(
+        `The ${scope === 'note' ? 'note' : 'selection'} is ~${formatTokens(tokens)} tokens, more than the model can take (~${formatTokens(budget)}). Only the first part was sent.`
+      )
+    }
+  }
+
+  const replies: string[] = []
+  for (const part of parts) {
+    const prompt = buildPrompt(input.action, part, instruction, parts.length > 1 ? 'part' : scope)
+    if (input.includeImages) {
+      const refs = [...new Set(findImages(part).map((r) => r.src))]
+      if (refs.length) prompt.imageRefs = refs
+    }
+    const done = replies.join('\n\n')
+    const onChunk = input.onChunk && ((t: string) => input.onChunk?.(done ? `${done}\n\n${t}` : t))
+    const reply = cleanReply(await complete(prompt, onChunk))
+    if (!reply) throw new AiProcessError('The AI returned an empty reply.', 'no-reply')
+    replies.push(reply)
+  }
+  const reply = replies.join('\n\n')
+  const missing = missingRefs(sent, reply)
+  if (missing.length && info.strict) {
     throw new AiProcessError(
       `Not applied: the AI dropped ${missing.length} image/link reference${missing.length > 1 ? 's' : ''} (${missing
         .slice(0, 3)
@@ -181,7 +300,7 @@ export async function processText(input: ProcessInput, complete: Complete): Prom
     )
   }
   const shaped = scope === 'selection' ? keepEdges(body, reply) : `${reply}\n`
-  return { text: `${frontMatter}${shaped}`, warnings: missing }
+  return { text: `${frontMatter}${shaped}`, warnings: missing, notices }
 }
 
 // --- processed-view cache key --------------------------------------------------------------
@@ -205,6 +324,7 @@ export interface ProcessedEntry {
   instruction: string
   text: string
   warnings: string[]
+  notices?: string[]
   at: number
 }
 
@@ -219,6 +339,7 @@ export function parseProcessedEntry(value: unknown): ProcessedEntry | null {
     instruction: typeof v.instruction === 'string' ? v.instruction.slice(0, 2000) : '',
     text: v.text,
     warnings: Array.isArray(v.warnings) ? v.warnings.filter((w): w is string => typeof w === 'string') : [],
+    notices: Array.isArray(v.notices) ? v.notices.filter((w): w is string => typeof w === 'string').slice(0, 5) : [],
     at: typeof v.at === 'number' ? v.at : 0
   }
 }

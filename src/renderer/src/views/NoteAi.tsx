@@ -51,6 +51,7 @@ interface SelPop {
   partial: string
   result: string
   warnings: string[]
+  notices: string[]
   error: string
   connect: boolean
 }
@@ -222,7 +223,8 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
     try {
       const r = await runAiProcess(
         { action, instruction, text: raw, scope: 'note', onChunk: (partial) => setRun({ state: 'running', partial }) },
-        ac.signal
+        ac.signal,
+        { notePath: doc.path }
       )
       const next: ProcessedEntry = {
         noteId: doc.id,
@@ -231,6 +233,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
         instruction,
         text: r.text,
         warnings: r.warnings,
+        notices: r.notices,
         at: Date.now()
       }
       setEntry(next)
@@ -299,6 +302,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
       partial: '',
       result: '',
       warnings: [],
+      notices: [],
       error: '',
       connect: false
     }))
@@ -323,9 +327,10 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
           scope: 'selection',
           onChunk: (partial) => setPop((p) => p && { ...p, partial })
         },
-        ac.signal
+        ac.signal,
+        { notePath: doc.path }
       )
-      setPop((p) => p && { ...p, phase: 'done', result: r.text, warnings: r.warnings })
+      setPop((p) => p && { ...p, phase: 'done', result: r.text, warnings: r.warnings, notices: r.notices })
     } catch (err) {
       if (isAbort(err)) setPop((p) => p && { ...p, phase: 'pick' })
       else setPop((p) => p && { ...p, phase: 'error', error: aiErrorMessage(err), connect: err instanceof AiNotConnectedError })
@@ -482,6 +487,9 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
           )}
         </p>
       )}
+      {mode !== 'raw' && entry && !running && (entry.notices?.length ?? 0) > 0 && (
+        <p className="small muted ai-warn">{entry.notices?.join(' ')}</p>
+      )}
       {mode !== 'raw' && entry && !running && entry.warnings.length > 0 && (
         <p className="small muted ai-warn">
           Dropped {entry.warnings.length} image/link ref{entry.warnings.length > 1 ? 's' : ''}: {entry.warnings.slice(0, 3).join(', ')}
@@ -544,6 +552,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
           {(pop.phase === 'running' || pop.phase === 'done') && (
             <pre className="ai-pop-out">{pop.phase === 'running' ? pop.partial || 'Thinking…' : pop.result}</pre>
           )}
+          {pop.phase === 'done' && pop.notices.length > 0 && <p className="small muted">{pop.notices.join(' ')}</p>}
           {pop.phase === 'done' && pop.warnings.length > 0 && (
             <p className="small muted">Dropped: {pop.warnings.slice(0, 3).join(', ')}</p>
           )}
