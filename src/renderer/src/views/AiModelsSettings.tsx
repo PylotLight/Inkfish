@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { AiProviderSettings } from '../../../shared/ai-api'
+import type { AiProviderSettings, AiTestResult } from '../../../shared/ai-api'
+import { errorDetailsText } from '../../../shared/ai-errors'
 import {
+  AI_API_LABEL,
   MODALITIES,
   addDiscovered,
   editModel,
@@ -15,6 +17,7 @@ import {
 } from '../../../shared/ai-models'
 import { AI_ACTIONS, AI_ACTION_INFO, type AiAction } from '../../../shared/ai-process'
 import { ipcError } from '../audio'
+import CopyDetails from './CopyDetails'
 
 /**
  * Settings › AI › Models: the models Inkfish can use with the connected provider.
@@ -87,9 +90,14 @@ function ModelRow({
   onChange,
   onRename,
   onDelete,
-  onMakeDefault
+  onMakeDefault,
+  kind,
+  providerApi
 }: {
   model: AiModel
+  /** Provider kind: the API choice only applies to OpenAI-compatible servers. */
+  kind: AiProviderSettings['kind']
+  providerApi: AiProviderSettings['api']
   isDefault: boolean
   open: boolean
   onToggle: () => void
@@ -104,6 +112,16 @@ function ModelRow({
   const [out, setOut] = useState(model.maxOutputTokens ? String(model.maxOutputTokens) : '')
   const [levels, setLevels] = useState((model.reasoningLevels ?? []).join(', '))
   const [idError, setIdError] = useState('')
+  const [test, setTest] = useState<AiTestResult | 'running' | null>(null)
+  const runTest = async (): Promise<void> => {
+    setTest('running')
+    try {
+      setTest(await window.api.aiApi.test({ testModel: model.id }))
+    } catch (e) {
+      setTest({ ok: false, ms: 0, detail: ipcError(e), model: model.id })
+    }
+  }
+  const autoUses = model.endpoint === 'responses' ? 'Responses' : 'Chat Completions'
   useEffect(() => {
     setId(model.id)
     setName(model.name ?? '')
@@ -243,6 +261,27 @@ function ModelRow({
               </select>
             </label>
           </div>
+          {kind === 'openai' && (
+            <label className="ai-model-field">
+              <span className="ai-model-flabel">
+                API{' '}
+                <Info text="Which endpoint this model is called on. Auto uses Chat Completions unless the model needs the Responses API (found by Find models, or learned when Chat Completions says it is responses-only); it then retries on /responses once and remembers it." />
+              </span>
+              <select
+                value={model.api ?? ''}
+                onChange={(e) => onChange({ api: (e.target.value || undefined) as AiModel['api'] })}
+                aria-label="API"
+              >
+                <option value="">
+                  {providerApi && providerApi !== 'auto'
+                    ? `Provider default (${AI_API_LABEL[providerApi]})`
+                    : `Auto (${autoUses}${model.endpoint ? (model.detected?.endpoint ? ', detected' : ', learned') : ''})`}
+                </option>
+                <option value="chat">Chat Completions</option>
+                <option value="responses">Responses</option>
+              </select>
+            </label>
+          )}
           <CapBoxes label="Input capabilities" value={input} onChange={(v) => onChange({ input: v })} />
           <CapBoxes label="Output capabilities" value={output} onChange={(v) => onChange({ output: v })} />
           <label className="ai-cap ai-tools">
@@ -254,12 +293,25 @@ function ModelRow({
               {model.detected ? 'Values from the provider; your edits are kept on Re-detect.' : 'Added by hand.'}
               {edited.length > 0 && ` Edited: ${edited.length}.`}
             </span>
-            {!isDefault && (
-              <button className="btn ghost sm" onClick={onMakeDefault}>
-                Use as default
+            <span className="row">
+              <button className="btn ghost sm" disabled={test === 'running'} onClick={() => void runTest()}>
+                {test === 'running' ? 'Testing…' : 'Test'}
               </button>
-            )}
+              {!isDefault && (
+                <button className="btn ghost sm" onClick={onMakeDefault}>
+                  Use as default
+                </button>
+              )}
+            </span>
           </div>
+          {test && test !== 'running' && (
+            <p className={`small setting-hint${test.ok ? ' muted' : ' error-text'}`} style={{ overflowWrap: 'anywhere' }}>
+              {test.ok
+                ? `OK in ${(test.ms / 1000).toFixed(1)} s${test.endpoint ? ` via ${test.endpoint}` : ''} · “${test.detail}”`
+                : test.detail}{' '}
+              {!test.ok && <CopyDetails text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })} />}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -502,6 +554,8 @@ export default function AiModelsSettings({ settings, save, initialFound = null, 
           <ModelRow
             key={m.id}
             model={m}
+            kind={settings.kind}
+            providerApi={settings.api}
             isDefault={m.id === settings.model}
             open={open === m.id}
             onToggle={() => setOpen((o) => (o === m.id ? null : m.id))}

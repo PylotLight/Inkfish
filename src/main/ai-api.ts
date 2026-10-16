@@ -1,4 +1,4 @@
-import { ipcMain, safeStorage, session, utilityProcess, type IpcMainInvokeEvent, type UtilityProcess } from 'electron'
+import { BrowserWindow, ipcMain, safeStorage, session, utilityProcess, type IpcMainInvokeEvent, type UtilityProcess } from 'electron'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -110,8 +110,14 @@ export function rememberEndpoint(modelId: string, endpoint: AiEndpoint): void {
   if (cur.models.find((m) => m.id === modelId)?.endpoint === endpoint) return
   persist({ ...cur, models: learnEndpoint(cur.models, modelId, endpoint) })
   console.log(`[ai] ${modelId}: using ${endpoint === 'responses' ? 'the Responses API' : 'Chat Completions'} from now on (Auto)`)
-  // Keep the handler's copy in step (learned in Test connection, or confirm the child's own).
+  // Keep the handler's copy in step (learned in Test connection, or confirm the child's own),
+  // and open Settings windows, so a later save doesn't overwrite what was learned.
   void applyAi()
+    .then(() => aiStatus())
+    .then((st) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('ai-api:changed', st)
+    })
+    .catch(() => undefined)
 }
 
 /** The handler's last failed request (scrubbed), for a renderer that only got Electron's kErrorUnknown. */

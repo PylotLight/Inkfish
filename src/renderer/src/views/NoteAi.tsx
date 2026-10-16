@@ -10,11 +10,13 @@ import { livePreview } from '../livePreview'
 import {
   AI_COMMAND_EVENT,
   AiNotConnectedError,
+  aiErrorDetails,
   aiErrorMessage,
   isAbort,
   runAiProcess,
   type AiCommand
 } from '../nativeAi'
+import CopyDetails from './CopyDetails'
 
 /**
  * AI on a note, always user-driven (nothing runs on its own):
@@ -38,7 +40,7 @@ const modeByNote = new Map<string, ViewMode>()
 type Run =
   | { state: 'idle' }
   | { state: 'running'; partial: string }
-  | { state: 'error'; message: string; connect: boolean }
+  | { state: 'error'; message: string; connect: boolean; details?: string }
 
 interface SelPop {
   from: number
@@ -53,6 +55,7 @@ interface SelPop {
   warnings: string[]
   notices: string[]
   error: string
+  errorDetails?: string
   connect: boolean
 }
 
@@ -241,7 +244,13 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
       void window.api.aiApi.processedSet(next).catch(() => undefined)
     } catch (err) {
       if (isAbort(err)) setRun({ state: 'idle' })
-      else setRun({ state: 'error', message: aiErrorMessage(err), connect: err instanceof AiNotConnectedError })
+      else
+        setRun({
+          state: 'error',
+          message: aiErrorMessage(err),
+          connect: err instanceof AiNotConnectedError,
+          details: err instanceof AiNotConnectedError ? undefined : aiErrorDetails(err)
+        })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action, instruction, doc.id, text])
@@ -317,7 +326,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
     const ac = new AbortController()
     abortRef.current = ac
     const selected = v.state.doc.sliceString(pop.from, pop.to)
-    setPop((p) => p && { ...p, phase: 'running', partial: '', error: '' })
+    setPop((p) => p && { ...p, phase: 'running', partial: '', error: '', errorDetails: undefined })
     try {
       const r = await runAiProcess(
         {
@@ -333,7 +342,17 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
       setPop((p) => p && { ...p, phase: 'done', result: r.text, warnings: r.warnings, notices: r.notices })
     } catch (err) {
       if (isAbort(err)) setPop((p) => p && { ...p, phase: 'pick' })
-      else setPop((p) => p && { ...p, phase: 'error', error: aiErrorMessage(err), connect: err instanceof AiNotConnectedError })
+      else
+        setPop(
+          (p) =>
+            p && {
+              ...p,
+              phase: 'error',
+              error: aiErrorMessage(err),
+              errorDetails: err instanceof AiNotConnectedError ? undefined : aiErrorDetails(err),
+              connect: err instanceof AiNotConnectedError
+            }
+        )
     }
   }
 
@@ -480,6 +499,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
       {mode !== 'raw' && run.state === 'error' && (
         <p className="small error-text ai-error">
           {run.message}{' '}
+          {run.details && <CopyDetails text={run.details} />}
           {run.connect && (
             <button className="btn ghost sm" onClick={openAiSettings}>
               Open Settings › AI
@@ -559,6 +579,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
           {pop.phase === 'error' && (
             <p className="small error-text">
               {pop.error}{' '}
+              {pop.errorDetails && <CopyDetails text={pop.errorDetails} />}
               {pop.connect && (
                 <button className="btn ghost sm" onClick={openAiSettings}>
                   Open Settings › AI

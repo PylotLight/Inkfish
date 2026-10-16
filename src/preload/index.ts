@@ -282,6 +282,12 @@ const api = {
       ipcRenderer.invoke('ai-api:test', patch),
     /** The local AI handler's last failed request newer than `since` (scrubbed), or null. */
     lastError: (since?: number): Promise<AiErrorDetail | null> => ipcRenderer.invoke('ai-api:last-error', since),
+    /** Main changed the settings on its own (Auto learned a model's API): fresh status. */
+    onChanged: (cb: (s: AiApiStatus) => void): (() => void) => {
+      const fn = (_e: unknown, s: AiApiStatus): void => cb(s)
+      ipcRenderer.on('ai-api:changed', fn)
+      return () => ipcRenderer.removeListener('ai-api:changed', fn)
+    },
     /** Find models on the provider (main does the requests; the key never reaches the renderer). */
     discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> => ipcRenderer.invoke('ai-api:discover', patch),
     processedGet: (noteId: string): Promise<ProcessedEntry | null> => ipcRenderer.invoke('ai-api:processed-get', noteId),

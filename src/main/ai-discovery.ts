@@ -54,6 +54,20 @@ function mods(list: unknown): Modality[] | undefined {
   }
   return out.size ? [...out] : undefined
 }
+/**
+ * Responses-only models: LiteLLM `mode: "responses"`, or a `supported_endpoints` list (LiteLLM cost
+ * map, some proxies' /models) that has /responses but not /chat/completions. Chat is the default,
+ * so only `responses` is reported.
+ */
+export function endpointFrom(mode: unknown, endpoints: unknown): 'responses' | undefined {
+  if (typeof mode === 'string' && mode.trim().toLowerCase() === 'responses') return 'responses'
+  const list = arr(endpoints).filter((x): x is string => typeof x === 'string').map((x) => x.toLowerCase())
+  if (!list.length) return undefined
+  const responses = list.some((x) => /(^|\/)responses$/.test(x))
+  const chat = list.some((x) => /chat\/completions$/.test(x))
+  return responses && !chat ? 'responses' : undefined
+}
+
 function withText(m: Modality[]): Modality[] {
   return m.includes('text') ? m : ['text', ...m]
 }
@@ -93,7 +107,8 @@ export function parseOpenAIModels(body: unknown): DiscoveredModel[] {
       reasoningLevels:
         params.includes('reasoning') || params.includes('reasoning_effort') || params.includes('include_reasoning')
           ? [...DEFAULT_REASONING_LEVELS]
-          : undefined
+          : undefined,
+      endpoint: endpointFrom(m.mode, m.supported_endpoints ?? m.endpoints)
     }
     const nonChat =
       type === 'embedding' || type === 'embeddings' || /(^|[-_/.])(embed|embedding|rerank|tts|whisper|dall-e|moderation)/i.test(id)
@@ -129,7 +144,8 @@ export function parseLiteLLMInfo(body: unknown): DiscoveredModel[] {
       input: known ? input : undefined,
       output: known ? output : undefined,
       toolCalls: known && typeof info.supports_function_calling === 'boolean' ? info.supports_function_calling : undefined,
-      reasoningLevels: info.supports_reasoning === true ? [...DEFAULT_REASONING_LEVELS] : known ? [] : undefined
+      reasoningLevels: info.supports_reasoning === true ? [...DEFAULT_REASONING_LEVELS] : known ? [] : undefined,
+      endpoint: endpointFrom(mode, info.supported_endpoints ?? obj(m.litellm_params).supported_endpoints)
     }
     const nonChat = !!mode && mode !== 'chat' && mode !== 'responses' && mode !== 'completion'
     out.push({ id, ...clean(meta), sources: ['litellm'], ...(nonChat ? { nonChat } : {}) })
