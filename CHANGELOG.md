@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-10-16
+
+### Added
+
+- **(meetings)** Pick system audio by app (Teams only, not your music) (#63) ([67d6328](https://github.com/PylotLight/Inkfish/commit/67d6328df0cf1ddf5bfa5bedcc6562c9fdb7f103))
+- **(sidebar)** Obsidian-style titlebar toggle, icon ribbon when collapsed, polished file tree (#65) ([b5a3ca0](https://github.com/PylotLight/Inkfish/commit/b5a3ca09741e913c0e57a4e82a5dc1d584582ff1))
+- **(sidebar)** Obsidian-style footer vault bar (vault chip + equal Settings/Quit icons) (#66) ([8e947af](https://github.com/PylotLight/Inkfish/commit/8e947afb9ff1b50009939bd1b9f16cc15e75097f))
+
+### Fixed
+
+- **(editor)** Keep image source hidden while resizing (#64) ([a4f14c1](https://github.com/PylotLight/Inkfish/commit/a4f14c1f20d8008c511e5c6a1ee437ebfa011d84))
+
 ## [0.2.8] - 2026-10-16
 
 ### Added
@@ -211,6 +223,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.9]: https://github.com/PylotLight/Inkfish/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/PylotLight/Inkfish/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/PylotLight/Inkfish/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/PylotLight/Inkfish/compare/v0.2.5...v0.2.6
