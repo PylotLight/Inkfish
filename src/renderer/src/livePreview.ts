@@ -2,7 +2,8 @@ import { RangeSetBuilder, type EditorState, type Extension, type TransactionSpec
 import { indentLess, indentMore } from '@codemirror/commands'
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
-import { findImages, imageCandidates, isBlockImage } from '../../shared/images'
+import { findImages, imageCandidates, imageSourceOf, isBlockImage } from '../../shared/images'
+import { copyImage, copyImagePath, copyMarkdown, imageMenuItems, revealImage } from './imageActions'
 import {
   beginImageGestureSpec,
   endImageGestureSpec,
@@ -12,6 +13,9 @@ import {
   MIN_IMAGE_WIDTH,
   moveImageSpec,
   resizeImageSpec,
+  selectedImageField,
+  selectedImageRef,
+  selectImage,
   setImageGesture
 } from './imageEdit'
 
@@ -142,8 +146,11 @@ function beginGesture(
  *   live px width, and writes `|N` into the ref on release (one undo step);
  *   double-click a handle, or right-click › Reset size, removes it;
  * - press-and-drag on the picture to move the ref elsewhere, with a drop caret.
- * A plain click still puts the caret on the ref (revealing its source), and
- * shift/alt/meta-clicks go to CodeMirror untouched, so selection works as before.
+ * A plain click still puts the caret on the ref (revealing its source) and also
+ * selects the picture (ring), so ⌘C copies the image itself; shift/alt/meta-clicks
+ * go to CodeMirror untouched, so selection works as before.
+ * Right-click (any view) opens Copy image / Copy image path / Copy markdown /
+ * Reveal in Finder / Reset size.
  */
 export class ImageWidget extends WidgetType {
   constructor(
@@ -151,7 +158,9 @@ export class ImageWidget extends WidgetType {
     readonly alt: string,
     readonly src: string,
     readonly width?: number,
-    readonly height?: number
+    readonly height?: number,
+    /** Click-selected (ring; ⌘C copies the picture). */
+    readonly selected = false
   ) {
     super()
   }
@@ -162,6 +171,7 @@ export class ImageWidget extends WidgetType {
       other.src === this.src &&
       other.width === this.width &&
       other.height === this.height &&
+      other.selected === this.selected &&
       other.urls.join('\n') === this.urls.join('\n')
     )
   }
@@ -176,6 +186,9 @@ export class ImageWidget extends WidgetType {
     const t = e.target instanceof Element ? e.target : null
     // Handles are entirely ours.
     if (t?.closest('.lp-img-handle')) return true
+    // Right-click opens our menu; don't let it move the caret (which would
+    // reveal the source and re-render this widget under the open menu).
+    if ((e.type === 'mousedown' || e.type === 'pointerdown') && (e as MouseEvent).button === 2) return true
     // A plain left press on the picture starts our click-or-drag gesture;
     // modified/other-button presses fall through to CodeMirror (shift-click
     // extends the selection over the image as before).
@@ -188,7 +201,24 @@ export class ImageWidget extends WidgetType {
   override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span')
     wrap.className = 'lp-img'
+    if (this.selected) wrap.classList.add('lp-img-selected')
+    const ref = (): { from: number; to: number } | null => {
+      let pos: number
+      try {
+        pos = view.posAtDOM(wrap)
+      } catch {
+        return null
+      }
+      return imageRefNear(view.state, pos, this.src)
+    }
+    let imgEl: HTMLImageElement | null = null
+    wrap.addEventListener('contextmenu', (e) => this.openMenu(view, e, imgEl, ref))
+    // Right press: no native caret/selection move under the menu (CodeMirror ignores it via ignoreEvent).
+    wrap.addEventListener('mousedown', (e) => {
+      if (e.button === 2) e.preventDefault()
+    })
     const missing = (): void => {
+      imgEl = null
       wrap.classList.add('lp-img-missing')
       wrap.textContent = `🖼 ${this.alt || this.src} (not found)`
       wrap.title = this.src
@@ -199,6 +229,7 @@ export class ImageWidget extends WidgetType {
       return wrap
     }
     const img = document.createElement('img')
+    imgEl = img
     img.alt = this.alt
     img.title = this.alt || this.src
     img.draggable = false
@@ -232,15 +263,6 @@ export class ImageWidget extends WidgetType {
     side.title = corner.title
     wrap.append(side, corner, badge)
 
-    const ref = (): { from: number; to: number } | null => {
-      let pos: number
-      try {
-        pos = view.posAtDOM(wrap)
-      } catch {
-        return null
-      }
-      return imageRefNear(view.state, pos, this.src)
-    }
     const reset = (): void => {
       const r = ref()
       const spec = r && resizeImageSpec(view.state, r.from, null)
@@ -263,13 +285,40 @@ export class ImageWidget extends WidgetType {
       if (e.button !== 0 || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return
       this.startPress(view, wrap, img, e, ref)
     })
-    wrap.addEventListener('contextmenu', (e) => {
-      if (!this.width) return
-      e.preventDefault()
-      e.stopPropagation()
-      imageMenu(e.clientX, e.clientY, [{ label: 'Reset size', action: reset }])
-    })
     return wrap
+  }
+
+  /** Right-click menu: copy image / path / markdown, reveal, reset size. */
+  private openMenu(
+    view: EditorView,
+    e: MouseEvent,
+    img: HTMLImageElement | null,
+    ref: () => { from: number; to: number } | null
+  ): void {
+    e.preventDefault()
+    e.stopPropagation()
+    if (activeGestures > 0) return
+    const r = ref()
+    const markdown = r ? view.state.sliceDoc(r.from, r.to) : null
+    const url = img && img.complete && img.naturalWidth > 0 ? img.currentSrc || img.src : null
+    const editable = !view.state.readOnly && view.state.facet(EditorView.editable)
+    const items = imageMenuItems({
+      url,
+      markdown,
+      resettable: editable && !!this.width && !!r,
+      copyImage: () => void copyImage(url),
+      copyPath: () => void copyImagePath(url),
+      copyMarkdown: () => {
+        if (markdown) void copyMarkdown(markdown)
+      },
+      reveal: () => void revealImage(url),
+      reset: () => {
+        const at = r && imageRefNear(view.state, r.from, this.src)
+        const spec = at && resizeImageSpec(view.state, at.from, null)
+        if (spec) view.dispatch(spec)
+      }
+    })
+    if (items.length > 0) imageMenu(e.clientX, e.clientY, items)
   }
 
   /** Corner/side handle drag: live width preview, one transaction on release. */
@@ -400,7 +449,7 @@ export class ImageWidget extends WidgetType {
         if (!commit) return end()
         const at = ev ? view.posAtCoords({ x: ev.clientX, y: ev.clientY }) : null
         const pos = at !== null && at >= r.from && at <= r.to ? at : r.to
-        end({ selection: { anchor: pos }, userEvent: 'select.pointer' }, true)
+        end({ selection: { anchor: pos }, effects: selectImage.of(r), userEvent: 'select.pointer' }, true)
         view.focus()
         return
       }
@@ -546,6 +595,7 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
   const doc = state.doc
   if (doc.length > MAX_DECORATED_CHARS) return Decoration.none
   const resolve = opts.resolveImage ?? ((src: string) => imageCandidates(src))
+  const picked = selectedImageRef(state)
   const ops: Op[] = []
   const hide = (from: number, to: number): void => {
     if (to > from) ops.push({ from, to, deco: Decoration.replace({}) })
@@ -676,7 +726,8 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       const sTo = sFrom + im.length
       if (overlaps(claimed, sFrom, sTo)) continue
       claimed.push([sFrom, sTo])
-      const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height)
+      const selected = !!picked && picked.from === sFrom && picked.to === sTo
+      const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height, selected)
       if (imageSourceRevealed(state, sFrom, sTo)) {
         mark(sFrom, sTo, 'lp-imgsrc')
         ops.push({ from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) })
@@ -771,7 +822,9 @@ export function livePreview(opts: LivePreviewOptions): Extension {
         if (update.docChanged) this.hasImages = update.state.doc.toString().includes('![')
         // Selection matters only for revealing image source — skip the
         // rebuild on caret moves in notes without images.
-        const gesture = update.transactions.some((tr) => tr.effects.some((e) => e.is(setImageGesture)))
+        const gesture =
+          update.transactions.some((tr) => tr.effects.some((e) => e.is(setImageGesture))) ||
+          update.startState.field(selectedImageField, false) !== update.state.field(selectedImageField, false)
         if (update.docChanged || update.viewportChanged || gesture || (update.selectionSet && this.hasImages)) {
           this.decorations = buildDecorations(update.state, opts)
         }
@@ -779,8 +832,25 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     },
     { decorations: (v) => v.decorations }
   )
-  return [imageGestureField, plugin]
+  return [imageGestureField, selectedImageField, plugin, copySelectedImage]
 }
+
+/**
+ * ⌘C / Edit › Copy with a click-selected picture (and no text selected) copies
+ * the image itself. The copy DOM event fires for both the shortcut and the
+ * menu role, so this is the one place it's handled.
+ */
+const copySelectedImage = EditorView.domEventHandlers({
+  copy(e, view) {
+    if (!selectedImageRef(view.state)) return false
+    const img = view.contentDOM.querySelector<HTMLImageElement>('.lp-img-selected img')
+    const url = img && img.naturalWidth > 0 ? img.currentSrc || img.src : null
+    if (!url || !imageSourceOf(url)) return false
+    e.preventDefault()
+    void copyImage(url)
+    return true
+  }
+})
 
 /**
  * Obsidian-style list keys: Enter continues bullets/numbered items/tasks

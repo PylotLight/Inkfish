@@ -92,3 +92,23 @@ describe('live preview: image stays a hidden-source block while resizing', () =>
     expect(imgs).toEqual([[from, to]])
   })
 })
+
+describe('live preview: click-selected image', () => {
+  test('selected ref renders a selected widget (re-renders on change); others do not', async () => {
+    const { selectImage, selectedImageField } = await import('./imageEdit')
+    const doc = '![](assets/a.png)\n![](assets/b.png)'
+    const from = 0
+    const to = doc.indexOf('\n')
+    let s = EditorState.create({ doc, selection: EditorSelection.cursor(doc.length), extensions: [selectedImageField] })
+    s = s.update({ selection: { anchor: 3 }, effects: selectImage.of({ from, to }) }).state
+    const ws: ImageWidget[] = []
+    buildDecorations(s, opts).between(0, doc.length, (_f, _t, d) => {
+      if (d.spec.widget instanceof ImageWidget) ws.push(d.spec.widget)
+    })
+    expect(ws.map((w) => [w.src, w.selected])).toEqual([
+      ['assets/a.png', true],
+      ['assets/b.png', false]
+    ])
+    expect(new ImageWidget(['u'], 'a', 's', 1, 1, true).eq(new ImageWidget(['u'], 'a', 's', 1, 1))).toBe(false)
+  })
+})

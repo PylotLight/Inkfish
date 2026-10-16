@@ -134,10 +134,41 @@ export function endImageGestureSpec(
   keepSelection = false
 ): TransactionSpec {
   const g = state.field(imageGestureField, false)
-  const effects = setImageGesture.of(null)
+  // Keep any effects the edit spec carries (e.g. selectImage on a plain click).
+  const own = spec?.effects ? (Array.isArray(spec.effects) ? spec.effects : [spec.effects]) : []
+  const effects = [...own, setImageGesture.of(null)]
   if (!g) return { ...(spec ?? {}), effects }
   if (keepSelection && spec?.selection) return { ...spec, effects }
   const changes = spec?.changes ? state.changes(spec.changes) : null
   const selection = changes ? g.selection.map(changes) : g.selection
   return { ...(spec ?? {}), selection, effects }
+}
+
+/**
+ * The image ref picked by a plain click (shown with a selection ring). While
+ * set, Copy (⌘C / Edit › Copy) with an empty selection copies the picture
+ * itself instead of text. It clears as soon as the selection leaves the ref,
+ * becomes a range, or the document changes.
+ */
+export const selectImage = StateEffect.define<{ from: number; to: number } | null>()
+
+export const selectedImageField = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(selectImage)) return e.value
+    if (!value) return null
+    if (tr.docChanged) return null
+    if (tr.selection) {
+      const inside = tr.state.selection.ranges.every((r) => r.empty && r.from >= value.from && r.to <= value.to)
+      if (!inside) return null
+    }
+    return value
+  }
+})
+
+/** The click-selected image ref, if Copy should copy the picture right now. */
+export function selectedImageRef(state: EditorState): { from: number; to: number } | null {
+  const sel = state.field(selectedImageField, false)
+  if (!sel) return null
+  return state.selection.ranges.every((r) => r.empty) ? sel : null
 }

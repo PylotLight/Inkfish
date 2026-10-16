@@ -251,3 +251,57 @@ export function assetPathFromUrl(url: string): string | null {
 export function imageMarkdown(vaultRel: string): string {
   return /[\s()<>]/.test(vaultRel) ? `![](<${vaultRel}>)` : `![](${vaultRel})`
 }
+
+/** Where a rendered image's bytes come from (for copy / reveal). */
+export type ImageSource =
+  { kind: 'vault'; rel: string } | { kind: 'remote'; url: string } | { kind: 'data'; url: string }
+
+/** Classify a loaded image URL (`img.currentSrc`): vault asset, http(s), or data URL. */
+export function imageSourceOf(url: string | null | undefined): ImageSource | null {
+  const u = (url ?? '').trim()
+  if (!u) return null
+  if (/^asset:/i.test(u)) {
+    const rel = assetPathFromUrl(u)
+    return rel ? { kind: 'vault', rel } : null
+  }
+  if (/^https?:\/\//i.test(u)) return { kind: 'remote', url: u }
+  if (/^data:image\//i.test(u)) return { kind: 'data', url: u }
+  return null
+}
+
+const IMAGE_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  tif: 'image/tiff',
+  tiff: 'image/tiff'
+}
+
+/**
+ * Image MIME type, sniffed from the bytes' magic number when given, else from
+ * the file extension. Null when neither says "image".
+ */
+export function imageMime(name: string, bytes?: Uint8Array | null): string | null {
+  if (bytes && bytes.length >= 12) {
+    const b = bytes
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif'
+    const riff = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    if (riff && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp'
+    if (b[0] === 0x42 && b[1] === 0x4d) return 'image/bmp'
+  }
+  const ext = /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(name)?.[1]?.toLowerCase()
+  return (ext && IMAGE_MIME[ext]) || null
+}
+
+/** Formats Electron's nativeImage decodes on every platform; others go through a canvas re-encode. */
+export function nativelyDecodable(mime: string | null): boolean {
+  return mime === 'image/png' || mime === 'image/jpeg'
+}
