@@ -25,7 +25,7 @@ function dirOf(path: string): string {
 /**
  * Launch default. Full-width, card-light layout: an open stat strip, a ruled
  * "Latest" list as the main column, and inbox + folders as a quiet side rail.
- * Capture / Meeting live in the global topbar only — no duplicates here.
+ * Today / Meetings live in the sidebar quick actions only — no duplicates here.
  * Accent is reserved for state: pending inbox count, hover affordances.
  */
 export default function Home({

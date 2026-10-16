@@ -16,6 +16,7 @@ import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
+import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed } from '../../shared/sidebar'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
@@ -123,10 +124,11 @@ function Main(): React.JSX.Element {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
-  /** Collapsible core sidebar (Blobfish-style) — persisted, toggled from the topbar. */
+  /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
+   *  the collapsed rail, ⌘\ or the palette. */
   const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('inkfish.side.collapsed') === '1'
+      return parseSideCollapsed(localStorage.getItem(SIDE_COLLAPSED_KEY))
     } catch {
       return false
     }
@@ -156,22 +158,23 @@ function Main(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      localStorage.setItem('inkfish.side.collapsed', sideCollapsed ? '1' : '0')
+      localStorage.setItem(SIDE_COLLAPSED_KEY, serializeSideCollapsed(sideCollapsed))
     } catch {
       // ignore
     }
   }, [sideCollapsed])
 
-  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style).
+  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style). Capture phase so a focused editor or
+  // input can't swallow it first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-        e.preventDefault()
-        setSideCollapsed((v) => !v)
-      }
+      if (!isSidebarToggleKey(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setSideCollapsed((v) => !v)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
   // Quick font size adjustment: Ctrl+Scroll / pinch inside the note stage
@@ -1003,6 +1006,7 @@ function Main(): React.JSX.Element {
     { id: 'today', title: 'Open Today', section: 'Notes', keywords: ['daily', 'journal', 'day-log'], run: () => { leaveSettings(); void openToday() } },
     { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
       leaveSettings()
+      setSideCollapsed(false)
       setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
     } },
     { id: 'rename-note', title: 'Rename Note…', section: 'Notes', enabled: !!openPath, run: () => openPath && doRename(openPath, false) },
@@ -1019,7 +1023,9 @@ function Main(): React.JSX.Element {
     { id: 'go-home', title: 'Go to Home', section: 'Navigate', keywords: ['dashboard'], run: () => { leaveSettings(); pickScope('home') } },
     { id: 'go-notes', title: 'Go to Notes', section: 'Navigate', keywords: ['files', 'tree'], run: () => { leaveSettings(); pickScope('notes') } },
     { id: 'go-inbox', title: 'Go to Inbox', section: 'Navigate', keywords: ['captures', 'queue'], run: () => { leaveSettings(); pickScope('inbox') } },
-    { id: 'meetings', title: 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meetings', title: meetingLive ? 'Meetings (recording)' : 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meeting-record', title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…', section: 'Meetings', keywords: ['start', 'capture', 'transcribe', 'mic'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meeting-close', title: 'Close Meetings', section: 'Meetings', enabled: showMeeting, keywords: ['back', 'exit'], run: () => setShowMeeting(false) },
     { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
     { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
     { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
@@ -1081,7 +1087,7 @@ function Main(): React.JSX.Element {
   return (
     <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
       {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
-      <aside className="sidebar core">
+      <aside className="sidebar core" inert={sideCollapsed} aria-hidden={sideCollapsed || undefined}>
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
           {/* Psst: triple-click the logo (views/easter-egg). */}
@@ -1096,6 +1102,16 @@ function Main(): React.JSX.Element {
               {profile.badge}
             </span>
           )}
+          <span className="flex-sp" />
+          <button
+            className="side-toggle"
+            onClick={() => setSideCollapsed(true)}
+            title={`Collapse sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+            aria-label="Collapse sidebar"
+            aria-expanded
+          >
+            «
+          </button>
         </div>
 
         <input
@@ -1122,6 +1138,31 @@ function Main(): React.JSX.Element {
               {s === 'inbox' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
             </button>
           ))}
+        </div>
+
+        {/* Day-log + meetings live here (not above the note) so the doc gets the full pane. */}
+        <div className="side-actions" role="toolbar" aria-label="Quick actions">
+          <button
+            className="side-action"
+            title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`}
+            onClick={() => {
+              leaveSettings()
+              void openToday()
+            }}
+          >
+            <span aria-hidden>☀</span> Today
+          </button>
+          <button
+            className={`side-action${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
+            title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
+            aria-pressed={showMeeting && !settingsOpen}
+            onClick={() => {
+              leaveSettings()
+              setShowMeeting(true)
+            }}
+          >
+            <span aria-hidden>{meetingLive ? '●' : '🎙'}</span> {meetingLive ? 'Recording' : 'Meetings'}
+          </button>
         </div>
 
         {scope === 'inbox' ? (
@@ -1211,6 +1252,28 @@ function Main(): React.JSX.Element {
 
       {/* Center: home dashboard, note stage, or full-page settings. */}
       <div className="content inkfish center">
+        {/* Window drag strip along the top; while collapsed it also carries the expand button
+            (clear of the macOS traffic lights) and the live-recording chip. */}
+        <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
+          {sideCollapsed && (
+            <>
+              <button
+                className="side-toggle"
+                onClick={() => setSideCollapsed(false)}
+                title={`Expand sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+                aria-label="Expand sidebar"
+                aria-expanded={false}
+              >
+                »
+              </button>
+              {meetingLive && !showMeeting && (
+                <button className="side-toggle rail-chip rec-live" onClick={() => { leaveSettings(); setShowMeeting(true) }} title="Meeting recording — open it">
+                  ● Recording
+                </button>
+              )}
+            </>
+          )}
+        </div>
         {settingsOpen ? (
           <main className="view-scroll" aria-label="Settings">
             <SettingsView
@@ -1245,29 +1308,6 @@ function Main(): React.JSX.Element {
           </main>
         ) : showMeeting ? null : (
           <>
-            <header className="topbar">
-              <button
-                className="side-toggle"
-                onClick={() => setSideCollapsed((v) => !v)}
-                title={sideCollapsed ? 'Expand sidebar (⌘\\)' : 'Collapse sidebar (⌘\\)'}
-                aria-label={sideCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-expanded={!sideCollapsed}
-              >
-                {sideCollapsed ? '»' : '«'}
-              </button>
-              <button className="btn ghost sm" title={captureKey ? `Quick capture (${captureKey})` : 'Quick capture'}
-                onClick={() => notify(captureKey ? `Hit ${captureKey} anywhere to capture` : 'Capture from the menu bar icon')}>
-                ✒ Capture
-              </button>
-              <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
-                {meetingLive ? '● Recording' : '🎙 Meetings'}
-              </button>
-              <button className="btn ghost sm" title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`} onClick={() => void openToday()}>
-                ☀ Today
-              </button>
-              <span className="flex-sp" />
-              {dirty && <span className="pill dirty-static">unsaved</span>}
-            </header>
 
             {scope === 'home' ? (
               <main className="view-scroll" aria-label="Home">
