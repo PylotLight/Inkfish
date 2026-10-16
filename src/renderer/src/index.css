@@ -4238,8 +4238,17 @@ input[type='password'].text-input {
 .ai-bar .ai-seg {
   margin-right: 4px;
 }
+.ai-bar .ai-seg .seg,
+.ai-bar .btn.sm {
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+.ai-bar .ai-close {
+  margin-left: auto;
+}
 .ai-bar select.ai-action,
 .ai-pop select.ai-action {
+  max-width: 190px;
   padding: 5px 10px;
   font-size: 12.5px;
   border-radius: 9px;

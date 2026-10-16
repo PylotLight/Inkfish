@@ -467,7 +467,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
               </button>
             </>
           )}
-          <button className="btn ghost sm icon" onClick={() => setMode('raw')} title="Back to raw (⇧⌥P)" aria-label="Close processed view">
+          <button className="btn ghost sm icon ai-close" onClick={() => setMode('raw')} title="Back to raw (⇧⌥P)" aria-label="Close processed view">
             ×
           </button>
         </div>
