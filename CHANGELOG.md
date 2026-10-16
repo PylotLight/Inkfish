@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-10-16
+
+### Added
+
+- **(mini)** Easier to find — pop-out buttons, tab tear-off, one-time tuck hint (#57) ([8b5a5f5](https://github.com/PylotLight/Inkfish/commit/8b5a5f5bb67af2c189e8e58c5235db3a8edd8a4a))
+- **(ai)** Native Electron 45 AI (Prompt API) + Raw/Processed view and Process selection (#60) ([5216f26](https://github.com/PylotLight/Inkfish/commit/5216f2688704f74bd84af29d7bd8beea8f802326))
+
+### Fixed
+
+- **(editor)** Notes use the full pane width by default (#56) ([8b29119](https://github.com/PylotLight/Inkfish/commit/8b29119e3b710826d41326702242e389b1499f63))
+- **(editor)** Obsidian-style autosave, never drop unsaved text on tab switch/new note (#58) ([bad691e](https://github.com/PylotLight/Inkfish/commit/bad691e6841ecc7bcb4e962a54b345599547c2c8))
+- **(layout)** Full-pane notes, working sidebar collapse, drop Capture button (#59) ([23044ec](https://github.com/PylotLight/Inkfish/commit/23044ec0c343a39cb29efd732700f577ae6d30b9))
+
 ## [0.2.6] - 2026-10-16
 
 ### Added
@@ -188,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.7]: https://github.com/PylotLight/Inkfish/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/PylotLight/Inkfish/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/PylotLight/Inkfish/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/PylotLight/Inkfish/compare/v0.2.3...v0.2.4
