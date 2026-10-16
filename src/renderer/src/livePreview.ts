@@ -258,7 +258,9 @@ export class ImageWidget extends WidgetType {
       badge.textContent = `${w}px`
     }
     show()
+    const id = e.pointerId
     const move = (ev: PointerEvent): void => {
+      if (ev.pointerId !== id) return
       const dx = ev.clientX - startX
       if (!moved && Math.abs(dx) < 1) return
       moved = true
@@ -268,9 +270,10 @@ export class ImageWidget extends WidgetType {
       show()
     }
     const done = (commit: boolean): void => {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true)
+      window.removeEventListener('pointercancel', cancel, true)
+      window.removeEventListener('blur', cancel)
       window.removeEventListener('keydown', key, true)
       wrap.classList.remove('lp-img-resizing')
       const r = commit && moved ? ref() : null
@@ -281,7 +284,9 @@ export class ImageWidget extends WidgetType {
         img.style.maxHeight = prev.maxHeight
       }
     }
-    const up = (): void => done(true)
+    const up = (ev: PointerEvent): void => {
+      if (ev.pointerId === id) done(true)
+    }
     const cancel = (): void => done(false)
     const key = (ev: KeyboardEvent): void => {
       if (ev.key !== 'Escape') return
@@ -289,9 +294,11 @@ export class ImageWidget extends WidgetType {
       ev.stopPropagation()
       done(false)
     }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-    handle.addEventListener('pointercancel', cancel)
+    // On window (not the handle) so a lost pointer capture can't strand the drag.
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true)
+    window.addEventListener('pointercancel', cancel, true)
+    window.addEventListener('blur', cancel)
     window.addEventListener('keydown', key, true)
   }
 
@@ -313,7 +320,9 @@ export class ImageWidget extends WidgetType {
     } catch {
       // synthetic events in tests
     }
+    const id = e.pointerId
     const move = (ev: PointerEvent): void => {
+      if (ev.pointerId !== id) return
       if (!dragging) {
         if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_SLOP) return
         dragging = true
@@ -329,9 +338,10 @@ export class ImageWidget extends WidgetType {
       if (caret) placeCaret(caret, target)
     }
     const finish = (commit: boolean, ev?: PointerEvent): void => {
-      img.removeEventListener('pointermove', move)
-      img.removeEventListener('pointerup', up)
-      img.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true)
+      window.removeEventListener('pointercancel', cancel, true)
+      window.removeEventListener('blur', cancel)
       window.removeEventListener('keydown', key, true)
       wrap.classList.remove('lp-img-dragging')
       document.body.classList.remove('lp-img-moving')
@@ -352,7 +362,9 @@ export class ImageWidget extends WidgetType {
       if (spec) view.dispatch(spec)
       view.focus()
     }
-    const up = (ev: PointerEvent): void => finish(true, ev)
+    const up = (ev: PointerEvent): void => {
+      if (ev.pointerId === id) finish(true, ev)
+    }
     const cancel = (): void => finish(false)
     const key = (ev: KeyboardEvent): void => {
       if (ev.key !== 'Escape' || !dragging) return
@@ -360,9 +372,10 @@ export class ImageWidget extends WidgetType {
       ev.stopPropagation()
       finish(false)
     }
-    img.addEventListener('pointermove', move)
-    img.addEventListener('pointerup', up)
-    img.addEventListener('pointercancel', cancel)
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true)
+    window.addEventListener('pointercancel', cancel, true)
+    window.addEventListener('blur', cancel)
     window.addEventListener('keydown', key, true)
   }
 }
