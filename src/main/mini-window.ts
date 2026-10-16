@@ -61,6 +61,7 @@ import { lerpRect, motionDuration } from '../shared/mini-window-motion'
 import { motion, placeWindow } from './mini-window-motion'
 import { MINI_WINDOW_HANDLE_HTML } from './mini-window-handle-page'
 import { getMainWindow, showWindow } from './window'
+import { profile } from './profile'
 
 /**
  * Mini windows (shared/mini-window.ts): one note per small frameless window that floats over every
@@ -127,8 +128,10 @@ function writeJson(name: string, value: unknown): void {
 }
 
 let settingsCache: MiniWindowSettings | null = null
+/** A dev profile starts with no global toggle so it can't fight the release app for ⌃⌥M. */
+const profileDefaults: MiniWindowSettings = { ...DEFAULT_MINI_WINDOW_SETTINGS, shortcut: profile.miniShortcutDefault }
 export function getMiniSettings(): MiniWindowSettings {
-  if (!settingsCache) settingsCache = parseMiniWindowSettings(readJson(MINI_WINDOW_SETTINGS_FILE))
+  if (!settingsCache) settingsCache = parseMiniWindowSettings(readJson(MINI_WINDOW_SETTINGS_FILE), profileDefaults)
   return settingsCache
 }
 
@@ -784,7 +787,7 @@ function settingsState(): MiniSettingsState {
   const s = getMiniSettings()
   return {
     settings: s,
-    defaults: DEFAULT_MINI_WINDOW_SETTINGS,
+    defaults: profileDefaults,
     registered: registeredShortcut !== null && globalShortcut.isRegistered(registeredShortcut),
     error: shortcutError,
     clash: s.shortcut ? shortcutClash(s.shortcut, IS_MAC) : null,
@@ -824,7 +827,7 @@ export function registerMiniWindow(): void {
   ipcMain.handle('mini:settings', (): MiniSettingsState => settingsState())
   ipcMain.handle('mini:set-settings', (_e: IpcMainInvokeEvent, patch: unknown): MiniSettingsState => {
     const prev = getMiniSettings()
-    const next = parseMiniWindowSettings({ ...prev, ...(typeof patch === 'object' && patch ? patch : {}) })
+    const next = parseMiniWindowSettings({ ...prev, ...(typeof patch === 'object' && patch ? patch : {}) }, profileDefaults)
     settingsCache = next
     writeJson(MINI_WINDOW_SETTINGS_FILE, next)
     if (next.shortcut !== prev.shortcut || !registeredShortcut) registerShortcut(next.shortcut)
