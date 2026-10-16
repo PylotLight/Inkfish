@@ -1,5 +1,10 @@
+// Must be first: picks the app profile (dev runs → "Inkfish Dev") and moves userData before
+// anything reads it or takes the single-instance lock.
+import { profile } from './profile'
 import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session, systemPreferences } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
+// Crash guard before the app's own modules: catches errors thrown while they load.
+import './crash-guard'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { registerSysTap, stopSysTap } from './systap'
@@ -10,8 +15,11 @@ import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePop
 import { registerAssetProtocol } from './assets-protocol'
 import { closeAllMinis, registerMiniWindow } from './mini-window'
 import { openDb, reindexStaging, reindexVault } from './db'
-import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
+import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, setDefaultVaultName, vaultConfigured } from './vault'
+import { profileBadgeText } from '../shared/profile'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
+import { closeDb } from './db'
+import { createShutdown } from '../shared/stability'
 import { startSync, stopSync, appendSyncLog } from './sync'
 
 // Custom protocols must be privileged before the app is ready.
@@ -35,7 +43,8 @@ app.commandLine.appendSwitch(
   ].join(',')
 )
 
-// Single instance: a second launch focuses the existing window instead of forking.
+// Single instance: a second launch focuses the existing window instead of forking. The lock is
+// per userData, so "Inkfish" and "Inkfish Dev" each keep one window owner and run side by side.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
@@ -64,7 +73,7 @@ function initVault(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId(APP_ID)
+  electronApp.setAppUserModelId(profile.kind === 'release' ? APP_ID : `${APP_ID}.${profile.badge}`)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -103,6 +112,9 @@ app.whenReady().then(() => {
   })
 
   setConfigDir(app.getPath('userData'))
+  setDefaultVaultName(profile.vaultDirName)
+  // Tell the profiles apart at a glance: Dock badge "dev" (the inbox count joins it, see ipc.ts).
+  if (profile.badge && process.platform === 'darwin') app.dock?.setBadge(profileBadgeText(profile, 0))
   if (vaultConfigured()) {
     initVault()
   } else {
@@ -131,12 +143,23 @@ app.whenReady().then(() => {
     onQuit: () => app.quit()
   })
 
-  // Opt-Space capture shortcut (Alt+Space). Unregisters automatically on quit.
-  const ok = globalShortcut.register('Alt+Space', togglePopover)
-  if (!ok) console.warn('[inkfish] Alt+Space already taken — capture via tray menu')
-  // Shift+Opt-Space appends to today's day-log.
-  const okDaily = globalShortcut.register('Shift+Alt+Space', toggleDaily)
-  if (!okDaily) console.warn('[inkfish] Shift+Alt+Space already taken — append via tray menu')
+  // Global capture shortcuts: ⌥Space / ⇧⌥Space in the release app; a dev profile uses
+  // ⌃⌥Space / ⇧⌃⌥Space so both apps keep working side by side (INKFISH_SHORTCUTS=off: none).
+  // A shortcut another app holds is skipped with a warning. Unregisters automatically on quit.
+  const shortcuts: Array<[string, () => void, string]> = [
+    [profile.captureShortcut, togglePopover, 'capture'],
+    [profile.dailyShortcut, toggleDaily, 'append']
+  ]
+  for (const [accel, fn, what] of shortcuts) {
+    if (!accel) continue
+    let ok = false
+    try {
+      ok = globalShortcut.register(accel, fn)
+    } catch (err) {
+      console.warn(`[inkfish] ${accel} rejected:`, err)
+    }
+    if (!ok) console.warn(`[inkfish] ${accel} already taken — ${what} via tray menu`)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -152,10 +175,21 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => closeAllMinis())
 
+// Ordered shutdown (ported from Surffish #136): stop everything that can write to the vault
+// or the index first (watcher reindex, LAN sync), then close the SQLite index last so its WAL
+// is checkpointed and nothing writes after it closes. A failing step never skips the rest.
+const shutdown = createShutdown(
+  [
+    { name: 'shortcuts', run: () => globalShortcut.unregisterAll() },
+    { name: 'systap', run: stopSysTap },
+    { name: 'vault watch', run: stopVaultWatch },
+    { name: 'sync', run: stopSync },
+    { name: 'tray', run: destroyTray },
+    { name: 'index db', run: closeDb }
+  ],
+  (message) => console.warn(message)
+)
+
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-  stopSysTap()
-  stopSync()
-  stopVaultWatch()
-  destroyTray()
+  shutdown()
 })

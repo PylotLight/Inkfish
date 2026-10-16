@@ -13,6 +13,7 @@ import Onboarding from './views/Onboarding'
 import Meetings from './views/Meetings'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
+import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
@@ -222,6 +223,20 @@ function Main(): React.JSX.Element {
     refreshProjects()
     window.api.notes.titles().then(setTitles).catch(console.error)
   }, [refreshInbox, refreshNotes, refreshProjects])
+
+  // Release vs dev profile ("Inkfish Dev"): brand pill, window title, shortcut hints.
+  const [profile, setProfile] = useState<AppProfileInfo | null>(null)
+  useEffect(() => {
+    window.api.app
+      .profile()
+      .then((p) => {
+        setProfile(p)
+        document.title = p.name
+      })
+      .catch(console.error)
+  }, [])
+  const isMacUi = sys?.platform === 'darwin'
+  const captureKey = profile ? shortcutLabel(profile.captureShortcut, isMacUi) : '⌥Space'
 
   useEffect(() => {
     window.api.sys.info().then(setSys).catch(console.error)
@@ -965,6 +980,11 @@ function Main(): React.JSX.Element {
           <div className="brand">
             <h1>{APP_NAME}</h1>
           </div>
+          {profile?.badge && (
+            <span className="pill profile-pill" title={`Separate ${profile.name} profile — its own settings, notes folder and sync`}>
+              {profile.badge}
+            </span>
+          )}
         </div>
 
         <input
@@ -1122,13 +1142,14 @@ function Main(): React.JSX.Element {
               >
                 {sideCollapsed ? '»' : '«'}
               </button>
-              <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
+              <button className="btn ghost sm" title={captureKey ? `Quick capture (${captureKey})` : 'Quick capture'}
+                onClick={() => notify(captureKey ? `Hit ${captureKey} anywhere to capture` : 'Capture from the menu bar icon')}>
                 ✒ Capture
               </button>
               <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
                 {meetingLive ? '● Recording' : '🎙 Meetings'}
               </button>
-              <button className="btn ghost sm" title="Open today's day-log (appends from ⌥Space → Today land here)" onClick={() => void openToday()}>
+              <button className="btn ghost sm" title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`} onClick={() => void openToday()}>
                 ☀ Today
               </button>
               <span className="flex-sp" />
@@ -1250,6 +1271,7 @@ function Main(): React.JSX.Element {
           step={ostep}
           setStep={setOstep}
           vault={vaultInfo}
+          profile={profile}
           onVaultReady={onVaultReady}
           onDone={() => setShowOnboarding(false)}
           notify={notify}
