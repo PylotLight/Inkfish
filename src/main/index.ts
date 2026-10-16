@@ -13,6 +13,7 @@ import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { startSync, stopSync, appendSyncLog } from './sync'
+import { disposeUpdates, initializeUpdates, registerUpdateIpc } from './updates'
 
 // Custom protocols must be privileged before the app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -111,6 +112,7 @@ app.whenReady().then(() => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  registerUpdateIpc()
   registerMiniWindow()
   // LAN sync listener for paired phones (no-op until a vault exists).
   startSync()
@@ -118,6 +120,8 @@ app.whenReady().then(() => {
   registerAssetProtocol()
   createWindow()
   createPopover()
+  // Release notifications from the GitHub releases feed (first check ~30 s after launch).
+  initializeUpdates()
   // Tray (unless turned off in Settings → Menu bar) + menu-bar-only Dock mode.
   startMenuBar({
     onShow: showWindow,
@@ -153,6 +157,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => closeAllMinis())
 
 app.on('will-quit', () => {
+  disposeUpdates()
   globalShortcut.unregisterAll()
   stopSysTap()
   stopSync()

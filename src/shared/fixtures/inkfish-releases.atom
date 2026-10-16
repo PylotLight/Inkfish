@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/PylotLight/Inkfish/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/PylotLight/Inkfish/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/PylotLight/Inkfish/releases.atom"/>
+  <title>Release notes from Inkfish</title>
+  <updated>2026-10-10T14:01:00Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/1405110445/v0.2.5</id>
+    <updated>2026-10-09T14:02:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/PylotLight/Inkfish/releases/tag/v0.2.5"/>
+    <title>v0.2.5</title>
+    <content type="html">&lt;h2&gt;[0.2.5] - 2026-10-09&lt;/h2&gt;
+&lt;h3&gt;Added&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;In-note find, inbox delete, today entry point, inbox + capture cleanup (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/1ed3edc5f2d9684cdd43d057fb0a1427ce815bb5&quot;&gt;1ed3edc&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Today section on home dashboard with quick-append (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/b50876aa5ec332fd13fa783a4732037bc9bed8a0&quot;&gt;b50876a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Single continuous live-preview editor, no blocks, no raw mode (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/9b35b3851f18dbaa32cf2244006d11dd03d761d6&quot;&gt;9b35b38&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Fixed&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Opaque popup/modal backgrounds so text can&#39;t bleed through (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/e7d4d49a68d2c3982a901e6def7bf7abd4203003&quot;&gt;e7d4d49&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Revert capture restyle, keep original + hairline border (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/9fcf1198cb4a8728f05e776703d6cae241be3718&quot;&gt;9fcf119&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Redux live captions resilience, visibility, warm-up (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/033f5f765969768f765b05dd529b6105ca9355b0&quot;&gt;033f5f7&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Live view selection-safe blocks, dblclick/Enter/gutter to edit (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/854d1ad2758a6ccc9093bee12c173167bb43f70a&quot;&gt;854d1ad&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Rendered bullets/tasks, tighter headings aligned to gutter (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/7b274acdac6f13f4a4ba2d6e25465cc784bc52db&quot;&gt;7b274ac&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Near-body heading scale so gutter numbers sit with text (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/6efeb8bc67b7040685a075a0b009dbdfca86ce2f&quot;&gt;6efeb8b&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Body-size bold headings so every line aligns with gutter (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/dae5c1a974f0368d620e365c0160c67e99e17b5a&quot;&gt;dae5c1a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Gutter numbers track content half-leading via --ed-fs (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/2d4d2c2d8fad8d419a354aa8d64214f42540ab3d&quot;&gt;2d4d2c2&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Performance&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;(android)&lt;/strong&gt; Speed up sidebar and vault refresh (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/3dc513407a1e79d3d6ba7a475c69ab0b0146ea9e&quot;&gt;3dc5134&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1405110445/v0.2.4</id>
+    <updated>2026-10-09T14:03:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/PylotLight/Inkfish/releases/tag/v0.2.4"/>
+    <title>v0.2.4</title>
+    <content type="html">&lt;h2&gt;[0.2.4] - 2026-10-08&lt;/h2&gt;
+&lt;h3&gt;Added&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;(ui)&lt;/strong&gt; Show app version in sidebar footer, like Blobfish (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5763604147&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/PylotLight/Inkfish/issues/39&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/PylotLight/Inkfish/pull/39/hovercard&quot; href=&quot;https://github.com/PylotLight/Inkfish/pull/39&quot;&gt;#39&lt;/a&gt;) (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/b805b6b9b762097ba1a75f29373f2e15bd560de8&quot;&gt;b805b6b&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Documentation&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Add Inkfish README screenshot (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/d519c2112e85890a7390e559e7bd5ac7cda35447&quot;&gt;d519c21&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Other&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Clarify folder tree hierarchy; show nested child dirs on Android (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/613c8c2e7beeaefad6d21c7e22e93332f8a95cff&quot;&gt;613c8c2&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Ignore cluster-fetched Inkfish.apk (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/19a7ede21f422c278b2bf02a7986d099bd9d84bf&quot;&gt;19a7ede&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Cluster APK: stamp version/versionCode from root package.json (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/8ae0b33747f5c5e880df90f69266dbe24525a708&quot;&gt;8ae0b33&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Cluster APK: absolute app.json path for version stamping (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/cd626f64b386ee1c77db20cd009a352945c655e9&quot;&gt;cd626f6&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Fetch cluster APK into android/build/output via helper pod (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/b776dc5cdc65632e3235c1df6984f003a40d617e&quot;&gt;b776dc5&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Heal case-duplicate folders; watch vault for out-of-app changes (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/7fdbf3ec0be9b28b162f4b80fe8497470526dba9&quot;&gt;7fdbf3e&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Cluster APK drops straight into android/build/output via hostPath (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/fcd295aa1355509168f120f844ae1943629951cc&quot;&gt;fcd295a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Sync history log on both apps; harden apply against mid-sync races (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/ced8c83a63e7b548d2546192fc5db67d22221f52&quot;&gt;ced8c83&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Android sidebar: filename titles, faster folders, file/folder CRUD (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5756710654&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/PylotLight/Inkfish/issues/37&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/PylotLight/Inkfish/pull/37/hovercard&quot; href=&quot;https://github.com/PylotLight/Inkfish/pull/37&quot;&gt;#37&lt;/a&gt;) (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/cab314f9ba463607ddf7acc2b29aa557b1b6b0db&quot;&gt;cab314f&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Local builds always regenerate native project (fresh launcher icon) (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5756777070&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/PylotLight/Inkfish/issues/38&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/PylotLight/Inkfish/pull/38/hovercard&quot; href=&quot;https://github.com/PylotLight/Inkfish/pull/38&quot;&gt;#38&lt;/a&gt;) (&lt;a href=&quot;https://github.com/PylotLight/Inkfish/commit/052702600b7bd701563767e3af7fd963ed89f12d&quot;&gt;0527026&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1405110445/android-v0.2.4</id>
+    <updated>2026-10-08T14:04:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/PylotLight/Inkfish/releases/tag/android-v0.2.4"/>
+    <title>Android 0.2.4</title>
+    <content type="html">&lt;p&gt;Inkfish for Android 0.2.4&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Android: local builds always regenerate native project (fresh launcher icon) (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5756777070&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/PylotLight/Inkfish/issues/38&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/PylotLight/Inkfish/pull/38/hovercard&quot; href=&quot;https://github.com/PylotLight/Inkfish/pull/38&quot;&gt;#38&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Android sidebar: filename titles, faster folders, file/folder CRUD (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5756710654&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/PylotLight/Inkfish/issues/37&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/PylotLight/Inkfish/pull/37/hovercard&quot; href=&quot;https://github.com/PylotLight/Inkfish/pull/37&quot;&gt;#37&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Sync history log on both apps; harden apply against mid-sync races&lt;/li&gt;
+&lt;li&gt;Cluster APK drops straight into android/build/output via hostPath&lt;/li&gt;
+&lt;li&gt;Heal case-duplicate folders; watch vault for out-of-app changes&lt;/li&gt;
+&lt;li&gt;Docs: fetch cluster APK into android/build/output via helper pod&lt;/li&gt;
+&lt;li&gt;Cluster APK: absolute app.json path for version stamping&lt;/li&gt;
+&lt;li&gt;Cluster APK: stamp version/versionCode from root package.json&lt;/li&gt;
+&lt;li&gt;Clarify folder tree hierarchy; show nested child dirs on Android&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+</feed>

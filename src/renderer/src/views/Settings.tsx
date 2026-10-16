@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ACCENTS, DEFAULT_PREFS, THEMES, type DensityId, type Prefs } from '../theme'
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
@@ -8,6 +8,7 @@ import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
 import MiniWindowSettings from './MiniWindowSettings'
+import UpdateSettings from './UpdateSettings'
 
 interface Props {
   prefs: Prefs
@@ -128,7 +129,7 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'mini-window'
+type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'mini-window' | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
@@ -137,6 +138,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof
   { id: 'notes', label: 'Notes', icon: '▤', group: 'Configure' },
   { id: 'sync', label: 'Sync', icon: '⇅', group: 'Configure' },
   { id: 'trash', label: 'Trash', icon: '⌫', group: 'Configure' },
+  { id: 'about', label: 'About & updates', icon: 'ⓘ', group: 'Configure' },
   { id: 'audio', label: 'Audio', icon: '♪', group: 'Voice' },
   { id: 'voice', label: 'Voice Engine', icon: '≋', group: 'Voice' },
   { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' }
@@ -175,6 +177,13 @@ export default function SettingsView({
     setTab(t)
     sessionStorage.setItem('inkfish.settingsTab', t)
   }
+  // An update notification click while Settings is already open jumps to About & updates.
+  useEffect(() => window.api.updates.onReveal(() => go('about')), [])
+  const [updateBadge, setUpdateBadge] = useState(false)
+  useEffect(() => {
+    void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
+    return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
+  }, [])
 
   return (
     <section className="card settings-page settings-wide fade-in" aria-label="Settings">
@@ -205,6 +214,7 @@ export default function SettingsView({
                     {t.icon}
                   </span>
                   {t.label}
+                  {t.id === 'about' && updateBadge && <span className="update-dot" aria-label="Update available" />}
                 </button>
               ))}
             </div>
@@ -474,6 +484,7 @@ export default function SettingsView({
 
           {tab === 'sync' && <SyncSettings />}
           {tab === 'trash' && <TrashSettings />}
+          {tab === 'about' && <UpdateSettings notify={notify} />}
 
           {tab === 'notes' && (
             <section className="settings-group">

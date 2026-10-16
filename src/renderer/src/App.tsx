@@ -946,6 +946,21 @@ function Main(): React.JSX.Element {
     setSettingsOpen(true)
   }
 
+  // Update notifications: dot on the Settings button; a notification click opens About & updates.
+  const [updateBadge, setUpdateBadge] = useState(false)
+  useEffect(() => {
+    void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
+    return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
+  }, [])
+  useEffect(
+    () =>
+      window.api.updates.onReveal(() => {
+        sessionStorage.setItem('inkfish.settingsTab', 'about')
+        setSettingsOpen(true)
+      }),
+    []
+  )
+
   const pendingCount = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length
   const activeItem = scope === 'inbox' ? inbox.find((i) => i.id === sel?.id) ?? null : null
   const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
@@ -1061,6 +1076,7 @@ function Main(): React.JSX.Element {
           <div className="side-foot-row">
             <button className="settings-btn" onClick={openSettings}>
               <span aria-hidden>⚙</span> Settings
+              {updateBadge && <span className="update-dot" aria-label="Update available" title="Update available" />}
             </button>
             <button
               className="quit-btn"

@@ -4096,3 +4096,24 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   margin-right: 6px;
   flex: none;
 }
+
+/* Settings › About & updates (UpdateSettings.tsx) */
+.update-notes {
+  margin: 10px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.settings-btn .update-dot,
+.settings-nav-item .update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #4fd1a5);
+  display: inline-block;
+  margin-left: 4px;
+}
