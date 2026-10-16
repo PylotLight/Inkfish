@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import {
   Decoration,
   EditorView,
@@ -9,9 +9,13 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
+import { minimalEdit } from '../../../shared/mini-window'
 import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
 import { listKeys, livePreview } from '../livePreview'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
+
+/** Marks edits that came from another window (mini window sync) — never re-broadcast. */
+const remoteSync = Annotation.define<boolean>()
 
 /** In-note find highlight for the editor pane. */
 const setFind = StateEffect.define<{ query: string; current: number }>()
@@ -66,6 +70,8 @@ interface Props {
   onSave: (id: string, markdown: string) => void
   onRename: (title: string) => void
   onMore: (x: number, y: number) => void
+  /** Mini window: no title/path header, just the note. */
+  compact?: boolean
 }
 
 /**
@@ -77,7 +83,7 @@ interface Props {
  * (sidebar, lists, queue). Unsaved text is ALSO lifted via `onDraft` so
  * switching tabs keeps edits; the tab strip owns dirtiness.
  */
-function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore, compact }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -182,7 +188,12 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
             }
           ]),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) handleTextRef.current(u.state.doc.toString())
+            if (!u.docChanged) return
+            const next = u.state.doc.toString()
+            handleTextRef.current(next)
+            // Live sync with mini windows: local edits only (remote ones came from there).
+            const d = saveRef.current.doc
+            if (d && !u.transactions.some((t) => t.annotation(remoteSync))) window.api.mini?.draft(d.id, next)
           }),
           findQueryField,
           findDecoField,
@@ -251,9 +262,11 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
     if (textRef.current !== next) {
       const v = viewRef.current
       if (v) {
-        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
+        // Smallest edit, so a live update from a mini window keeps the caret and scroll.
+        const edit = minimalEdit(v.state.doc.toString(), next)
+        if (edit) v.dispatch({ changes: edit, annotations: remoteSync.of(true) })
         if (v.state.doc.toString() !== next) {
-          v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } })
+          v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next }, annotations: remoteSync.of(true) })
         }
         const have = v.state.doc.length
         if (have !== next.length) {
@@ -329,7 +342,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
         }
       }}
     >
-      <div className="ed-head">
+      {!compact && <div className="ed-head">
         <div className="ed-title">
           {renaming ? (
             <input
@@ -398,7 +411,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
             Save ⌘S
           </button>
         </div>
-      </div>
+      </div>}
       {findOpen && (
         <div className="find-bar" role="search" aria-label="Find in note">
           <input
