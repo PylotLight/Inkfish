@@ -65,3 +65,4 @@ describe('Apple Intelligence fallback', () => {
     expect(r.projectName).toBe('work')
   })
 })
+// ci skip demo
