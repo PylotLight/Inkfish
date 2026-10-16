@@ -1,3 +1,5 @@
+// Crash guard first: catches errors thrown while the other modules load.
+import './crash-guard'
 import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session, systemPreferences } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
@@ -9,7 +11,8 @@ import { createWindow, getMainWindow, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
 import { closeAllMinis, registerMiniWindow } from './mini-window'
-import { openDb, reindexStaging, reindexVault } from './db'
+import { closeDb, openDb, reindexStaging, reindexVault } from './db'
+import { createShutdown } from '../shared/stability'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, vaultConfigured } from './vault'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { startSync, stopSync, appendSyncLog } from './sync'
@@ -152,10 +155,21 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => closeAllMinis())
 
+// Ordered shutdown (ported from Surffish #136): stop everything that can write to the vault
+// or the index first (watcher reindex, LAN sync), then close the SQLite index last so its WAL
+// is checkpointed and nothing writes after it closes. A failing step never skips the rest.
+const shutdown = createShutdown(
+  [
+    { name: 'shortcuts', run: () => globalShortcut.unregisterAll() },
+    { name: 'systap', run: stopSysTap },
+    { name: 'vault watch', run: stopVaultWatch },
+    { name: 'sync', run: stopSync },
+    { name: 'tray', run: destroyTray },
+    { name: 'index db', run: closeDb }
+  ],
+  (message) => console.warn(message)
+)
+
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-  stopSysTap()
-  stopSync()
-  stopVaultWatch()
-  destroyTray()
+  shutdown()
 })
