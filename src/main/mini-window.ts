@@ -718,6 +718,27 @@ export function openMini(noteId: string, focus = false, at?: PeekPoint): boolean
   return true
 }
 
+/**
+ * A note (or a folder holding it) moved/renamed on disk: ids are vault paths by default, so every
+ * mini showing something under `oldRel` follows it to `newRel` and is told (`mini:note-moved`) to
+ * reload from the new id. Returns how many minis followed.
+ */
+export function remapMiniNotes(oldRel: string, newRel: string): number {
+  const follow = (id: string): string | null =>
+    id === oldRel ? newRel : oldRel && id.startsWith(`${oldRel}/`) ? newRel + id.slice(oldRel.length) : null
+  let n = 0
+  for (const m of minis) {
+    const next = follow(m.noteId)
+    if (!next || !alive(m)) continue
+    const from = m.noteId
+    m.noteId = next
+    m.win.webContents.send('mini:note-moved', { from, to: next })
+    n++
+  }
+  if (activeNoteId) activeNoteId = follow(activeNoteId) ?? activeNoteId
+  return n
+}
+
 /** Close the note's mini and open it in the main window. */
 function returnToMain(m: Mini): void {
   const id = m.noteId

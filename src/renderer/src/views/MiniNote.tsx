@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createAutosave, type Autosave } from '../../../shared/autosave'
 import type { NoteDoc } from '../../../shared/types'
-import { MINI_WINDOW_REVEAL_ZONE, isPopKey, noteIdFromMiniHash } from '../../../shared/mini-window'
+import { MINI_WINDOW_REVEAL_ZONE, isPopKey, miniHash, noteIdFromMiniHash } from '../../../shared/mini-window'
 import { applyPrefs, loadPrefs } from '../theme'
 import { baseName } from '../text'
 import NoteEditor from './NoteEditor'
@@ -24,7 +24,7 @@ export function isMiniWindow(): boolean {
  * two windows never race each other's writes.
  */
 export default function MiniNote(): React.JSX.Element {
-  const [noteId] = useState(() => noteIdFromMiniHash(window.location.hash) ?? '')
+  const [noteId, setNoteId] = useState(() => noteIdFromMiniHash(window.location.hash) ?? '')
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   const [missing, setMissing] = useState(false)
   const [draft, setDraft] = useState<string | undefined>(undefined)
@@ -101,6 +101,22 @@ export default function MiniNote(): React.JSX.Element {
         autosave.noteSaved(saved.id, saved.markdown)
         setDoc(saved)
         if (draftRef.current === saved.markdown) setDraft(undefined)
+      }),
+    [noteId, autosave]
+  )
+  // Moved/renamed in the main window (ids are paths): follow the note to its new id. `load`
+  // re-reads it from the new id; pending text rides along with the rename.
+  useEffect(
+    () =>
+      window.api.mini.onNoteMoved(({ from, to }) => {
+        if (from !== noteId) return
+        autosave.rename(from, to)
+        try {
+          window.history.replaceState(null, '', `#${miniHash(to)}`)
+        } catch {
+          // cosmetic only
+        }
+        setNoteId(to)
       }),
     [noteId, autosave]
   )

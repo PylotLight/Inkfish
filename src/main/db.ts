@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import type { NoteDoc, NoteEntry, NoteKind, NoteStatus, SearchResult } from '../shared/types'
 import { parseFrontmatter, slugToId } from './vault'
+import { parseTags } from '../shared/tags'
 
 /**
  * SQLite index (main process only). Plain `.md` files stay the source of
@@ -277,7 +278,8 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
     must().remove(vaultRel)
     return null
   }
-  const [fm, body] = parseFrontmatter(readFileSync(absPath, 'utf8'))
+  const raw = readFileSync(absPath, 'utf8')
+  const [fm, body] = parseFrontmatter(raw)
   const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
   const id = str(fm['id']) ?? vaultRel
   const kind = (str(fm['kind']) as NoteKind | null) ?? 'text'
@@ -286,7 +288,8 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   const fromPath = projectFromPath(vaultRel)
   const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null)
   const inboxId = str(fm['inbox'])
-  const tags = Array.isArray(fm['tags']) ? fm['tags'].join(',') : ''
+  // Inline `[a, b]`, YAML block `- a` lists and plain `a, b` all count (shared/tags.ts).
+  const tagList = parseTags(raw)
   let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN
   // Real filesystem times — imports keep their true age instead of "now".
   let size = 0
@@ -303,7 +306,7 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   }
   const row: NoteRow = {
     id, path: vaultRel, title: titleFromBody(body), kind, status,
-    projectId, inboxId, tags: tags ? JSON.stringify(tags.split(',')) : '[]',
+    projectId, inboxId, tags: JSON.stringify(tagList),
     body, createdAt, updatedAt: mtime, size, embedding: null
   }
   must().upsert(row)

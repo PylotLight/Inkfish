@@ -25,6 +25,9 @@ import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { Icon } from './views/icons'
+import FolderPicker from './views/FolderPicker'
+import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
+import { matchesTags, parseTagQuery } from '../../shared/tags'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -127,6 +130,8 @@ function Main(): React.JSX.Element {
   /** Custom display titles (app config) — filename otherwise. */
   const [titles, setTitles] = useState<Record<string, string>>({})
   const [menu, setMenu] = useState<MenuState | null>(null)
+  /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
+  const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
   /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
@@ -301,6 +306,20 @@ function Main(): React.JSX.Element {
       return
     }
     const t = window.setTimeout(() => {
+      // `#tag` / `tag:foo` tokens filter by front matter tags; any other words still full-text.
+      const tq = parseTagQuery(query)
+      if (tq) {
+        const tagged = allNotesRef.current.filter(
+          (n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/') && matchesTags(n.tags, tq.tags)
+        )
+        if (!tq.text) {
+          setResults(tagged)
+          return
+        }
+        const ok = new Set(tagged.map((n) => n.id))
+        window.api.notes.search(tq.text).then((r) => setResults(r.filter((n) => ok.has(n.id)))).catch(console.error)
+        return
+      }
       window.api.notes.search(query.trim()).then(setResults).catch(console.error)
     }, 180)
     return () => window.clearTimeout(t)
@@ -312,6 +331,9 @@ function Main(): React.JSX.Element {
       void autosave.flushAll()
       setSel({ id, origin })
       if (origin === 'note') {
+        // New notes land next to the note you're in (Obsidian "same folder as current file").
+        const p = tabsRef.current.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path
+        if (p && !p.startsWith('inbox/') && !p.startsWith('daily/')) setTargetDir(dirOf(p))
         // Cache-first: tab switches are instant; refresh in background.
         const cached = docsCacheRef.current[id]
         if (cached) setDoc(cached)
@@ -779,6 +801,118 @@ function Main(): React.JSX.Element {
     })
   }, [targetDir, notify, refreshNotes])
 
+  /**
+   * A file/folder moved `rel` → `newRel` on disk (rename, drag & drop, Move to…): ids are paths by
+   * default, so every open tab, the open note, cached docs/drafts and the new-note target follow.
+   */
+  const followPathChange = useCallback((rel: string, newRel: string, all: NoteEntry[], openPath: string | null) => {
+    const byPath = new Map(all.map((n) => [n.path, n]))
+    const idMoves = new Map<string, string>()
+    setTabs((prev) =>
+      prev.map((t) => {
+        const movedPath = remapPath(t.path, rel, newRel)
+        if (movedPath === null) return t
+        const found = byPath.get(movedPath)
+        if (!found) return t
+        if (found.id !== t.id) idMoves.set(t.id, found.id)
+        return { ...t, id: found.id, path: movedPath }
+      })
+    )
+    const rekey = <T,>(prev: Record<string, T>): Record<string, T> => {
+      let changed = false
+      const next: Record<string, T> = {}
+      for (const [k, v] of Object.entries(prev)) {
+        const m = remapPath(k, rel, newRel)
+        const nk = m !== null && byPath.has(m) ? byPath.get(m)!.id : k
+        if (nk !== k) changed = true
+        next[nk] = v
+      }
+      return changed ? next : prev
+    }
+    setDrafts(rekey)
+    setDocsCache(rekey)
+    setTargetDir((cur) => remapPath(cur, rel, newRel) ?? cur)
+    if (openPath && remapPath(openPath, rel, newRel) !== null) {
+      const movedPath = remapPath(openPath, rel, newRel)!
+      const found = byPath.get(movedPath)
+      if (found) {
+        const oldId = selRef.current?.id
+        if (oldId && oldId !== found.id) autosave.rename(oldId, found.id)
+        setSel({ id: found.id, origin: 'note' })
+        setTargetDir(dirOf(movedPath))
+        window.api.notes.get(found.id).then((fresh) => {
+          if (fresh) {
+            autosave.noteSaved(fresh.id, fresh.markdown)
+            setDocsCache((prev) => ({ ...prev, [found.id]: fresh }))
+            setDoc(fresh)
+          }
+        }).catch(console.error)
+      } else {
+        setSel(null)
+        setDoc(null)
+      }
+    }
+  }, [autosave])
+
+  /** Move a note/folder into `destDir` ('' = vault root): drag & drop and the folder picker. */
+  const doMove = useCallback(
+    async (rel: string, kind: MoveKind, destDir: string) => {
+      // Pending text first, so the rename never strands an edit at the old path.
+      await autosave.flushAll()
+      const openPath = selRef.current?.origin === 'note'
+        ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+        : null
+      try {
+        const res = await window.api.files.moveTo(rel, destDir)
+        if (res.rel === rel) return
+        const where = destDir || 'vault root'
+        const extra = [
+          res.renamed ? `as ${baseOf(res.rel)}` : '',
+          res.rewritten.length ? `${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated` : ''
+        ].filter(Boolean).join(' · ')
+        notify(`Moved ${baseOf(rel).replace(/\.md$/, '')} → ${where}${extra ? ` (${extra})` : ''}`)
+        const all = await window.api.notes.list(null)
+        setAllNotes(all)
+        window.api.notes.titles().then(setTitles).catch(console.error)
+        followPathChange(rel, res.rel, all, openPath)
+        setRevealDir(kind === 'dir' ? res.rel : destDir || null)
+        refreshInbox()
+        refreshProjects()
+      } catch (err) {
+        notify(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [autosave, notify, followPathChange, refreshInbox, refreshProjects]
+  )
+
+  /** Open the "Move to…" picker for a tree target / the open note (centred under the top bar by default). */
+  const openMovePicker = useCallback((rel: string, kind: MoveKind, name: string, x?: number, y?: number) => {
+    setMovePick({ rel, kind, name, x: x ?? Math.round(window.innerWidth / 2 - 160), y: y ?? 96 })
+  }, [])
+
+  /** Header tag chips → front matter `tags:` (body untouched; pending text written first). */
+  const setNoteTags = useCallback(
+    async (tags: string[]) => {
+      const d = docRef.current
+      if (!d || selRef.current?.origin !== 'note') return
+      await autosave.flushAll()
+      try {
+        const saved = await window.api.notes.setTags(d.id, tags)
+        if (!saved) {
+          notify("Couldn't save tags")
+          return
+        }
+        autosave.noteSaved(saved.id, saved.markdown)
+        setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
+        if (docRef.current?.id === d.id) setDoc(saved)
+        refreshNotes()
+      } catch (err) {
+        notify(`Tags failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [autosave, notify, refreshNotes]
+  )
+
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
       flushBeforeFileOp()
@@ -801,34 +935,7 @@ function Main(): React.JSX.Element {
                 .then((all) => {
                   setAllNotes(all)
                   window.api.notes.titles().then(setTitles).catch(console.error)
-                  const byPath = new Map(all.map((n) => [n.path, n]))
-                  // Follow every open tab across the rename (file or folder).
-                  setTabs((prev) =>
-                    prev.map((t) => {
-                      if (t.path === rel || t.path.startsWith(`${rel}/`)) {
-                        const movedPath = newRel + t.path.slice(rel.length)
-                        const found = byPath.get(movedPath)
-                        return found ? { ...t, id: found.id, path: movedPath } : t
-                      }
-                      return t
-                    })
-                  )
-                  if (openPath && (openPath === rel || openPath.startsWith(`${rel}/`))) {
-                    const movedPath = newRel + openPath.slice(rel.length)
-                    const found = all.find((n) => n.path === movedPath)
-                    if (found) {
-                      setSel({ id: found.id, origin: 'note' })
-                      window.api.notes.get(found.id).then((fresh) => {
-                        if (fresh) {
-                          setDocsCache((prev) => ({ ...prev, [found.id]: fresh }))
-                          setDoc(fresh)
-                        }
-                      }).catch(console.error)
-                    } else {
-                      setSel(null)
-                      setDoc(null)
-                    }
-                  }
+                  followPathChange(rel, newRel, all, openPath)
                 })
                 .catch(console.error)
               refreshInbox()
@@ -838,7 +945,7 @@ function Main(): React.JSX.Element {
         }
       })
     },
-    [sel, doc, allNotes, notify, refreshInbox, refreshProjects]
+    [sel, doc, allNotes, notify, refreshInbox, refreshProjects, followPathChange]
   )
 
   const doTrash = useCallback(
@@ -929,6 +1036,7 @@ function Main(): React.JSX.Element {
           { label: 'Raw / Processed view  ⇧⌥P', action: () => sendAiCommand('toggle-view') },
           { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
+          { label: 'Move to…', action: () => openMovePicker(rel, 'file', name, menu?.x, menu?.y) },
           { label: 'Rename…', action: () => doRename(rel, false) },
           { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(rel, name) }
         ]
@@ -957,6 +1065,7 @@ function Main(): React.JSX.Element {
               })
           },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
+          { label: 'Move to…', action: () => openMovePicker(target.rel, 'dir', name, menu?.x, menu?.y) },
           { label: 'Rename…', action: () => doRename(target.rel, true) },
           { label: `Delete “${name}”…`, danger: true, action: () => doTrash(target.rel, name) }
         ]
@@ -964,11 +1073,12 @@ function Main(): React.JSX.Element {
       const name = target.name
       return [
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
+        { label: 'Move to…', action: () => openMovePicker(target.rel, 'file', name, menu?.x, menu?.y) },
         { label: 'Rename…', action: () => doRename(target.rel, false) },
         { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(target.rel, name) }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut]
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
   )
 
   // --- derived -------------------------------------------------------------------
@@ -978,6 +1088,14 @@ function Main(): React.JSX.Element {
     () => allNotes.filter((n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/')),
     [allNotes]
   )
+  /** Folder picker choices: every folder holding a note. */
+  const folderList = useMemo(() => foldersOf(finalNotes.map((n) => n.path)), [finalNotes])
+  /** Tag chip autocomplete: every tag in the vault, A→Z. */
+  const allTags = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const n of finalNotes) for (const t of n.tags) if (!m.has(t.toLowerCase())) m.set(t.toLowerCase(), t)
+    return [...m.values()].sort((a, b) => a.localeCompare(b))
+  }, [finalNotes])
   const kindCounts = useMemo(() => {
     const m = new Map<NoteKind, number>()
     for (const n of finalNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
@@ -1057,6 +1175,16 @@ function Main(): React.JSX.Element {
       setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
     } },
     { id: 'rename-note', title: 'Rename Note…', section: 'Notes', enabled: !!openPath, run: () => openPath && doRename(openPath, false) },
+    { id: 'move-note', title: 'Move Note to…', section: 'Notes', keywords: ['folder', 'file', 'relocate', 'organize'], enabled: !!openPath && !openPath.startsWith('inbox/') && !openPath.startsWith('daily/'), run: () => {
+      leaveSettings()
+      if (openPath && doc) openMovePicker(openPath, 'file', titleOf(doc))
+    } },
+    { id: 'tag-search', title: 'Search by Tag…', section: 'Notes', keywords: ['tags', '#', 'filter'], run: () => {
+      leaveSettings()
+      setSideCollapsed(false)
+      setQuery('#')
+      setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+    } },
     { id: 'rescan', title: 'Rescan Vault', section: 'Notes', keywords: ['reindex', 'refresh'], run: () => {
       window.api.vault
         .reindex()
@@ -1337,6 +1465,7 @@ function Main(): React.JSX.Element {
               onNewNote={() => doCreateFile(targetDir)}
               onNewFolder={doCreateFolder}
               targetDir={targetDir}
+              onMove={(rel, k, dest) => void doMove(rel, k, dest)}
               filters={
                 // Only worth a row when there is something to filter between (or a filter is on).
                 kindsPresent > 1 || kind !== 'all' ? (
@@ -1504,6 +1633,17 @@ function Main(): React.JSX.Element {
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                   onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
                   popOutTitle={popTitle}
+                  {...(sel?.origin === 'note' && doc && !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
+                    ? {
+                        onMoveClick: (x: number, y: number) => openMovePicker(doc.path, 'file', titleOf(doc), x, y),
+                        onSetTags: (t: string[]) => void setNoteTags(t),
+                        onTagClick: (t: string) => {
+                          setSideCollapsed(false)
+                          setQuery(`#${t}`)
+                        },
+                        allTags
+                      }
+                    : {})}
                 />
               </main>
             )}
@@ -1579,6 +1719,21 @@ function Main(): React.JSX.Element {
           onVaultReady={onVaultReady}
           onDone={() => setShowOnboarding(false)}
           notify={notify}
+        />
+      )}
+      {movePick && (
+        <FolderPicker
+          title={`Move “${movePick.name.slice(0, 40)}” to…`}
+          folders={movePick.kind === 'dir' ? folderList.filter((f) => f !== movePick.rel && !f.startsWith(`${movePick.rel}/`)) : folderList}
+          current={dirOf(movePick.rel)}
+          x={movePick.x}
+          y={movePick.y}
+          onPick={(dir) => {
+            const m = movePick
+            setMovePick(null)
+            void doMove(m.rel, m.kind, dir)
+          }}
+          onClose={() => setMovePick(null)}
         />
       )}
       {toast && <div className="toast glass">{toast}</div>}

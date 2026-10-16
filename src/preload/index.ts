@@ -76,6 +76,12 @@ const api = {
     /** From a mini: tuck to the nearest edge / slide back out. */
     tuck: (): Promise<void> => ipcRenderer.invoke('mini:tuck'),
     state: (): Promise<MiniHeaderState | null> => ipcRenderer.invoke('mini:state'),
+    /** This mini's note moved/renamed on disk (ids are paths): follow it to the new id. */
+    onNoteMoved: (cb: (m: { from: string; to: string }) => void): (() => void) => {
+      const fn = (_e: unknown, m: { from: string; to: string }): void => cb(m)
+      ipcRenderer.on('mini:note-moved', fn)
+      return () => ipcRenderer.removeListener('mini:note-moved', fn)
+    },
     onState: (cb: (s: MiniHeaderState) => void): (() => void) => {
       const fn = (_e: unknown, s: MiniHeaderState): void => cb(s)
       ipcRenderer.on('mini:state', fn)
@@ -238,6 +244,9 @@ const api = {
     mkdir: (parentRel: string, name: string): Promise<string> => ipcRenderer.invoke('files:mkdir', parentRel, name),
     rename: (rel: string, newName: string): Promise<string> => ipcRenderer.invoke('files:rename', rel, newName),
     move: (rel: string, destDirRel: string): Promise<string> => ipcRenderer.invoke('files:move', rel, destDirRel),
+    /** Collision-safe move (`Name 2.md`) that also fixes relative links broken by it. */
+    moveTo: (rel: string, destDirRel: string): Promise<{ rel: string; renamed: boolean; moved: Array<{ from: string; to: string }>; rewritten: string[] }> =>
+      ipcRenderer.invoke('files:move-to', rel, destDirRel),
     trash: (rel: string): Promise<{ id: string; originalRel: string; name: string }> =>
       ipcRenderer.invoke('files:trash', rel),
     purgeTrash: (): Promise<number> => ipcRenderer.invoke('files:purge-trash'),
@@ -252,6 +261,8 @@ const api = {
     search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('notes:search', query),
     related: (id: string): Promise<NoteEntry[]> => ipcRenderer.invoke('notes:related', id),
     save: (id: string, markdown: string): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:save', id, markdown),
+    /** Replace the note's front matter `tags:` (body untouched). */
+    setTags: (id: string, tags: string[]): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:set-tags', id, tags),
     /** Synchronous last-chance save (beforeunload only — blocks the renderer until written). */
     saveSync: (items: Array<{ id: string; markdown: string }>): number =>
       ipcRenderer.sendSync('notes:save-sync', items) as number,
