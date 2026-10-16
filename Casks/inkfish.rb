@@ -2,8 +2,8 @@
 # Updated automatically by .github/workflows/release.yml on every release.
 # Edit Casks/inkfish.rb.tmpl instead — this file is rendered from it.
 cask "inkfish" do
-  version "0.2.8"
-  sha256 "2cfb237f3b7168ea37ef9681d7f38578aed5a80271e76929571dcd46fd85fea0"
+  version "0.2.9"
+  sha256 "5e6ff78bd7d6608f18dae901bbc6fe1c77e4cc27bf829a1f9f0f2c8d9b0b7544"
 
   url "https://github.com/PylotLight/Inkfish/releases/download/v#{version}/Inkfish-#{version}-mac-arm64.zip"
   name "Inkfish"
