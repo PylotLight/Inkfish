@@ -50,3 +50,28 @@ describe('live preview images', () => {
     expect(code.visible).toBe('x ![](a.png) y')
   })
 })
+
+describe('live preview sized images (![alt|300](src))', () => {
+  test('width/height reach the widget; alt drops the |N; src untouched', () => {
+    const d = 'x\n![cat|300](assets/c.png)\n![|120x80](assets/d.png)\n![](assets/e.png)'
+    const { images, visible } = decorated(d, 0)
+    expect(images.map((m) => [m.w.alt, m.w.src, m.w.width, m.w.height])).toEqual([
+      ['cat', 'assets/c.png', 300, undefined],
+      ['', 'assets/d.png', 120, 80],
+      ['', 'assets/e.png', undefined, undefined]
+    ])
+    expect(visible).toBe('x\n\n\n')
+  })
+  test('a resize changes widget identity (so it re-renders), same width does not', () => {
+    const a = new ImageWidget(['u'], 'a', 's', 300)
+    expect(a.eq(new ImageWidget(['u'], 'a', 's', 300))).toBe(true)
+    expect(a.eq(new ImageWidget(['u'], 'a', 's', 200))).toBe(false)
+    expect(a.eq(new ImageWidget(['u'], 'a', 's'))).toBe(false)
+  })
+  test('caret on a sized ref still reveals the full source', () => {
+    const d = '![cat|300](assets/c.png)'
+    const { visible, images } = decorated(d, 3)
+    expect(visible).toBe(d)
+    expect(images[0]!.w.width).toBe(300)
+  })
+})

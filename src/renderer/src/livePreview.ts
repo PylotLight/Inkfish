@@ -2,7 +2,8 @@ import { RangeSetBuilder, type EditorState, type Extension } from '@codemirror/s
 import { indentLess, indentMore } from '@codemirror/commands'
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
-import { findImages, imageCandidates } from '../../shared/images'
+import { findImages, imageCandidates, isBlockImage } from '../../shared/images'
+import { imageRefNear, MIN_IMAGE_WIDTH, moveImageSpec, resizeImageSpec } from './imageEdit'
 
 /**
  * Obsidian-style live preview for one continuous CodeMirror document: the
@@ -13,9 +14,11 @@ import { findImages, imageCandidates } from '../../shared/images'
  * Scope: headings, quotes, hr, tasks, bold/italic/strike, inline code, links,
  * images, fenced code styling. Tables stay as source (fully editable).
  *
- * Images: `![alt](src)` renders inline. While the caret/selection touches the
- * ref its source is shown (dimmed) with the picture underneath, so it stays
- * editable; elsewhere the source is replaced by the picture.
+ * Images: `![alt](src)` renders inline; `![alt|300](src)` (Obsidian size
+ * syntax, also `|300x200`) at that width. While the caret/selection touches
+ * the ref its source is shown (dimmed) with the picture underneath, so it
+ * stays editable; elsewhere the source is replaced by the picture. Pictures
+ * can be resized from a hover handle and dragged to move (see ImageWidget).
  */
 
 export interface LivePreviewOptions {
@@ -94,12 +97,26 @@ class TaskBulletWidget extends WidgetType {
   }
 }
 
-/** Rendered `![alt](src)`: tries each candidate URL, then a "missing" chip. */
+/** Pixel offset a press must travel before it becomes a move-drag (not a click). */
+const DRAG_SLOP = 5
+
+/**
+ * Rendered `![alt](src)` / `![alt|300](src)`: tries each candidate URL, then a
+ * "missing" chip. In an editable view it also carries:
+ * - a corner + side handle (on hover) that resizes proportionally, showing the
+ *   live px width, and writes `|N` into the ref on release (one undo step);
+ *   double-click a handle, or right-click › Reset size, removes it;
+ * - press-and-drag on the picture to move the ref elsewhere, with a drop caret.
+ * A plain click still puts the caret on the ref (revealing its source), and
+ * shift/alt/meta-clicks go to CodeMirror untouched, so selection works as before.
+ */
 export class ImageWidget extends WidgetType {
   constructor(
     readonly urls: string[],
     readonly alt: string,
-    readonly src: string
+    readonly src: string,
+    readonly width?: number,
+    readonly height?: number
   ) {
     super()
   }
@@ -108,14 +125,26 @@ export class ImageWidget extends WidgetType {
       other instanceof ImageWidget &&
       other.alt === this.alt &&
       other.src === this.src &&
+      other.width === this.width &&
+      other.height === this.height &&
       other.urls.join('\n') === this.urls.join('\n')
     )
   }
   override get estimatedHeight(): number {
+    if (this.width && this.height) return this.height + 8
     return 160
   }
-  override ignoreEvent(): boolean {
-    // Let CodeMirror place the caret on click — that reveals the source.
+  override ignoreEvent(e: Event): boolean {
+    const t = e.target instanceof Element ? e.target : null
+    // Handles are entirely ours.
+    if (t?.closest('.lp-img-handle')) return true
+    // A plain left press on the picture starts our click-or-drag gesture;
+    // modified/other-button presses fall through to CodeMirror (shift-click
+    // extends the selection over the image as before).
+    if ((e.type === 'mousedown' || e.type === 'pointerdown') && t?.tagName === 'IMG') {
+      const m = e as MouseEvent
+      return m.button === 0 && !m.shiftKey && !m.altKey && !m.metaKey && !m.ctrlKey
+    }
     return false
   }
   override toDOM(view: EditorView): HTMLElement {
@@ -136,6 +165,12 @@ export class ImageWidget extends WidgetType {
     img.title = this.alt || this.src
     img.draggable = false
     img.decoding = 'async'
+    if (this.width) {
+      // Explicit width wins over the default max-height cap; aspect preserved.
+      wrap.classList.add('lp-img-sized')
+      img.style.width = `${this.width}px`
+      if (this.height) img.style.aspectRatio = `${this.width} / ${this.height}`
+    }
     let i = 0
     img.addEventListener('load', () => view.requestMeasure())
     img.addEventListener('error', () => {
@@ -145,8 +180,290 @@ export class ImageWidget extends WidgetType {
     })
     img.src = this.urls[0] as string
     wrap.appendChild(img)
+    if (view.state.readOnly || !view.state.facet(EditorView.editable)) return wrap
+
+    wrap.classList.add('lp-img-edit')
+    const badge = document.createElement('span')
+    badge.className = 'lp-img-size'
+    badge.setAttribute('aria-hidden', 'true')
+    const corner = document.createElement('span')
+    corner.className = 'lp-img-handle lp-img-handle-corner'
+    corner.title = 'Drag to resize · double-click to reset'
+    const side = document.createElement('span')
+    side.className = 'lp-img-handle lp-img-handle-side'
+    side.title = corner.title
+    wrap.append(side, corner, badge)
+
+    const ref = (): { from: number; to: number } | null => {
+      let pos: number
+      try {
+        pos = view.posAtDOM(wrap)
+      } catch {
+        return null
+      }
+      return imageRefNear(view.state, pos, this.src)
+    }
+    const reset = (): void => {
+      const r = ref()
+      const spec = r && resizeImageSpec(view.state, r.from, null)
+      if (spec) view.dispatch(spec)
+    }
+    for (const h of [corner, side]) {
+      h.addEventListener('pointerdown', (e) => this.startResize(view, wrap, img, badge, h, e, ref))
+      h.addEventListener('dblclick', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        reset()
+      })
+    }
+    img.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return
+      this.startPress(view, wrap, img, e, ref)
+    })
+    wrap.addEventListener('contextmenu', (e) => {
+      if (!this.width) return
+      e.preventDefault()
+      e.stopPropagation()
+      imageMenu(e.clientX, e.clientY, [{ label: 'Reset size', action: reset }])
+    })
     return wrap
   }
+
+  /** Corner/side handle drag: live width preview, one transaction on release. */
+  private startResize(
+    view: EditorView,
+    wrap: HTMLElement,
+    img: HTMLImageElement,
+    badge: HTMLElement,
+    handle: HTMLElement,
+    e: PointerEvent,
+    ref: () => { from: number; to: number } | null
+  ): void {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = img.getBoundingClientRect().width
+    const max = Math.max(MIN_IMAGE_WIDTH, paneWidth(wrap))
+    const prev = { width: img.style.width, maxHeight: img.style.maxHeight }
+    let w = Math.round(startW)
+    let moved = false
+    try {
+      handle.setPointerCapture(e.pointerId)
+    } catch {
+      // synthetic events in tests
+    }
+    wrap.classList.add('lp-img-resizing')
+    const show = (): void => {
+      badge.textContent = `${w}px`
+    }
+    show()
+    const move = (ev: PointerEvent): void => {
+      const dx = ev.clientX - startX
+      if (!moved && Math.abs(dx) < 1) return
+      moved = true
+      w = Math.round(Math.min(max, Math.max(MIN_IMAGE_WIDTH, startW + dx)))
+      img.style.width = `${w}px`
+      img.style.maxHeight = 'none'
+      show()
+    }
+    const done = (commit: boolean): void => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('keydown', key, true)
+      wrap.classList.remove('lp-img-resizing')
+      const r = commit && moved ? ref() : null
+      const spec = r && resizeImageSpec(view.state, r.from, w)
+      if (spec) view.dispatch(spec)
+      else {
+        img.style.width = prev.width
+        img.style.maxHeight = prev.maxHeight
+      }
+    }
+    const up = (): void => done(true)
+    const cancel = (): void => done(false)
+    const key = (ev: KeyboardEvent): void => {
+      if (ev.key !== 'Escape') return
+      ev.preventDefault()
+      ev.stopPropagation()
+      done(false)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', cancel)
+    window.addEventListener('keydown', key, true)
+  }
+
+  /** Press on the picture: a click places the caret; a drag moves the ref. */
+  private startPress(
+    view: EditorView,
+    wrap: HTMLElement,
+    img: HTMLImageElement,
+    e: PointerEvent,
+    ref: () => { from: number; to: number } | null
+  ): void {
+    e.preventDefault()
+    const start = { x: e.clientX, y: e.clientY }
+    let dragging = false
+    let target: DropTarget | null = null
+    let caret: HTMLElement | null = null
+    try {
+      img.setPointerCapture(e.pointerId)
+    } catch {
+      // synthetic events in tests
+    }
+    const move = (ev: PointerEvent): void => {
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_SLOP) return
+        dragging = true
+        wrap.classList.add('lp-img-dragging')
+        document.body.classList.add('lp-img-moving')
+        caret = document.createElement('div')
+        caret.className = 'lp-img-drop'
+        document.body.appendChild(caret)
+      }
+      autoScroll(view, ev.clientY)
+      const r = ref()
+      target = r ? dropTarget(view, ev.clientX, ev.clientY, r) : null
+      if (caret) placeCaret(caret, target)
+    }
+    const finish = (commit: boolean, ev?: PointerEvent): void => {
+      img.removeEventListener('pointermove', move)
+      img.removeEventListener('pointerup', up)
+      img.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('keydown', key, true)
+      wrap.classList.remove('lp-img-dragging')
+      document.body.classList.remove('lp-img-moving')
+      caret?.remove()
+      const r = ref()
+      if (!r) return
+      if (!dragging) {
+        // Plain click: caret onto the ref, revealing its source for editing.
+        if (!commit) return
+        const at = ev ? view.posAtCoords({ x: ev.clientX, y: ev.clientY }) : null
+        const pos = at !== null && at >= r.from && at <= r.to ? at : r.to
+        view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' })
+        view.focus()
+        return
+      }
+      if (!commit || !target) return
+      const spec = moveImageSpec(view.state, r.from, r.to, target.pos, target.place)
+      if (spec) view.dispatch(spec)
+      view.focus()
+    }
+    const up = (ev: PointerEvent): void => finish(true, ev)
+    const cancel = (): void => finish(false)
+    const key = (ev: KeyboardEvent): void => {
+      if (ev.key !== 'Escape' || !dragging) return
+      ev.preventDefault()
+      ev.stopPropagation()
+      finish(false)
+    }
+    img.addEventListener('pointermove', move)
+    img.addEventListener('pointerup', up)
+    img.addEventListener('pointercancel', cancel)
+    window.addEventListener('keydown', key, true)
+  }
+}
+
+interface DropTarget {
+  pos: number
+  place: 'before' | 'after'
+  /** Block refs drop between lines (horizontal bar); inline refs at a char (caret). */
+  block: boolean
+  rect: { left: number; top: number; width: number; height: number }
+}
+
+/** Usable width of the line the widget sits in (indent/padding excluded). */
+function paneWidth(wrap: HTMLElement): number {
+  const line = (wrap.closest('.cm-line') as HTMLElement | null) ?? wrap.parentElement
+  if (!line) return 10_000
+  const cs = getComputedStyle(line)
+  const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+  const ti = Math.max(0, parseFloat(cs.textIndent) || 0)
+  return Math.floor(line.clientWidth - pad - ti)
+}
+
+function dropTarget(view: EditorView, x: number, y: number, ref: { from: number; to: number }): DropTarget | null {
+  const pos = view.posAtCoords({ x, y }, false)
+  const state = view.state
+  const content = view.contentDOM.getBoundingClientRect()
+  const text = state.doc.toString()
+  if (isBlockImage(text, ref.from, ref.to)) {
+    const line = state.doc.lineAt(pos)
+    const block = view.lineBlockAt(line.from)
+    const top = view.documentTop + block.top
+    const bottom = view.documentTop + block.bottom
+    const place = y < (top + bottom) / 2 ? 'before' : 'after'
+    return {
+      pos: line.from,
+      place,
+      block: true,
+      rect: { left: content.left, top: (place === 'before' ? top : bottom) - 1, width: content.width, height: 2 }
+    }
+  }
+  const c = view.coordsAtPos(pos)
+  if (!c) return null
+  return { pos, place: 'after', block: false, rect: { left: c.left - 1, top: c.top, width: 2, height: c.bottom - c.top } }
+}
+
+function placeCaret(el: HTMLElement, t: DropTarget | null): void {
+  if (!t) {
+    el.style.display = 'none'
+    return
+  }
+  el.style.display = 'block'
+  el.classList.toggle('lp-img-drop-block', t.block)
+  el.style.left = `${t.rect.left}px`
+  el.style.top = `${t.rect.top}px`
+  el.style.width = `${t.rect.width}px`
+  el.style.height = `${t.rect.height}px`
+}
+
+/** Scroll the editor while a move-drag hovers near its top/bottom edge. */
+function autoScroll(view: EditorView, y: number): void {
+  const r = view.scrollDOM.getBoundingClientRect()
+  const edge = 32
+  if (y < r.top + edge) view.scrollDOM.scrollTop -= Math.ceil((r.top + edge - y) / 2)
+  else if (y > r.bottom - edge) view.scrollDOM.scrollTop += Math.ceil((y - (r.bottom - edge)) / 2)
+}
+
+/** Tiny context menu in the app's ctxmenu style (Dialogs.tsx ContextMenu look). */
+function imageMenu(x: number, y: number, items: Array<{ label: string; action: () => void }>): void {
+  const scrim = document.createElement('div')
+  scrim.className = 'ctx-scrim'
+  const menu = document.createElement('div')
+  menu.className = 'ctxmenu glass strong'
+  menu.setAttribute('role', 'menu')
+  menu.style.left = `${Math.min(x, window.innerWidth - 220)}px`
+  menu.style.top = `${Math.min(y, window.innerHeight - items.length * 36 - 24)}px`
+  const close = (): void => {
+    scrim.remove()
+    menu.remove()
+    window.removeEventListener('keydown', onKey, true)
+  }
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close()
+  }
+  for (const it of items) {
+    const b = document.createElement('button')
+    b.className = 'ctxitem'
+    b.setAttribute('role', 'menuitem')
+    b.textContent = it.label
+    b.addEventListener('click', () => {
+      close()
+      it.action()
+    })
+    menu.appendChild(b)
+  }
+  scrim.addEventListener('click', close)
+  scrim.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    close()
+  })
+  window.addEventListener('keydown', onKey, true)
+  document.body.append(scrim, menu)
 }
 
 interface Op {
@@ -297,7 +614,7 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       const sTo = sFrom + im.length
       if (overlaps(claimed, sFrom, sTo)) continue
       claimed.push([sFrom, sTo])
-      const widget = new ImageWidget(resolve(im.src), im.alt, im.src)
+      const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height)
       if (touched(sFrom, sTo)) {
         mark(sFrom, sTo, 'lp-imgsrc')
         ops.push({ from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) })

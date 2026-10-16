@@ -4241,6 +4241,92 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   font-size: 0.88em;
 }
 
+/* Explicit `![alt|300](src)` width wins over the max-height cap; aspect kept. */
+.ed-src .lp-img-sized img {
+  max-height: none;
+  height: auto;
+}
+
+/* Resize handles + move-drag (editable views only). */
+.ed-src .lp-img-edit {
+  position: relative;
+}
+.ed-src .lp-img-edit img {
+  cursor: grab;
+}
+.ed-src .lp-img-handle {
+  position: absolute;
+  z-index: 2;
+  opacity: 0;
+  background: var(--accent, #4c8dff);
+  border: 2px solid var(--bg, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.12s ease;
+  touch-action: none;
+}
+.ed-src .lp-img-handle-corner {
+  right: -5px;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: nwse-resize;
+}
+.ed-src .lp-img-handle-side {
+  right: -4px;
+  top: 50%;
+  width: 6px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 4px;
+  cursor: ew-resize;
+}
+.ed-src .lp-img-edit:hover .lp-img-handle,
+.ed-src .lp-img-resizing .lp-img-handle {
+  opacity: 1;
+}
+.ed-src .lp-img-size {
+  position: absolute;
+  right: 6px;
+  top: 10px;
+  z-index: 2;
+  display: none;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font: 600 11px/18px var(--ui-font, system-ui), sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+  pointer-events: none;
+}
+.ed-src .lp-img-resizing .lp-img-size {
+  display: block;
+}
+.ed-src .lp-img-resizing img {
+  outline: 2px solid var(--accent, #4c8dff);
+  outline-offset: 1px;
+}
+.ed-src .lp-img-dragging img {
+  opacity: 0.4;
+}
+body.lp-img-moving,
+body.lp-img-moving * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.lp-img-drop {
+  position: fixed;
+  z-index: 95;
+  display: none;
+  pointer-events: none;
+  background: var(--accent, #4c8dff);
+  border-radius: 1px;
+}
+.lp-img-drop-block {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
 .cap-files .cap-thumb {
   width: 28px;
   height: 28px;
