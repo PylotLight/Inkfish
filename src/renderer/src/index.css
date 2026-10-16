@@ -5181,3 +5181,13 @@ input[type='password'].text-input {
   -webkit-user-select: none;
   touch-action: none;
 }
+
+/* Click-selected image: ⌘C copies the picture (livePreview selectedImageField). */
+.ed-src .lp-img-selected img {
+  outline: 2px solid var(--accent, #4c8dff);
+  outline-offset: 2px;
+}
+.ed-src .lp-img-selected.lp-img-dragging img,
+.ed-src .lp-img-selected.lp-img-resizing img {
+  outline-color: transparent;
+}

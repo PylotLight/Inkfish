@@ -30,6 +30,7 @@ import type {
 import type { SyncStatus } from '../main/sync'
 import type { SyncLogEntry } from '../shared/sync'
 import type { TrashEntry as TrashItem } from '../main/vault'
+import type { CopyImageResult } from '../main/image-clipboard'
 import type { MiniHeaderState, MiniSettingsState } from '../main/mini-window'
 import type { MiniWindowSettings } from '../shared/mini-window'
 import type { UpdateSettingsResult, UpdateState } from '../shared/update-feed'
@@ -262,6 +263,16 @@ const api = {
   assets: {
     save: (fileName: string, dataUrl: string): Promise<string> => ipcRenderer.invoke('assets:save', fileName, dataUrl),
     path: (vaultRel: string): Promise<string> => ipcRenderer.invoke('assets:path', vaultRel)
+  },
+  /** Rendered editor images: copy the picture / its path, reveal in Finder (main/image-clipboard.ts). */
+  images: {
+    copy: (url: string): Promise<CopyImageResult> => ipcRenderer.invoke('images:copy', url),
+    copyPng: (pngDataUrl: string): Promise<boolean> => ipcRenderer.invoke('images:copy-png', pngDataUrl),
+    locate: (url: string): Promise<string | null> => ipcRenderer.invoke('images:locate', url),
+    reveal: (url: string): Promise<boolean> => ipcRenderer.invoke('images:reveal', url)
+  },
+  clipboard: {
+    writeText: (text: string): Promise<boolean> => ipcRenderer.invoke('clipboard:write-text', text)
   },
   ai: {
     providers: (): Promise<Array<{ id: string; available: boolean; detail: string }>> =>

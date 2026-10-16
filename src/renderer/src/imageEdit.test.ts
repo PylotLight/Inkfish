@@ -153,3 +153,36 @@ describe('resize/move gesture keeps the image source hidden', () => {
     expect(imageSourceRevealed(s, from, to)).toBe(true)
   })
 })
+
+describe('click-selected image (⌘C copies the picture)', () => {
+  const doc = 'hi\n![cat](assets/c.png)\nbye'
+  const from = doc.indexOf('![')
+  const to = doc.indexOf(')') + 1
+  async function setup() {
+    const m = await import('./imageEdit')
+    let s = EditorState.create({ doc, extensions: [m.imageGestureField, m.selectedImageField] })
+    // Plain click = gesture begin, then end with caret + selectImage in one transaction.
+    s = s.update(m.beginImageGestureSpec(s, { from, to })).state
+    s = s.update(
+      m.endImageGestureSpec(s, { selection: { anchor: from + 2 }, effects: m.selectImage.of({ from, to }) }, true)
+    ).state
+    return { m, s }
+  }
+  test('a plain click selects the image and keeps its effects through the gesture end', async () => {
+    const { m, s } = await setup()
+    expect(s.field(m.imageGestureField)).toBeNull()
+    expect(m.selectedImageRef(s)).toEqual({ from, to })
+    expect(s.selection.main.head).toBe(from + 2)
+  })
+  test('caret moves inside the ref keep it; leaving, range-selecting or editing clears it', async () => {
+    const { m, s } = await setup()
+    expect(m.selectedImageRef(s.update({ selection: { anchor: to } }).state)).toEqual({ from, to })
+    expect(m.selectedImageRef(s.update({ selection: { anchor: 0 } }).state)).toBeNull()
+    expect(m.selectedImageRef(s.update({ selection: { anchor: from, head: to } }).state)).toBeNull()
+    expect(m.selectedImageRef(s.update({ changes: { from: 0, insert: 'x' } }).state)).toBeNull()
+  })
+  test('explicit deselect', async () => {
+    const { m, s } = await setup()
+    expect(m.selectedImageRef(s.update({ effects: m.selectImage.of(null) }).state)).toBeNull()
+  })
+})

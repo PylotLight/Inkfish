@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
 import { hidePopover } from './popover'
+import { registerImageClipboardIpc } from './image-clipboard'
 import { profile } from './profile'
 import { profileBadgeText, type AppProfileInfo } from '../shared/profile'
 import type {
@@ -196,6 +197,7 @@ async function processInboxItem(
  * 3. call it from the renderer via `window.api`.
  */
 export function registerIpc(): void {
+  registerImageClipboardIpc()
   ipcMain.handle('sync:status', (): SyncStatus => syncStatus())
   ipcMain.handle('sync:pair', (): Promise<SyncStatus> => startPairing())
   ipcMain.handle('sync:cancel-pair', (): SyncStatus => cancelPairing())
