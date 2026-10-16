@@ -63,6 +63,8 @@ const api = {
   mini: {
     /** Pop a note out (already out: bring it up). `focus` takes the keyboard. */
     open: (noteId: string, focus?: boolean): Promise<boolean> => ipcRenderer.invoke('mini:open', noteId, focus),
+    /** A tab dragged out of the tab strip: open it in a mini window under the pointer (focused). */
+    tearOut: (noteId: string): Promise<boolean> => ipcRenderer.invoke('mini:tear-out', noteId),
     /** The main window's open note — what the global toggle pops out when no mini is open. */
     setActive: (noteId: string | null): void => ipcRenderer.send('mini:active', noteId),
     /** From a mini: close it and open its note in the main window. */
@@ -168,6 +170,20 @@ const api = {
     }
   },
   /** Files changed outside the UI (a phone synced). */
+  /** Autosave: main asks this window to write pending text (app quit). Resolve to ack. */
+  onFlushRequest: (cb: () => Promise<void>): (() => void) => {
+    const fn = (_e: unknown, token: string): void => {
+      void cb()
+        .catch(() => undefined)
+        .finally(() => ipcRenderer.send('inkfish:flush-done', token))
+    }
+    ipcRenderer.on('inkfish:flush', fn)
+    ipcRenderer.send('inkfish:autosave-register', true)
+    return () => {
+      ipcRenderer.removeListener('inkfish:flush', fn)
+      ipcRenderer.send('inkfish:autosave-register', false)
+    }
+  },
   onVaultChanged: (cb: () => void): (() => void) => {
     const fn = (): void => cb()
     ipcRenderer.on('inkfish:vault-changed', fn)
@@ -233,6 +249,9 @@ const api = {
     search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('notes:search', query),
     related: (id: string): Promise<NoteEntry[]> => ipcRenderer.invoke('notes:related', id),
     save: (id: string, markdown: string): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:save', id, markdown),
+    /** Synchronous last-chance save (beforeunload only — blocks the renderer until written). */
+    saveSync: (items: Array<{ id: string; markdown: string }>): number =>
+      ipcRenderer.sendSync('notes:save-sync', items) as number,
     reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id),
     titles: (): Promise<Record<string, string>> => ipcRenderer.invoke('notes:titles'),
     setTitle: (id: string, title: string): Promise<Record<string, string>> =>

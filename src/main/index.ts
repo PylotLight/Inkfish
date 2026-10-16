@@ -1,7 +1,7 @@
 // Must be first: picks the app profile (dev runs → "Inkfish Dev") and moves userData before
 // anything reads it or takes the single-instance lock.
 import { profile } from './profile'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, protocol, session, systemPreferences } from 'electron'
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, protocol, session, systemPreferences, webContents } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 // Crash guard before the app's own modules: catches errors thrown while they load.
 import './crash-guard'
@@ -21,6 +21,7 @@ import { profileBadgeText } from '../shared/profile'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { closeDb } from './db'
 import { createShutdown } from '../shared/stability'
+import { createQuitFlush } from '../shared/autosave'
 import { startSync, stopSync, appendSyncLog } from './sync'
 import { initializeUpdates, registerUpdateIpc } from './updates'
 
@@ -183,7 +184,56 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => closeAllMinis())
+// Autosave: before anything closes, every window (main + minis) writes its pending text and
+// acks. Quit is deferred until then (or a short timeout), so ⌘Q never drops a keystroke. The
+// windows' own `beforeunload` sync-save is the second net; the ordered shutdown below runs after.
+// Only renderers that hold an editor register (popover/capture windows never answer).
+const autosaveWindows = new Set<number>()
+ipcMain.on('inkfish:autosave-register', (e, on: unknown) => {
+  const id = e.sender.id
+  if (on === false) {
+    autosaveWindows.delete(id)
+    return
+  }
+  if (autosaveWindows.has(id)) return
+  autosaveWindows.add(id)
+  e.sender.once('destroyed', () => autosaveWindows.delete(id))
+})
+const quitFlush = createQuitFlush({
+  targets: () => [...autosaveWindows].filter((id) => {
+    const wc = webContents.fromId(id)
+    return !!wc && !wc.isDestroyed()
+  }),
+  request: (id, token) => {
+    const wc = webContents.fromId(id)
+    if (!wc || wc.isDestroyed()) throw new Error('gone')
+    wc.send('inkfish:flush', token)
+  },
+  timeoutMs: 2000
+})
+ipcMain.on('inkfish:flush-done', (_e, token: unknown) => {
+  if (typeof token === 'string') quitFlush.ack(token)
+})
+let quitFlushed = false
+let quitFlushing = false
+app.on('before-quit', (e) => {
+  if (!quitFlushed) {
+    e.preventDefault()
+    if (quitFlushing) return
+    quitFlushing = true
+    void quitFlush
+      .run()
+      .then((r) => {
+        if (r.timedOut) console.warn('[inkfish] quit flush timed out — beforeunload saves are the fallback')
+      })
+      .finally(() => {
+        quitFlushed = true
+        app.quit()
+      })
+    return
+  }
+  closeAllMinis()
+})
 
 // Ordered shutdown (ported from Surffish #136): stop everything that can write to the vault
 // or the index first (watcher reindex, LAN sync), then close the SQLite index last so its WAL

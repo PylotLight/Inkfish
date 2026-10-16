@@ -2216,18 +2216,77 @@ html[data-motion='reduced'] *::after {
     opacity 0.18s ease;
 }
 
-/* Collapsible sidebar (Blobfish-style) — width animates to zero. */
+/* Collapsible sidebar (Blobfish-style) — width animates to zero and the editor takes it all.
+   visibility flips after the width transition so nothing hidden stays focusable/hit-testable. */
 .shell.side-collapsed .sidebar.core {
   width: 0;
   min-width: 0;
   padding-left: 0;
   padding-right: 0;
-  border-right-color: transparent;
+  border-right-width: 0;
   overflow: hidden;
   opacity: 0;
+  visibility: hidden;
+  transition:
+    width 0.18s ease,
+    padding 0.18s ease,
+    opacity 0.18s ease,
+    visibility 0s linear 0.18s;
+}
+
+/* Top drag strip of the center column. Empty (just the window drag handle in the content's top
+   padding) while the sidebar is open; collapsed, it grows into a slim rail holding the expand
+   button + live-recording chip. On macOS it starts right of the inset traffic lights
+   (window.ts trafficLightPosition 16,16) — the old topbar toggle landed under them. */
+.side-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+  -webkit-app-region: drag;
+  z-index: 3;
+}
+
+.shell[data-platform='darwin'] .side-rail {
+  padding-left: 84px;
+}
+
+.shell.side-collapsed .side-rail {
+  height: 46px;
+}
+
+.shell.side-collapsed .content.center {
+  padding-top: 46px;
+}
+
+.content.center {
+  position: relative;
+}
+
+.side-rail .side-toggle {
+  width: 26px;
+  height: 26px;
+}
+
+.side-rail .rail-chip {
+  width: auto;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.side-toggle.rec-live,
+.side-action.rec-live {
+  color: var(--danger);
 }
 
 .side-toggle {
+  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2253,6 +2312,44 @@ html[data-motion='reduced'] *::after {
   gap: 10px;
   margin-top: 6px;
   -webkit-app-region: no-drag;
+}
+
+/* Sidebar quick actions: Today + Meetings (moved out of the old topbar). */
+.side-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.side-action {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-action:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.side-action.on {
+  color: var(--text);
+  background: var(--panel-strong);
 }
 
 .brand-row .brand h1 {
@@ -2444,7 +2541,7 @@ html[data-motion='reduced'] *::after {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  margin-top: 14px;
+  margin-top: 0;
   border-radius: var(--radius);
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2595,7 +2692,7 @@ html[data-motion='reduced'] *::after {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin-top: 14px;
+  margin-top: 0;
   animation: rise 0.22s ease both;
 }
 
@@ -2982,7 +3079,8 @@ button.frow.on,
   display: flex;
   flex-direction: column;
   gap: 28px;
-  padding: 6px 0 32px;
+  /* Side gutters = the rows' -10px hover bleed, so Home never scrolls sideways. */
+  padding: 6px 10px 32px;
   animation: rise 0.22s ease both;
 }
 
@@ -4577,4 +4675,82 @@ input[type='password'].text-input {
 }
 .ai-picker-foot .btn.mint {
   margin-left: auto;
+}
+
+/* ---------- Inkfish: mini window discoverability (pop-out buttons, tab tear-off, tuck hint) ---------- */
+
+.tab .tab-pop {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 3px;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity 0.12s ease;
+}
+.tab:hover .tab-pop,
+.tab.on .tab-pop,
+.tab .tab-pop:focus-visible {
+  opacity: 0.55;
+}
+.tab .tab-pop:hover {
+  opacity: 1;
+  background: var(--panel-strong);
+}
+.tab.tearing {
+  opacity: 0.45;
+}
+.tab-tear-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+.tab-tear-ghost span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ed-pop svg {
+  display: block;
+}
+.mini-hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 6px 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.mini-hint span {
+  flex: 1;
+}
+.tabbar .tab {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }

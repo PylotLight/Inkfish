@@ -15,8 +15,12 @@ import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
+import PopOutIcon from './views/PopOutIcon'
 import { isPopKey } from '../../shared/mini-window'
+import { popOutTitle, tabDragPhase } from '../../shared/mini-window-tear'
+import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
+import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed } from '../../shared/sidebar'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
@@ -104,7 +108,7 @@ function Main(): React.JSX.Element {
   /** Unrestored active tab from storage — opened once notes load. */
   const [pendingActive] = useState<string | null>(() => loadTabs().activeId)
   const [restored, setRestored] = useState(false)
-  /** Unsaved per-tab edits — the source of dirtiness, survives tab switches. */
+  /** Per-note text not yet confirmed on disk (autosave clears each entry once written). */
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
@@ -124,18 +128,15 @@ function Main(): React.JSX.Element {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
-  /** Collapsible core sidebar (Blobfish-style) — persisted, toggled from the topbar. */
+  /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
+   *  the collapsed rail, ⌘\ or the palette. */
   const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('inkfish.side.collapsed') === '1'
+      return parseSideCollapsed(localStorage.getItem(SIDE_COLLAPSED_KEY))
     } catch {
       return false
     }
   })
-
-  // Dirtiness is derived from lifted drafts (per-tab, survives switches).
-  const dirty = sel !== null && drafts[sel.id] !== undefined
-  const dirtyCount = Object.keys(drafts).length
 
   // Refs so tab callbacks stay stable without re-creating per keystroke.
   const allNotesRef = useRef<NoteEntry[]>([])
@@ -151,28 +152,45 @@ function Main(): React.JSX.Element {
   const draftsRef = useRef<Record<string, string>>({})
   draftsRef.current = drafts
 
+  // --- autosave (Obsidian-style: no Save button, nothing is ever "unsaved") ------------------
+  /** Set below once its deps exist; the controller calls through these refs. */
+  const savedHandlerRef = useRef<(id: string, markdown: string, saved: NoteDoc) => void>(() => undefined)
+  const saveErrorRef = useRef<(id: string, err: unknown) => void>(() => undefined)
+  const autosaveRef = useRef<Autosave | null>(null)
+  if (!autosaveRef.current) {
+    autosaveRef.current = createAutosave<NoteDoc>({
+      save: (id, markdown) => window.api.notes.save(id, markdown),
+      onSaved: (id, markdown, saved) => savedHandlerRef.current(id, markdown, saved),
+      onError: (id, err) => saveErrorRef.current(id, err)
+    })
+  }
+  const autosave = autosaveRef.current
+  /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
+  const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
+
   useEffect(() => {
     applyPrefs(prefs)
   }, [prefs])
 
   useEffect(() => {
     try {
-      localStorage.setItem('inkfish.side.collapsed', sideCollapsed ? '1' : '0')
+      localStorage.setItem(SIDE_COLLAPSED_KEY, serializeSideCollapsed(sideCollapsed))
     } catch {
       // ignore
     }
   }, [sideCollapsed])
 
-  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style).
+  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style). Capture phase so a focused editor or
+  // input can't swallow it first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-        e.preventDefault()
-        setSideCollapsed((v) => !v)
-      }
+      if (!isSidebarToggleKey(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setSideCollapsed((v) => !v)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
   // Quick font size adjustment: Ctrl+Scroll / pinch inside the note stage
@@ -289,32 +307,24 @@ function Main(): React.JSX.Element {
 
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
+      // Leaving a note (or re-opening one) writes everything pending first.
+      void autosave.flushAll()
       setSel({ id, origin })
       if (origin === 'note') {
         // Cache-first: tab switches are instant; refresh in background.
         const cached = docsCacheRef.current[id]
-        if (cached) {
-          setDoc(cached)
-          window.api.notes
-            .get(id)
-            .then((fresh) => {
-              if (fresh) {
-                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
-                if (selRef.current?.id === id) setDoc(fresh)
-              }
-            })
-            .catch(console.error)
-        } else {
-          window.api.notes
-            .get(id)
-            .then((fresh) => {
-              if (fresh) {
-                setDocsCache((prev) => ({ ...prev, [id]: fresh }))
-                if (selRef.current?.id === id) setDoc(fresh)
-              }
-            })
-            .catch(console.error)
-        }
+        if (cached) setDoc(cached)
+        window.api.notes
+          .get(id)
+          .then((fresh) => {
+            if (!fresh) return
+            // A read that raced an autosave of this note is stale — the save result wins.
+            if (autosave.pending(id) !== undefined) return
+            autosave.noteSaved(id, fresh.markdown)
+            setDocsCache((prev) => ({ ...prev, [id]: fresh }))
+            if (selRef.current?.id === id) setDoc(fresh)
+          })
+          .catch(console.error)
         // Keep the file open as a tab (no duplicates).
         setTabs((prev) => {
           if (prev.some((t) => t.id === id)) return prev
@@ -340,44 +350,37 @@ function Main(): React.JSX.Element {
     [inbox]
   )
 
-  const saveDoc = useCallback(
-    (id: string, markdown: string) => {
-      window.api.notes
-        .save(id, markdown)
-        .then((saved) => {
-          if (saved) {
-            setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
-            // Renames (id = path by default) move the doc — follow it.
-            if (saved.id !== id) {
-              setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, id: saved.id, path: saved.path } : t)))
-              setDrafts((prev) => {
-                if (prev[id] === undefined) return prev
-                const next = { ...prev }
-                delete next[id]
-                return next
-              })
-              setSel((cur) => (cur?.id === id ? { ...cur, id: saved.id } : cur))
-            } else {
-              setDrafts((prev) => {
-                if (prev[id] === undefined) return prev
-                const next = { ...prev }
-                delete next[id]
-                return next
-              })
-            }
-            setDoc(saved)
-            if (sel?.origin === 'note') refreshNotes()
-            else refreshAll()
-            notify('Saved ✓')
-          }
-        })
-        .catch((err: unknown) => notify(`Save failed: ${String(err)}`))
-    },
-    [sel, refreshNotes, refreshAll, notify]
-  )
+  /** An autosave landed: cache it, follow a moved id, and clear the draft it covered. */
+  savedHandlerRef.current = (id: string, markdown: string, saved: NoteDoc): void => {
+    setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
+    const dropCovered = (prev: Record<string, string>): Record<string, string> => {
+      const cur = prev[id]
+      if (cur === undefined) return prev
+      const next = { ...prev }
+      delete next[id]
+      // Typed more while the save was in flight: keep the newer text (moved with the id).
+      if (cur !== markdown) next[saved.id] = cur
+      return next
+    }
+    if (saved.id !== id) {
+      // Renames (id = path by default) move the doc — follow it.
+      autosave.rename(id, saved.id)
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, id: saved.id, path: saved.path } : t)))
+      setSel((cur) => (cur?.id === id ? { ...cur, id: saved.id } : cur))
+    }
+    setDrafts(dropCovered)
+    // Only the note on screen — a background flush of the tab we just left must not replace it.
+    const shown = docRef.current?.id
+    if (shown === id || shown === saved.id) setDoc(saved)
+    refreshNotes()
+  }
+  saveErrorRef.current = (id: string, err: unknown): void => {
+    console.error(`[autosave] ${id}:`, err)
+    notify(`Couldn't save ${id.split('/').pop() ?? id} — will retry`)
+  }
 
-  /** Lifted unsaved text per tab — typing never loses edits on switch. */
-  const handleDraft = useCallback((id: string, markdown: string) => {
+  /** Lift `markdown` as `id`'s live text (shared across tabs and mini windows). */
+  const liftDraft = useCallback((id: string, markdown: string) => {
     const saved = docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
     setDrafts((prev) => {
       if (markdown === saved) {
@@ -389,6 +392,40 @@ function Main(): React.JSX.Element {
       return prev[id] === markdown ? prev : { ...prev, [id]: markdown }
     })
   }, [])
+
+  /** A local edit in this window's editor: lift it and autosave it. */
+  const handleDraft = useCallback(
+    (id: string, markdown: string) => {
+      liftDraft(id, markdown)
+      // Inbox captures are shown as their body only (no front matter) — writing that back
+      // would strip the capture's metadata, so only vault notes autosave.
+      if (selRef.current?.origin === 'note') autosave.schedule(id, markdown)
+    },
+    [liftDraft, autosave]
+  )
+
+  // Flush whenever the window stops being the place you type, and on quit/close.
+  useEffect(() => {
+    const onBlur = (): void => void autosave.flushAll()
+    const onHide = (): void => {
+      if (document.visibilityState === 'hidden') void autosave.flushAll()
+    }
+    // Last chance (window closing / reloading): synchronous, so it can't be cut off.
+    const onUnload = (): void => {
+      const items = autosave.drain()
+      if (items.length > 0) window.api.notes.saveSync(items)
+    }
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('beforeunload', onUnload)
+    const offFlush = window.api.onFlushRequest(() => autosave.flushAll())
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('beforeunload', onUnload)
+      offFlush()
+    }
+  }, [autosave])
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -474,43 +511,25 @@ function Main(): React.JSX.Element {
   }, [activateNeighbor])
 
   const closeTab = useCallback((id: string) => {
-    if (draftsRef.current[id] !== undefined) {
-      setConfirm({
-        title: 'Close without saving?',
-        body: 'This tab has unsaved changes. They will be discarded.',
-        confirm: 'Discard changes',
-        onConfirm: () => {
-          setDrafts((d) => {
-            const next = { ...d }
-            delete next[id]
-            return next
-          })
-          removeTab(id)
-        }
-      })
-      return
-    }
+    // Autosave: closing writes the tab's text — there is nothing to discard or confirm.
+    void autosave.flush(id)
     removeTab(id)
-  }, [removeTab])
+  }, [removeTab, autosave])
 
   const togglePin = useCallback((id: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
   }, [])
 
-  /** Close a set of tabs; blocked when any of them is dirty (save first). */
+  /** Close a set of tabs (their pending text is written first). */
   const closeTabsGuarded = useCallback((ids: string[], what: string) => {
-    const dirtyClosing = ids.filter((id) => draftsRef.current[id] !== undefined)
-    if (dirtyClosing.length > 0) {
-      notify(`Unsaved changes in ${dirtyClosing.length} tab${dirtyClosing.length === 1 ? '' : 's'} — save first`)
-      return
-    }
+    for (const id of ids) void autosave.flush(id)
     const keep = new Set(ids)
     const remaining = tabsRef.current.filter((t) => !keep.has(t.id))
     setTabs(remaining)
     const active = selRef.current
     if (active && keep.has(active.id)) activateNeighbor(active.id, remaining)
     notify(what)
-  }, [activateNeighbor, notify])
+  }, [activateNeighbor, notify, autosave])
 
   const closeOthers = useCallback((id: string) => {
     // Pinned tabs survive "close others" (Obsidian-style).
@@ -597,21 +616,44 @@ function Main(): React.JSX.Element {
     window.api.mini?.setActive(activeNoteId)
   }, [activeNoteId])
 
+  /**
+   * Pop a note out to a mini window. Pending text is autosaved (flushed) first so the mini opens on exactly what
+   * the tab showed (nothing lost). `tear`: the tab was dragged out of the strip — open it under the
+   * pointer and move the tab out of this window (Surffish behaviour); the mini's ⤢ brings it back.
+   */
   const popOut = useCallback(
-    (id: string | null) => {
+    (id: string | null, opts?: { tear?: boolean }) => {
       if (!id) {
         notify('Open a note to pop it out')
         return
       }
-      window.api.mini
-        .open(id)
-        .then((ok) => {
-          if (!ok) notify('Too many mini windows open — close one first')
-        })
-        .catch((err: unknown) => notify(`Mini window failed: ${String(err)}`))
+      const run = async (): Promise<void> => {
+        // Autosave flush first so the mini opens on exactly what the tab showed (nothing lost).
+        await autosave.flush(id)
+        if (autosave.pending(id) !== undefined) {
+          notify("Couldn't save this note yet, so it stays here — try again in a moment")
+          return
+        }
+        const ok = opts?.tear ? await window.api.mini.tearOut(id) : await window.api.mini.open(id)
+        if (!ok) {
+          notify('Too many mini windows open — close one first')
+          return
+        }
+        if (opts?.tear) removeTab(id)
+      }
+      run().catch((err: unknown) => notify(`Mini window failed: ${String(err)}`))
     },
-    [notify]
+    [notify, removeTab, autosave]
   )
+  /** The global show/hide toggle (Settings → Mini Window), for the pop-out tooltips. */
+  const [miniShortcut, setMiniShortcut] = useState<string | null>(null)
+  useEffect(() => {
+    window.api.mini
+      ?.settings()
+      .then((st) => setMiniShortcut(st.settings.shortcut || null))
+      .catch(() => undefined)
+  }, [settingsOpen])
+  const popTitle = popOutTitle(miniShortcut, navigator.platform.toUpperCase().includes('MAC'))
 
   // ⌘⇧M pops the open note out to a mini window.
   useEffect(() => {
@@ -630,18 +672,21 @@ function Main(): React.JSX.Element {
     selectNote(id)
   }), [selectNote])
 
-  // Live sync: unsaved text typed in a mini shows up in this note's tab.
+  // Live sync: text typed in a mini shows up in this note's tab. The mini that typed it owns
+  // the save, so any older pending text of ours is dropped rather than written over it.
   useEffect(
     () =>
       window.api.mini?.onDraft(({ id, markdown }) => {
-        if (tabsRef.current.some((t) => t.id === id) || selRef.current?.id === id) handleDraft(id, markdown)
+        autosave.cancel(id)
+        if (tabsRef.current.some((t) => t.id === id) || selRef.current?.id === id) liftDraft(id, markdown)
       }),
-    [handleDraft]
+    [liftDraft, autosave]
   )
   // A mini saved: refresh the cached doc and drop the matching draft.
   useEffect(
     () =>
       window.api.mini?.onSaved((saved) => {
+        autosave.noteSaved(saved.id, saved.markdown)
         setDocsCache((prev) => (prev[saved.id] ? { ...prev, [saved.id]: saved } : prev))
         if (selRef.current?.id === saved.id) setDoc(saved)
         setDrafts((prev) => {
@@ -652,7 +697,7 @@ function Main(): React.JSX.Element {
         })
         refreshNotes()
       }),
-    [refreshNotes]
+    [refreshNotes, autosave]
   )
 
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
@@ -684,16 +729,15 @@ function Main(): React.JSX.Element {
   )
 
   // --- file CRUD ---------------------------------------------------------------
-  const guardDirty = (): boolean => {
-    if (dirtyCount > 0) {
-      notify(`Unsaved changes in ${dirtyCount} tab${dirtyCount === 1 ? '' : 's'} — save first`)
-      return true
-    }
-    return false
+  /** File ops act on disk: write pending text first so a rename/trash never strands an edit. */
+  const flushBeforeFileOp = (): void => {
+    void autosave.flushAll()
   }
 
   const doCreateFile = useCallback(
     (dirRel: string) => {
+      // New note: the one you were typing in is written before the new tab opens.
+      void autosave.flushAll()
       window.api.files
         .create(dirRel)
         .then((rel) => {
@@ -711,7 +755,7 @@ function Main(): React.JSX.Element {
         })
         .catch((err: unknown) => notify(`Create failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, selectNote]
+    [notify, refreshInbox, refreshProjects, selectNote, autosave]
   )
 
   const doCreateFolder = useCallback(() => {
@@ -736,7 +780,7 @@ function Main(): React.JSX.Element {
 
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
-      if (guardDirty()) return
+      flushBeforeFileOp()
       const current = rel.split('/').pop() ?? rel
       // Path of the open note before the rename (to follow it across).
       const openPath = sel?.origin === 'note'
@@ -798,7 +842,7 @@ function Main(): React.JSX.Element {
 
   const doTrash = useCallback(
     (rel: string, name: string) => {
-      if (guardDirty()) return
+      flushBeforeFileOp()
       setConfirm({
         title: `Delete ${name}?`,
         body: 'It moves to Trash for 7 days. Restore it any time from Settings › Trash.',
@@ -949,6 +993,7 @@ function Main(): React.JSX.Element {
   const pickScope = (s: Scope): void => {
     setScope(s)
     if (s === 'home') {
+      void autosave.flushAll()
       // Tabs stay open (Obsidian-style) — just park the active selection.
       setSel(null)
       setDoc(null)
@@ -1006,6 +1051,7 @@ function Main(): React.JSX.Element {
     { id: 'today', title: 'Open Today', section: 'Notes', keywords: ['daily', 'journal', 'day-log'], run: () => { leaveSettings(); void openToday() } },
     { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
       leaveSettings()
+      setSideCollapsed(false)
       setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
     } },
     { id: 'rename-note', title: 'Rename Note…', section: 'Notes', enabled: !!openPath, run: () => openPath && doRename(openPath, false) },
@@ -1022,12 +1068,14 @@ function Main(): React.JSX.Element {
     { id: 'go-home', title: 'Go to Home', section: 'Navigate', keywords: ['dashboard'], run: () => { leaveSettings(); pickScope('home') } },
     { id: 'go-notes', title: 'Go to Notes', section: 'Navigate', keywords: ['files', 'tree'], run: () => { leaveSettings(); pickScope('notes') } },
     { id: 'go-inbox', title: 'Go to Inbox', section: 'Navigate', keywords: ['captures', 'queue'], run: () => { leaveSettings(); pickScope('inbox') } },
-    { id: 'meetings', title: 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meetings', title: meetingLive ? 'Meetings (recording)' : 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meeting-record', title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…', section: 'Meetings', keywords: ['start', 'capture', 'transcribe', 'mic'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'meeting-close', title: 'Close Meetings', section: 'Meetings', enabled: showMeeting, keywords: ['back', 'exit'], run: () => setShowMeeting(false) },
     { id: 'ai-toggle-view', title: 'AI: Raw / Processed View', section: 'AI', accelerator: 'Shift+Alt+P', keywords: ['format', 'tidy', 'processed', 'raw', 'llm'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('toggle-view') } },
     { id: 'ai-process-note', title: 'AI: Process Note', section: 'AI', keywords: ['format', 'tidy', 'summarise', 'summarize', 'checklist', 'typos'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-note') } },
     { id: 'ai-process-selection', title: 'AI: Process Selection…', section: 'AI', accelerator: 'Shift+Alt+S', keywords: ['format', 'rewrite', 'fix', 'selected'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-selection') } },
     { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
-    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
+    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
     { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
     { id: 'close-other-tabs', title: 'Close Other Tabs', section: 'Tabs', enabled: !!activeTab && tabs.length > 1, run: () => activeTab && closeOthers(activeTab.id) },
     { id: 'pin-tab', title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && togglePin(activeTab.id) },
@@ -1096,7 +1144,7 @@ function Main(): React.JSX.Element {
   return (
     <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
       {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
-      <aside className="sidebar core">
+      <aside className="sidebar core" inert={sideCollapsed} aria-hidden={sideCollapsed || undefined}>
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
           {/* Psst: triple-click the logo (views/easter-egg). */}
@@ -1111,6 +1159,16 @@ function Main(): React.JSX.Element {
               {profile.badge}
             </span>
           )}
+          <span className="flex-sp" />
+          <button
+            className="side-toggle"
+            onClick={() => setSideCollapsed(true)}
+            title={`Collapse sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+            aria-label="Collapse sidebar"
+            aria-expanded
+          >
+            «
+          </button>
         </div>
 
         <input
@@ -1137,6 +1195,31 @@ function Main(): React.JSX.Element {
               {s === 'inbox' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
             </button>
           ))}
+        </div>
+
+        {/* Day-log + meetings live here (not above the note) so the doc gets the full pane. */}
+        <div className="side-actions" role="toolbar" aria-label="Quick actions">
+          <button
+            className="side-action"
+            title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`}
+            onClick={() => {
+              leaveSettings()
+              void openToday()
+            }}
+          >
+            <span aria-hidden>☀</span> Today
+          </button>
+          <button
+            className={`side-action${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
+            title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
+            aria-pressed={showMeeting && !settingsOpen}
+            onClick={() => {
+              leaveSettings()
+              setShowMeeting(true)
+            }}
+          >
+            <span aria-hidden>{meetingLive ? '●' : '🎙'}</span> {meetingLive ? 'Recording' : 'Meetings'}
+          </button>
         </div>
 
         {scope === 'inbox' ? (
@@ -1226,6 +1309,28 @@ function Main(): React.JSX.Element {
 
       {/* Center: home dashboard, note stage, or full-page settings. */}
       <div className="content inkfish center">
+        {/* Window drag strip along the top; while collapsed it also carries the expand button
+            (clear of the macOS traffic lights) and the live-recording chip. */}
+        <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
+          {sideCollapsed && (
+            <>
+              <button
+                className="side-toggle"
+                onClick={() => setSideCollapsed(false)}
+                title={`Expand sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+                aria-label="Expand sidebar"
+                aria-expanded={false}
+              >
+                »
+              </button>
+              {meetingLive && !showMeeting && (
+                <button className="side-toggle rail-chip rec-live" onClick={() => { leaveSettings(); setShowMeeting(true) }} title="Meeting recording — open it">
+                  ● Recording
+                </button>
+              )}
+            </>
+          )}
+        </div>
         {settingsOpen ? (
           <main className="view-scroll" aria-label="Settings">
             <SettingsView
@@ -1260,29 +1365,6 @@ function Main(): React.JSX.Element {
           </main>
         ) : showMeeting ? null : (
           <>
-            <header className="topbar">
-              <button
-                className="side-toggle"
-                onClick={() => setSideCollapsed((v) => !v)}
-                title={sideCollapsed ? 'Expand sidebar (⌘\\)' : 'Collapse sidebar (⌘\\)'}
-                aria-label={sideCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-expanded={!sideCollapsed}
-              >
-                {sideCollapsed ? '»' : '«'}
-              </button>
-              <button className="btn ghost sm" title={captureKey ? `Quick capture (${captureKey})` : 'Quick capture'}
-                onClick={() => notify(captureKey ? `Hit ${captureKey} anywhere to capture` : 'Capture from the menu bar icon')}>
-                ✒ Capture
-              </button>
-              <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
-                {meetingLive ? '● Recording' : '🎙 Meetings'}
-              </button>
-              <button className="btn ghost sm" title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`} onClick={() => void openToday()}>
-                ☀ Today
-              </button>
-              <span className="flex-sp" />
-              {dirty && <span className="pill dirty-static">unsaved</span>}
-            </header>
 
             {scope === 'home' ? (
               <main className="view-scroll" aria-label="Home">
@@ -1310,7 +1392,6 @@ function Main(): React.JSX.Element {
                 <TabBar
                   tabs={tabs}
                   activeId={sel?.origin === 'note' ? sel.id : null}
-                  drafts={drafts}
                   allNotes={allNotes}
                   titles={titles}
                   titleOf={titleOf}
@@ -1319,6 +1400,9 @@ function Main(): React.JSX.Element {
                   onTogglePin={togglePin}
                   onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
                   onNew={() => doCreateFile(targetDir)}
+                  onPopOut={(id) => popOut(id)}
+                  onTearOut={(id) => popOut(id, { tear: true })}
+                  popTitle={popTitle}
                 />
                 {sel?.origin === 'inbox' && activeItem && (
                   <InboxBar
@@ -1335,15 +1419,15 @@ function Main(): React.JSX.Element {
                 <NoteEditor
                   doc={doc}
                   title={doc ? titleOf(doc) : ''}
-                  dirty={dirty}
-                  draft={sel ? drafts[sel.id] : undefined}
+                  draft={draftForEditor(doc, drafts)}
                   onDraft={handleDraft}
-                  onDirty={() => undefined}
-                  onSave={saveDoc}
+                  onFlush={() => void flushAll()}
                   onRename={(t) => {
                     if (doc) renameNote(doc.id, t)
                   }}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
+                  onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
+                  popOutTitle={popTitle}
                 />
               </main>
             )}
@@ -1427,14 +1511,13 @@ function Main(): React.JSX.Element {
   )
 }
 
-/** Obsidian-style tab strip: pinned files stay, × closes, right-click for more. */
+/** Obsidian-style tab strip: pinned files stay, × closes, right-click for more, drag out → mini window. */
 function TabBar({
-  tabs, activeId, drafts, allNotes, titles, titleOf,
-  onActivate, onClose, onTogglePin, onMenu, onNew
+  tabs, activeId, allNotes, titles, titleOf,
+  onActivate, onClose, onTogglePin, onMenu, onNew, onPopOut, onTearOut, popTitle
 }: {
   tabs: Tab[]
   activeId: string | null
-  drafts: Record<string, string>
   allNotes: NoteEntry[]
   titles: Record<string, string>
   titleOf: (e: { id: string; path: string; title: string }) => string
@@ -1443,26 +1526,48 @@ function TabBar({
   onTogglePin: (id: string) => void
   onMenu: (id: string, x: number, y: number) => void
   onNew: () => void
+  onPopOut: (id: string) => void
+  onTearOut: (id: string) => void
+  popTitle: string
 }): React.JSX.Element {
+  const barRef = useRef<HTMLDivElement>(null)
+  /** A press on a tab that may become a tear-off drag (pointer captured, so it tracks outside the window). */
+  const dragRef = useRef<{ id: string; pointerId: number; start: { x: number; y: number }; moved: boolean } | null>(null)
+  /** Swallow the click that follows a drag. */
+  const suppressClick = useRef(false)
+  const [tearing, setTearing] = useState<{ id: string; x: number; y: number; label: string } | null>(null)
   const byId = new Map(allNotes.map((n) => [n.id, n]))
   const ordered = [...tabs].sort((a, b) => Number(b.pinned) - Number(a.pinned))
   if (ordered.length === 0) return <div className="tabbar empty" aria-hidden />
+
+  const phaseAt = (x: number, y: number): ReturnType<typeof tabDragPhase> => {
+    const d = dragRef.current
+    const r = barRef.current?.getBoundingClientRect()
+    if (!d || !r) return 'press'
+    return tabDragPhase(d.start, { x, y }, r, { width: window.innerWidth, height: window.innerHeight })
+  }
+
   return (
-    <div className="tabbar" role="tablist" aria-label="Open notes">
+    <div className="tabbar" role="tablist" aria-label="Open notes" ref={barRef}>
       {ordered.map((t) => {
         const entry = byId.get(t.id)
         const label = titleOf({ id: t.id, path: entry?.path ?? t.path, title: entry?.title ?? '' })
         const isActive = t.id === activeId
-        const isDirty = drafts[t.id] !== undefined
         return (
           <div
             key={t.id}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
-            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${isDirty ? ' dirty' : ''}`}
-            title={`${entry?.path ?? t.path}${isDirty ? ' • unsaved' : ''}`}
-            onClick={() => onActivate(t.id)}
+            className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${tearing?.id === t.id ? ' tearing' : ''}`}
+            title={`${entry?.path ?? t.path}\nDrag out of the tab bar to pop into a mini window`}
+            onClick={() => {
+              if (suppressClick.current) {
+                suppressClick.current = false
+                return
+              }
+              onActivate(t.id)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onActivate(t.id)
             }}
@@ -1475,6 +1580,38 @@ function TabBar({
                 e.preventDefault()
                 onClose(t.id)
               }
+            }}
+            onPointerDown={(e) => {
+              if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
+              dragRef.current = { id: t.id, pointerId: e.pointerId, start: { x: e.clientX, y: e.clientY }, moved: false }
+              suppressClick.current = false
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId)
+              } catch {
+                // no capture: the drag just ends at the window edge
+              }
+            }}
+            onPointerMove={(e) => {
+              const d = dragRef.current
+              if (!d || d.pointerId !== e.pointerId) return
+              const phase = phaseAt(e.clientX, e.clientY)
+              if (phase !== 'press') d.moved = true
+              if (phase === 'tear') setTearing({ id: t.id, x: e.clientX, y: e.clientY, label })
+              else setTearing((prev) => (prev ? null : prev))
+            }}
+            onPointerUp={(e) => {
+              const d = dragRef.current
+              if (!d || d.pointerId !== e.pointerId) return
+              const phase = phaseAt(e.clientX, e.clientY)
+              dragRef.current = null
+              setTearing(null)
+              if (!d.moved) return
+              suppressClick.current = true
+              if (phase === 'tear') onTearOut(d.id)
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null
+              setTearing(null)
             }}
           >
             {t.pinned && (
@@ -1493,7 +1630,17 @@ function TabBar({
               </button>
             )}
             <span className="tab-label">{label}</span>
-            {isDirty && <span className="tab-dot" aria-label="Unsaved changes" />}
+            <button
+              className="tab-pop"
+              title={popTitle}
+              aria-label={`Pop ${label} out to a mini window`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPopOut(t.id)
+              }}
+            >
+              <PopOutIcon />
+            </button>
             <button
               className="tab-x"
               title="Close tab"
@@ -1511,6 +1658,13 @@ function TabBar({
       <button className="tab-new" onClick={onNew} title="New note" aria-label="New note">
         +
       </button>
+      {tearing && (
+        <div className="tab-tear-ghost glass" style={{ left: tearing.x + 12, top: tearing.y + 10 }} aria-hidden>
+          <PopOutIcon />
+          <span>{tearing.label}</span>
+          <span className="muted">→ mini window</span>
+        </div>
+      )}
     </div>
   )
 }
