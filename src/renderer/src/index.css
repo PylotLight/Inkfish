@@ -5191,3 +5191,250 @@ input[type='password'].text-input {
 .ed-src .lp-img-selected.lp-img-resizing img {
   outline-color: transparent;
 }
+
+/* ---------- Inkfish: tree drag & drop ---------- */
+
+.frow[draggable='true'],
+.filerow[draggable='true'] {
+  -webkit-user-drag: element;
+}
+
+/* Target folder: its whole subtree area tints (Obsidian-style), row gets an accent ring. */
+.fnode.drop-into {
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.fnode.drop-into > .frow {
+  color: var(--text);
+}
+.fnode.drop-into > .frow .fcount {
+  opacity: 0.9;
+}
+
+/* While dragging, rows don't flash hover backgrounds under the pointer. */
+.ftree.dragging .frow:hover,
+.ftree.dragging .filerow:hover {
+  background: transparent;
+}
+.ftree.dragging .fnode.drop-into > .frow:hover {
+  background: transparent;
+}
+
+.ftree-root-drop {
+  margin-top: 6px;
+  padding: 10px 8px;
+  border: 1px dashed var(--guide);
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.ftree.drop-root .ftree-root-drop {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+/* ---------- Inkfish: note header breadcrumb + tags ---------- */
+
+.ed-crumbs-row {
+  flex: 1 0 100%;
+  display: flex;
+  margin: -2px 0 -4px;
+}
+.ed-crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ed-crumbs:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+.ed-crumbs .crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ed-crumbs .crumb-sep {
+  opacity: 0.55;
+  padding: 0 3px;
+}
+.ed-crumbs .crumb-caret {
+  font-size: 9px;
+  opacity: 0;
+  margin-left: 4px;
+  transition: opacity 0.12s ease;
+}
+.ed-crumbs:hover .crumb-caret,
+.ed-crumbs:focus-visible .crumb-caret {
+  opacity: 0.8;
+}
+
+.ed-tags {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  min-height: 22px;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--row-hover);
+  font-size: 12px;
+  overflow: hidden;
+}
+.tag-chip button {
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  cursor: pointer;
+  height: 100%;
+}
+.tag-chip-name {
+  padding: 0 4px 0 9px;
+}
+.tag-chip-name:hover {
+  color: var(--text);
+}
+.tag-chip-x {
+  padding: 0 8px 0 2px;
+  opacity: 0.45;
+  font-size: 13px;
+  line-height: 1;
+}
+.tag-chip-x:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+.tag-add {
+  height: 22px;
+  border: 1px dashed var(--guide);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 9px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.tag-add:hover {
+  color: var(--text);
+  opacity: 1;
+  border-color: var(--border);
+}
+.tag-input {
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 9px;
+  outline: none;
+  min-width: 60px;
+}
+.tag-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ---------- Inkfish: "Move to…" folder picker ---------- */
+
+.folder-picker {
+  gap: 4px;
+  max-height: 380px;
+}
+.folder-picker .fp-title {
+  padding: 4px 8px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-picker .fp-input {
+  margin: 2px 2px 4px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 10px;
+  outline: none;
+}
+.folder-picker .fp-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.folder-picker .fp-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+.folder-picker .fp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+}
+.folder-picker .fp-row svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.folder-picker .fp-row.hi {
+  background: var(--panel-strong);
+}
+.folder-picker .fp-row:hover {
+  background: var(--panel-strong);
+}
+.folder-picker .fp-row.off {
+  opacity: 0.45;
+  cursor: default;
+}
+.folder-picker .fp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-picker .fp-sub {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+.folder-picker .fp-empty {
+  padding: 8px 10px;
+  margin: 0;
+}

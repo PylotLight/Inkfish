@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { NoteEntry, NoteKind } from '../../../shared/types'
+import { canDropInto, dirOf, type MoveKind } from '../../../shared/note-move'
 import { fmtBytes, timeAgo } from '../text'
 import { Icon } from './icons'
 
@@ -157,6 +158,42 @@ interface Props {
   targetDir: string
   /** Optional row under the toolbar (kind filter chips). */
   filters?: ReactNode
+  /** Drag & drop: move a note/folder into `destDir` ('' = vault root). */
+  onMove?: (rel: string, kind: MoveKind, destDir: string) => void
+}
+
+/** Private drag payload type — external drags (Finder files) never look like a tree move. */
+export const TREE_DRAG_TYPE = 'application/x-inkfish-entry'
+/** Hovering a collapsed folder this long while dragging opens it (Obsidian ≈ 600ms). */
+export const DRAG_EXPAND_MS = 600
+/** Edge band (px) of the scrolling sidebar that auto-scrolls during a drag. */
+export const DRAG_SCROLL_EDGE = 36
+
+/** Auto-scroll step for a pointer at `y` inside [top, bottom]: negative = up, 0 = none. */
+export function dragScrollStep(y: number, top: number, bottom: number, edge = DRAG_SCROLL_EDGE): number {
+  if (bottom - top < edge * 3) return 0
+  if (y < top + edge) return -Math.ceil(((top + edge - y) / edge) * 14)
+  if (y > bottom - edge) return Math.ceil(((y - (bottom - edge)) / edge) * 14)
+  return 0
+}
+
+/** Drag & drop wiring handed down the tree. */
+interface Dnd {
+  /** Folder currently highlighted as the drop target (null = none, '' = vault root). */
+  dropDir: string | null
+  start: (e: DragEvent, rel: string, kind: MoveKind) => void
+  /** dragover on something whose drop target is `destDir`; `expand` opens a collapsed folder. */
+  over: (e: DragEvent, destDir: string, expand?: string) => void
+  drop: (e: DragEvent, destDir: string) => void
+  end: () => void
+}
+
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n
+  }
+  return null
 }
 
 /** Minimal stroke icons — used in search results only. The folder tree
@@ -202,10 +239,17 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
   notes, kind, titleOf, selectedId, selectedPath, results, revealDir,
-  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters
+  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const [sort, setSort] = useState<TreeSort>(loadSort)
+  // --- drag & drop (notes + folders onto folders / the vault root) ---------------------------
+  const treeRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ rel: string; kind: MoveKind } | null>(null)
+  const scrollRef = useRef<HTMLElement | null>(null)
+  const expandTimer = useRef<{ rel: string; t: number } | null>(null)
+  const [dropDir, setDropDir] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   const persist = (next: Set<string>): void => {
     try {
@@ -304,6 +348,92 @@ function FolderTree({
     </div>
   )
 
+  const clearExpand = (): void => {
+    if (expandTimer.current) window.clearTimeout(expandTimer.current.t)
+    expandTimer.current = null
+  }
+  const endDrag = (): void => {
+    dragRef.current = null
+    scrollRef.current = null
+    clearExpand()
+    setDropDir(null)
+    setDragging(false)
+  }
+  // Esc mid-drag: Chromium cancels the native drag and fires dragend (→ endDrag). Belt and braces
+  // for a cancelled drag that never reports back.
+  useEffect(() => {
+    if (!dragging) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') endDrag()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [dragging])
+
+  const dnd: Dnd | null = onMove
+    ? {
+        dropDir,
+        start: (e, rel, kind) => {
+          e.dataTransfer.setData(TREE_DRAG_TYPE, JSON.stringify({ rel, kind }))
+          e.dataTransfer.effectAllowed = 'move'
+          dragRef.current = { rel, kind }
+          scrollRef.current = scrollParent(treeRef.current)
+          // Defer the re-render: touching the DOM inside dragstart can abort the native drag.
+          window.setTimeout(() => {
+            if (dragRef.current) setDragging(true)
+          }, 0)
+        },
+        over: (e, destDir, expand) => {
+          const d = dragRef.current
+          if (!d) return // not ours (e.g. files from Finder)
+          e.stopPropagation()
+          if (!canDropInto(d.rel, d.kind, destDir)) {
+            e.dataTransfer.dropEffect = 'none'
+            clearExpand()
+            setDropDir((cur) => (cur === null ? cur : null))
+            return
+          }
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          setDropDir((cur) => (cur === destDir ? cur : destDir))
+          if (expand && collapsed.has(expand)) {
+            if (expandTimer.current?.rel !== expand) {
+              clearExpand()
+              const t = window.setTimeout(() => {
+                expandTimer.current = null
+                setCollapsed((prev) => {
+                  if (!prev.has(expand)) return prev
+                  const next = new Set(prev)
+                  next.delete(expand)
+                  persist(next)
+                  return next
+                })
+              }, DRAG_EXPAND_MS)
+              expandTimer.current = { rel: expand, t }
+            }
+          } else if (expandTimer.current && expandTimer.current.rel !== expand) clearExpand()
+        },
+        drop: (e, destDir) => {
+          const d = dragRef.current
+          if (!d) return
+          e.preventDefault()
+          e.stopPropagation()
+          endDrag()
+          if (canDropInto(d.rel, d.kind, destDir)) onMove?.(d.rel, d.kind, destDir)
+        },
+        end: endDrag
+      }
+    : null
+
+  /** Auto-scroll the sidebar while dragging near its top/bottom edge (capture: rows stop bubbling). */
+  const onDragScroll = (e: DragEvent): void => {
+    const el = scrollRef.current
+    if (!dragRef.current || !el) return
+    const r = el.getBoundingClientRect()
+    const step = dragScrollStep(e.clientY, r.top, r.bottom)
+    if (step) el.scrollTop += step
+  }
+
   const toggle = (rel: string): void => {
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -340,7 +470,17 @@ function FolderTree({
     <>
     {toolbar}
     {filters}
-    <div className="ftree" aria-label="Folders">
+    <div
+      ref={treeRef}
+      className={`ftree${dragging ? ' dragging' : ''}${dropDir === '' ? ' drop-root' : ''}`}
+      aria-label="Folders"
+      onDragOverCapture={onDragScroll}
+      onDragOver={dnd ? (e) => dnd.over(e, '') : undefined}
+      onDrop={dnd ? (e) => dnd.drop(e, '') : undefined}
+      onDragLeave={dnd ? (e) => {
+        if (!treeRef.current?.contains(e.relatedTarget as Node | null)) setDropDir(null)
+      } : undefined}
+    >
       {tree.roots.map((n) => (
         <Node
           key={n.rel}
@@ -352,6 +492,7 @@ function FolderTree({
           onPickDir={onPickDir}
           onOpenFile={onOpenFile}
           onMenu={onMenu}
+          dnd={dnd}
         />
       ))}
       {tree.rootFiles.map((n) => (
@@ -363,8 +504,14 @@ function FolderTree({
           bare
           onOpen={() => onOpenFile(n.id)}
           onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
+          dnd={dnd}
         />
       ))}
+      {dragging && (
+        <div className="ftree-root-drop" aria-hidden>
+          Drop here to move to the vault root
+        </div>
+      )}
       {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
         <p className="muted small pad">Nothing here yet — ⌥Space to capture.</p>
       )}
@@ -374,7 +521,7 @@ function FolderTree({
 }
 
 function Node({
-  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu
+  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu, dnd
 }: {
   node: TreeNode
   titleOf: (n: NoteEntry) => string
@@ -384,11 +531,23 @@ function Node({
   onPickDir: (rel: string) => void
   onOpenFile: (id: string) => void
   onMenu: (target: TreeTarget, x: number, y: number) => void
+  dnd: Dnd | null
 }): React.JSX.Element {
   const open = !collapsed.has(node.rel)
+  const isDrop = dnd?.dropDir === node.rel
   return (
-    <div className="fnode">
-      <div className={`frow${open ? ' open' : ''}`}>
+    <div
+      className={`fnode${isDrop ? ' drop-into' : ''}`}
+      onDragOver={dnd ? (e) => dnd.over(e, node.rel) : undefined}
+      onDrop={dnd ? (e) => dnd.drop(e, node.rel) : undefined}
+    >
+      <div
+        className={`frow${open ? ' open' : ''}`}
+        draggable={!!dnd}
+        onDragStart={dnd ? (e) => dnd.start(e, node.rel, 'dir') : undefined}
+        onDragEnd={dnd ? () => dnd.end() : undefined}
+        onDragOver={dnd ? (e) => dnd.over(e, node.rel, node.rel) : undefined}
+      >
         <button
           className="caret"
           onClick={() => onToggle(node.rel)}
@@ -426,6 +585,7 @@ function Node({
               onPickDir={onPickDir}
               onOpenFile={onOpenFile}
               onMenu={onMenu}
+              dnd={dnd}
             />
           ))}
           {node.files.map((f) => {
@@ -439,6 +599,7 @@ function Node({
                 bare
                 onOpen={() => onOpenFile(f.id)}
                 onMenu={(x, y) => onMenu({ kind: 'file', rel: f.path, id: f.id, name: t }, x, y)}
+                dnd={dnd}
               />
             )
           })}
@@ -449,7 +610,7 @@ function Node({
 }
 
 export function FileRow({
-  entry, title, selected, bare, onOpen, onMenu
+  entry, title, selected, bare, onOpen, onMenu, dnd
 }: {
   entry: NoteEntry
   title: string
@@ -458,6 +619,8 @@ export function FileRow({
   bare?: boolean
   onOpen: () => void
   onMenu: (x: number, y: number) => void
+  /** Tree rows only: drag to move; hovering a note targets its folder. */
+  dnd?: Dnd | null
 }): React.JSX.Element {
   const tip = `${entry.path}\n${entry.size > 0 ? `${fmtBytes(entry.size)} · ` : ''}edited ${timeAgo(entry.updatedAt)} · created ${new Date(entry.createdAt).toLocaleDateString()}`
   // Slim meta for search rows: parent folder + relative time.
@@ -467,6 +630,11 @@ export function FileRow({
     <button
       className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
       onClick={onOpen}
+      draggable={!!dnd}
+      onDragStart={dnd ? (e) => dnd.start(e, entry.path, 'file') : undefined}
+      onDragEnd={dnd ? () => dnd.end() : undefined}
+      onDragOver={dnd ? (e) => dnd.over(e, dirOf(entry.path)) : undefined}
+      onDrop={dnd ? (e) => dnd.drop(e, dirOf(entry.path)) : undefined}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(e.clientX, e.clientY)

@@ -53,3 +53,16 @@ describe('buildTree sort', () => {
     expect(allDirRels(buildTree(notes, titleOf)).sort()).toEqual(['Work', 'Work/deep', 'personal'])
   })
 })
+
+describe('drag auto-scroll', () => {
+  test('scrolls up near the top, down near the bottom, not in the middle', async () => {
+    const { dragScrollStep, DRAG_SCROLL_EDGE } = await import('./FolderTree')
+    expect(dragScrollStep(500, 0, 1000)).toBe(0)
+    expect(dragScrollStep(5, 0, 1000)).toBeLessThan(0)
+    expect(dragScrollStep(995, 0, 1000)).toBeGreaterThan(0)
+    // Closer to the edge scrolls faster.
+    expect(Math.abs(dragScrollStep(1, 0, 1000))).toBeGreaterThan(Math.abs(dragScrollStep(DRAG_SCROLL_EDGE - 4, 0, 1000)))
+    // Too short to have edges: never scroll.
+    expect(dragScrollStep(1, 0, 60)).toBe(0)
+  })
+})

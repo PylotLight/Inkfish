@@ -3,6 +3,9 @@ import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, sync
 import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
+import { moveEntry, type MoveEntryResult } from './move'
+import { remapMiniNotes } from './mini-window'
+import { setTags } from '../shared/tags'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import * as os from 'node:os'
@@ -501,6 +504,29 @@ export function registerIpc(): void {
     }
     return saved
   }
+  // Header tag chips: rewrite only the front matter `tags:` (body untouched), reindex, broadcast.
+  ipcMain.handle('notes:set-tags', (e: IpcMainInvokeEvent, id: unknown, tags: unknown): NoteDoc | null => {
+    if (typeof id !== 'string' || !Array.isArray(tags) || !vaultConfigured()) return null
+    const paths = requireNotes()
+    const doc = getNote(id, paths.root)
+    if (!doc) return null
+    const abs = resolveNoteAbs(doc.path, paths)
+    if (!existsSync(abs)) return null
+    const existing = readFileSync(abs, 'utf8')
+    const next = setTags(existing, tags.filter((t): t is string => typeof t === 'string'))
+    if (next !== existing) {
+      writeFileSync(abs, next, 'utf8')
+      removeNote(id)
+      indexFile(abs, doc.path)
+    }
+    const saved = getNote(id, paths.root) ?? getNote(doc.path, paths.root)
+    if (saved) {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed() && w.webContents !== e.sender) w.webContents.send('inkfish:note-saved', saved)
+      }
+    }
+    return saved
+  })
   ipcMain.handle('notes:save', (e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null =>
     saveNoteText(e.sender, id, markdown)
   )
@@ -548,6 +574,7 @@ export function registerIpc(): void {
     // Ids are paths — carry title overrides across (whole subtree for dirs).
     migrateTitles(rel, next)
     reindexVault(paths.root)
+    remapMiniNotes(rel, next)
     return next
   })
   ipcMain.handle('files:move', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): string => {
@@ -555,7 +582,27 @@ export function registerIpc(): void {
     const next = movePath(rel, destDirRel, paths)
     migrateTitles(rel, next)
     reindexVault(paths.root)
+    remapMiniNotes(rel, next)
     return next
+  })
+  // Sidebar drag & drop / folder picker: collision-safe move + relative link fix-ups.
+  ipcMain.handle('files:move-to', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): MoveEntryResult => {
+    if (typeof rel !== 'string' || typeof destDirRel !== 'string') throw new Error('bad move')
+    const paths = requireNotes()
+    const res = moveEntry(rel, destDirRel, paths)
+    if (res.rel === rel) return res
+    migrateTitles(rel, res.rel)
+    reindexVault(paths.root)
+    remapMiniNotes(rel, res.rel)
+    // Notes whose links changed: every window drops its cached copy for the new text.
+    for (const r of res.rewritten) {
+      const saved = getNote(r, paths.root)
+      if (!saved) continue
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('inkfish:note-saved', saved)
+      }
+    }
+    return res
   })
   ipcMain.handle('files:trash', (_e: IpcMainInvokeEvent, rel: string) => {
     const paths = requireNotes()

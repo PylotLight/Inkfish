@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, r
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
+import { uniqueName } from '../shared/note-move'
 
 /**
  * Vault writer (main process only). Plain `.md` files are the source of
@@ -289,8 +290,13 @@ export function renamePath(rel: string, newName: string, paths: VaultPaths = vau
   return relative(paths.root, dest)
 }
 
+export interface MoveOptions {
+  /** Name already taken in the destination: throw (default) or pick `Name 2.md`. */
+  onConflict?: 'error' | 'rename'
+}
+
 /** Move a file or dir into another folder ('' = root). Returns new vaultRel. */
-export function movePath(rel: string, destDirRel: string, paths: VaultPaths = vaultPaths()): string {
+export function movePath(rel: string, destDirRel: string, paths: VaultPaths = vaultPaths(), opts: MoveOptions = {}): string {
   const abs = join(paths.root, rel)
   assertInside(paths.root, abs, rel)
   if (!existsSync(abs)) throw new Error(`${rel} not found`)
@@ -298,10 +304,16 @@ export function movePath(rel: string, destDirRel: string, paths: VaultPaths = va
   const destDir = join(paths.root, resolved)
   if (resolved) assertInside(paths.root, destDir, resolved)
   if (destDir === abs || destDir.startsWith(`${abs}/`)) throw new Error('cannot move a folder into itself')
+  if (dirname(abs) === destDir) return rel
   mkdirSync(destDir, { recursive: true })
-  const dest = join(destDir, basename(abs))
-  if (dest === abs) return rel
-  if (existsSync(dest)) throw new Error(`${basename(abs)} already exists in ${resolved || '/'}`)
+  let name = basename(abs)
+  // Case-insensitive like APFS, so Linux/Android never end up with `Note.md` + `note.md`.
+  const taken = new Set(readdirSync(destDir).map(foldName))
+  if (taken.has(foldName(name))) {
+    if (opts.onConflict !== 'rename') throw new Error(`${name} already exists in ${resolved || '/'}`)
+    name = uniqueName(name, (n) => taken.has(foldName(n)), statSync(abs).isDirectory())
+  }
+  const dest = join(destDir, name)
   renameSync(abs, dest)
   return relative(paths.root, dest)
 }

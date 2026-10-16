@@ -15,6 +15,8 @@ import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
 import { listKeys, livePreview } from '../livePreview'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
 import NoteAi from './NoteAi'
+import TagChips from './TagChips'
+import { breadcrumb } from '../../../shared/note-move'
 import { sendAiCommand } from '../nativeAi'
 
 /** Marks edits that came from another window (mini window sync) — never re-broadcast. */
@@ -83,6 +85,13 @@ interface Props {
   onPopOut?: () => void
   /** Its tooltip (with the user's shortcuts). */
   popOutTitle?: string
+  /** Header breadcrumb click → "Move to…" folder picker anchored at (x, y). Vault notes only. */
+  onMoveClick?: (x: number, y: number) => void
+  /** Header tag chips → front matter `tags:`. Vault notes only. */
+  onSetTags?: (tags: string[]) => void
+  onTagClick?: (tag: string) => void
+  /** Every tag in the vault (chip input autocomplete). */
+  allTags?: readonly string[]
 }
 
 /**
@@ -94,7 +103,7 @@ interface Props {
  * (sidebar, lists, queue). Edits are ALSO lifted via `onDraft`, where the
  * parent autosaves them (Obsidian-style: no Save button, nothing "unsaved").
  */
-function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, compact, onPopOut, popOutTitle }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -353,6 +362,31 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
       }}
     >
       {!compact && <div className="ed-head">
+        {onMoveClick && (
+          <div className="ed-crumbs-row">
+          <button
+            className="ed-crumbs"
+            title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} — click to move`}
+            aria-label="Note folder — move to another folder"
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              onMoveClick(r.left, r.bottom + 6)
+            }}
+          >
+            {breadcrumb(doc.path).length === 0 ? (
+              <span className="crumb root">Vault root</span>
+            ) : (
+              breadcrumb(doc.path).map((c, i) => (
+                <span key={c.rel} className="crumb">
+                  {i > 0 && <span className="crumb-sep" aria-hidden>›</span>}
+                  {c.name}
+                </span>
+              ))
+            )}
+            <span className="crumb-caret" aria-hidden>▾</span>
+          </button>
+          </div>
+        )}
         <div className="ed-title">
           {renaming ? (
             <input
@@ -434,8 +468,9 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
         >
           {doc.path} · {draft !== undefined ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
           edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-          {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+          {!onSetTags && <>{' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}</>}
         </p>
+        {onSetTags && <TagChips tags={doc.tags} allTags={allTags} onChange={onSetTags} onTagClick={onTagClick} />}
       </div>}
       {findOpen && (
         <div className="find-bar" role="search" aria-label="Find in note">
