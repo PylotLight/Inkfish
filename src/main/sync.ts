@@ -26,12 +26,12 @@ import {
   toBase64,
   type Entry,
   type Manifest,
-  type PeerRecord,
   type PendingPair,
   type SyncFs,
   type SyncLogEntry
 } from '../shared/sync'
 import { indexFile } from './db'
+import { migratePeers, openPeer, sealPeer, type StoredPeer } from './peer-keys'
 import { profile } from './profile'
 import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
 
@@ -64,7 +64,7 @@ interface Stored {
   deviceName: string
   port: number
   /** key field holds safeStorage-encrypted base64 when `enc` is true */
-  peers: Array<PeerRecord & { enc?: boolean }>
+  peers: StoredPeer[]
 }
 
 let server: Server | null = null
@@ -112,9 +112,14 @@ function save(): void {
   renameSync(tmp, p)
 }
 
-function peerKey(p: PeerRecord & { enc?: boolean }): string {
-  if (!p.enc) return p.key
-  return safeStorage.decryptString(Buffer.from(p.key, 'base64'))
+let migrated = false
+/** Once per launch: re-seal any stored peer keys the async safeStorage flags for re-encryption. */
+function migratePeerKeys(): void {
+  if (migrated) return
+  migrated = true
+  void migratePeers(safeStorage, load().peers, save).catch((err: unknown) => {
+    console.warn('[sync] peer key migration failed', err instanceof Error ? err.message : String(err))
+  })
 }
 
 function hosts(): string[] {
@@ -309,21 +314,21 @@ const handler = createHandler({
   },
   fs: macFs,
   random: (n) => new Uint8Array(randomBytes(n)),
-  getPeer: (id) => {
+  getPeer: async (id) => {
     const p = load().peers.find((x) => x.id === id)
     if (!p) return null
     try {
-      return { ...p, key: peerKey(p) }
+      const key = await openPeer(safeStorage, p, save)
+      return { ...p, key }
     } catch {
       return null
     }
   },
   pending: () => pending,
-  addPeer: (p) => {
+  addPeer: async (p) => {
+    const sealed = await sealPeer(safeStorage, p)
     const s = load()
-    const enc = safeStorage.isEncryptionAvailable()
-    const key = enc ? safeStorage.encryptString(p.key).toString('base64') : p.key
-    s.peers = [...s.peers.filter((x) => x.id !== p.id), { ...p, key, enc }]
+    s.peers = [...s.peers.filter((x) => x.id !== p.id), sealed]
     save()
     pending = null
     pendingQr = null
@@ -380,6 +385,7 @@ const handler = createHandler({
 export function startSync(): void {
   if (server || !vaultConfigured()) return
   const s = load()
+  migratePeerKeys()
   const srv = createServer((req, res) => {
     const chunks: Buffer[] = []
     let size = 0
