@@ -3826,6 +3826,71 @@ html[data-density='compact'] .note-stage {
 .meet-ch.off {
   opacity: 0.5;
 }
+/* System audio source picker (macOS 14.2+: tap only the meeting app) */
+.meet-src {
+  margin-top: 8px;
+}
+.meet-src-head {
+  gap: 8px;
+  align-items: center;
+}
+.meet-src-btn {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meet-src-list {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.meet-src-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.meet-src-row.sub {
+  padding-left: 22px;
+}
+.meet-src-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meet-src-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.meet-src-icon.blank {
+  border-radius: 4px;
+  background: var(--border);
+}
+.meet-src-tag {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  flex: none;
+}
+.meet-src-tag.on {
+  color: var(--mint);
+  border-color: var(--mint);
+}
+.meet-src-sep {
+  margin: 8px 0 2px;
+}
+.meet-src-foot {
+  margin: 6px 0 0;
+}
 @keyframes meetPulse {
   50% {
     opacity: 0.35;
