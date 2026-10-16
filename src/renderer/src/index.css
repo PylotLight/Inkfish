@@ -170,11 +170,6 @@ code {
 
 .side-foot {
   margin-top: auto;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   -webkit-app-region: no-drag;
 }
 
@@ -3040,70 +3035,113 @@ input.side-search:focus {
   font-weight: 700;
 }
 
-/* ---------- Inkfish: sidebar footer (settings + quit, cf. Blobfish) ---------- */
-
-.side-foot-row {
+/* ---------- Inkfish: sidebar footer — Obsidian-style bottom vault bar ----------
+   One 38px row (shared/sidebar.ts SIDE_FOOT_HEIGHT): vault chip on the left, equal 28px icon
+   buttons on the right. The chip's folder icon centres on the tree's chevron column (row pad 2px
+   + 18px caret → x≈11) so the footer lines up with the tree above. Weights stay regular; tints
+   come from --text/--muted so dark + paper themes both read. Hidden with the sidebar when
+   collapsed — the ribbon carries Settings there (Quit stays in the palette / ⌘Q). */
+.sidebar.core .side-foot {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 38px;
+  margin-top: auto;
+  padding: 0;
+  border-top: 1px solid var(--guide);
 }
 
-.settings-btn {
-  flex: none;
-  height: 30px;
+.vault-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: transparent;
+  padding: 0 8px 0 4px;
   border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
-  border-radius: 7px;
-  padding: 0 8px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12.5px;
+  font-weight: 400;
   cursor: pointer;
   transition:
-    background 0.14s ease,
-    color 0.14s ease;
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.side-foot .status-sub {
-  flex: 1;
+.vault-chip svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+.vault-chip .vault-name {
   min-width: 0;
-  text-align: right;
-  font-size: 11.5px;
-  opacity: 0.7;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.settings-btn:hover {
+.vault-chip:hover {
   background: var(--row-hover);
   color: var(--text);
 }
 
-.quit-btn {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
+.foot-actions {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.foot-btn {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: none;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  border-radius: 7px;
   cursor: pointer;
   transition:
-    color 0.14s ease,
-    background 0.14s ease;
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.quit-btn:hover {
-  color: var(--danger);
+.foot-btn:hover {
   background: var(--row-hover);
+  color: var(--text);
+}
+
+.foot-btn.quit:hover {
+  color: var(--danger);
+}
+
+.vault-chip:focus-visible,
+.foot-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #4fd1a5) 60%, transparent);
+  outline-offset: -2px;
+}
+
+/* Update badge: small dot tucked on the gear's corner instead of widening the row. */
+.foot-btn .update-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--accent, #4fd1a5);
 }
 
 /* Slim icon toolbar above the tree (Obsidian-style). */
@@ -4651,7 +4689,6 @@ body.lp-img-resizing-any * {
   line-height: 1.5;
   color: var(--muted);
 }
-.settings-btn .update-dot,
 .settings-nav-item .update-dot {
   width: 7px;
   height: 7px;

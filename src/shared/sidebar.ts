@@ -61,3 +61,25 @@ export function isSidebarToggleKey(e: ToggleKeyEvent): boolean {
   if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.repeat) return false
   return e.key === '\\' || e.code === 'Backslash'
 }
+
+/** Height of the sidebar footer row (vault chip + Settings/Quit), Obsidian's bottom vault bar. */
+export const SIDE_FOOT_HEIGHT = 38
+
+/**
+ * Footer vault chip label: the vault folder's own name. Handles POSIX + Windows separators and
+ * trailing slashes; falls back to the whole path, then '…' while the vault is still loading.
+ */
+export function vaultLabel(root: string | null | undefined): string {
+  if (!root) return '…'
+  const trimmed = root.replace(/[\\/]+$/, '')
+  if (!trimmed) return root
+  return trimmed.split(/[\\/]/).pop() || trimmed
+}
+
+/** Chip tooltip: full path on top, app version underneath (version lives here + Settings › About). */
+export function vaultTooltip(root: string | null | undefined, version?: string | null): string {
+  const lines = [root || 'Vault loading…']
+  if (root) lines.push('Click to open the vault folder')
+  if (version) lines.push(`Inkfish v${version}`)
+  return lines.join('\n')
+}
