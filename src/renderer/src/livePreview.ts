@@ -1,9 +1,19 @@
-import { RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state'
+import { RangeSetBuilder, type EditorState, type Extension, type TransactionSpec } from '@codemirror/state'
 import { indentLess, indentMore } from '@codemirror/commands'
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 import type { DecorationSet, KeyBinding, ViewUpdate } from '@codemirror/view'
 import { findImages, imageCandidates, isBlockImage } from '../../shared/images'
-import { imageRefNear, MIN_IMAGE_WIDTH, moveImageSpec, resizeImageSpec } from './imageEdit'
+import {
+  beginImageGestureSpec,
+  endImageGestureSpec,
+  imageGestureField,
+  imageRefNear,
+  imageSourceRevealed,
+  MIN_IMAGE_WIDTH,
+  moveImageSpec,
+  resizeImageSpec,
+  setImageGesture
+} from './imageEdit'
 
 /**
  * Obsidian-style live preview for one continuous CodeMirror document: the
@@ -100,6 +110,31 @@ class TaskBulletWidget extends WidgetType {
 /** Pixel offset a press must travel before it becomes a move-drag (not a click). */
 const DRAG_SLOP = 5
 
+/** Resize/move gestures in flight (any editor): image widgets swallow all events meanwhile. */
+let activeGestures = 0
+
+/** Stop the browser's native text selection for a press we own (pointerdown preventDefault doesn't). */
+const noSelect = (e: Event): void => e.preventDefault()
+
+/** Freeze the ref's rendering + selection for a gesture; returns the matching end. */
+function beginGesture(
+  view: EditorView,
+  r: { from: number; to: number } | null
+): (spec?: TransactionSpec | null, keepSelection?: boolean) => void {
+  activeGestures++
+  document.addEventListener('selectstart', noSelect, true)
+  if (r) view.dispatch(beginImageGestureSpec(view.state, r))
+  let ended = false
+  return (spec, keepSelection = false) => {
+    if (ended) return
+    ended = true
+    activeGestures = Math.max(0, activeGestures - 1)
+    document.removeEventListener('selectstart', noSelect, true)
+    if (r) view.dispatch(endImageGestureSpec(view.state, spec ?? null, keepSelection))
+    else if (spec) view.dispatch(spec)
+  }
+}
+
 /**
  * Rendered `![alt](src)` / `![alt|300](src)`: tries each candidate URL, then a
  * "missing" chip. In an editable view it also carries:
@@ -135,6 +170,9 @@ export class ImageWidget extends WidgetType {
     return 160
   }
   override ignoreEvent(e: Event): boolean {
+    // Mid resize/move: nothing on the image may move the caret (that would
+    // reveal the ref's source under the pointer).
+    if (activeGestures > 0) return true
     const t = e.target instanceof Element ? e.target : null
     // Handles are entirely ours.
     if (t?.closest('.lp-img-handle')) return true
@@ -210,6 +248,11 @@ export class ImageWidget extends WidgetType {
     }
     for (const h of [corner, side]) {
       h.addEventListener('pointerdown', (e) => this.startResize(view, wrap, img, badge, h, e, ref))
+      // Compat mousedown (if the platform still sends it) must not place the caret either.
+      h.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      })
       h.addEventListener('dblclick', (e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -254,6 +297,8 @@ export class ImageWidget extends WidgetType {
       // synthetic events in tests
     }
     wrap.classList.add('lp-img-resizing')
+    document.body.classList.add('lp-img-resizing-any')
+    const end = beginGesture(view, ref())
     const show = (): void => {
       badge.textContent = `${w}px`
     }
@@ -276,13 +321,14 @@ export class ImageWidget extends WidgetType {
       window.removeEventListener('blur', cancel)
       window.removeEventListener('keydown', key, true)
       wrap.classList.remove('lp-img-resizing')
+      document.body.classList.remove('lp-img-resizing-any')
       const r = commit && moved ? ref() : null
       const spec = r && resizeImageSpec(view.state, r.from, w)
-      if (spec) view.dispatch(spec)
-      else {
+      if (!spec) {
         img.style.width = prev.width
         img.style.maxHeight = prev.maxHeight
       }
+      end(spec)
     }
     const up = (ev: PointerEvent): void => {
       if (ev.pointerId === id) done(true)
@@ -315,6 +361,7 @@ export class ImageWidget extends WidgetType {
     let dragging = false
     let target: DropTarget | null = null
     let caret: HTMLElement | null = null
+    const end = beginGesture(view, ref())
     try {
       img.setPointerCapture(e.pointerId)
     } catch {
@@ -347,19 +394,18 @@ export class ImageWidget extends WidgetType {
       document.body.classList.remove('lp-img-moving')
       caret?.remove()
       const r = ref()
-      if (!r) return
+      if (!r) return end()
       if (!dragging) {
         // Plain click: caret onto the ref, revealing its source for editing.
-        if (!commit) return
+        if (!commit) return end()
         const at = ev ? view.posAtCoords({ x: ev.clientX, y: ev.clientY }) : null
         const pos = at !== null && at >= r.from && at <= r.to ? at : r.to
-        view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' })
+        end({ selection: { anchor: pos }, userEvent: 'select.pointer' }, true)
         view.focus()
         return
       }
-      if (!commit || !target) return
-      const spec = moveImageSpec(view.state, r.from, r.to, target.pos, target.place)
-      if (spec) view.dispatch(spec)
+      if (!commit || !target) return end()
+      end(moveImageSpec(view.state, r.from, r.to, target.pos, target.place))
       view.focus()
     }
     const up = (ev: PointerEvent): void => {
@@ -500,8 +546,6 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
   const doc = state.doc
   if (doc.length > MAX_DECORATED_CHARS) return Decoration.none
   const resolve = opts.resolveImage ?? ((src: string) => imageCandidates(src))
-  const ranges = state.selection.ranges
-  const touched = (from: number, to: number): boolean => ranges.some((r) => r.from <= to && r.to >= from)
   const ops: Op[] = []
   const hide = (from: number, to: number): void => {
     if (to > from) ops.push({ from, to, deco: Decoration.replace({}) })
@@ -633,7 +677,7 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       if (overlaps(claimed, sFrom, sTo)) continue
       claimed.push([sFrom, sTo])
       const widget = new ImageWidget(resolve(im.src), im.alt, im.src, im.width, im.height)
-      if (touched(sFrom, sTo)) {
+      if (imageSourceRevealed(state, sFrom, sTo)) {
         mark(sFrom, sTo, 'lp-imgsrc')
         ops.push({ from: sTo, to: sTo, deco: Decoration.widget({ widget, side: 1 }) })
       } else {
@@ -715,7 +759,7 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
 
 /** Live-preview decorations as a CodeMirror extension. */
 export function livePreview(opts: LivePreviewOptions): Extension {
-  return ViewPlugin.fromClass(
+  const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet
       hasImages: boolean
@@ -727,13 +771,15 @@ export function livePreview(opts: LivePreviewOptions): Extension {
         if (update.docChanged) this.hasImages = update.state.doc.toString().includes('![')
         // Selection matters only for revealing image source — skip the
         // rebuild on caret moves in notes without images.
-        if (update.docChanged || update.viewportChanged || (update.selectionSet && this.hasImages)) {
+        const gesture = update.transactions.some((tr) => tr.effects.some((e) => e.is(setImageGesture)))
+        if (update.docChanged || update.viewportChanged || gesture || (update.selectionSet && this.hasImages)) {
           this.decorations = buildDecorations(update.state, opts)
         }
       }
     },
     { decorations: (v) => v.decorations }
   )
+  return [imageGestureField, plugin]
 }
 
 /**

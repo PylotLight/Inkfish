@@ -4379,6 +4379,15 @@ body.lp-img-moving * {
   cursor: grabbing !important;
   user-select: none;
 }
+/* Mid-resize: no native text selection (it would drag the caret onto the ref). */
+body.lp-img-resizing-any,
+body.lp-img-resizing-any * {
+  user-select: none;
+}
+.ed-src .lp-img-handle,
+.ed-src .lp-img-edit img {
+  user-select: none;
+}
 .lp-img-drop {
   position: fixed;
   z-index: 95;
