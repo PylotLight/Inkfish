@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-10-16
+
+### Added
+
+- **(editor)** Resize + drag-to-move inline images (Obsidian ![alt|300](src) widths) (#61) ([8c813ad](https://github.com/PylotLight/Inkfish/commit/8c813add7ee547d294d0a963e718bd8ed14a238f))
+
+### Fixed
+
+- **(ai)** Readable provider errors (not kErrorUnknown) + OpenAI Responses API support (#62) ([2244b04](https://github.com/PylotLight/Inkfish/commit/2244b040d978a58ed21e2be0f9b46e270674feb3))
+
 ## [0.2.7] - 2026-10-16
 
 ### Added
@@ -201,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.8]: https://github.com/PylotLight/Inkfish/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/PylotLight/Inkfish/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/PylotLight/Inkfish/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/PylotLight/Inkfish/compare/v0.2.4...v0.2.5
