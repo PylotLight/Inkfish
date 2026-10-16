@@ -3,6 +3,7 @@ import { ACCENTS, DEFAULT_PREFS, NOTE_WIDTHS, THEMES, type DensityId, type Prefs
 import type { SysInfo, VaultInfo } from '../../../shared/types'
 import AudioSettings from './AudioSettings'
 import IntelligenceSettings from './IntelligenceSettings'
+import AiApiSettings from './AiApiSettings'
 import VoiceEngineSettings from './VoiceEngineSettings'
 import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
@@ -129,7 +130,7 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'mini-window' | 'about'
+type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
@@ -141,7 +142,8 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof
   { id: 'about', label: 'About & updates', icon: 'ⓘ', group: 'Configure' },
   { id: 'audio', label: 'Audio', icon: '♪', group: 'Voice' },
   { id: 'voice', label: 'Voice Engine', icon: '≋', group: 'Voice' },
-  { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' }
+  { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' },
+  { id: 'ai', label: 'AI provider', icon: '⌁', group: 'Intelligence' }
 ]
 
 /**
@@ -485,6 +487,7 @@ export default function SettingsView({
           {tab === 'voice' && <VoiceEngineSettings />}
 
           {tab === 'apple-intelligence' && <IntelligenceSettings />}
+          {tab === 'ai' && <AiApiSettings />}
 
           {tab === 'sync' && <SyncSettings />}
           {tab === 'trash' && <TrashSettings />}

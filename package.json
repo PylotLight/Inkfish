@@ -39,7 +39,8 @@
     "release": "bun scripts/release.ts",
     "postinstall": "install-electron",
     "stt:build": "bun scripts/build-stt.ts",
-    "bench:stt": "bun scripts/bench-stt.ts"
+    "bench:stt": "bun scripts/bench-stt.ts",
+    "test:electron-ai": "electron scripts/electron-ai-smoke.mjs"
   },
   "build": {
     "appId": "com.pylotlight.inkfish",

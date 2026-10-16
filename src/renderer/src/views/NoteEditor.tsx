@@ -13,6 +13,8 @@ import { minimalEdit } from '../../../shared/mini-window'
 import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
 import { listKeys, livePreview } from '../livePreview'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
+import NoteAi from './NoteAi'
+import { sendAiCommand } from '../nativeAi'
 
 /** Marks edits that came from another window (mini window sync) — never re-broadcast. */
 const remoteSync = Annotation.define<boolean>()
@@ -385,6 +387,14 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           >
             ⌕
           </button>
+          <button
+            className="btn ghost sm icon"
+            title="Raw / Processed view with AI (⇧⌥P)"
+            aria-label="Raw / Processed view"
+            onClick={() => sendAiCommand('toggle-view')}
+          >
+            ✦
+          </button>
           <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
             Reveal
           </button>
@@ -458,19 +468,22 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           </button>
         </div>
       )}
-      <div className="ed-live">
-        {cmFailed ? (
-          <textarea
-            className="ed-fallback"
-            value={text}
-            autoFocus
-            onChange={(e) => handleText(e.target.value)}
-            aria-label="Markdown source (fallback editor)"
-          />
-        ) : (
-          <div className="ed-src" ref={mountRef} aria-label="Note editor" />
-        )}
-      </div>
+      {/* AI: Raw / Processed view + Process selection (user-driven, see NoteAi). */}
+      <NoteAi viewRef={viewRef} doc={doc} text={text}>
+        <div className="ed-live">
+          {cmFailed ? (
+            <textarea
+              className="ed-fallback"
+              value={text}
+              autoFocus
+              onChange={(e) => handleText(e.target.value)}
+              aria-label="Markdown source (fallback editor)"
+            />
+          ) : (
+            <div className="ed-src" ref={mountRef} aria-label="Note editor" />
+          )}
+        </div>
+      </NoteAi>
     </div>
   )
 }

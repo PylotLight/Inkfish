@@ -109,7 +109,9 @@ export function createWindow(): BrowserWindow {
     webPreferences: {
       preload: resolvePreload(),
       sandbox: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // Prompt API (`LanguageModel`), answered by the local AI handler (src/main/ai-api.ts).
+      enableBlinkFeatures: 'AIPromptAPI'
     }
   })
 

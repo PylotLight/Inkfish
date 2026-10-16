@@ -4172,3 +4172,135 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   display: inline-block;
   margin-left: 4px;
 }
+
+/* --- AI: Raw / Processed view + Process selection (views/NoteAi.tsx) --------------------- */
+input[type='password'].text-input {
+  background: var(--inset);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.setting-row .row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+.ai-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.ed-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+.ed-body > .ed-live {
+  min-width: 0;
+}
+.ed-body.ai-processed > .ed-live {
+  display: none;
+}
+.ai-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  padding-left: 14px;
+}
+.ed-body.ai-processed > .ai-pane {
+  border-left: none;
+  padding-left: 0;
+}
+.ai-preview {
+  flex: 1;
+  min-height: 0;
+}
+.ai-empty {
+  margin: auto;
+  max-width: 34ch;
+  text-align: center;
+  line-height: 1.5;
+}
+.ai-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 8px;
+}
+.ai-bar .ai-seg {
+  margin-right: 4px;
+}
+.ai-bar select.ai-action,
+.ai-pop select.ai-action {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+.ai-bar .ai-instruction,
+.ai-pop .ai-instruction {
+  flex: 1 1 200px;
+  min-width: 140px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+.ai-stale {
+  color: var(--warn, #f5c36b);
+}
+.ai-error,
+.ai-warn {
+  margin: 0 0 8px;
+}
+.ai-flash {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  z-index: 5;
+}
+.ai-pop {
+  position: fixed;
+  z-index: 60;
+  width: 370px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  /* Opaque, no backdrop-filter: a blur over a live editor is costly to repaint. */
+  background: var(--bg, #14181d);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.ai-pop-head {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-pop-out {
+  margin: 0;
+  max-height: 34vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--text-font);
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--inset);
+}
+.ai-pop-actions {
+  gap: 6px;
+}
