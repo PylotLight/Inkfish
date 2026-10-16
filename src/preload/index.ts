@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
-import type { DiscoveryResult } from '../shared/ai-models'
+import type { AiErrorDetail } from '../shared/ai-errors'
+import type { AiApi, DiscoveryResult } from '../shared/ai-models'
 import type { ProcessedEntry } from '../shared/ai-process'
 import type { MenuBarSettings } from '../shared/menubar'
 import type { AppProfileInfo } from '../shared/profile'
@@ -276,7 +277,17 @@ const api = {
     setKey: (key: string): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:set-key', key),
     clearKey: (): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:clear-key'),
     /** Unsaved `patch` fields override the saved settings for this test only. */
-    test: (patch?: Partial<AiProviderSettings>): Promise<AiTestResult> => ipcRenderer.invoke('ai-api:test', patch),
+    /** `testModel` = model to test (default: active); `testApi` = force Chat Completions / Responses. */
+    test: (patch?: Partial<AiProviderSettings> & { testModel?: string; testApi?: AiApi }): Promise<AiTestResult> =>
+      ipcRenderer.invoke('ai-api:test', patch),
+    /** The local AI handler's last failed request newer than `since` (scrubbed), or null. */
+    lastError: (since?: number): Promise<AiErrorDetail | null> => ipcRenderer.invoke('ai-api:last-error', since),
+    /** Main changed the settings on its own (Auto learned a model's API): fresh status. */
+    onChanged: (cb: (s: AiApiStatus) => void): (() => void) => {
+      const fn = (_e: unknown, s: AiApiStatus): void => cb(s)
+      ipcRenderer.on('ai-api:changed', fn)
+      return () => ipcRenderer.removeListener('ai-api:changed', fn)
+    },
     /** Find models on the provider (main does the requests; the key never reaches the renderer). */
     discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> => ipcRenderer.invoke('ai-api:discover', patch),
     processedGet: (noteId: string): Promise<ProcessedEntry | null> => ipcRenderer.invoke('ai-api:processed-get', noteId),

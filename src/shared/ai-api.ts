@@ -12,7 +12,8 @@
  */
 
 import { AI_ACTIONS, type AiAction } from './ai-process'
-import { parseModels, untagImages, type AiModel } from './ai-models'
+import { AI_APIS, parseModels, untagImages, type AiApi, type AiModel } from './ai-models'
+import type { AiErrorDetail } from './ai-errors'
 
 export const AI_PROVIDER_KINDS = ['openai', 'anthropic'] as const
 export type AiProviderKind = (typeof AI_PROVIDER_KINDS)[number]
@@ -31,6 +32,11 @@ export interface AiProviderSettings {
   actionModels: Partial<Record<AiAction, string>>
   /** Send a note's images to vision models in Process actions. Off by default. */
   includeImages: boolean
+  /**
+   * OpenAI-compatible only: default API for models without their own setting. `auto` = Chat
+   * Completions, switching to Responses for models that need it (detected or learned).
+   */
+  api: AiApi
 }
 
 export const DEFAULT_BASE_URL: Record<AiProviderKind, string> = {
@@ -50,7 +56,8 @@ export const DEFAULT_AI_SETTINGS: AiProviderSettings = {
   model: DEFAULT_MODEL.openai,
   models: [{ id: DEFAULT_MODEL.openai }],
   actionModels: {},
-  includeImages: false
+  includeImages: false,
+  api: 'auto'
 }
 
 /** What the renderer sees: settings plus key presence. The key itself never leaves main. */
@@ -68,6 +75,11 @@ export interface AiTestResult {
   ms: number
   /** First characters of the reply, or the error message. Never contains the key. */
   detail: string
+  /** Model tested and the endpoint that answered (or failed). */
+  model?: string
+  endpoint?: string
+  /** Structured error (Copy details). */
+  error?: AiErrorDetail
 }
 
 /** http(s) on 127.0.0.1 / localhost / ::1 — a local server (Ollama, LM Studio) that may need no key. */
@@ -129,7 +141,8 @@ export function parseAiSettings(value: unknown, fallback: AiProviderSettings = D
     model,
     models,
     actionModels,
-    includeImages: typeof raw.includeImages === 'boolean' ? raw.includeImages : fallback.includeImages
+    includeImages: typeof raw.includeImages === 'boolean' ? raw.includeImages : fallback.includeImages,
+    api: AI_APIS.includes(raw.api as AiApi) ? (raw.api as AiApi) : (fallback.api ?? 'auto')
   }
 }
 

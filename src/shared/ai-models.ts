@@ -14,6 +14,16 @@
 export const MODALITIES = ['text', 'image', 'audio', 'video', 'pdf'] as const
 export type Modality = (typeof MODALITIES)[number]
 
+/**
+ * Which OpenAI-compatible endpoint a model is called on. `auto` = Chat Completions unless the model
+ * is known (discovery, or a previous responses-only error) to need the Responses API; an Auto request
+ * that fails with a "responses only" error is retried once on `/responses` and remembered.
+ */
+export const AI_APIS = ['auto', 'chat', 'responses'] as const
+export type AiApi = (typeof AI_APIS)[number]
+export type AiEndpoint = Exclude<AiApi, 'auto'>
+export const AI_API_LABEL: Record<AiApi, string> = { auto: 'Auto', chat: 'Chat Completions', responses: 'Responses' }
+
 /** What discovery can report for a model (and what the user can override). */
 export interface ModelMeta {
   name?: string
@@ -23,9 +33,11 @@ export interface ModelMeta {
   input?: Modality[]
   output?: Modality[]
   toolCalls?: boolean
+  /** The endpoint Auto uses: detected (LiteLLM `mode: "responses"`, `supported_endpoints`) or learned. */
+  endpoint?: AiEndpoint
 }
 
-export const META_FIELDS = ['name', 'contextWindow', 'maxOutputTokens', 'reasoningLevels', 'input', 'output', 'toolCalls'] as const
+export const META_FIELDS = ['name', 'contextWindow', 'maxOutputTokens', 'reasoningLevels', 'input', 'output', 'toolCalls', 'endpoint'] as const
 export type MetaField = (typeof META_FIELDS)[number]
 
 export interface AiModel extends ModelMeta {
@@ -33,6 +45,8 @@ export interface AiModel extends ModelMeta {
   id: string
   /** Reasoning level to send with requests; unset = send nothing (provider default). */
   reasoning?: string
+  /** API to call this model on; unset / `auto` = the provider's default (Settings › AI). */
+  api?: AiApi
   /** Last values discovery reported (internal). */
   detected?: ModelMeta
   /** Fields the user set by hand; Re-detect leaves them alone unless forced (internal). */
@@ -113,6 +127,7 @@ export function parseMeta(v: unknown): ModelMeta {
   const output = modalities(raw.output)
   if (output) meta.output = output
   if (typeof raw.toolCalls === 'boolean') meta.toolCalls = raw.toolCalls
+  if (raw.endpoint === 'chat' || raw.endpoint === 'responses') meta.endpoint = raw.endpoint
   return meta
 }
 
@@ -123,6 +138,7 @@ export function parseModel(v: unknown): AiModel | null {
   if (!id) return null
   const model: AiModel = { id, ...parseMeta(raw) }
   if (typeof raw.reasoning === 'string' && raw.reasoning.trim()) model.reasoning = raw.reasoning.trim().toLowerCase().slice(0, 32)
+  if (raw.api === 'chat' || raw.api === 'responses') model.api = raw.api
   if (raw.detected && typeof raw.detected === 'object') model.detected = parseMeta(raw.detected)
   if (Array.isArray(raw.edited)) {
     const edited = META_FIELDS.filter((f) => (raw.edited as unknown[]).includes(f))
@@ -198,6 +214,10 @@ export function editModel(model: AiModel, patch: Partial<AiModel>): AiModel {
     else delete next.reasoning
   }
   if (next.reasoning && !(next.reasoningLevels ?? []).includes(next.reasoning)) delete next.reasoning
+  if ('api' in patch) {
+    if (patch.api === 'chat' || patch.api === 'responses') next.api = patch.api
+    else delete next.api
+  }
   if (edited.size) next.edited = META_FIELDS.filter((f) => edited.has(f))
   else delete next.edited
   return next
@@ -245,6 +265,8 @@ export function modelSubtitle(m: ModelMeta): string {
   if (m.maxOutputTokens) parts.push(`Output ${formatTokens(m.maxOutputTokens)}`)
   const extra = (m.input ?? []).filter((x) => x !== 'text')
   if (extra.length) parts.push(extra.join(', '))
+  const api = (m as AiModel).api ?? m.endpoint
+  if (api === 'responses') parts.push('Responses API')
   return parts.join(' · ')
 }
 
@@ -302,13 +324,21 @@ export function inputBudget(m: ModelMeta | null | undefined, systemTokens: numbe
  */
 export interface RunOptions {
   model?: string
+  /**
+   * `inline`: report a failed request as a sentinel chunk (see shared/ai-errors.ts) instead of
+   * erroring the stream, because Electron reduces stream errors to a bare `kErrorUnknown`.
+   */
+  errors?: 'inline'
 }
 
 const RUN_TAG_RE = /^\[\[inkfish-run (\{[^\n]*\})\]\]\n?/
 
 export function tagSystemPrompt(system: string, run: RunOptions): string {
-  if (!run.model) return system
-  return `[[inkfish-run ${JSON.stringify({ model: run.model })}]]\n${system}`
+  if (!run.model && !run.errors) return system
+  const tag: RunOptions = {}
+  if (run.model) tag.model = run.model
+  if (run.errors) tag.errors = run.errors
+  return `[[inkfish-run ${JSON.stringify(tag)}]]\n${system}`
 }
 
 export function untagSystemPrompt(system: string): { system: string; run: RunOptions } {
@@ -316,8 +346,9 @@ export function untagSystemPrompt(system: string): { system: string; run: RunOpt
   if (!m) return { system, run: {} }
   let run: RunOptions = {}
   try {
-    const j = JSON.parse(m[1] ?? '{}') as { model?: unknown }
+    const j = JSON.parse(m[1] ?? '{}') as { model?: unknown; errors?: unknown }
     if (typeof j.model === 'string' && j.model) run = { model: j.model.slice(0, 200) }
+    if (j.errors === 'inline') run.errors = 'inline'
   } catch {
     // malformed tag: drop it, use the default model
   }
@@ -343,4 +374,27 @@ export function untagImages(text: string): { text: string; dataUrls: string[] } 
     return ''
   })
   return { text: out, dataUrls }
+}
+
+// --- which API a request uses ----------------------------------------------------------------
+
+/**
+ * The endpoint for a model: its own API setting, else the provider default; `auto` resolves to the
+ * detected/learned endpoint, else Chat Completions. `auto: true` allows the one-time fallback.
+ */
+export function resolveApi(m: AiModel | null | undefined, providerDefault: AiApi = 'auto'): { endpoint: AiEndpoint; auto: boolean } {
+  const mode: AiApi = m?.api && m.api !== 'auto' ? m.api : providerDefault
+  if (mode !== 'auto') return { endpoint: mode, auto: false }
+  return { endpoint: m?.endpoint ?? 'chat', auto: true }
+}
+
+/** Record a learned endpoint on a model in the list (not marked as a user edit). */
+export function learnEndpoint(list: AiModel[], id: string, endpoint: AiEndpoint): AiModel[] {
+  let found = false
+  const out = list.map((m) => {
+    if (m.id !== id) return m
+    found = true
+    return { ...m, endpoint }
+  })
+  return found ? out : [...out, { id, endpoint }]
 }

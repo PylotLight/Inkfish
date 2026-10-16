@@ -2,6 +2,14 @@ import { imagePart, resolveModel } from '../../shared/ai-api'
 import { supportsInput, tagImages, tagSystemPrompt } from '../../shared/ai-models'
 import { imageCandidates } from '../../shared/images'
 import { processText, type Complete, type ProcessInput, type ProcessResult } from '../../shared/ai-process'
+import {
+  errorDetailsText,
+  formatAiError,
+  isElectronUnknownError,
+  splitErrorSentinel,
+  visibleText,
+  type AiErrorDetail
+} from '../../shared/ai-errors'
 
 /**
  * The renderer side of Electron 45's native AI integration: the standard Prompt API
@@ -60,6 +68,28 @@ async function loadImages(refs: string[], notePath?: string | null): Promise<str
   return out
 }
 
+/** A failed provider request with the handler's structured detail (status, endpoint, model). */
+export class AiRunError extends Error {
+  constructor(readonly detail: AiErrorDetail | null, message = detail ? formatAiError(detail) : 'The AI request failed.') {
+    super(message)
+    this.name = 'AiRunError'
+  }
+}
+
+/**
+ * Electron flattened a handler failure to kErrorUnknown (no sentinel arrived, e.g. the handler
+ * crashed or failed before streaming): ask main for the handler's last error since `since`.
+ */
+async function explainUnknown(err: unknown, since: number): Promise<never> {
+  if (!isElectronUnknownError(err)) throw err
+  const detail = await window.api.aiApi.lastError(since).catch(() => null)
+  if (detail) throw new AiRunError(detail)
+  throw new AiRunError(
+    null,
+    'The AI handler failed without details (Electron: kErrorUnknown). Run Settings › AI › Test on this model to see the provider error.'
+  )
+}
+
 /** Thrown when no provider is connected; the UI offers a link to Settings › AI. */
 export class AiNotConnectedError extends Error {
   constructor(message = 'No AI provider connected. Connect one in Settings › AI.') {
@@ -89,21 +119,38 @@ export function promptApiComplete(signal?: AbortSignal, opts: CompleteOptions = 
     await ensureAiReady()
     const lm = languageModel() as LanguageModelStatic
     const images = prompt.imageRefs?.length ? await loadImages(prompt.imageRefs, opts.notePath) : []
-    const model = await lm.create({
-      initialPrompts: [{ role: 'system', content: tagSystemPrompt(prompt.system, { model: opts.model }) }],
-      signal
-    })
+    const since = Date.now() - 50
+    // errors: 'inline' → the handler reports a failed request as a sentinel chunk with the real
+    // provider error, since Electron only passes kErrorUnknown through (shared/ai-errors.ts).
+    const model = await lm
+      .create({
+        initialPrompts: [{ role: 'system', content: tagSystemPrompt(prompt.system, { model: opts.model, errors: 'inline' }) }],
+        signal
+      })
+      .catch((e: unknown) => explainUnknown(e, since))
     try {
       // Images ride as tagged data: URLs (see tagImages in shared/ai-models.ts); the handler lifts them out.
       const reader = model.promptStreaming(tagImages(prompt.user, images), { signal }).getReader()
       let out = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        out += value
-        onChunk?.(out)
+      let shown = ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          out += value
+          const vis = visibleText(out)
+          if (vis !== shown) {
+            shown = vis
+            onChunk?.(vis)
+          }
+        }
+      } catch (e) {
+        if (signal?.aborted) throw e
+        return await explainUnknown(e, since)
       }
-      return out
+      const { text, error } = splitErrorSentinel(out)
+      if (error) throw new AiRunError(error)
+      return text
     } finally {
       model.destroy()
     }
@@ -131,6 +178,15 @@ export async function runAiProcess(
 export function aiErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
   return String(err)
+}
+
+/** "Copy details": the message plus the structured provider detail (scrubbed in the handler). */
+export function aiErrorDetails(err: unknown): string {
+  const detail = err instanceof AiRunError ? err.detail : null
+  return errorDetailsText(detail, aiErrorMessage(err), {
+    ...(err instanceof Error && !(err instanceof AiRunError) ? { name: err.name } : {}),
+    app: 'Inkfish'
+  })
 }
 
 export function isAbort(err: unknown): boolean {

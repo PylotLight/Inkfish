@@ -16,7 +16,29 @@ const srv = http.createServer((req, res) => {
   let b = ''
   req.on('data', (d) => (b += d))
   req.on('end', () => {
-    seen.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(b) })
+    const body = JSON.parse(b)
+    seen.push({ url: req.url, auth: req.headers.authorization, body })
+    // 'luna' is responses-only (like openai.gpt-6-luna behind LiteLLM); 'broken' always fails.
+    if (body.model === 'broken') {
+      res.writeHead(418, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'teapot says no to sk-smoke', type: 'invalid_request_error', code: 'teapot' } }))
+      return
+    }
+    if (req.url.endsWith('/chat/completions') && body.model === 'luna') {
+      res.writeHead(400, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'This model is only supported in v1/responses and not in v1/chat/completions.', type: 'invalid_request_error', code: 'unsupported_api_for_model' } }))
+      return
+    }
+    if (req.url.endsWith('/responses')) {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const ev = (type, extra = {}) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`)
+      ev('response.created', { response: { id: 'r1' } })
+      ev('response.output_text.delta', { delta: '# Luna' })
+      ev('response.output_text.delta', { delta: ' note' })
+      ev('response.completed', { response: { status: 'completed' } })
+      res.end()
+      return
+    }
     res.writeHead(200, { 'content-type': 'text/event-stream' })
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '# Tidy' } }] })}\n\n`)
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: ' note' } }] })}\n\n`)
@@ -31,6 +53,8 @@ app.whenReady().then(async () => {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r))
   const port = srv.address().port
   const child = utilityProcess.fork(HANDLER, [], { serviceName: 'Inkfish AI', stdio: 'inherit' })
+  const fromHandler = []
+  child.on('message', (m) => fromHandler.push(m))
   child.postMessage({
     type: 'config',
     config: {
@@ -39,7 +63,12 @@ app.whenReady().then(async () => {
         model: 'm',
         apiKey: 'sk-smoke',
         // Settings › AI › Models: 'v' is a vision model with limits + a reasoning level.
-        models: [{ id: 'm' }, { id: 'v', contextWindow: 32000, maxOutputTokens: 4000, reasoning: 'low', input: ['text', 'image'] }]
+        models: [
+          { id: 'm' },
+          { id: 'v', contextWindow: 32000, maxOutputTokens: 4000, reasoning: 'low', input: ['text', 'image'] },
+          { id: 'luna', reasoning: 'medium' },
+          { id: 'broken' }
+        ]
       }
     })
   session.defaultSession.registerLocalAIHandler(child)
@@ -63,6 +92,20 @@ app.whenReady().then(async () => {
       const m = await LanguageModel.create({ initialPrompts: [{ role: 'system', content: '[[inkfish-run {"model":"v"}]]\\nsys2' }] })
       return m.prompt('look\\n[[inkfish-image ' + url + ']]')
     })()`)
+    // Auto API: chat/completions says responses-only → the handler retries on /responses.
+    results.luna = await w.webContents.executeJavaScript(
+      `LanguageModel.create({initialPrompts:[{role:'system',content:'[[inkfish-run {"model":"luna","errors":"inline"}]]\\nsys3'}]}).then(m => m.prompt('hi'))`
+    )
+    // A failing request with errors:inline → the real error arrives as a sentinel chunk.
+    results.inlineError = await w.webContents.executeJavaScript(
+      `LanguageModel.create({initialPrompts:[{role:'system',content:'[[inkfish-run {"model":"broken","errors":"inline"}]]\\nsys'}]}).then(m => m.prompt('hi'))`
+    )
+    // Without the flag: what Electron itself passes through (the user's bug).
+    results.plainError = await w.webContents.executeJavaScript(
+      `LanguageModel.create({initialPrompts:[{role:'system',content:'[[inkfish-run {"model":"broken"}]]\\nsys'}]}).then(m => m.prompt('hi')).then(r => 'ok:' + r, e => e.name + ': ' + e.message)`
+    )
+    await new Promise((r) => setTimeout(r, 200))
+    results.fromHandler = fromHandler.map((m) => (m.type === 'error' ? { type: m.type, status: m.detail?.status, endpoint: m.detail?.endpoint } : m))
     // Origin gate: an opaque data: page must not get a session.
     const d = new BrowserWindow({ show: false, webPreferences: { enableBlinkFeatures: 'AIPromptAPI' } })
     await d.loadURL('data:text/html,<p>x</p>')
@@ -83,12 +126,19 @@ app.whenReady().then(async () => {
     model: s.body.model,
     max_tokens: s.body.max_tokens,
     reasoning_effort: s.body.reasoning_effort,
-    messages: s.body.messages.map((m) => ({
+    reasoning: s.body.reasoning,
+    instructions: s.body.instructions,
+    input: s.body.input,
+    messages: (s.body.messages ?? []).map((m) => ({
       role: m.role,
       content: Array.isArray(m.content) ? m.content.map((p) => (p.type === 'image_url' ? `image_url:${p.image_url.url.slice(0, 22)}…` : p.text)) : m.content
     }))
   }))
   const v = results.server.find((s) => s.model === 'v')
+  const lunaCalls = results.server.filter((s) => s.model === 'luna')
+  const sentinel = /\u2063\[\[inkfish-error (\{[\s\S]*\})\]\]$/.exec(String(results.inlineError))
+  const inline = sentinel ? JSON.parse(sentinel[1]) : null
+  results.inline = inline
   console.log('SMOKE', JSON.stringify(results))
   const ok =
     results.availability === 'available' &&
@@ -104,7 +154,20 @@ app.whenReady().then(async () => {
     v?.max_tokens > 0 &&
     v?.max_tokens <= 4000 &&
     Array.isArray(v?.messages[1]?.content) &&
-    String(v.messages[1].content[1]).startsWith('image_url:data:image/png')
+    String(v.messages[1].content[1]).startsWith('image_url:data:image/png') &&
+    results.luna === '# Luna note' &&
+    lunaCalls.map((s) => s.url).join(',') === '/v1/chat/completions,/v1/responses' &&
+    lunaCalls[1]?.instructions === 'sys3' &&
+    lunaCalls[1]?.reasoning?.effort === 'medium' &&
+    lunaCalls[1]?.input?.[0]?.content?.[0]?.type === 'input_text' &&
+    results.fromHandler.some((m) => m.type === 'learned' && m.model === 'luna' && m.endpoint === 'responses') &&
+    inline?.status === 418 &&
+    inline?.endpoint === 'POST /chat/completions' &&
+    inline?.model === 'broken' &&
+    String(inline?.message).includes('teapot says no') &&
+    !String(results.inlineError).includes('sk-smoke') &&
+    /kErrorUnknown|unknown error/i.test(String(results.plainError)) &&
+    results.fromHandler.some((m) => m.type === 'error' && m.status === 418)
   console.log(ok ? 'SMOKE PASS' : 'SMOKE FAIL')
   clearTimeout(timer)
   child.kill()

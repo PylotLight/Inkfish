@@ -9,8 +9,23 @@ import {
   type AiProviderSettings,
   type AiTestResult
 } from '../../../shared/ai-api'
+import { AI_APIS, AI_API_LABEL, type AiApi } from '../../../shared/ai-models'
+import { errorDetailsText } from '../../../shared/ai-errors'
 import { ipcError } from '../audio'
 import AiModelsSettings from './AiModelsSettings'
+import CopyDetails from './CopyDetails'
+
+const API_HINT: Record<AiApi, string> = {
+  auto: 'Chat Completions, switching to the Responses API for models that need it (detected by Find models, or learned from a “responses only” error and remembered).',
+  chat: 'POST /chat/completions for every model without its own setting.',
+  responses: 'POST /responses for every model without its own setting (OpenAI Responses API; LiteLLM supports it too).'
+}
+
+/** "OK in 1.2 s via Responses · gpt-x · “OK”" / the readable error. */
+export function testSummary(t: AiTestResult): string {
+  const via = [t.endpoint && `via ${t.endpoint}`, t.model].filter(Boolean).join(' · ')
+  return t.ok ? `OK in ${(t.ms / 1000).toFixed(1)} s${via ? ` ${via}` : ''} · “${t.detail}”` : t.detail
+}
 
 const KIND_LABEL: Record<AiProviderKind, string> = {
   openai: 'OpenAI-compatible',
@@ -45,6 +60,11 @@ export default function AiApiSettings(): React.JSX.Element {
       .status()
       .then(adopt)
       .catch((e: unknown) => setError(ipcError(e)))
+    // Auto learned a model's API in main (a run or a Test): pick it up so later saves keep it.
+    return window.api.aiApi.onChanged?.((st) => {
+      setStatus(st)
+      setForm((f) => ({ ...f, models: st.settings.models }))
+    })
   }, [])
 
   const save = async (patch: Partial<AiProviderSettings>): Promise<void> => {
@@ -205,6 +225,29 @@ export default function AiApiSettings(): React.JSX.Element {
           </div>
         </div>
 
+        {form.kind === 'openai' && (
+          <div className="setting-row stacked">
+            <span className="setting-label">API</span>
+            <div className="seg-row" role="radiogroup" aria-label="API">
+              {AI_APIS.map((a) => (
+                <button
+                  key={a}
+                  role="radio"
+                  aria-checked={(form.api ?? 'auto') === a}
+                  className={`seg${(form.api ?? 'auto') === a ? ' selected' : ''}`}
+                  onClick={() => {
+                    setForm((f) => ({ ...f, api: a }))
+                    void save({ api: a })
+                  }}
+                >
+                  {AI_API_LABEL[a]}
+                </button>
+              ))}
+            </div>
+            <p className="muted small setting-hint">{API_HINT[form.api ?? 'auto']} A model can override this in Models.</p>
+          </div>
+        )}
+
         <div className="setting-row inline">
           <div className="setting-label">
             Test connection
@@ -212,11 +255,14 @@ export default function AiApiSettings(): React.JSX.Element {
               {test && 'running' in test
                 ? 'Testing…'
                 : test
-                  ? test.ok
-                    ? `OK in ${(test.ms / 1000).toFixed(1)} s · “${test.detail}”`
-                    : test.detail
-                  : 'Sends one tiny request to the default model.'}
+                  ? testSummary(test)
+                  : 'Sends one tiny request to the default model with its API setting. Each model in the list has its own Test.'}
             </span>
+            {test && !('running' in test) && !test.ok && (
+              <span className="row" style={{ marginTop: 4 }}>
+                <CopyDetails text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })} />
+              </span>
+            )}
           </div>
           <button
             className="btn ghost sm"

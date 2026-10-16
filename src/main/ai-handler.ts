@@ -13,14 +13,20 @@ let config: ProviderConfig | null = null
 process.parentPort.on('message', (event) => {
   const data = event.data as { type?: string; config?: ProviderConfig | null }
   if (data?.type !== 'config') return
-  config = data.config ?? null
+  config = data.config ? { ...data.config } : null
+  if (config) {
+    // Auto API: a model that turned out to need the other endpoint is remembered by main.
+    config.onLearn = (model, endpoint) => process.parentPort.postMessage({ type: 'learned', model, endpoint })
+  }
   provider = config ? createProvider(config) : null
 })
 
 const InkfishLanguageModel = createLanguageModelClass(
   LanguageModelUtility as unknown as LanguageModelBase,
   () => provider,
-  (run) => (config ? modelFor(config, run) : null)
+  (run) => (config ? modelFor(config, run) : null),
+  // Scrubbed detail only (no key). Main keeps the last one for the renderer and logs it.
+  (detail) => process.parentPort.postMessage({ type: 'error', detail, at: Date.now() })
 )
 
 // Set as early as possible: Electron queues Prompt API calls until this runs.
