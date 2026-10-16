@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
 import type { AiErrorDetail } from '../shared/ai-errors'
@@ -330,7 +331,19 @@ const api = {
   },
   /** Audio-only system capture (Core Audio tap via the helper). */
   systap: {
-    start: (): Promise<{ rate: number } | { error: string }> => ipcRenderer.invoke('systap:start'),
+    /** No source = all system audio; `{ mode: 'apps' }` taps just those apps (macOS 14.2+). */
+    start: (source?: SystemAudioSource): Promise<{ rate: number } | { error: string }> =>
+      ipcRenderer.invoke('systap:start', source),
+    /** Per-app system audio available (macOS 14.2+ with the helper). */
+    supported: (): Promise<boolean> => ipcRenderer.invoke('systap:supported'),
+    /** Apps known to Core Audio, playing ones first (with icons). */
+    apps: (): Promise<AudioApp[] | { error: string }> => ipcRenderer.invoke('systap:apps'),
+    /** What the running tap is capturing (follows app restarts). */
+    onSources: (cb: (s: TapSources) => void): (() => void) => {
+      const fn = (_e: unknown, s: TapSources): void => cb(s)
+      ipcRenderer.on('systap:sources', fn)
+      return () => ipcRenderer.removeListener('systap:sources', fn)
+    },
     stop: (): Promise<void> => ipcRenderer.invoke('systap:stop'),
     onData: (cb: (pcm: Float32Array) => void): (() => void) => {
       const fn = (_e: unknown, buf: Uint8Array): void => {

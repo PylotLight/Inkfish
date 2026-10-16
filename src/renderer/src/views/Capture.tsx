@@ -4,6 +4,7 @@ import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 import { LIVE_ENGINE, liveAvailable, startLive, type LiveSession } from '../liveCaptions'
 import { loadLabels, startMeeting, toMarkdown, type Meeting, type MeetingLine } from '../meeting'
+import { describeSource } from '../../../shared/systemAudio'
 import { isWebEngine, transcribeWeb, warmWeb } from '../webStt'
 
 /**
@@ -202,6 +203,9 @@ export default function Capture(): React.JSX.Element {
       const m = await startMeeting(setMeetLines)
       meetingRef.current = m
       setMeetState('rec')
+      const src = m.systemSource
+      if (m.hasSystemAudio && src?.source.mode === 'apps')
+        say('Meeting audio', `From ${describeSource(src.source)}${src.auto ? ' (auto-picked)' : ''}`, 3500)
       if (!m.hasSystemAudio)
         say(
           'Mic only — no system audio',

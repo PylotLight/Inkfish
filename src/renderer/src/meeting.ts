@@ -9,6 +9,15 @@
  * the hood, macOS 13+); the main process grants it and needs Screen Recording
  * permission. Video is dropped immediately.
  */
+import {
+  describeLive,
+  describeSource,
+  loadPrefs,
+  resolveSource,
+  type ResolvedSource,
+  type SystemAudioSource,
+  type TapSources
+} from '../../shared/systemAudio'
 import { openMic } from './audio'
 import { liveAvailable, startRedux, type LiveSegment, type LiveSession } from './liveCaptions'
 
@@ -62,6 +71,10 @@ export interface Meeting {
   startedAt: number
   /** Why the call side is missing ('' when captured). */
   systemError: string
+  /** Which apps the call side taps (null: per-app capture unavailable → all audio). */
+  systemSource: ResolvedSource | null
+  /** Live "capturing Microsoft Teams" / "waiting for Zoom audio…" text. */
+  onSystemStatus: (cb: (text: string, s: TapSources) => void) => () => void
   /** Current input level per channel, 0–1, for the meters. */
   levels: () => { mic: number; system: number }
   stop: () => Promise<MeetingResult>
@@ -70,6 +83,8 @@ export interface Meeting {
 
 /** Why the call side isn't being captured, for the UI ('' when it is). */
 export let systemAudioError = ''
+/** Latest `SOURCES` report from the running tap. */
+let lastTapSources: TapSources | null = null
 
 /**
  * The call side. Keep the (tiny) video track alive but disabled: on macOS,
@@ -80,10 +95,18 @@ export let systemAudioError = ''
  * Preferred path: audio-only Core Audio tap from the helper (macOS 14.2+),
  * PCM over IPC, replayed into a MediaStream. No screen permission involved.
  */
-async function openTapAudio(): Promise<{ audio: MediaStream; stopAll: () => void; label: string } | null> {
+async function openTapAudio(
+  source?: SystemAudioSource
+): Promise<{ audio: MediaStream; stopAll: () => void; label: string } | null> {
   const api = window.api.systap
-  const r = await api.start().catch((e: unknown) => ({ error: String(e) }))
+  // The helper reports what it taps right after it starts: listen first.
+  lastTapSources = null
+  const offSources = api.onSources((s) => {
+    lastTapSources = s
+  })
+  const r = await api.start(source).catch((e: unknown) => ({ error: String(e) }))
   if ('error' in r) {
+    offSources()
     systemAudioError = r.error
     console.warn('[meeting] tap unavailable:', r.error)
     return null
@@ -125,9 +148,10 @@ async function openTapAudio(): Promise<{ audio: MediaStream; stopAll: () => void
   await ctx.resume()
   return {
     audio: dest.stream,
-    label: 'Mac audio (system tap)',
+    label: source && source.mode === 'apps' ? describeSource(source) : 'Mac audio (system tap)',
     stopAll: () => {
       offData()
+      offSources()
       node.disconnect()
       void ctx.close()
       void api.stop()
@@ -135,10 +159,28 @@ async function openTapAudio(): Promise<{ audio: MediaStream; stopAll: () => void
   }
 }
 
-async function openSystemAudio(): Promise<{ audio: MediaStream; stopAll: () => void; label?: string } | null> {
+/**
+ * Which apps the call side should tap right now: the remembered choice, or
+ * (with "All system audio" + auto-pick) a meeting app that's playing. Null
+ * when per-app capture isn't available (Linux/Windows, macOS < 14.2).
+ */
+export async function chooseSystemSource(): Promise<ResolvedSource | null> {
+  const api = window.api.systap
+  if (!(await api.supported().catch(() => false))) return null
+  const prefs = loadPrefs(typeof localStorage === 'undefined' ? null : localStorage)
+  const needsList = prefs.source.mode === 'all' && prefs.autoPick
+  const apps = needsList ? await api.apps().catch(() => null) : null
+  return resolveSource(prefs, apps && !('error' in apps) ? apps : null)
+}
+
+async function openSystemAudio(
+  source?: SystemAudioSource
+): Promise<{ audio: MediaStream; stopAll: () => void; label?: string } | null> {
   systemAudioError = ''
-  const tap = await openTapAudio()
+  const tap = await openTapAudio(source)
   if (tap) return tap
+  // Picked specific apps: never fall back to capturing everything.
+  if (source?.mode === 'apps') return null
   const tapError = systemAudioError
   try {
     const s = await navigator.mediaDevices.getDisplayMedia({
@@ -192,12 +234,16 @@ export function toMarkdown(lines: MeetingLine[], labels: SpeakerLabels = loadLab
   return out.join('\n\n')
 }
 
-export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Promise<Meeting> {
+export async function startMeeting(
+  onLines: (lines: MeetingLine[]) => void,
+  opts: { source?: ResolvedSource | null } = {}
+): Promise<Meeting> {
   if (!liveAvailable()) {
     throw new Error('Download Parakeet Redux · Web in Settings › Voice for live meeting text')
   }
   const mic = await openMic()
-  const sysCap = await openSystemAudio()
+  const chosen = opts.source !== undefined ? opts.source : await chooseSystemSource().catch(() => null)
+  const sysCap = await openSystemAudio(chosen?.source)
   const sys = sysCap?.audio ?? null
 
   // Live view: settled segments from both sides plus each side's draft.
@@ -262,6 +308,12 @@ export async function startMeeting(onLines: (lines: MeetingLine[]) => void): Pro
     systemDevice: sys ? sysCap?.label || sys.getAudioTracks()[0]?.label || 'Mac audio' : null,
     startedAt,
     systemError: systemAudioError,
+    systemSource: chosen,
+    onSystemStatus: (cb) => {
+      const wanted = chosen?.source ?? { mode: 'all' as const }
+      if (lastTapSources) cb(describeLive(lastTapSources, wanted), lastTapSources)
+      return window.api.systap.onSources((s) => cb(describeLive(s, wanted), s))
+    },
     levels: () => ({ mic: rms(micMeter), system: rms(sysMeter) }),
     stop: async () => {
       const recorded = new Promise<Blob>((res) => {

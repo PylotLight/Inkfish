@@ -12,7 +12,9 @@ import {
   type MeetingLine,
   type SpeakerLabels
 } from '../meeting'
+import { describeSource } from '../../../shared/systemAudio'
 import MeetingImport from './MeetingImport'
+import SystemAudioPicker from './SystemAudioPicker'
 
 const DEFAULT_FOLDER = 'Meetings'
 const FOLDER_KEY = 'inkfish.meeting.folder.v1'
@@ -69,6 +71,8 @@ export default function Meetings({
   const [elapsed, setElapsed] = useState(0)
   const [devices, setDevices] = useState<{ mic: string; system: string | null; error: string } | null>(null)
   const [levels, setLevels] = useState({ mic: 0, system: 0 })
+  /** Live per-app tap status ("Microsoft Teams", "Waiting for Zoom audio…"). */
+  const [sysStatus, setSysStatus] = useState('')
   /** Seconds of call audio heard so far — tells silence from no capture. */
   const heardRef = useRef(0)
   const [saved, setSaved] = useState<Saved | null>(null)
@@ -83,6 +87,18 @@ export default function Meetings({
   }, [saved])
 
   useEffect(() => onRecording(state === 'rec' || state === 'starting' || state === 'saving'), [state, onRecording])
+
+  // Follow what the per-app tap is capturing while recording.
+  useEffect(() => {
+    const m = meetingRef.current
+    if (state !== 'rec' || !m || !m.hasSystemAudio || m.systemSource?.source.mode !== 'apps') return
+    const auto = m.systemSource.auto
+    const off = m.onSystemStatus((text) => setSysStatus(auto ? `${text} · auto-picked` : text))
+    return () => {
+      off()
+      setSysStatus('')
+    }
+  }, [state])
 
   // Elapsed clock while recording.
   useEffect(() => {
@@ -125,7 +141,12 @@ export default function Meetings({
       const m = await startMeeting(setLines)
       meetingRef.current = m
       heardRef.current = 0
-      setDevices({ mic: m.micDevice, system: m.systemDevice, error: m.systemError })
+      const src = m.systemSource
+      const sysName =
+        m.systemDevice && src?.source.mode === 'apps'
+          ? `${describeSource(src.source)}${src.auto ? ' · auto-picked' : ''}`
+          : m.systemDevice
+      setDevices({ mic: m.micDevice, system: sysName, error: m.systemError })
       setState('rec')
       if (!m.hasSystemAudio)
         notify(`Mic only: ${m.systemError || 'no call audio'}. Allow Inkfish (or your terminal in dev) under Privacy & Security › Screen & System Audio Recording › System Audio Recording Only, then reopen`)
@@ -275,11 +296,13 @@ export default function Meetings({
                     ? devices?.error || 'not shared'
                     : state === 'rec' && ch === 'system' && elapsed > 8 && heardRef.current < 0.3
                       ? 'connected, but hearing silence'
-                      : live && dev
-                        ? dev
-                        : ch === 'mic'
-                          ? 'This Mac · microphone'
-                          : 'Call · Mac audio'}
+                      : live && ch === 'system' && sysStatus
+                        ? sysStatus
+                        : live && dev
+                          ? dev
+                          : ch === 'mic'
+                            ? 'This Mac · microphone'
+                            : 'Call · Mac audio'}
                 </span>
                 {state === 'rec' && !off && (
                   <span className="meet-level" aria-hidden>
@@ -290,6 +313,8 @@ export default function Meetings({
             )
           })}
         </div>
+
+        <SystemAudioPicker disabled={live} />
 
         <div className="meet-controls">
           {state === 'rec' ? (
