@@ -17,7 +17,7 @@
  * and custom get the part that fits plus a notice. Unknown limits = one request, as before.
  */
 
-import { findImages } from './images'
+import { findImages, formatImageAlt } from './images'
 import { estimateTextTokens, formatTokens, inputBudget, type ModelMeta } from './ai-models'
 
 export const AI_ACTIONS = ['tidy', 'typos', 'summarize', 'checklist', 'custom'] as const
@@ -52,7 +52,7 @@ export const AI_ACTION_INFO: Record<AiAction, AiActionInfo> = {
 const BASE_RULES = [
   'You edit markdown notes for the Inkfish notes app.',
   'Reply with the resulting markdown only: no preamble, no explanation, no code fence around the whole reply.',
-  'Keep every image reference like ![alt](assets/…) and every link URL exactly as written.',
+  'Keep every image reference like ![alt](assets/…) or ![alt|300](assets/…) (the |300 is its display width) and every link URL exactly as written.',
   'Keep code blocks, inline code, tags (#tag) and [[wiki links]] unchanged.',
   'Keep the language and spelling variant of the original.'
 ].join('\n')
@@ -127,6 +127,32 @@ export function missingRefs(input: string, output: string): string[] {
   }
   for (const url of links) if (!output.includes(url)) missing.push(url)
   return missing
+}
+
+/**
+ * Put back image display widths (`![alt|300](src)`) the AI stripped while
+ * keeping the src: a Tidy shouldn't undo a resize. Only srcs with a single
+ * size in `input` are restored; refs the AI sized itself are left alone.
+ */
+export function restoreImageSizes(input: string, output: string): string {
+  const sizes = new Map<string, { width: number; height?: number } | null>()
+  for (const r of findImages(input)) {
+    if (!r.width) continue
+    const prev = sizes.get(r.src)
+    const same = prev && prev.width === r.width && prev.height === r.height
+    sizes.set(r.src, prev === undefined || same ? { width: r.width, height: r.height } : null)
+  }
+  if (sizes.size === 0) return output
+  let out = ''
+  let last = 0
+  for (const r of findImages(output)) {
+    const size = sizes.get(r.src)
+    if (!size || r.width) continue
+    const close = output.indexOf(']', r.index + 2)
+    out += output.slice(last, r.index + 2) + formatImageAlt(r.alt, size.width, size.height)
+    last = close
+  }
+  return last === 0 ? output : out + output.slice(last)
 }
 
 // --- long notes ------------------------------------------------------------------------------
@@ -289,7 +315,7 @@ export async function processText(input: ProcessInput, complete: Complete): Prom
     if (!reply) throw new AiProcessError('The AI returned an empty reply.', 'no-reply')
     replies.push(reply)
   }
-  const reply = replies.join('\n\n')
+  const reply = restoreImageSizes(sent, replies.join('\n\n'))
   const missing = missingRefs(sent, reply)
   if (missing.length && info.strict) {
     throw new AiProcessError(

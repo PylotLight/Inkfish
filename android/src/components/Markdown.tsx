@@ -63,7 +63,9 @@ function parse(text: string): Block[] {
     }
     const img = /^!\[(.*?)\]\((.*?)\)\s*$/.exec(line.trim());
     if (img) {
-      out.push({ t: 'img', alt: img[1] ?? '', src: img[2] ?? '' });
+      // Drop an Obsidian display-width suffix (`![alt|300](…)`, `|300x200`) from the alt.
+      const alt = (img[1] ?? '').replace(/\s*\|\s*\d+(?:\s*x\s*\d+)?\s*$/, '');
+      out.push({ t: 'img', alt, src: img[2] ?? '' });
       continue;
     }
     if (/^\s*-\s+/.test(line) || /^\s*\*\s+/.test(line)) {

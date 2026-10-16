@@ -9,6 +9,7 @@ import {
   parseProcessedEntry,
   processText,
   protectedRefs,
+  restoreImageSizes,
   splitFrontMatter,
   type Complete,
   type PromptPair
@@ -207,5 +208,38 @@ describe('long notes vs the model limits', () => {
     await processText({ action: 'typos', text }, async (p) => (refs.push(p.imageRefs), p.user))
     await processText({ action: 'typos', text, includeImages: true }, async (p) => (refs.push(p.imageRefs), p.user))
     expect(refs).toEqual([undefined, ['assets/x.png']])
+  })
+})
+
+describe('image refs with display widths (![alt|300](src))', () => {
+  const sized = '# n\nsome text\n![board|300](assets/board.png)\n![|120x80](assets/b.png)\nend\n'
+  test('protectedRefs counts sized refs as images, not links', () => {
+    const r = protectedRefs(sized)
+    expect(r.images).toEqual(['![board|300](assets/board.png)', '![|120x80](assets/b.png)'])
+    expect(r.links).toEqual([])
+  })
+  test('missingRefs matches by src: width/alt may change, src may not', () => {
+    expect(missingRefs(sized, 'x ![board](assets/board.png) ![|99](assets/b.png)')).toEqual([])
+    expect(missingRefs(sized, '![board|300](assets/board.png)')).toEqual(['![|120x80](assets/b.png)'])
+  })
+  test('restoreImageSizes puts back stripped widths, leaves AI-sized and unknown refs alone', () => {
+    expect(restoreImageSizes(sized, 'A\n![board](assets/board.png)\n![](assets/b.png)\n![](assets/c.png)')).toBe(
+      'A\n![board|300](assets/board.png)\n![|120x80](assets/b.png)\n![](assets/c.png)'
+    )
+    expect(restoreImageSizes(sized, '![|50](assets/board.png)')).toBe('![|50](assets/board.png)')
+    expect(restoreImageSizes('![](a.png)', '![](a.png)')).toBe('![](a.png)')
+    // Same src at two sizes: ambiguous, left as the AI wrote it.
+    expect(restoreImageSizes('![|1](a.png) ![|2](a.png)', '![](a.png)')).toBe('![](a.png)')
+  })
+  test('strict Tidy keeps a sized ref (and its width) even if the model drops the |300', async () => {
+    const reply = '# N\n\nSome text.\n\n![board](assets/board.png)\n\n![](assets/b.png)\n\nEnd.'
+    const r = await processText({ action: 'tidy', text: sized }, mock(reply).complete)
+    expect(r.warnings).toEqual([])
+    expect(r.text).toContain('![board|300](assets/board.png)')
+    expect(r.text).toContain('![|120x80](assets/b.png)')
+  })
+  test('strict Tidy still refuses a reply that dropped a sized ref', async () => {
+    const run = processText({ action: 'tidy', text: sized }, mock('# N\n\nSome text.\n\nEnd.').complete)
+    await expect(run).rejects.toThrow(/dropped 2 image\/link/)
   })
 })
