@@ -10,7 +10,10 @@ import {
   isSidebarToggleKey,
   parseSideCollapsed,
   serializeSideCollapsed,
-  sideRailInset
+  sideRailInset,
+  SIDE_FOOT_HEIGHT,
+  vaultLabel,
+  vaultTooltip
 } from './sidebar'
 
 const key = (over: Partial<Parameters<typeof isSidebarToggleKey>[0]>): Parameters<typeof isSidebarToggleKey>[0] => ({
@@ -106,5 +109,44 @@ describe('sidebar toggle + collapsed rail layout', () => {
     const collapsed = rule('.shell.side-collapsed .sidebar.core')
     expect(collapsed).toContain('width: 0')
     expect(collapsed).toContain('border-right-width: 0')
+  })
+})
+
+describe('sidebar footer (vault bar)', () => {
+  test('vault chip label is the folder name across separators', () => {
+    expect(vaultLabel('/Users/me/Documents/NotesVault')).toBe('NotesVault')
+    expect(vaultLabel('/Users/me/NotesVault/')).toBe('NotesVault')
+    expect(vaultLabel('C:\\Users\\me\\NotesVault')).toBe('NotesVault')
+    expect(vaultLabel('/')).toBe('/')
+    expect(vaultLabel(null)).toBe('…')
+    expect(vaultLabel('')).toBe('…')
+  })
+  test('tooltip carries the full path and the version, not the main line', () => {
+    const t = vaultTooltip('/Users/me/NotesVault', '0.2.8')
+    expect(t).toContain('/Users/me/NotesVault')
+    expect(t).toContain('v0.2.8')
+    expect(vaultTooltip(null, null)).not.toContain('Click')
+  })
+
+  const css = readFileSync(join(import.meta.dir, '../renderer/src/index.css'), 'utf8')
+  const rule = (selector: string): string => {
+    const at = css.indexOf(`\n${selector} {`)
+    expect(at).toBeGreaterThanOrEqual(0)
+    return css.slice(at, css.indexOf('}', at))
+  }
+  test('one compact row with a subtle divider, no bold', () => {
+    const foot = rule('.sidebar.core .side-foot')
+    expect(foot).toContain(`height: ${SIDE_FOOT_HEIGHT}px`)
+    expect(foot).toContain('align-items: center')
+    expect(foot).toContain('border-top: 1px solid')
+    expect(rule('.vault-chip')).toContain('font-weight: 400')
+    expect(rule('.vault-chip')).toContain('min-width: 0')
+    expect(rule('.vault-chip .vault-name')).toContain('text-overflow: ellipsis')
+  })
+  test('settings + quit are equal-size icon buttons', () => {
+    const btn = rule('.foot-btn')
+    expect(btn).toContain('width: 28px')
+    expect(btn).toContain('height: 28px')
+    expect(rule('.side-foot')).toContain('-webkit-app-region: no-drag')
   })
 })

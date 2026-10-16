@@ -16,6 +16,7 @@ export type IconName =
   | 'record'
   | 'settings'
   | 'power'
+  | 'folder'
   | 'chevron-right'
   | 'note-new'
   | 'folder-new'
@@ -79,6 +80,9 @@ const PATHS: Record<IconName, React.JSX.Element> = {
       <path d="M12 2.5v9" />
       <path d="M17.7 6.3a8 8 0 1 1-11.4 0" />
     </>
+  ),
+  folder: (
+    <path d="M20 19.5a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 4H4a2 2 0 0 0-2 2v11.5a2 2 0 0 0 2 2z" />
   ),
   'chevron-right': <path d="m9.5 6 6 6-6 6" />,
   'note-new': (

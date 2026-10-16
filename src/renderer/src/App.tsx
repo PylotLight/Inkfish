@@ -20,7 +20,7 @@ import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle, tabDragPhase } from '../../shared/mini-window-tear'
 import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
-import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed } from '../../shared/sidebar'
+import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed, vaultLabel, vaultTooltip } from '../../shared/sidebar'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
@@ -1362,24 +1362,35 @@ function Main(): React.JSX.Element {
           </div>
         )}
 
+        {/* Obsidian-style bottom vault bar: vault chip left, equal icon buttons right. Version
+            rides in the chip tooltip (and Settings › About) to keep the row quiet. */}
         <div className="side-foot">
-          <div className="side-foot-row">
-            <button className="settings-btn" onClick={openSettings} title="Settings">
-              <Icon name="settings" size={16} />
-              <span>Settings</span>
-              {updateBadge && <span className="update-dot" aria-label="Update available" title="Update available" />}
-            </button>
-            <span className="status-sub" title={vaultInfo?.root ?? ''}>
-              {(vaultInfo ? vaultInfo.root.replace(/.*\//, '') : '…') || '…'}
-              {sys?.appVersion ? ` · v${sys.appVersion}` : ''}
-            </span>
+          <button
+            className="vault-chip"
+            onClick={() => void window.api.vault.reveal()}
+            title={vaultTooltip(vaultInfo?.root, sys?.appVersion)}
+            aria-label={`Open vault folder ${vaultLabel(vaultInfo?.root)}`}
+          >
+            <Icon name="folder" size={14} />
+            <span className="vault-name">{vaultLabel(vaultInfo?.root)}</span>
+          </button>
+          <div className="foot-actions">
             <button
-              className="quit-btn"
+              className="foot-btn"
+              onClick={openSettings}
+              title={updateBadge ? 'Settings — update available' : 'Settings'}
+              aria-label="Settings"
+            >
+              <Icon name="settings" size={16} />
+              {updateBadge && <span className="update-dot" aria-label="Update available" />}
+            </button>
+            <button
+              className="foot-btn quit"
               onClick={() => void window.api.app.quit()}
               title="Quit Inkfish"
               aria-label="Quit Inkfish"
             >
-              <Icon name="power" size={15} />
+              <Icon name="power" size={16} />
             </button>
           </div>
         </div>
