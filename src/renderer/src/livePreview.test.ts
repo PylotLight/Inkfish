@@ -75,3 +75,20 @@ describe('live preview sized images (![alt|300](src))', () => {
     expect(images[0]!.w.width).toBe(300)
   })
 })
+
+describe('live preview: image stays a hidden-source block while resizing', () => {
+  test('caret dragged onto the ref during a gesture keeps the replace widget', async () => {
+    const { beginImageGestureSpec, imageGestureField } = await import('./imageEdit')
+    const doc = 'a\n![|876](assets/x.png)\nb'
+    const from = doc.indexOf('![')
+    const to = doc.indexOf(')') + 1
+    let s = EditorState.create({ doc, selection: EditorSelection.cursor(0), extensions: [imageGestureField] })
+    s = s.update(beginImageGestureSpec(s, { from, to })).state
+    s = s.update({ selection: { anchor: from + 4 } }).state
+    const imgs: Array<[number, number]> = []
+    buildDecorations(s, opts).between(0, doc.length, (f, t, d) => {
+      if (d.spec.widget instanceof ImageWidget) imgs.push([f, t])
+    })
+    expect(imgs).toEqual([[from, to]])
+  })
+})

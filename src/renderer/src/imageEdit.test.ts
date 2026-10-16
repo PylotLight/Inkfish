@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { history, undo, redo } from '@codemirror/commands'
 import { EditorState, type TransactionSpec } from '@codemirror/state'
-import { imageRefNear, moveImageSpec, resizeImageSpec } from './imageEdit'
+import {
+  beginImageGestureSpec,
+  endImageGestureSpec,
+  imageGestureField,
+  imageRefNear,
+  imageSourceRevealed,
+  moveImageSpec,
+  resizeImageSpec
+} from './imageEdit'
 
 /** Minimal dispatch target over an EditorState with history (no DOM). */
 function editor(doc: string) {
@@ -95,5 +103,53 @@ describe('imageRefNear', () => {
     expect(imageRefNear(s, b, 'a.png')).toBeNull()
     const last = doc.lastIndexOf('![')
     expect(imageRefNear(s, last, 'a.png')).toEqual({ from: last, to: last + 10 })
+  })
+})
+
+describe('resize/move gesture keeps the image source hidden', () => {
+  const doc = 'hello\n![|876](assets/2026/10/a.png)\nbye'
+  const from = doc.indexOf('![')
+  const to = doc.indexOf(')') + 1
+  const base = () => EditorState.create({ doc, selection: { anchor: 2 }, extensions: [history(), imageGestureField] })
+
+  test('selection landing on the ref mid-gesture does not reveal it; selection restored; one undo', () => {
+    let s = base()
+    expect(imageSourceRevealed(s, from, to)).toBe(false)
+    s = s.update(beginImageGestureSpec(s, { from, to })).state
+    // Native mouse selection drags the caret onto the image line.
+    s = s.update({ selection: { anchor: from + 3 } }).state
+    expect(imageSourceRevealed(s, from, to)).toBe(false)
+    s = s.update(endImageGestureSpec(s, resizeImageSpec(s, from, 400))).state
+    expect(s.doc.toString()).toBe('hello\n![|400](assets/2026/10/a.png)\nbye')
+    expect(s.selection.main.anchor).toBe(2)
+    expect(s.field(imageGestureField)).toBeNull()
+    expect(imageSourceRevealed(s, from, s.doc.line(2).to)).toBe(false)
+    const t = { state: s, dispatch: (tr: import('@codemirror/state').Transaction) => (t.state = tr.state) }
+    undo(t)
+    expect(t.state.doc.toString()).toBe(doc)
+  })
+
+  test('cancel (Esc) restores the selection and changes nothing', () => {
+    let s = base()
+    s = s.update(beginImageGestureSpec(s, { from, to })).state
+    s = s.update({ selection: { anchor: to } }).state
+    s = s.update(endImageGestureSpec(s, null)).state
+    expect(s.doc.toString()).toBe(doc)
+    expect(s.selection.main.anchor).toBe(2)
+  })
+
+  test('after the gesture the normal caret-reveal rule applies again', () => {
+    let s = base()
+    s = s.update(beginImageGestureSpec(s, { from, to })).state
+    s = s.update(endImageGestureSpec(s, { selection: { anchor: from + 2 } }, true)).state
+    expect(s.selection.main.anchor).toBe(from + 2)
+    expect(imageSourceRevealed(s, from, to)).toBe(true)
+  })
+
+  test('a ref already revealed when the gesture starts stays revealed (no widget swap mid-drag)', () => {
+    let s = EditorState.create({ doc, selection: { anchor: to }, extensions: [imageGestureField] })
+    s = s.update(beginImageGestureSpec(s, { from, to })).state
+    s = s.update({ selection: { anchor: 0 } }).state
+    expect(imageSourceRevealed(s, from, to)).toBe(true)
   })
 })

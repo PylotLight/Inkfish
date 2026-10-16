@@ -1,5 +1,11 @@
 import { isolateHistory } from '@codemirror/commands'
-import type { EditorState, TransactionSpec } from '@codemirror/state'
+import {
+  type EditorSelection,
+  type EditorState,
+  StateEffect,
+  StateField,
+  type TransactionSpec
+} from '@codemirror/state'
 import { findImages, moveImageEdits, resizeImageEdit } from '../../shared/images'
 
 /**
@@ -53,4 +59,85 @@ export function moveImageSpec(
   const edits = moveImageEdits(state.doc.toString(), from, to, drop, place)
   if (!edits) return null
   return { changes: edits, userEvent: 'move.image', annotations: isolateHistory.of('full') }
+}
+
+/**
+ * An in-flight resize / move gesture on one image ref. While it is set, live
+ * preview renders that ref exactly as it looked when the gesture began
+ * (normally a hidden-source block image) no matter where the selection goes,
+ * and the selection from before the gesture is put back when it ends. Without
+ * this, Chromium's native mouse selection (pointerdown preventDefault doesn't
+ * stop it) dragged the caret onto the ref mid-resize and revealed its source.
+ */
+export interface ImageGesture {
+  from: number
+  to: number
+  /** Whether the ref's source was showing when the gesture started. */
+  revealed: boolean
+  /** Selection before the gesture, restored when it ends. */
+  selection: EditorSelection
+}
+
+export const setImageGesture = StateEffect.define<ImageGesture | null>()
+
+export const imageGestureField = StateField.define<ImageGesture | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setImageGesture)) value = e.value
+    if (value && tr.docChanged) {
+      // Remote/live-sync edits during a drag: keep tracking the same ref.
+      value = {
+        from: tr.changes.mapPos(value.from, 1),
+        to: tr.changes.mapPos(value.to, -1),
+        revealed: value.revealed,
+        selection: value.selection.map(tr.changes)
+      }
+    }
+    return value
+  }
+})
+
+/** Is any selection range touching `from..to` (the live-preview reveal rule)? */
+export function selectionTouches(state: EditorState, from: number, to: number): boolean {
+  return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
+}
+
+/** Whether live preview should show the source of the image ref at `from..to`. */
+export function imageSourceRevealed(state: EditorState, from: number, to: number): boolean {
+  const g = state.field(imageGestureField, false)
+  if (g && g.from <= to && g.to >= from) return g.revealed
+  return selectionTouches(state, from, to)
+}
+
+/** Start a gesture on `ref`: freezes its rendering and remembers the selection. */
+export function beginImageGestureSpec(state: EditorState, ref: { from: number; to: number }): TransactionSpec {
+  return {
+    effects: setImageGesture.of({
+      from: ref.from,
+      to: ref.to,
+      revealed: imageSourceRevealed(state, ref.from, ref.to),
+      selection: state.selection
+    })
+  }
+}
+
+/**
+ * End the gesture, optionally together with its edit (`spec` from
+ * resizeImageSpec / moveImageSpec): one transaction that applies the edit,
+ * puts the pre-gesture selection back (mapped through the edit) and unfreezes.
+ * With `keepSelection` the spec's own selection wins (a plain click placing
+ * the caret on the ref).
+ */
+export function endImageGestureSpec(
+  state: EditorState,
+  spec: TransactionSpec | null,
+  keepSelection = false
+): TransactionSpec {
+  const g = state.field(imageGestureField, false)
+  const effects = setImageGesture.of(null)
+  if (!g) return { ...(spec ?? {}), effects }
+  if (keepSelection && spec?.selection) return { ...spec, effects }
+  const changes = spec?.changes ? state.changes(spec.changes) : null
+  const selection = changes ? g.selection.map(changes) : g.selection
+  return { ...(spec ?? {}), selection, effects }
 }
