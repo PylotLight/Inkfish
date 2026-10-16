@@ -23,6 +23,8 @@ import type {
 import type { SyncStatus } from '../main/sync'
 import type { SyncLogEntry } from '../shared/sync'
 import type { TrashEntry as TrashItem } from '../main/vault'
+import type { MiniHeaderState, MiniSettingsState } from '../main/mini-window'
+import type { MiniWindowSettings } from '../shared/mini-window'
 
 export interface Versions {
   node: () => string
@@ -50,6 +52,55 @@ const api = {
     setBadge: (count: number): Promise<boolean> => ipcRenderer.invoke('dock:set-badge', count),
     hide: (): Promise<boolean> => ipcRenderer.invoke('dock:hide'),
     show: (): Promise<boolean> => ipcRenderer.invoke('dock:show')
+  },
+  /** Mini windows: one note floating over every app (main/mini-window.ts). */
+  mini: {
+    /** Pop a note out (already out: bring it up). `focus` takes the keyboard. */
+    open: (noteId: string, focus?: boolean): Promise<boolean> => ipcRenderer.invoke('mini:open', noteId, focus),
+    /** The main window's open note — what the global toggle pops out when no mini is open. */
+    setActive: (noteId: string | null): void => ipcRenderer.send('mini:active', noteId),
+    /** From a mini: close it and open its note in the main window. */
+    returnToMain: (): Promise<void> => ipcRenderer.invoke('mini:return'),
+    close: (): Promise<void> => ipcRenderer.invoke('mini:close'),
+    /** From a mini: tuck to the nearest edge / slide back out. */
+    tuck: (): Promise<void> => ipcRenderer.invoke('mini:tuck'),
+    state: (): Promise<MiniHeaderState | null> => ipcRenderer.invoke('mini:state'),
+    onState: (cb: (s: MiniHeaderState) => void): (() => void) => {
+      const fn = (_e: unknown, s: MiniHeaderState): void => cb(s)
+      ipcRenderer.on('mini:state', fn)
+      return () => ipcRenderer.removeListener('mini:state', fn)
+    },
+    settings: (): Promise<MiniSettingsState> => ipcRenderer.invoke('mini:settings'),
+    setSettings: (patch: Partial<MiniWindowSettings>): Promise<MiniSettingsState> =>
+      ipcRenderer.invoke('mini:set-settings', patch),
+    /** Live sync: this window's unsaved text for a note (relayed to the others). */
+    draft: (id: string, markdown: string): void => ipcRenderer.send('mini:draft', id, markdown),
+    onDraft: (cb: (d: { id: string; markdown: string }) => void): (() => void) => {
+      const fn = (_e: unknown, d: { id: string; markdown: string }): void => cb(d)
+      ipcRenderer.on('inkfish:note-draft', fn)
+      return () => ipcRenderer.removeListener('inkfish:note-draft', fn)
+    },
+    /** Another window saved a note. */
+    onSaved: (cb: (doc: NoteDoc) => void): (() => void) => {
+      const fn = (_e: unknown, doc: NoteDoc): void => cb(doc)
+      ipcRenderer.on('inkfish:note-saved', fn)
+      return () => ipcRenderer.removeListener('inkfish:note-saved', fn)
+    },
+    /** Main window: a mini handed its note back. */
+    onOpenNote: (cb: (id: string) => void): (() => void) => {
+      const fn = (_e: unknown, id: string): void => cb(id)
+      ipcRenderer.on('inkfish:open-note', fn)
+      return () => ipcRenderer.removeListener('inkfish:open-note', fn)
+    },
+    /** The dock handle page (data: URL) — main/mini-window-handle-page.ts. */
+    handle: {
+      onHandleState: (cb: (s: { edge: string; arrow: string; label: string }) => void): void => {
+        ipcRenderer.on('mini:handle-state', (_e, s) => cb(s))
+      },
+      handleClick: (): void => ipcRenderer.send('mini:handle-click'),
+      handleHover: (inside: boolean): void => ipcRenderer.send('mini:handle-hover', inside),
+      handleDrag: (active: boolean): void => ipcRenderer.send('mini:handle-drag', active)
+    }
   },
   glass: {
     get: (): Promise<GlassState> => ipcRenderer.invoke('glass:get'),

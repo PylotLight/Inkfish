@@ -11,6 +11,8 @@ import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
 import Meetings from './views/Meetings'
+import MiniNote, { isMiniWindow } from './views/MiniNote'
+import { isPopKey } from '../../shared/mini-window'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 
@@ -73,6 +75,7 @@ export default function App(): React.JSX.Element {
       </div>
     )
   }
+  if (isMiniWindow()) return <MiniNote />
   return <Main />
 }
 
@@ -567,6 +570,71 @@ function Main(): React.JSX.Element {
   // A paired phone synced: re-read lists (main already re-indexed the files).
   useEffect(() => window.api.onVaultChanged(() => refreshAll()), [refreshAll])
 
+  // --- mini windows ------------------------------------------------------------
+  // Main tracks the open note so the global mini toggle can pop it out.
+  const activeNoteId = sel?.origin === 'note' ? sel.id : null
+  useEffect(() => {
+    window.api.mini?.setActive(activeNoteId)
+  }, [activeNoteId])
+
+  const popOut = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        notify('Open a note to pop it out')
+        return
+      }
+      window.api.mini
+        .open(id)
+        .then((ok) => {
+          if (!ok) notify('Too many mini windows open — close one first')
+        })
+        .catch((err: unknown) => notify(`Mini window failed: ${String(err)}`))
+    },
+    [notify]
+  )
+
+  // ⌘⇧M pops the open note out to a mini window.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!isPopKey(e)) return
+      e.preventDefault()
+      popOut(activeNoteId)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeNoteId, popOut])
+
+  // A mini handed its note back (⌘⇧M / ⤢ in the mini).
+  useEffect(() => window.api.mini?.onOpenNote((id) => {
+    setSettingsOpen(false)
+    selectNote(id)
+  }), [selectNote])
+
+  // Live sync: unsaved text typed in a mini shows up in this note's tab.
+  useEffect(
+    () =>
+      window.api.mini?.onDraft(({ id, markdown }) => {
+        if (tabsRef.current.some((t) => t.id === id) || selRef.current?.id === id) handleDraft(id, markdown)
+      }),
+    [handleDraft]
+  )
+  // A mini saved: refresh the cached doc and drop the matching draft.
+  useEffect(
+    () =>
+      window.api.mini?.onSaved((saved) => {
+        setDocsCache((prev) => (prev[saved.id] ? { ...prev, [saved.id]: saved } : prev))
+        if (selRef.current?.id === saved.id) setDoc(saved)
+        setDrafts((prev) => {
+          if (prev[saved.id] !== saved.markdown) return prev
+          const next = { ...prev }
+          delete next[saved.id]
+          return next
+        })
+        refreshNotes()
+      }),
+    [refreshNotes]
+  )
+
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
   useEffect(() => {
     const sub = (window as unknown as { api?: { onOpenToday?: (cb: () => void) => () => void } }).api
@@ -780,6 +848,7 @@ function Main(): React.JSX.Element {
         const tab = tabsRef.current.find((t) => t.id === target.id)
         if (!tab) return []
         return [
+          { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(tab.id) },
           { label: tab.pinned ? 'Unpin tab' : 'Pin tab', action: () => togglePin(tab.id) },
           { label: 'Close tab', action: () => closeTab(tab.id) },
           { label: 'Close other tabs', action: () => closeOthers(tab.id) },
@@ -791,6 +860,7 @@ function Main(): React.JSX.Element {
         const rel = doc.path
         const name = titleOf(doc)
         return [
+          { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(doc.id) },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
           { label: 'Rename…', action: () => doRename(rel, false) },
           { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(rel, name) }
@@ -831,7 +901,7 @@ function Main(): React.JSX.Element {
         { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(target.rel, name) }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned]
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut]
   )
 
   // --- derived -------------------------------------------------------------------
