@@ -37,7 +37,11 @@ interface Props {
 function Info({ text }: { text: string }): React.JSX.Element {
   return (
     <span className="ai-info" title={text} aria-label={text} role="img">
-      ⓘ
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+        <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <rect x="7.25" y="7" width="1.5" height="4.5" rx=".75" fill="currentColor" />
+        <circle cx="8" cy="4.9" r=".95" fill="currentColor" />
+      </svg>
     </span>
   )
 }
@@ -520,7 +524,7 @@ export default function AiModelsSettings({ settings, save, initialFound = null, 
         <select value={settings.model} onChange={(e) => void save({ model: e.target.value })} aria-label="Default model">
           {models.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.name ? `${m.name} (${m.id})` : m.id}
+              {m.name || m.id}
             </option>
           ))}
         </select>

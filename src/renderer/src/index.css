@@ -4334,6 +4334,8 @@ input[type='password'].text-input {
   gap: 6px;
 }
 .ai-info {
+  display: inline-flex;
+  vertical-align: -1px;
   font-size: 12px;
   color: var(--muted);
   cursor: help;
