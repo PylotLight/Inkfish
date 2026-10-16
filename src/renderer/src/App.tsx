@@ -15,6 +15,8 @@ import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
+import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
+import type { PaletteMode } from '../../shared/command-palette'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -950,6 +952,100 @@ function Main(): React.JSX.Element {
   const activeItem = scope === 'inbox' ? inbox.find((i) => i.id === sel?.id) ?? null : null
   const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
 
+  // --- ⌘K command palette / ⌘O note switcher (ported from Surffish) -------------------
+  const [palette, setPalette] = useState<PaletteMode | null>(null)
+  /** Bumped to remount Settings on a specific section picked from the palette. */
+  const [settingsNonce, setSettingsNonce] = useState(0)
+  const openSettingsAt = (tab: string): void => {
+    sessionStorage.setItem('inkfish.settingsTab', tab)
+    setSettingsNonce((n) => n + 1)
+    if (!settingsOpen) openSettings()
+  }
+  const leaveSettings = (): void => {
+    if (settingsOpen) setSettingsOpen(false)
+  }
+  const activeTab = activeNoteId ? tabs.find((t) => t.id === activeNoteId) ?? null : null
+  const paletteCommands: RunnableCommand[] = [
+    { id: 'new-note', title: 'New Note', section: 'Notes', keywords: ['create', 'file', 'add'], run: () => { leaveSettings(); doCreateFile(targetDir) } },
+    { id: 'new-folder', title: 'New Folder', section: 'Notes', keywords: ['create', 'directory'], run: () => { leaveSettings(); doCreateFolder() } },
+    { id: 'today', title: 'Open Today', section: 'Notes', keywords: ['daily', 'journal', 'day-log'], run: () => { leaveSettings(); void openToday() } },
+    { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
+      leaveSettings()
+      setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+    } },
+    { id: 'rename-note', title: 'Rename Note…', section: 'Notes', enabled: !!openPath, run: () => openPath && doRename(openPath, false) },
+    { id: 'rescan', title: 'Rescan Vault', section: 'Notes', keywords: ['reindex', 'refresh'], run: () => {
+      window.api.vault
+        .reindex()
+        .then((r) => {
+          setBackend(r.backend)
+          refreshAll()
+          notify(`Re-indexed ${r.indexed} notes`)
+        })
+        .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
+    } },
+    { id: 'go-home', title: 'Go to Home', section: 'Navigate', keywords: ['dashboard'], run: () => { leaveSettings(); pickScope('home') } },
+    { id: 'go-notes', title: 'Go to Notes', section: 'Navigate', keywords: ['files', 'tree'], run: () => { leaveSettings(); pickScope('notes') } },
+    { id: 'go-inbox', title: 'Go to Inbox', section: 'Navigate', keywords: ['captures', 'queue'], run: () => { leaveSettings(); pickScope('inbox') } },
+    { id: 'meetings', title: 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture'], run: () => { leaveSettings(); setShowMeeting(true) } },
+    { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
+    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
+    { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
+    { id: 'close-other-tabs', title: 'Close Other Tabs', section: 'Tabs', enabled: !!activeTab && tabs.length > 1, run: () => activeTab && closeOthers(activeTab.id) },
+    { id: 'pin-tab', title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && togglePin(activeTab.id) },
+    { id: 'settings', title: 'Open Settings', section: 'Settings', keywords: ['preferences', 'options'], accelerator: 'CmdOrCtrl+,', run: () => openSettingsAt(sessionStorage.getItem('inkfish.settingsTab') ?? 'appearance') },
+    ...([
+      ['appearance', 'Appearance', ['theme', 'font', 'accent', 'density', 'menu bar', 'tray']],
+      ['mini-window', 'Mini Window', ['float', 'dock', 'tuck']],
+      ['notes', 'Notes Location', ['vault', 'folder', 'move']],
+      ['sync', 'Sync', ['phone', 'android', 'pair', 'lan']],
+      ['trash', 'Trash', ['deleted', 'restore']],
+      ['audio', 'Audio', ['microphone', 'input']],
+      ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
+      ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
+    ] as Array<[string, string, string[]]>).map(([tab, label, keywords]): RunnableCommand => ({
+      id: `settings-${tab}`,
+      title: `Settings: ${label}`,
+      section: 'Settings',
+      keywords,
+      run: () => openSettingsAt(tab)
+    })),
+    { id: 'hide-window', title: 'Hide Inkfish', section: 'App', run: () => void window.api.win.hide() },
+    { id: 'quit', title: 'Quit Inkfish', section: 'App', keywords: ['exit', 'close app'], run: () => void window.api.app.quit() }
+  ]
+  const paletteNotes = useMemo(
+    () => allNotes.map((n) => ({ id: n.id, title: titleOf(n), path: n.path, tags: n.tags, updatedAt: n.updatedAt })),
+    [allNotes, titleOf]
+  )
+
+  // ⌘K palette, ⌘O notes only, ⇧⌘P commands only, ⌘, settings. Capture phase so the editor
+  // can't swallow them; pressing the same shortcut again closes the palette.
+  const paletteRef = useRef<PaletteMode | null>(null)
+  paletteRef.current = palette
+  const openSettingsRef = useRef(openSettings)
+  openSettingsRef.current = openSettings
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      let mode: PaletteMode | null = null
+      if (key === 'k' && !e.shiftKey) mode = 'all'
+      else if (key === 'o' && !e.shiftKey) mode = 'notes'
+      else if (key === 'p' && e.shiftKey) mode = 'commands'
+      else if (key === ',' && !e.shiftKey) {
+        e.preventDefault()
+        openSettingsRef.current()
+        return
+      }
+      if (!mode) return
+      e.preventDefault()
+      e.stopPropagation()
+      setPalette(paletteRef.current === mode ? null : mode)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   return (
     <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
       {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
@@ -1079,6 +1175,7 @@ function Main(): React.JSX.Element {
         {settingsOpen ? (
           <main className="view-scroll" aria-label="Settings">
             <SettingsView
+              key={settingsNonce}
               prefs={prefs}
               vibrancySupported={sys?.platform === 'darwin'}
               vault={vaultInfo}
@@ -1221,6 +1318,22 @@ function Main(): React.JSX.Element {
           y={menu.y}
           items={menuItems(menu.target)}
           onClose={() => setMenu(null)}
+        />
+      )}
+      {palette && (
+        <CommandPalette
+          mode={palette}
+          commands={paletteCommands}
+          notes={paletteNotes}
+          platform={sys?.platform ?? 'darwin'}
+          onClose={() => setPalette(null)}
+          onOpenNote={(id, pop) => {
+            if (pop) popOut(id)
+            else {
+              leaveSettings()
+              selectNote(id)
+            }
+          }}
         />
       )}
       {prompt && (
