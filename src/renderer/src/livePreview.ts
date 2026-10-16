@@ -418,7 +418,12 @@ function dropTarget(view: EditorView, x: number, y: number, ref: { from: number;
   }
   const c = view.coordsAtPos(pos)
   if (!c) return null
-  return { pos, place: 'after', block: false, rect: { left: c.left - 1, top: c.top, width: 2, height: c.bottom - c.top } }
+  return {
+    pos,
+    place: 'after',
+    block: false,
+    rect: { left: c.left - 1, top: c.top, width: 2, height: c.bottom - c.top }
+  }
 }
 
 function placeCaret(el: HTMLElement, t: DropTarget | null): void {

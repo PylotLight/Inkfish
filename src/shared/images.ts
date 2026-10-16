@@ -135,7 +135,9 @@ export function moveImageEdits(
           : { from: src.from, to: src.to, insert: '' }
     const line = text.slice(src.from, src.to)
     const insert: AltEdit =
-      place === 'before' ? { from: tgt.from, to: tgt.from, insert: `${line}\n` } : { from: tgt.to, to: tgt.to, insert: `\n${line}` }
+      place === 'before'
+        ? { from: tgt.from, to: tgt.from, insert: `${line}\n` }
+        : { from: tgt.to, to: tgt.to, insert: `\n${line}` }
     return insert.from < removal.from ? [insert, removal] : [removal, insert]
   }
   if (drop >= from && drop <= to) return null
@@ -155,7 +157,8 @@ export function moveImageEdits(
 /** Apply non-overlapping edits given in original-text offsets (test/helper use). */
 export function applyEdits(text: string, edits: AltEdit[]): string {
   let out = text
-  for (const e of [...edits].sort((a, b) => b.from - a.from || b.to - a.to)) out = out.slice(0, e.from) + e.insert + out.slice(e.to)
+  for (const e of [...edits].sort((a, b) => b.from - a.from || b.to - a.to))
+    out = out.slice(0, e.from) + e.insert + out.slice(e.to)
   return out
 }
 
