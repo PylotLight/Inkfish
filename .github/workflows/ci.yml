@@ -1,36 +1,158 @@
 name: ci
 
+# Fast path for PRs and main. Runs on GitHub-hosted runners by default; point it at
+# self-hosted ones with repo variables (Settings → Secrets and variables → Actions → Variables):
+#   INKFISH_LINUX_RUNNER  runs-on label for Linux jobs (e.g. an ARC scale set name). Default ubuntu-latest.
+#   INKFISH_MAC_RUNNER    runs-on label for the macOS job. Default macos-15.
+#   INKFISH_CI_CACHE      optional persistent dir on the runner (or mount a writable /cache) to keep
+#                         bun/npm/Electron download caches across ephemeral pods.
+# The repo is public: when a self-hosted label is set, fork PRs are skipped so untrusted code
+# never runs on our boxes (hosted runners still run them).
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Casks/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Casks/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+# One run per PR (or per ref); a new push to a PR cancels the stale run. main never cancels.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read # paths-filter lists PR files through the API
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  # Which parts of the repo changed, so the Android and macOS jobs only run when they matter.
+  changes:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
+    runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
+      stt: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.stt == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      # PRs are diffed through the API (no checkout); pushes to main need history to diff against.
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push'
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            android:
+              - 'android/**'
+              - 'src/shared/**'
+              - 'package.json'
+              - 'bun.lock'
+              - '.bun-version'
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/**'
+            stt:
+              - 'stt/**'
+              - 'scripts/build-stt.ts'
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/**'
+
+  # test + typecheck + build in one job: together they take ~5 s, far less than the setup a
+  # second job would repeat, so splitting or sharding bun test (79 tests, <1 s) would be slower.
+  verify:
+    name: test + typecheck + build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
+    runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: persistent cache dir (self-hosted only, if one is mounted)
+        run: bash .github/scripts/ci-cache-env.sh
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - run: bun install
+      - name: restore bun install cache
+        if: env.CI_PERSISTENT_CACHE != '1'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+      # --ignore-scripts skips the root postinstall (the ~100 MB Electron binary download):
+      # tests, typecheck and the electron-vite build never launch Electron.
+      - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun test
       - run: bun run typecheck
       - run: bun run build
 
   typecheck-android:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: persistent cache dir (self-hosted only, if one is mounted)
+        run: bash .github/scripts/ci-cache-env.sh
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: android/package-lock.json
+      - name: restore bun install cache
+        if: env.CI_PERSISTENT_CACHE != '1'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+      # android/node_modules keyed on the lockfile: a hit skips npm ci (~13 s) entirely.
+      - name: restore android/node_modules
+        id: android-nm
+        uses: actions/cache@v6
+        with:
+          path: android/node_modules
+          key: android-nm-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('android/package-lock.json') }}
       # android imports ../src/shared, which resolves deps from the root node_modules
       - run: bun install --frozen-lockfile --ignore-scripts
-      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - if: steps.android-nm.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: android
       - run: bun run typecheck:android
+
+  # Builds the Swift transcription helper (the slow part of a release) only when stt/ changes,
+  # so a broken helper shows up on the PR instead of at release time. On main it also seeds the
+  # SwiftPM build cache that release.yml (tag builds can read main's caches) restores.
+  mac-stt:
+    name: macos stt helper
+    needs: changes
+    if: needs.changes.outputs.stt == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_MAC_RUNNER == '')
+    runs-on: ${{ vars.INKFISH_MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: select xcode
+        run: bash .github/scripts/select-xcode.sh
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: restore SwiftPM build cache
+        uses: actions/cache@v6
+        with:
+          path: stt/.build
+          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
+          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
+      # plain node: imports only, no bun install needed
+      - run: bun scripts/build-stt.ts --force
+      - run: ls -la stt/bin && file stt/bin/inkfish-stt
