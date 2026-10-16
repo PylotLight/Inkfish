@@ -73,7 +73,15 @@ jobs:
           key: release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
           restore-keys: release-${{ runner.os }}-${{ runner.arch }}-
 
-      - run: bun install --frozen-lockfile
+      # bun only speaks http(s) proxies: a self-hosted runner with HTTP(S)_PROXY=socks5://... fails with
+      # UnsupportedProxyProtocol on any uncached package (a new Electron, say). Go direct for bun only
+      # (same fix as Surffish scripts/ci/bun-install-mac.sh). No-op on GitHub-hosted runners.
+      - name: bun install
+        run: |
+          for v in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy; do
+            case "${!v:-}" in socks*://*) echo "unset $v for bun (socks proxy)"; unset "$v" ;; esac
+          done
+          bun install --frozen-lockfile
       # Also builds the transcription helper (stt/bin/inkfish-stt), bundled as
       # Contents/Resources/bin/inkfish-stt via build.mac.extraResources.
       - run: bun run build
