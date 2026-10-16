@@ -46,9 +46,9 @@ function setup(mac: MemFs) {
     device: { id: 'mac-1234567890', name: 'Mac' },
     fs: mac,
     random,
-    getPeer: (id) => peers.get(id) ?? null,
+    getPeer: async (id) => peers.get(id) ?? null,
     pending: () => pending,
-    addPeer: (p) => { peers.set(p.id, p); pending = null },
+    addPeer: async (p) => { peers.set(p.id, p); pending = null },
     touchPeer: (id, at) => { const p = peers.get(id); if (p) p.lastSync = at },
     changed: (ps) => changed.push(...ps)
   })

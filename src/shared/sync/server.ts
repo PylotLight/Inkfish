@@ -44,11 +44,11 @@ export interface ServerHost {
   device: { id: string; name: string }
   fs: SyncFs
   random: Random
-  getPeer(id: string): PeerRecord | null
+  getPeer(id: string): Promise<PeerRecord | null>
   /** The QR currently on screen (one at a time). */
   pending(): PendingPair | null
   /** Called once a phone proves the pairing key. */
-  addPeer(p: PeerRecord): void
+  addPeer(p: PeerRecord): Promise<void>
   touchPeer(id: string, at: number): void
   /** Files changed by an apply (re-index, refresh UI). */
   changed(paths: string[], peerId?: string): void
@@ -100,12 +100,12 @@ export function createHandler(host: ServerHost): (method: string, path: string, 
       } catch {
         return fail(401, 'bad pairing key')
       }
-      host.addPeer({ id: peerId, name: String(req.name || 'Phone').slice(0, 60), key: toBase64(p.key), pairedAt: now() })
+      await host.addPeer({ id: peerId, name: String(req.name || 'Phone').slice(0, 60), key: toBase64(p.key), pairedAt: now() })
       const res: PairRes = { id: host.device.id, name: host.device.name }
       return ok(p.key, path, peerId, res)
     }
 
-    const peer = host.getPeer(peerId)
+    const peer = await host.getPeer(peerId)
     if (!peer) return fail(401, 'unknown peer')
     const key = fromBase64(peer.key)
     let req: unknown
