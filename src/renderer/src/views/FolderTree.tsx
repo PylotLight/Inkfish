@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { NoteEntry, NoteKind } from '../../../shared/types'
 import { fmtBytes, timeAgo } from '../text'
+import { Icon } from './icons'
 
 export interface TreeNode {
   name: string
@@ -19,6 +20,33 @@ export interface TreeData {
 }
 
 const COLLAPSE_KEY = 'inkfish.tree.collapsed.v1'
+const SORT_KEY = 'inkfish.tree.sort.v1'
+
+/** Tree order: A→Z by name (default) or most recently edited first. */
+export type TreeSort = 'name' | 'modified'
+
+export function parseTreeSort(raw: string | null | undefined): TreeSort {
+  return raw === 'modified' ? 'modified' : 'name'
+}
+
+function loadSort(): TreeSort {
+  try {
+    return parseTreeSort(localStorage.getItem(SORT_KEY))
+  } catch {
+    return 'name'
+  }
+}
+
+/** Every dir rel in the tree — "collapse all" stores exactly these. */
+export function allDirRels(tree: TreeData): string[] {
+  const out: string[] = []
+  const walk = (n: TreeNode): void => {
+    out.push(n.rel)
+    n.children.forEach(walk)
+  }
+  tree.roots.forEach(walk)
+  return out
+}
 
 function loadCollapsed(): Set<string> {
   try {
@@ -35,7 +63,11 @@ const byTitle = (titleOf: (n: NoteEntry) => string) => (a: NoteEntry, b: NoteEnt
   titleOf(a).localeCompare(titleOf(b))
 
 /** Build a nested dir tree with files attached — Obsidian-style. */
-export function buildTree(notes: NoteEntry[], titleOf: (n: NoteEntry) => string): TreeData {
+export function buildTree(
+  notes: NoteEntry[],
+  titleOf: (n: NoteEntry) => string,
+  sort: TreeSort = 'name'
+): TreeData {
   interface Mutable {
     name: string
     rel: string
@@ -66,22 +98,29 @@ export function buildTree(notes: NoteEntry[], titleOf: (n: NoteEntry) => string)
     node?.files.push(n)
   }
 
-  const freeze = (m: Mutable): TreeNode => {
-    const children = [...m.kids.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(freeze)
+  const fileCmp =
+    sort === 'modified'
+      ? (a: NoteEntry, b: NoteEntry) => b.updatedAt - a.updatedAt || byTitle(titleOf)(a, b)
+      : byTitle(titleOf)
+  interface Frozen extends TreeNode {
+    newest: number
+  }
+  const dirCmp = (a: Frozen, b: Frozen): number =>
+    sort === 'modified' ? b.newest - a.newest || a.name.localeCompare(b.name) : a.name.localeCompare(b.name)
+  const freeze = (m: Mutable): Frozen => {
+    const children = [...m.kids.values()].map(freeze).sort(dirCmp)
+    const newest = Math.max(0, ...m.files.map((f) => f.updatedAt), ...children.map((c) => c.newest))
     return {
       name: m.name,
       rel: m.rel,
-      files: [...m.files].sort(byTitle(titleOf)),
+      files: [...m.files].sort(fileCmp),
       children,
-      total: m.files.length + children.reduce((a, c) => a + c.total, 0)
+      total: m.files.length + children.reduce((a, c) => a + c.total, 0),
+      newest
     }
   }
-  const roots = [...top.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(freeze)
-  rootFiles.sort(byTitle(titleOf))
+  const roots = [...top.values()].map(freeze).sort(dirCmp)
+  rootFiles.sort(fileCmp)
   return { roots, rootFiles }
 }
 
@@ -111,6 +150,13 @@ interface Props {
   onOpenFile: (id: string) => void
   onPickDir: (rel: string) => void
   onMenu: (target: TreeTarget, x: number, y: number) => void
+  /** Toolbar: new note / new folder in the current target dir. */
+  onNewNote: () => void
+  onNewFolder: () => void
+  /** Current target dir for new notes ('' = vault root). */
+  targetDir: string
+  /** Optional row under the toolbar (kind filter chips). */
+  filters?: ReactNode
 }
 
 /** Minimal stroke icons — used in search results only. The folder tree
@@ -156,9 +202,10 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
   notes, kind, titleOf, selectedId, selectedPath, results, revealDir,
-  onOpenFile, onPickDir, onMenu
+  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+  const [sort, setSort] = useState<TreeSort>(loadSort)
 
   const persist = (next: Set<string>): void => {
     try {
@@ -203,7 +250,59 @@ function FolderTree({
     () => (kind === 'all' ? notes : notes.filter((n) => n.kind === kind)),
     [notes, kind]
   )
-  const tree = useMemo(() => buildTree(visible, titleOf), [visible, titleOf])
+  const tree = useMemo(() => buildTree(visible, titleOf, sort), [visible, titleOf, sort])
+  const dirRels = useMemo(() => allDirRels(tree), [tree])
+  const anyOpen = dirRels.some((r) => !collapsed.has(r))
+
+  const setAllCollapsed = (collapse: boolean): void => {
+    const next = collapse ? new Set(dirRels) : new Set<string>()
+    persist(next)
+    setCollapsed(next)
+  }
+
+  const flipSort = (): void => {
+    const next: TreeSort = sort === 'name' ? 'modified' : 'name'
+    try {
+      localStorage.setItem(SORT_KEY, next)
+    } catch {
+      // ignore
+    }
+    setSort(next)
+  }
+
+  const where = targetDir || 'vault root'
+  const toolbar = (
+    <div className="tree-toolbar" role="toolbar" aria-label="Notes actions">
+      <button className="tree-tool" onClick={onNewNote} title={`New note in ${where}`} aria-label="New note">
+        <Icon name="note-new" size={16} />
+      </button>
+      <button className="tree-tool" onClick={onNewFolder} title={`New folder in ${where}`} aria-label="New folder">
+        <Icon name="folder-new" size={16} />
+      </button>
+      <button
+        className="tree-tool"
+        onClick={flipSort}
+        title={sort === 'name' ? 'Sorted A→Z — switch to recently edited' : 'Sorted by recently edited — switch to A→Z'}
+        aria-label={sort === 'name' ? 'Sort by recently edited' : 'Sort by name'}
+      >
+        <Icon name={sort === 'name' ? 'sort-az' : 'sort-time'} size={16} />
+      </button>
+      <button
+        className="tree-tool"
+        onClick={() => setAllCollapsed(anyOpen)}
+        disabled={dirRels.length === 0 || results !== null}
+        title={anyOpen ? 'Collapse all folders' : 'Expand all folders'}
+        aria-label={anyOpen ? 'Collapse all folders' : 'Expand all folders'}
+      >
+        <Icon name={anyOpen ? 'collapse-all' : 'expand-all'} size={16} />
+      </button>
+      {targetDir !== '' && (
+        <span className="tree-target" title={`New notes go to ${targetDir}`}>
+          {targetDir.split('/').pop()}
+        </span>
+      )}
+    </div>
+  )
 
   const toggle = (rel: string): void => {
     setCollapsed((prev) => {
@@ -217,6 +316,9 @@ function FolderTree({
 
   if (results !== null) {
     return (
+      <>
+      {toolbar}
+      {filters}
       <div className="ftree" aria-label="Search results">
         {results.length === 0 && <p className="muted small pad">No matches.</p>}
         {results.map((n) => (
@@ -230,10 +332,14 @@ function FolderTree({
           />
         ))}
       </div>
+      </>
     )
   }
 
   return (
+    <>
+    {toolbar}
+    {filters}
     <div className="ftree" aria-label="Folders">
       {tree.roots.map((n) => (
         <Node
@@ -263,6 +369,7 @@ function FolderTree({
         <p className="muted small pad">Nothing here yet — ⌥Space to capture.</p>
       )}
     </div>
+    </>
   )
 }
 
@@ -281,13 +388,14 @@ function Node({
   const open = !collapsed.has(node.rel)
   return (
     <div className="fnode">
-      <div className="frow">
+      <div className={`frow${open ? ' open' : ''}`}>
         <button
           className="caret"
           onClick={() => onToggle(node.rel)}
           aria-label={open ? `Collapse ${node.rel}` : `Expand ${node.rel}`}
+          aria-expanded={open}
         >
-          {open ? '▾' : '▸'}
+          <Icon name="chevron-right" size={14} strokeWidth={2} />
         </button>
         <button
           className="fmain"

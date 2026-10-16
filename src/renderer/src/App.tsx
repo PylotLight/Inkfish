@@ -24,6 +24,7 @@ import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSi
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
+import { Icon } from './views/icons'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -982,6 +983,7 @@ function Main(): React.JSX.Element {
     for (const n of finalNotes) m.set(n.kind, (m.get(n.kind) ?? 0) + 1)
     return m
   }, [finalNotes])
+  const kindsPresent = kindCounts.size
 
   /** Today's day-log index entry, if one exists yet (staging `daily/…`, not the tree). */
   const todayEntry = useMemo(() => {
@@ -1143,44 +1145,129 @@ function Main(): React.JSX.Element {
 
   return (
     <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
+      {/* Sidebar toggle (Obsidian-style): pinned in the titlebar strip right of the traffic lights,
+          same spot whether the sidebar is open or collapsed. Fixed + no-drag (shared/sidebar.ts). */}
+      <button
+        className="side-toggle titlebar-toggle"
+        onClick={() => setSideCollapsed((v) => !v)}
+        title={`${sideCollapsed ? 'Show' : 'Hide'} sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+        aria-label={sideCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+        aria-expanded={!sideCollapsed}
+        aria-pressed={!sideCollapsed}
+      >
+        <Icon name="panel-left" size={18} />
+      </button>
+
+      {/* Collapsed: slim icon ribbon so the app stays navigable without the full sidebar. */}
+      {sideCollapsed && (
+        <nav className="side-ribbon" aria-label="Navigation">
+          <button
+            className="ribbon-btn"
+            title={`Search notes (${isMacUi ? '⌘\\' : 'Ctrl+\\'} shows the sidebar)`}
+            aria-label="Search notes"
+            onClick={() => {
+              setSideCollapsed(false)
+              if (scope !== 'notes') setScope('notes')
+              setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+            }}
+          >
+            <Icon name="search" size={18} />
+          </button>
+          {(['home', 'notes', 'inbox'] as Scope[]).map((s) => {
+            const on = scope === s && !settingsOpen && !showMeeting
+            return (
+              <button
+                key={s}
+                className={`ribbon-btn${on ? ' on' : ''}`}
+                title={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : `Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+                aria-label={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
+                aria-current={on ? 'page' : undefined}
+                onClick={() => {
+                  leaveSettings()
+                  setShowMeeting(false)
+                  pickScope(s)
+                  // The inbox queue lives in the sidebar — bring it back to show it.
+                  if (s === 'inbox') setSideCollapsed(false)
+                }}
+              >
+                <Icon name={s} size={18} />
+                {s === 'inbox' && pendingCount > 0 && <span className="ribbon-dot" aria-hidden />}
+              </button>
+            )
+          })}
+          <span className="ribbon-sep" aria-hidden />
+          <button
+            className="ribbon-btn"
+            title="Open today's day-log"
+            aria-label="Today"
+            onClick={() => {
+              leaveSettings()
+              void openToday()
+            }}
+          >
+            <Icon name="sun" size={18} />
+          </button>
+          <button
+            className={`ribbon-btn${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
+            title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
+            aria-label={meetingLive ? 'Recording' : 'Meetings'}
+            aria-pressed={showMeeting && !settingsOpen}
+            onClick={() => {
+              leaveSettings()
+              setShowMeeting(true)
+            }}
+          >
+            <Icon name={meetingLive ? 'record' : 'mic'} size={18} />
+          </button>
+          <span className="flex-sp" />
+          <button
+            className={`ribbon-btn${settingsOpen ? ' on' : ''}`}
+            title="Settings"
+            aria-label="Settings"
+            onClick={openSettings}
+          >
+            <Icon name="settings" size={18} />
+            {updateBadge && <span className="ribbon-dot" aria-label="Update available" />}
+          </button>
+        </nav>
+      )}
+
       {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
       <aside className="sidebar core" inert={sideCollapsed} aria-hidden={sideCollapsed || undefined}>
-        <div className="traffic-spacer" aria-hidden />
-        <div className="brand-row">
-          {/* Psst: triple-click the logo (views/easter-egg). */}
-          <div className="brand-logo-frame" onClick={brandEgg.onClick}>
-            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" draggable={false} />
-          </div>
-          <div className="brand">
-            <h1>{APP_NAME}</h1>
-          </div>
+        {/* Titlebar strip: window drag handle; the toggle floats over its left end. */}
+        <div className="side-head">
+          <span className="flex-sp" />
           {profile?.badge && (
             <span className="pill profile-pill" title={`Separate ${profile.name} profile — its own settings, notes folder and sync`}>
               {profile.badge}
             </span>
           )}
-          <span className="flex-sp" />
-          <button
-            className="side-toggle"
-            onClick={() => setSideCollapsed(true)}
-            title={`Collapse sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
-            aria-label="Collapse sidebar"
-            aria-expanded
-          >
-            «
-          </button>
+          {/* Psst: triple-click the logo (views/easter-egg). */}
+          <div className="brand-logo-frame" onClick={brandEgg.onClick} title={APP_NAME}>
+            <img src={logoUrl} alt={APP_NAME} className="brand-logo-img" draggable={false} />
+          </div>
         </div>
 
-        <input
-          className="search side-search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            if (scope !== 'notes') setScope('notes')
-          }}
-          placeholder="Search notes…"
-          aria-label="Search notes"
-        />
+        <div className="side-search-wrap">
+          <Icon name="search" size={15} className="side-search-icon" />
+          <input
+            className="search side-search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              if (scope !== 'notes') setScope('notes')
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && query) {
+                e.stopPropagation()
+                setQuery('')
+              }
+            }}
+            placeholder="Search notes…"
+            aria-label="Search notes"
+            spellCheck={false}
+          />
+        </div>
 
         <div className="scope-tabs" role="tablist" aria-label="Sidebar scope">
           {(['home', 'notes', 'inbox'] as Scope[]).map((s) => (
@@ -1207,7 +1294,7 @@ function Main(): React.JSX.Element {
               void openToday()
             }}
           >
-            <span aria-hidden>☀</span> Today
+            <Icon name="sun" size={16} /> Today
           </button>
           <button
             className={`side-action${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
@@ -1218,7 +1305,7 @@ function Main(): React.JSX.Element {
               setShowMeeting(true)
             }}
           >
-            <span aria-hidden>{meetingLive ? '●' : '🎙'}</span> {meetingLive ? 'Recording' : 'Meetings'}
+            <Icon name={meetingLive ? 'record' : 'mic'} size={16} /> {meetingLive ? 'Recording' : 'Meetings'}
           </button>
         </div>
 
@@ -1236,24 +1323,6 @@ function Main(): React.JSX.Element {
           </div>
         ) : (
           <div className="side-scroll">
-            <div className="tree-toolbar" role="toolbar" aria-label="Notes actions">
-              <button className="tree-tool" onClick={() => doCreateFile(targetDir)} title={`New note in ${targetDir || '/'}`} aria-label="New note">
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M4 1.5h5.2l2.8 2.8v10.2H4z" />
-                  <path d="M9.2 1.5v2.8H12" />
-                  <path d="M6.2 9.2h3.6M8 7.4v3.6" />
-                </svg>
-              </button>
-              <button className="tree-tool" onClick={doCreateFolder} title={`New folder in ${targetDir || '/'}`} aria-label="New folder">
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M1.8 4.7c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.7h5.4c.8 0 1.5.7 1.5 1.5v5.1c0 .8-.7 1.5-1.5 1.5H3.3c-.8 0-1.5-.7-1.5-1.5z" />
-                  <path d="M8 7.2v3.6M6.2 9h3.6" />
-                </svg>
-              </button>
-              {targetDir !== '' && (
-                <span className="tree-target" title={targetDir}>in {targetDir.split('/').pop()}</span>
-              )}
-            </div>
             <FolderTree
               notes={finalNotes}
               kind={kind}
@@ -1265,43 +1334,52 @@ function Main(): React.JSX.Element {
               onOpenFile={selectNote}
               onPickDir={pickDir}
               onMenu={(target, x, y) => setMenu({ x, y, target })}
+              onNewNote={() => doCreateFile(targetDir)}
+              onNewFolder={doCreateFolder}
+              targetDir={targetDir}
+              filters={
+                // Only worth a row when there is something to filter between (or a filter is on).
+                kindsPresent > 1 || kind !== 'all' ? (
+                  <div className="chips kinds" aria-label="Filter by kind">
+                    {KINDS.filter((k) => k.id === 'all' || (kindCounts.get(k.id as NoteKind) ?? 0) > 0 || kind === k.id).map((k) => (
+                      <button
+                        key={k.id}
+                        className={kind === k.id ? 'on' : ''}
+                        onClick={() => {
+                          setKind(k.id)
+                          setScope('notes')
+                        }}
+                        title={k.id === 'all' ? `${finalNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
+                      >
+                        {k.name}
+                        <span className="count">{k.id === 'all' ? finalNotes.length : (kindCounts.get(k.id as NoteKind) ?? 0)}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              }
             />
-            <div className="chips kinds" aria-label="Filter by kind">
-              {KINDS.filter((k) => k.id === 'all' || (kindCounts.get(k.id as NoteKind) ?? 0) > 0).map((k) => (
-                <button
-                  key={k.id}
-                  className={kind === k.id ? 'on' : ''}
-                  onClick={() => {
-                    setKind(k.id)
-                    setScope('notes')
-                  }}
-                  title={k.id === 'all' ? `${finalNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
-                >
-                  {k.name}
-                  {k.id !== 'all' && <span className="count">{kindCounts.get(k.id as NoteKind) ?? 0}</span>}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
         <div className="side-foot">
-          <span className="status-sub" title={vaultInfo?.root ?? ''}>
-            {(vaultInfo ? vaultInfo.root.replace(/.*\//, '…/') : '…') || '…'}
-            {sys?.appVersion ? ` · v${sys.appVersion}` : ''}
-          </span>
           <div className="side-foot-row">
-            <button className="settings-btn" onClick={openSettings}>
-              <span aria-hidden>⚙</span> Settings
+            <button className="settings-btn" onClick={openSettings} title="Settings">
+              <Icon name="settings" size={16} />
+              <span>Settings</span>
               {updateBadge && <span className="update-dot" aria-label="Update available" title="Update available" />}
             </button>
+            <span className="status-sub" title={vaultInfo?.root ?? ''}>
+              {(vaultInfo ? vaultInfo.root.replace(/.*\//, '') : '…') || '…'}
+              {sys?.appVersion ? ` · v${sys.appVersion}` : ''}
+            </span>
             <button
               className="quit-btn"
               onClick={() => void window.api.app.quit()}
               title="Quit Inkfish"
               aria-label="Quit Inkfish"
             >
-              <span aria-hidden>⏻</span>
+              <Icon name="power" size={15} />
             </button>
           </div>
         </div>
@@ -1309,26 +1387,13 @@ function Main(): React.JSX.Element {
 
       {/* Center: home dashboard, note stage, or full-page settings. */}
       <div className="content inkfish center">
-        {/* Window drag strip along the top; while collapsed it also carries the expand button
-            (clear of the macOS traffic lights) and the live-recording chip. */}
+        {/* Window drag strip along the top; while collapsed it also carries the live-recording
+            chip (the toggle itself is the fixed .titlebar-toggle above). */}
         <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
-          {sideCollapsed && (
-            <>
-              <button
-                className="side-toggle"
-                onClick={() => setSideCollapsed(false)}
-                title={`Expand sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
-                aria-label="Expand sidebar"
-                aria-expanded={false}
-              >
-                »
-              </button>
-              {meetingLive && !showMeeting && (
-                <button className="side-toggle rail-chip rec-live" onClick={() => { leaveSettings(); setShowMeeting(true) }} title="Meeting recording — open it">
-                  ● Recording
-                </button>
-              )}
-            </>
+          {sideCollapsed && meetingLive && !showMeeting && (
+            <button className="side-toggle rail-chip rec-live" onClick={() => { leaveSettings(); setShowMeeting(true) }} title="Meeting recording — open it">
+              <Icon name="record" size={12} /> Recording
+            </button>
           )}
         </div>
         {settingsOpen ? (
