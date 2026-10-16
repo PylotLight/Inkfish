@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createAutosave, type Autosave } from '../../../shared/autosave'
 import type { NoteDoc } from '../../../shared/types'
 import { MINI_WINDOW_REVEAL_ZONE, isPopKey, noteIdFromMiniHash } from '../../../shared/mini-window'
 import { applyPrefs, loadPrefs } from '../theme'
@@ -8,8 +9,6 @@ import NoteEditor from './NoteEditor'
 type HeaderState = Awaited<ReturnType<typeof window.api.mini.state>>
 
 const ARROWS: Record<string, string> = { left: '◂', right: '▸', up: '▴', down: '▾' }
-/** Unsaved edits in a mini save themselves after this long idle (it has no Save button). */
-const AUTOSAVE_MS = 1200
 
 /** Is this the mini-window renderer (`#mini?id=…`)? */
 export function isMiniWindow(): boolean {
@@ -19,7 +18,9 @@ export function isMiniWindow(): boolean {
 /**
  * A note in a mini window (main/mini-window.ts): just the editor, with an auto-hiding header
  * (drag to move, tuck to edge, back to the main window, close) that shows when the pointer nears
- * the top. Edits sync live with the main window and autosave after a short pause.
+ * the top. Edits sync live with the main window and autosave after a short pause. Only the window
+ * that made an edit saves it — text relayed from another window is shown, never re-saved here, so
+ * two windows never race each other's writes.
  */
 export default function MiniNote(): React.JSX.Element {
   const [noteId] = useState(() => noteIdFromMiniHash(window.location.hash) ?? '')
@@ -54,56 +55,82 @@ export default function MiniNote(): React.JSX.Element {
   }, [noteId])
   useEffect(load, [load])
 
+  const autosaveRef = useRef<Autosave | null>(null)
+  if (!autosaveRef.current) {
+    autosaveRef.current = createAutosave<NoteDoc>({
+      save: (id, markdown) => window.api.notes.save(id, markdown),
+      onSaved: (_id, markdown, saved) => {
+        setDoc(saved)
+        if (draftRef.current === markdown) setDraft(undefined)
+      },
+      onError: (id, err) => console.error(`[mini] autosave failed for ${id}:`, err)
+    })
+  }
+  const autosave = autosaveRef.current
+
   const setText = useCallback((markdown: string) => {
     const saved = docRef.current?.markdown
     setDraft(markdown === saved ? undefined : markdown)
   }, [])
 
-  // Live sync from the main window (or another mini on the same note).
+  /** Typed here: show + autosave. */
+  const localEdit = useCallback(
+    (id: string, markdown: string) => {
+      setText(markdown)
+      autosave.schedule(id, markdown)
+    },
+    [autosave, setText]
+  )
+
+  // Live sync from the main window (or another mini on the same note): the sender owns the
+  // save, so drop any older pending text of ours instead of writing it over theirs.
   useEffect(
     () =>
       window.api.mini.onDraft(({ id, markdown }) => {
-        if (id === noteId) setText(markdown)
+        if (id !== noteId) return
+        autosave.cancel(id)
+        setText(markdown)
       }),
-    [noteId, setText]
+    [noteId, setText, autosave]
   )
   useEffect(
     () =>
       window.api.mini.onSaved((saved) => {
         if (saved.id !== noteId) return
+        autosave.noteSaved(saved.id, saved.markdown)
         setDoc(saved)
         if (draftRef.current === saved.markdown) setDraft(undefined)
       }),
-    [noteId]
+    [noteId, autosave]
   )
   // Changed on disk (sync, another app): reload when there's nothing unsaved here.
   useEffect(() => window.api.onVaultChanged(() => (draftRef.current === undefined ? load() : undefined)), [load])
 
-  const save = useCallback((id: string, markdown: string) => {
-    window.api.notes
-      .save(id, markdown)
-      .then((saved) => {
-        if (!saved) return
-        setDoc(saved)
-        if (draftRef.current === markdown) setDraft(undefined)
-      })
-      .catch(console.error)
-  }, [])
+  useEffect(() => {
+    if (doc) autosave.noteSaved(doc.id, doc.markdown)
+  }, [doc, autosave])
 
-  // Autosave after a pause, and on the way out.
+  // Flush on blur / hide / quit; synchronous last chance when the window unloads.
   useEffect(() => {
-    if (draft === undefined || !doc) return
-    const t = window.setTimeout(() => save(doc.id, draft), AUTOSAVE_MS)
-    return () => window.clearTimeout(t)
-  }, [draft, doc, save])
-  useEffect(() => {
-    const flush = (): void => {
-      const d = docRef.current
-      if (d && draftRef.current !== undefined) void window.api.notes.save(d.id, draftRef.current)
+    const flush = (): void => void autosave.flushAll()
+    const onHide = (): void => {
+      if (document.visibilityState === 'hidden') flush()
     }
-    window.addEventListener('beforeunload', flush)
-    return () => window.removeEventListener('beforeunload', flush)
-  }, [])
+    const onUnload = (): void => {
+      const items = autosave.drain()
+      if (items.length > 0) window.api.notes.saveSync(items)
+    }
+    window.addEventListener('blur', flush)
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('beforeunload', onUnload)
+    const offFlush = window.api.onFlushRequest(() => autosave.flushAll())
+    return () => {
+      window.removeEventListener('blur', flush)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('beforeunload', onUnload)
+      offFlush()
+    }
+  }, [autosave])
 
   useEffect(() => {
     void window.api.mini.state().then(setState)
@@ -122,14 +149,12 @@ export default function MiniNote(): React.JSX.Element {
   }, [])
 
   const backToMain = async (): Promise<void> => {
-    const d = docRef.current
-    if (d && draftRef.current !== undefined) await window.api.notes.save(d.id, draftRef.current).catch(() => null)
+    await autosave.flushAll()
     await window.api.mini.returnToMain()
   }
 
   const close = async (): Promise<void> => {
-    const d = docRef.current
-    if (d && draftRef.current !== undefined) await window.api.notes.save(d.id, draftRef.current).catch(() => null)
+    await autosave.flushAll()
     await window.api.mini.close()
   }
 
@@ -150,7 +175,6 @@ export default function MiniNote(): React.JSX.Element {
       <header className="mini-head" onMouseEnter={() => reveal(true)}>
         <span className="mini-title" title={doc?.path ?? noteId}>
           {title}
-          {draft !== undefined && <span className="mini-dirty" aria-label="Unsaved"> •</span>}
         </span>
         <div className="mini-actions">
           {state?.tuckEnabled && state.arrow && (
@@ -185,11 +209,9 @@ export default function MiniNote(): React.JSX.Element {
           <NoteEditor
             doc={doc}
             title={title}
-            dirty={draft !== undefined}
             draft={draft}
-            onDraft={(_id, md) => setText(md)}
-            onDirty={() => undefined}
-            onSave={save}
+            onDraft={localEdit}
+            onFlush={() => void autosave.flushAll()}
             onRename={() => undefined}
             onMore={() => undefined}
             compact

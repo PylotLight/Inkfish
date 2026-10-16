@@ -62,12 +62,16 @@ interface Props {
   doc: NoteDoc | null
   /** Obsidian-style display title (filename or override). */
   title: string
-  dirty: boolean
-  /** Unsaved markdown lifted to the tab strip (survives tab switches). */
+  /**
+   * Not-yet-written markdown for THIS doc (keyed by `doc.id`, never by the selected tab — see
+   * `draftForEditor`). Lifted so tab switches and mini windows share it.
+   */
   draft?: string
+  /** A LOCAL edit (typing, paste, task toggle). Autosave hangs off this; remote/programmatic
+   * content swaps never call it, so a synced or reloaded text is never re-saved from here. */
   onDraft: (id: string, markdown: string) => void
-  onDirty: (dirty: boolean) => void
-  onSave: (id: string, markdown: string) => void
+  /** ⌘S — autosave makes it a no-op flush; kept so muscle memory never does anything odd. */
+  onFlush?: () => void
   onRename: (title: string) => void
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
@@ -80,10 +84,10 @@ interface Props {
  * block editors, no separate raw mode.
  *
  * Perf: the text lives in LOCAL state — typing never re-renders the parent
- * (sidebar, lists, queue). Unsaved text is ALSO lifted via `onDraft` so
- * switching tabs keeps edits; the tab strip owns dirtiness.
+ * (sidebar, lists, queue). Edits are ALSO lifted via `onDraft`, where the
+ * parent autosaves them (Obsidian-style: no Save button, nothing "unsaved").
  */
-function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRename, onMore, compact }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, compact }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -94,20 +98,19 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
   textRef.current = text
   /** True once the user has typed — guards the doc.markdown fallback below. */
   const editedRef = useRef(false)
-  const saveRef = useRef({ doc, onSave })
-  saveRef.current = { doc, onSave }
-  const dirtyRef = useRef(onDirty)
-  dirtyRef.current = onDirty
+  const saveRef = useRef({ doc, onFlush })
+  saveRef.current = { doc, onFlush }
   const draftRef = useRef(onDraft)
   draftRef.current = onDraft
   /** Vault-relative path of the open note — image refs resolve against it. */
   const notePathRef = useRef<string | null>(doc?.path ?? null)
   notePathRef.current = doc?.path ?? null
 
-  const handleText = useCallback((next: string): void => {
+  /** `local` = the user changed it here; false = we swapped content in (doc switch, live sync). */
+  const handleText = useCallback((next: string, local = true): void => {
     setText(next)
+    if (!local) return
     editedRef.current = true
-    dirtyRef.current(true)
     const d = saveRef.current.doc
     if (d) draftRef.current(d.id, next)
   }, [])
@@ -181,8 +184,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
             {
               key: 'Mod-s',
               run: () => {
-                const { doc: d, onSave: save } = saveRef.current
-                if (d) save(d.id, textRef.current)
+                saveRef.current.onFlush?.()
                 return true
               }
             }
@@ -190,10 +192,11 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return
             const next = u.state.doc.toString()
-            handleTextRef.current(next)
+            const remote = u.transactions.some((t) => t.annotation(remoteSync))
+            handleTextRef.current(next, !remote)
             // Live sync with mini windows: local edits only (remote ones came from there).
             const d = saveRef.current.doc
-            if (d && !u.transactions.some((t) => t.annotation(remoteSync))) window.api.mini?.draft(d.id, next)
+            if (d && !remote) window.api.mini?.draft(d.id, next)
           }),
           findQueryField,
           findDecoField,
@@ -324,7 +327,7 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
         // ⌘S from anywhere in the editor.
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
           e.preventDefault()
-          onSave(doc.id, textRef.current)
+          onFlush?.()
           return
         }
         // ⌘F opens in-note find (we highlight ourselves, not the browser).
@@ -399,15 +402,12 @@ function NoteEditor({ doc, title, dirty, draft, onDraft, onDirty, onSave, onRena
           >
             ⋯
           </button>
-          <button className={`btn sm${dirty ? ' mint' : ' ghost'}`} onClick={() => onSave(doc.id, textRef.current)}>
-            Save ⌘S
-          </button>
         </div>
         <p
           className="muted small ed-meta"
           title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
         >
-          {doc.path} · {dirty ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
+          {doc.path} · {draft !== undefined ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
           edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
           {' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
         </p>
