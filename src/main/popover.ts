@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import type { VibrancyName } from '../shared/types'
+import { menuBarPopoutBounds } from '../shared/menubar'
 
 const isMac = process.platform === 'darwin'
 
@@ -74,11 +75,11 @@ export function getPopover(): BrowserWindow | null {
 }
 
 /** Toggle near the tray icon (left-click): just under the menu bar. */
-export function togglePopoverAtTray(x?: number, y?: number, w?: number): void {
-  showPopoverAt(x, y, w)
+export function togglePopoverAtTray(x?: number, y?: number, w?: number, h?: number): void {
+  showPopoverAt(x, y, w, h)
 }
 
-function showPopoverAt(x?: number, y?: number, w?: number, hash = 'capture'): void {
+function showPopoverAt(x?: number, y?: number, w?: number, h?: number, hash = 'capture'): void {
   const win = popover ?? createPopover()
   if (win.isVisible()) {
     win.hide()
@@ -86,15 +87,12 @@ function showPopoverAt(x?: number, y?: number, w?: number, hash = 'capture'): vo
   }
   if (x !== undefined && y !== undefined) {
     try {
+      // Centred under the icon, or above it when the tray sits at the bottom (Windows/Linux taskbar).
+      const anchor = { x, y, width: w ?? 0, height: h ?? 0 }
       const display = screen.getDisplayNearestPoint({ x, y })
-      const { width } = win.getBounds()
-      const px = Math.round(
-        Math.min(
-          Math.max(x + (w ?? 0) / 2 - width / 2, display.bounds.x),
-          display.bounds.x + display.bounds.width - width
-        )
-      )
-      win.setPosition(px, Math.round(y + 8))
+      const { width, height } = win.getBounds()
+      const { bounds } = menuBarPopoutBounds(anchor, screen.getCursorScreenPoint(), { width, height }, display)
+      win.setPosition(bounds.x, bounds.y)
     } catch {
       // fall through to default position
     }
@@ -112,8 +110,8 @@ function setPopoverHash(win: BrowserWindow, hash: string): Promise<void> {
 }
 
 /** Append-to-today popover: same window, `#capture-daily` hash. */
-export function toggleDailyAtTray(x?: number, y?: number, w?: number): void {
-  showPopoverAt(x, y, w, 'capture-daily')
+export function toggleDailyAtTray(x?: number, y?: number, w?: number, h?: number): void {
+  showPopoverAt(x, y, w, h, 'capture-daily')
 }
 
 /** Append-to-today near the cursor (Shift+Alt+Space). */

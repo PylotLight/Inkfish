@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type { MenuBarSettings } from '../shared/menubar'
 import type {
   ClassifyResult,
   GlassState,
@@ -269,6 +270,17 @@ const api = {
       const fn = (): void => cb()
       ipcRenderer.on('systap:ended', fn)
       return () => ipcRenderer.removeListener('systap:ended', fn)
+    }
+  },
+  /** Menu bar mode: tray icon, what its click opens, menu-bar-only (no Dock icon). */
+  menubar: {
+    settings: (): Promise<{ settings: MenuBarSettings; platform: string }> => ipcRenderer.invoke('menubar:settings'),
+    set: (patch: Partial<MenuBarSettings>): Promise<MenuBarSettings> => ipcRenderer.invoke('menubar:set', patch),
+    /** Changed elsewhere (the tray's right-click menu). */
+    onChanged: (cb: (s: MenuBarSettings) => void): (() => void) => {
+      const fn = (_e: unknown, s: MenuBarSettings): void => cb(s)
+      ipcRenderer.on('menubar:changed', fn)
+      return () => ipcRenderer.removeListener('menubar:changed', fn)
     }
   },
   meeting: {
