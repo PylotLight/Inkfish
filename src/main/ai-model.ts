@@ -1,4 +1,5 @@
 import { estimateTokens, toChat, type ChatMessage, type PromptMessage } from '../shared/ai-api'
+import { untagSystemPrompt, type ModelMeta, type RunOptions } from '../shared/ai-models'
 import type { AiProvider } from './ai-providers'
 
 /**
@@ -24,15 +25,31 @@ export interface LanguageModelBase {
   new (...args: any[]): BaseInstance
 }
 
-export function createLanguageModelClass<B extends LanguageModelBase>(Base: B, getProvider: () => AiProvider | null) {
+export function createLanguageModelClass<B extends LanguageModelBase>(
+  Base: B,
+  getProvider: () => AiProvider | null,
+  /** The model config a run resolves to (its context window becomes `contextWindow`). */
+  getModel: (run: RunOptions) => ModelMeta | null = () => null
+) {
   class InkfishLanguageModel extends Base {
     history: ChatMessage[] = []
     aborter = new AbortController()
+    run: RunOptions = {}
 
     static async create(options?: { initialPrompts?: PromptMessage[] }): Promise<InkfishLanguageModel> {
       if (!getProvider()) throw new Error('No AI provider connected. Open Settings › AI.')
-      const model = new InkfishLanguageModel({ contextUsage: 0, contextWindow: CONTEXT_WINDOW })
-      model.history = toChat(options?.initialPrompts ?? [])
+      const history = toChat(options?.initialPrompts ?? [])
+      // The renderer may tag the system prompt with a per-action model; strip it here.
+      let run: RunOptions = {}
+      const first = history[0]
+      if (first?.role === 'system') {
+        const u = untagSystemPrompt(first.content)
+        run = u.run
+        history[0] = { ...first, content: u.system }
+      }
+      const model = new InkfishLanguageModel({ contextUsage: 0, contextWindow: getModel(run)?.contextWindow ?? CONTEXT_WINDOW })
+      model.run = run
+      model.history = history
       model.contextUsage = estimateTokens(model.history)
       return model
     }
@@ -47,7 +64,7 @@ export function createLanguageModelClass<B extends LanguageModelBase>(Base: B, g
       const turn = toChat(input)
       const messages = [...this.history, ...turn]
       const signal = options?.signal ? AbortSignal.any([options.signal, this.aborter.signal]) : this.aborter.signal
-      const iterator = provider.stream(messages, signal)
+      const iterator = provider.stream(messages, signal, this.run)
       let answer = ''
       return new ReadableStream<string>({
         pull: async (controller) => {
@@ -84,6 +101,7 @@ export function createLanguageModelClass<B extends LanguageModelBase>(Base: B, g
     async clone(): Promise<InkfishLanguageModel> {
       const copy = new InkfishLanguageModel({ contextUsage: this.contextUsage, contextWindow: this.contextWindow })
       copy.history = [...this.history]
+      copy.run = { ...this.run }
       return copy
     }
 

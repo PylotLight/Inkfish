@@ -11,6 +11,9 @@
  * (embedded llama.cpp / MLX model) slots in as one more `AiProviderKind` + factory branch there.
  */
 
+import { AI_ACTIONS, type AiAction } from './ai-process'
+import { parseModels, type AiModel } from './ai-models'
+
 export const AI_PROVIDER_KINDS = ['openai', 'anthropic'] as const
 export type AiProviderKind = (typeof AI_PROVIDER_KINDS)[number]
 
@@ -20,7 +23,14 @@ export interface AiProviderSettings {
   kind: AiProviderKind
   /** API root: `https://api.openai.com/v1`, `http://127.0.0.1:11434/v1`, `https://api.anthropic.com`. */
   baseUrl: string
+  /** Active (default) model id. Always one of `models` (parse adds it if missing). */
   model: string
+  /** Models the user keeps for this provider (Settings › AI › Models). */
+  models: AiModel[]
+  /** Optional per-action model ids; unset = the active model. */
+  actionModels: Partial<Record<AiAction, string>>
+  /** Send a note's images to vision models in Process actions. Off by default. */
+  includeImages: boolean
 }
 
 export const DEFAULT_BASE_URL: Record<AiProviderKind, string> = {
@@ -37,7 +47,10 @@ export const DEFAULT_AI_SETTINGS: AiProviderSettings = {
   enabled: false,
   kind: 'openai',
   baseUrl: DEFAULT_BASE_URL.openai,
-  model: DEFAULT_MODEL.openai
+  model: DEFAULT_MODEL.openai,
+  models: [{ id: DEFAULT_MODEL.openai }],
+  actionModels: {},
+  includeImages: false
 }
 
 /** What the renderer sees: settings plus key presence. The key itself never leaves main. */
@@ -77,15 +90,47 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/** Invalid fields fall back to `fallback` (defaults, or current settings when saving a patch). */
+/**
+ * Invalid fields fall back to `fallback` (defaults, or current settings when saving a patch).
+ *
+ * Migration: settings saved before the Models list had only `model`; it becomes the list's first
+ * entry. The active model is always in the list, and per-action ids that left the list are dropped.
+ */
 export function parseAiSettings(value: unknown, fallback: AiProviderSettings = DEFAULT_AI_SETTINGS): AiProviderSettings {
   const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const kind = AI_PROVIDER_KINDS.includes(raw.kind as AiProviderKind) ? (raw.kind as AiProviderKind) : fallback.kind
   const baseRaw = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim().replace(/\/+$/, '') : null
   const baseUrl = baseRaw === '' ? DEFAULT_BASE_URL[kind] : baseRaw && isHttpUrl(baseRaw) ? baseRaw : fallback.baseUrl
+  const models = Array.isArray(raw.models) ? parseModels(raw.models) : fallback.models.map((m) => ({ ...m }))
   const modelRaw = typeof raw.model === 'string' ? raw.model.trim().slice(0, 200) : null
-  const model = modelRaw === '' ? DEFAULT_MODEL[kind] : (modelRaw ?? fallback.model)
-  return { enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled, kind, baseUrl, model }
+  // Empty = the provider's default model (as before the Models list).
+  const model = modelRaw === '' ? DEFAULT_MODEL[kind] : modelRaw || fallback.model || models[0]?.id || DEFAULT_MODEL[kind]
+  if (!models.some((m) => m.id === model)) models.unshift({ id: model })
+  const ids = new Set(models.map((m) => m.id))
+  const actionRaw =
+    typeof raw.actionModels === 'object' && raw.actionModels !== null
+      ? (raw.actionModels as Record<string, unknown>)
+      : (fallback.actionModels as Record<string, unknown>)
+  const actionModels: Partial<Record<AiAction, string>> = {}
+  for (const a of AI_ACTIONS) {
+    const id = actionRaw[a]
+    if (typeof id === 'string' && ids.has(id)) actionModels[a] = id
+  }
+  return {
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
+    kind,
+    baseUrl,
+    model,
+    models,
+    actionModels,
+    includeImages: typeof raw.includeImages === 'boolean' ? raw.includeImages : fallback.includeImages
+  }
+}
+
+/** The model config a run uses: the action's own model if set, else the active one. */
+export function resolveModel(settings: AiProviderSettings, action?: AiAction): AiModel {
+  const id = (action && settings.actionModels[action]) || settings.model
+  return settings.models.find((m) => m.id === id) ?? { id }
 }
 
 /** Whether prompts should be served: switched on, and a key saved (or a keyless loopback server). */
@@ -113,9 +158,49 @@ export interface PromptMessage {
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** Image parts (vision models only; providers drop them when the model has no image input). */
+  images?: ChatImage[]
 }
 
-/** The text of a message; image and audio parts are dropped (text-only for now). */
+export interface ChatImage {
+  mime: string
+  /** base64, no data: prefix. */
+  data: string
+}
+
+/** Sniff an image's MIME type from its first bytes (the Prompt API hands images over as bytes). */
+export function sniffImageMime(b: Uint8Array): string | null {
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif'
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45) return 'image/webp'
+  return null
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+/** An image part's value (bytes, or a data: URL) → `ChatImage`; unknown formats are dropped. */
+export function imagePart(value: unknown): ChatImage | null {
+  if (typeof value === 'string') {
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(value)
+    return m ? { mime: (m[1] ?? '').toLowerCase(), data: m[2] ?? '' } : null
+  }
+  const bytes =
+    value instanceof ArrayBuffer
+      ? new Uint8Array(value)
+      : ArrayBuffer.isView(value)
+        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+        : null
+  if (!bytes || bytes.length < 12) return null
+  const mime = sniffImageMime(bytes)
+  return mime ? { mime, data: toBase64(bytes) } : null
+}
+
+/** The text of a message (image parts are carried separately by `toChat`; audio is dropped). */
 export function messageText(message: PromptMessage): string {
   return message.content
     .filter((part) => part.type === 'text' && typeof part.value === 'string')
@@ -124,12 +209,19 @@ export function messageText(message: PromptMessage): string {
 }
 
 export function toChat(messages: PromptMessage[]): ChatMessage[] {
-  return messages.map((m) => ({ role: m.role, content: messageText(m) }))
+  return messages.map((m) => {
+    const images = m.content
+      .filter((p) => p.type === 'image')
+      .map((p) => imagePart(p.value))
+      .filter((x): x is ChatImage => !!x)
+    return images.length ? { role: m.role, content: messageText(m), images } : { role: m.role, content: messageText(m) }
+  })
 }
 
 /** Rough token count (≈4 characters a token) for contextUsage / measureContextUsage. */
 export function estimateTokens(messages: ChatMessage[]): number {
-  return Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4)
+  // ~4 characters a token; an image counts as ~1000 tokens (rough, provider-dependent).
+  return Math.ceil(messages.reduce((n, m) => n + m.content.length + (m.images?.length ?? 0) * 4000, 0) / 4)
 }
 
 /** Replace any occurrence of `secret` in `text` (error bodies can echo headers). */

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
+import type { DiscoveryResult } from '../shared/ai-models'
 import type { ProcessedEntry } from '../shared/ai-process'
 import type { MenuBarSettings } from '../shared/menubar'
 import type { AppProfileInfo } from '../shared/profile'
@@ -257,6 +258,8 @@ const api = {
     clearKey: (): Promise<AiApiStatus> => ipcRenderer.invoke('ai-api:clear-key'),
     /** Unsaved `patch` fields override the saved settings for this test only. */
     test: (patch?: Partial<AiProviderSettings>): Promise<AiTestResult> => ipcRenderer.invoke('ai-api:test', patch),
+    /** Find models on the provider (main does the requests; the key never reaches the renderer). */
+    discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> => ipcRenderer.invoke('ai-api:discover', patch),
     processedGet: (noteId: string): Promise<ProcessedEntry | null> => ipcRenderer.invoke('ai-api:processed-get', noteId),
     processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
     processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId)

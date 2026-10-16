@@ -1,4 +1,5 @@
-import { scrubSecret, type AiProviderKind, type ChatMessage } from '../shared/ai-api'
+import { estimateTokens, scrubSecret, type AiProviderKind, type ChatMessage } from '../shared/ai-api'
+import { outputBudget, supportsInput, type AiModel, type RunOptions } from '../shared/ai-models'
 
 /**
  * Remote AI providers behind Inkfish's local AI handler. Electron-free so it runs in the utility
@@ -12,24 +13,116 @@ import { scrubSecret, type AiProviderKind, type ChatMessage } from '../shared/ai
 
 export interface AiProvider {
   readonly kind: AiProviderKind
-  /** Streams text deltas for `messages` (system first, then alternating turns). */
-  stream(messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<string>
+  /**
+   * Streams text deltas for `messages` (system first, then alternating turns). `run.model` picks a
+   * model from `ProviderConfig.models` (per-action models); default is `ProviderConfig.model`.
+   */
+  stream(messages: ChatMessage[], signal?: AbortSignal, run?: RunOptions): AsyncGenerator<string>
 }
 
 export interface ProviderConfig {
   kind: AiProviderKind
   baseUrl: string
+  /** Default model id. */
   model: string
   /** Decrypted in main, held in memory only. Never logged. */
   apiKey: string | null
+  /** Per-model config (limits, reasoning level, input capabilities) from Settings › AI › Models. */
+  models?: AiModel[]
+}
+
+/** The model config for a request: `run.model` if known, else the default (bare id when not in the list). */
+export function modelFor(cfg: ProviderConfig, run?: RunOptions): AiModel {
+  const id = run?.model || cfg.model
+  return cfg.models?.find((m) => m.id === id) ?? { id }
+}
+
+/** Anthropic extended-thinking budget for a reasoning level (a number is taken as tokens). */
+export function thinkingBudget(level: string): number {
+  const n = Number(level)
+  if (Number.isFinite(n) && n > 0) return Math.round(n)
+  const table: Record<string, number> = { minimal: 1024, low: 2048, medium: 8192, high: 16_384, xhigh: 32_000, max: 32_000 }
+  return table[level] ?? 8192
+}
+
+function isOpenAIHost(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname === 'api.openai.com'
+  } catch {
+    return false
+  }
+}
+
+/** The JSON body for an OpenAI-compatible `/chat/completions` request. Exported for tests. */
+export function openAIBody(cfg: ProviderConfig, messages: ChatMessage[], run?: RunOptions): Record<string, unknown> {
+  const m = modelFor(cfg, run)
+  const vision = supportsInput(m, 'image')
+  const wire = messages.map((msg) =>
+    vision && msg.images?.length
+      ? {
+          role: msg.role,
+          content: [
+            { type: 'text', text: msg.content },
+            ...msg.images.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.data}` } }))
+          ]
+        }
+      : { role: msg.role, content: msg.content }
+  )
+  const body: Record<string, unknown> = { ...(m.id ? { model: m.id } : {}), messages: wire, stream: true }
+  // Reasoning models reject a custom temperature; only send one when no reasoning level is set.
+  if (m.reasoning) body.reasoning_effort = m.reasoning
+  else body.temperature = 0.2
+  const budget = outputBudget(m, estimateTokens(vision ? messages : messages.map((x) => ({ ...x, images: undefined }))))
+  // api.openai.com wants max_completion_tokens (reasoning models refuse max_tokens); other
+  // OpenAI-compatible servers (LiteLLM, OpenRouter, Ollama, LM Studio, vLLM) take max_tokens.
+  if (budget) body[isOpenAIHost(cfg.baseUrl) ? 'max_completion_tokens' : 'max_tokens'] = budget
+  return body
+}
+
+/** The JSON body for an Anthropic `/v1/messages` request. Exported for tests. */
+export function anthropicBody(cfg: ProviderConfig, messages: ChatMessage[], run?: RunOptions): Record<string, unknown> {
+  const m = modelFor(cfg, run)
+  const vision = supportsInput(m, 'image')
+  const system = messages
+    .filter((x) => x.role === 'system')
+    .map((x) => x.content)
+    .join('\n\n')
+  const turns = messages
+    .filter((x) => x.role !== 'system')
+    .map((x) =>
+      vision && x.images?.length
+        ? {
+            role: x.role,
+            content: [
+              ...x.images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.data } })),
+              { type: 'text', text: x.content }
+            ]
+          }
+        : { role: x.role, content: x.content }
+    )
+  let maxTokens = outputBudget(m, estimateTokens(messages)) ?? 8192
+  const body: Record<string, unknown> = { model: m.id, ...(system ? { system } : {}), messages: turns, stream: true }
+  let thinking = m.reasoning ? thinkingBudget(m.reasoning) : 0
+  if (thinking) {
+    // budget_tokens must be ≥ 1024 and below max_tokens; leave room for the visible answer.
+    const cap = m.maxOutputTokens ?? Math.max(maxTokens, thinking + 4096)
+    if (maxTokens <= thinking + 1024) maxTokens = Math.min(cap, thinking + 4096)
+    if (thinking >= maxTokens) thinking = maxTokens - 1024
+    if (thinking < 1024) thinking = 0
+  }
+  body.max_tokens = maxTokens
+  // Extended thinking requires the default temperature.
+  if (thinking) body.thinking = { type: 'enabled', budget_tokens: thinking }
+  else body.temperature = 0.2
+  return body
 }
 
 type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
 /** Concatenate a whole stream (Test connection, non-streaming callers). */
-export async function complete(provider: AiProvider, messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
+export async function complete(provider: AiProvider, messages: ChatMessage[], signal?: AbortSignal, run?: RunOptions): Promise<string> {
   let out = ''
-  for await (const delta of provider.stream(messages, signal)) out += delta
+  for await (const delta of provider.stream(messages, signal, run)) out += delta
   return out
 }
 
@@ -87,13 +180,13 @@ async function httpError(res: Response, label: string, key: string | null): Prom
 function openAICompatible(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
   return {
     kind: 'openai',
-    async *stream(messages, signal) {
+    async *stream(messages, signal, run) {
       const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'text/event-stream' }
       if (cfg.apiKey) headers.authorization = `Bearer ${cfg.apiKey}`
       const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ...(cfg.model ? { model: cfg.model } : {}), messages, stream: true, temperature: 0.2 }),
+        body: JSON.stringify(openAIBody(cfg, messages, run)),
         signal
       })
       if (!res.ok) throw await httpError(res, 'AI provider', cfg.apiKey)
@@ -125,9 +218,7 @@ function openAICompatible(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
 function anthropic(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
   return {
     kind: 'anthropic',
-    async *stream(messages, signal) {
-      const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n')
-      const turns = messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
+    async *stream(messages, signal, run) {
       const headers: Record<string, string> = {
         'content-type': 'application/json',
         'anthropic-version': '2023-06-01',
@@ -137,14 +228,7 @@ function anthropic(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
       const res = await fetchFn(`${cfg.baseUrl}/v1/messages`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: cfg.model,
-          max_tokens: 8192,
-          temperature: 0.2,
-          ...(system ? { system } : {}),
-          messages: turns,
-          stream: true
-        }),
+        body: JSON.stringify(anthropicBody(cfg, messages, run)),
         signal
       })
       if (!res.ok) throw await httpError(res, 'Anthropic', cfg.apiKey)

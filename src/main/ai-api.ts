@@ -9,6 +9,9 @@ import {
   type AiProviderSettings,
   type AiTestResult
 } from '../shared/ai-api'
+import type { DiscoveryResult } from '../shared/ai-models'
+import { discoverModels } from './ai-discovery'
+import { applySettingsPatch, parseStoredAi, settingsOnly, type StoredAi } from './ai-store'
 import { parseProcessedEntry, type ProcessedEntry } from '../shared/ai-process'
 import { complete, createProvider, type ProviderConfig } from './ai-providers'
 import { appDataDir } from './vault'
@@ -29,10 +32,6 @@ import { appDataDir } from './vault'
  * version survives restarts and is marked stale when the raw note changes.
  */
 
-interface StoredAi extends AiProviderSettings {
-  /** safeStorage ciphertext, base64. */
-  keyEnc?: string
-}
 
 const RESPAWN_LIMIT = 3
 const RESPAWN_WINDOW_MS = 60_000
@@ -55,8 +54,7 @@ function load(): StoredAi {
   } catch {
     raw = {}
   }
-  const keyEnc = typeof (raw as StoredAi).keyEnc === 'string' ? (raw as StoredAi).keyEnc : undefined
-  stored = { ...parseAiSettings(raw), ...(keyEnc ? { keyEnc } : {}) }
+  stored = parseStoredAi(raw)
   return stored
 }
 
@@ -68,9 +66,6 @@ function persist(next: StoredAi): void {
   writeFileSync(p, JSON.stringify(next, null, 2), { mode: 0o600 })
 }
 
-function settingsOnly(s: StoredAi): AiProviderSettings {
-  return { enabled: s.enabled, kind: s.kind, baseUrl: s.baseUrl, model: s.model }
-}
 
 async function keychain(): Promise<boolean> {
   try {
@@ -101,7 +96,7 @@ async function decryptKey(): Promise<string | null> {
 
 async function providerConfig(): Promise<ProviderConfig> {
   const s = load()
-  return { kind: s.kind, baseUrl: s.baseUrl, model: s.model, apiKey: await decryptKey() }
+  return { kind: s.kind, baseUrl: s.baseUrl, model: s.model, models: s.models, apiKey: await decryptKey() }
 }
 
 export async function aiStatus(): Promise<AiApiStatus> {
@@ -165,9 +160,7 @@ export function applyAi(): Promise<void> {
 }
 
 export async function setAiSettings(patch: unknown): Promise<AiApiStatus> {
-  const cur = load()
-  const next = parseAiSettings(typeof patch === 'object' && patch !== null ? patch : {}, settingsOnly(cur))
-  persist({ ...next, ...(cur.keyEnc ? { keyEnc: cur.keyEnc } : {}) })
+  persist(applySettingsPatch(load(), patch))
   respawns = []
   await applyAi()
   return aiStatus()
@@ -198,7 +191,7 @@ export async function testAi(patch?: unknown): Promise<AiTestResult> {
   const s = parseAiSettings(typeof patch === 'object' && patch !== null ? patch : {}, settingsOnly(cur))
   const t0 = Date.now()
   try {
-    const provider = createProvider({ kind: s.kind, baseUrl: s.baseUrl, model: s.model, apiKey: await decryptKey() })
+    const provider = createProvider({ kind: s.kind, baseUrl: s.baseUrl, model: s.model, models: s.models, apiKey: await decryptKey() })
     const reply = await complete(
       provider,
       [
@@ -211,6 +204,17 @@ export async function testAi(patch?: unknown): Promise<AiTestResult> {
   } catch (err) {
     const msg = err instanceof Error ? (err.name === 'TimeoutError' ? 'Timed out after 20 s' : err.message) : String(err)
     return { ok: false, ms: Date.now() - t0, detail: msg }
+  }
+}
+
+/** Find models: query the provider (saved settings, or a patched kind/base URL) from main. */
+export async function discoverAi(patch?: unknown): Promise<DiscoveryResult> {
+  const cur = load()
+  const s = parseAiSettings(typeof patch === 'object' && patch !== null ? patch : {}, settingsOnly(cur))
+  try {
+    return await discoverModels({ kind: s.kind, baseUrl: s.baseUrl, apiKey: await decryptKey() })
+  } catch (err) {
+    return { models: [], sources: [], error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -257,6 +261,7 @@ export function initAiApi(): void {
   ipcMain.handle('ai-api:set-key', (_e: IpcMainInvokeEvent, key: string) => setAiKey(key))
   ipcMain.handle('ai-api:clear-key', () => clearAiKey())
   ipcMain.handle('ai-api:test', (_e: IpcMainInvokeEvent, patch?: unknown) => testAi(patch))
+  ipcMain.handle('ai-api:discover', (_e: IpcMainInvokeEvent, patch?: unknown) => discoverAi(patch))
   ipcMain.handle('ai-api:processed-get', (_e: IpcMainInvokeEvent, noteId: string) => getProcessed(String(noteId)))
   ipcMain.handle('ai-api:processed-set', (_e: IpcMainInvokeEvent, entry: unknown) => setProcessed(entry))
   ipcMain.handle('ai-api:processed-clear', (_e: IpcMainInvokeEvent, noteId: string) => clearProcessed(String(noteId)))
