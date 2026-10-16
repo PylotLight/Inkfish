@@ -301,6 +301,29 @@ describe('vault home', () => {
     }
   })
 
+  test('a dev profile default folder never adopts the release ~/Inkfish', async () => {
+    const v = await vault()
+    const { homedir } = await import('node:os')
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-dev-'))
+    const name = `Inkfish Dev test ${Date.now()}`
+    try {
+      v.setConfigDir(cfg)
+      delete process.env['INKFISH_VAULT']
+      v.setDefaultVaultName(name)
+      expect(v.defaultVaultRoot()).toBe(join(homedir(), name))
+      expect(v.resolveVaultRoot()).toBe(join(homedir(), name))
+      // Whether or not ~/Inkfish exists on this machine, the dev profile isn't "configured" by it.
+      expect(v.vaultConfigured()).toBe(false)
+      // An explicit pick (stored root) still wins, so the user can choose the release folder on purpose.
+      v.storeRoot(join(homedir(), 'Inkfish'))
+      expect(v.resolveVaultRoot()).toBe(join(homedir(), 'Inkfish'))
+      expect(v.vaultConfigured()).toBe(true)
+    } finally {
+      v.setDefaultVaultName('Inkfish')
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
 describe('case-duplicate healing', () => {
   test('Personal + personal merge into personal, files kept', async () => {
     const v = await vault()

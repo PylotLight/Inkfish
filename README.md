@@ -59,6 +59,34 @@ top-level folder (`work/`, `personal/`, …). Your vault lives at `~/Inkfish/`
 and holds finalised outputs only; raw inbox captures and day-log scratch
 live in hidden app data. Plain `.md` files stay the source of truth.
 
+## Dev profile (run dev beside the installed app)
+
+Any unpackaged run (`bun run dev`, `bun run start`, `electron .`) is **Inkfish
+Dev**, a separate profile, so you can keep the release app open while you hack:
+
+| | Release (`Inkfish.app`) | Dev (`bun run dev`) |
+|---|---|---|
+| App name / userData | `Inkfish` | `Inkfish Dev` (`~/Library/Application Support/Inkfish Dev`) |
+| Single-instance lock | its own | its own (both run at once) |
+| Notes folder default | `~/Inkfish` | `~/Inkfish Dev` (never adopts `~/Inkfish` on its own) |
+| Settings, AI keys, menu bar, mini windows, onboarding | its own | its own, starts fresh |
+| LAN sync | `:47821`, its own pairing + device id | `:47822`, separate pairing, device named `<host> (Inkfish Dev)` |
+| Capture shortcuts | `⌥Space` / `⇧⌥Space` | `⌃⌥Space` / `⇧⌃⌥Space` |
+| Mini window toggle | `⌃⌥M` | off until you set one |
+| Tell-apart | — | `DEV` pill by the logo, window title, Dock badge `dev`, tray title `dev` (mac) / tooltip |
+
+- You *can* point dev at your real notes by picking `~/Inkfish` in onboarding
+  or Settings, but it has to be an explicit pick, and then both apps write to it.
+- `INKFISH_PROFILE=<name> bun run dev` gives another isolated profile
+  (`Inkfish <name>`), e.g. a second dev instance or a clean QA run. It works on a
+  packaged app too.
+- `INKFISH_SHORTCUTS=off` registers no global shortcuts for that run.
+- An explicit `--user-data-dir` (smoke tests) is left alone.
+- `INKFISH_VAULT` / `INKFISH_DATA` still override the notes folder / app data dir.
+- Before this, dev on macOS shared the release app's data folder (`inkfish` and
+  `Inkfish` are the same folder on a case-insensitive disk), so the first dev
+  run after this change starts with an empty profile and runs onboarding again.
+
 ## Docs
 
 - `docs/inkfish-mvp.md` — the MVP spec: flow, P0/P1, glass UI, AI, DB, build order

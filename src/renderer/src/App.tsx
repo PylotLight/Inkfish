@@ -15,8 +15,10 @@ import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import { isPopKey } from '../../shared/mini-window'
+import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
+import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -83,6 +85,7 @@ export default function App(): React.JSX.Element {
 
 function Main(): React.JSX.Element {
   const [sys, setSys] = useState<SysInfo | null>(null)
+  const brandEgg = useBrandTripleClick()
   const [projects, setProjects] = useState<Project[]>([])
   const [allNotes, setAllNotes] = useState<NoteEntry[]>([])
   const [inbox, setInbox] = useState<InboxItem[]>([])
@@ -222,6 +225,20 @@ function Main(): React.JSX.Element {
     refreshProjects()
     window.api.notes.titles().then(setTitles).catch(console.error)
   }, [refreshInbox, refreshNotes, refreshProjects])
+
+  // Release vs dev profile ("Inkfish Dev"): brand pill, window title, shortcut hints.
+  const [profile, setProfile] = useState<AppProfileInfo | null>(null)
+  useEffect(() => {
+    window.api.app
+      .profile()
+      .then((p) => {
+        setProfile(p)
+        document.title = p.name
+      })
+      .catch(console.error)
+  }, [])
+  const isMacUi = sys?.platform === 'darwin'
+  const captureKey = profile ? shortcutLabel(profile.captureShortcut, isMacUi) : '⌥Space'
 
   useEffect(() => {
     window.api.sys.info().then(setSys).catch(console.error)
@@ -948,6 +965,21 @@ function Main(): React.JSX.Element {
     setSettingsOpen(true)
   }
 
+  // Update notifications: dot on the Settings button; a notification click opens About & updates.
+  const [updateBadge, setUpdateBadge] = useState(false)
+  useEffect(() => {
+    void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
+    return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
+  }, [])
+  useEffect(
+    () =>
+      window.api.updates.onReveal(() => {
+        sessionStorage.setItem('inkfish.settingsTab', 'about')
+        setSettingsOpen(true)
+      }),
+    []
+  )
+
   const pendingCount = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length
   const activeItem = scope === 'inbox' ? inbox.find((i) => i.id === sel?.id) ?? null : null
   const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
@@ -1052,12 +1084,18 @@ function Main(): React.JSX.Element {
       <aside className="sidebar core">
         <div className="traffic-spacer" aria-hidden />
         <div className="brand-row">
-          <div className="brand-logo-frame">
-            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" />
+          {/* Psst: triple-click the logo (views/easter-egg). */}
+          <div className="brand-logo-frame" onClick={brandEgg.onClick}>
+            <img src={logoUrl} alt="Inkfish" className="brand-logo-img" draggable={false} />
           </div>
           <div className="brand">
             <h1>{APP_NAME}</h1>
           </div>
+          {profile?.badge && (
+            <span className="pill profile-pill" title={`Separate ${profile.name} profile — its own settings, notes folder and sync`}>
+              {profile.badge}
+            </span>
+          )}
         </div>
 
         <input
@@ -1157,6 +1195,7 @@ function Main(): React.JSX.Element {
           <div className="side-foot-row">
             <button className="settings-btn" onClick={openSettings}>
               <span aria-hidden>⚙</span> Settings
+              {updateBadge && <span className="update-dot" aria-label="Update available" title="Update available" />}
             </button>
             <button
               className="quit-btn"
@@ -1216,13 +1255,14 @@ function Main(): React.JSX.Element {
               >
                 {sideCollapsed ? '»' : '«'}
               </button>
-              <button className="btn ghost sm" title="Quick capture (⌥Space)" onClick={() => notify('Hit ⌥Space anywhere to capture')}>
+              <button className="btn ghost sm" title={captureKey ? `Quick capture (${captureKey})` : 'Quick capture'}
+                onClick={() => notify(captureKey ? `Hit ${captureKey} anywhere to capture` : 'Capture from the menu bar icon')}>
                 ✒ Capture
               </button>
               <button className={`btn ghost sm${meetingLive ? ' rec-live' : ''}`} onClick={() => setShowMeeting(true)}>
                 {meetingLive ? '● Recording' : '🎙 Meetings'}
               </button>
-              <button className="btn ghost sm" title="Open today's day-log (appends from ⌥Space → Today land here)" onClick={() => void openToday()}>
+              <button className="btn ghost sm" title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`} onClick={() => void openToday()}>
                 ☀ Today
               </button>
               <span className="flex-sp" />
@@ -1360,12 +1400,14 @@ function Main(): React.JSX.Element {
           step={ostep}
           setStep={setOstep}
           vault={vaultInfo}
+          profile={profile}
           onVaultReady={onVaultReady}
           onDone={() => setShowOnboarding(false)}
           notify={notify}
         />
       )}
       {toast && <div className="toast glass">{toast}</div>}
+      {brandEgg.open && <BrandEasterEgg logoUrl={logoUrl} onClose={brandEgg.close} />}
     </div>
   )
 }

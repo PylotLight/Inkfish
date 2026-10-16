@@ -101,9 +101,9 @@ export function normalizeAccelerator(input: unknown): string | null {
 }
 
 /** Settings as stored (or sent from Settings): anything unreadable falls back to the defaults. */
-export function parseMiniWindowSettings(value: unknown): MiniWindowSettings {
+export function parseMiniWindowSettings(value: unknown, defaults: MiniWindowSettings = DEFAULT_MINI_WINDOW_SETTINGS): MiniWindowSettings {
   const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
-  const d = DEFAULT_MINI_WINDOW_SETTINGS
+  const d = defaults
   // An explicit '' turns the shortcut off; missing or invalid keeps the default.
   const shortcut = record.shortcut === '' ? '' : (normalizeAccelerator(record.shortcut) ?? d.shortcut)
   const opacity =

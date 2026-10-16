@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
 import { openMic } from '../audio'
 import type { VaultInfo } from '../../../shared/types'
+import { shortcutLabel, type AppProfileInfo } from '../../../shared/profile'
 
 interface Props {
   step: number
   setStep: (n: number) => void
   vault: VaultInfo | null
+  /** Dev profile: warn before it shares the release app's notes folder. */
+  profile?: AppProfileInfo | null
   onVaultReady: (v: VaultInfo) => void
   onDone: () => void
   notify: (msg: string) => void
 }
 
 /** Onboarding: vault location FIRST (before any setup), then mic, shortcut. */
-export default function Onboarding({ step, setStep, vault, onVaultReady, onDone, notify }: Props): React.JSX.Element {
+export default function Onboarding({ step, setStep, vault, profile, onVaultReady, onDone, notify }: Props): React.JSX.Element {
   const [picked, setPicked] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [mic, setMic] = useState<'untested' | 'ok' | 'blocked'>('untested')
@@ -84,6 +87,13 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
             {vault?.managed && (
               <p className="muted small">Location is managed by INKFISH_VAULT (dev mode).</p>
             )}
+            {profile?.badge && !vault?.managed && (
+              <p className="muted small">
+                This is <b>{profile.name}</b>, a separate profile from the release app. It defaults to its
+                own folder (<code>{profile.defaultVaultRoot}</code>); only pick your release notes folder if
+                you really want both apps writing to it.
+              </p>
+            )}
             <div className="row">
               <button className="btn ghost" disabled={vault?.managed} onClick={() => void choose()}>
                 Choose folder…
@@ -136,7 +146,13 @@ export default function Onboarding({ step, setStep, vault, onVaultReady, onDone,
         )}
         {step === 2 && (
           <>
-            <h3>⌥Space captures from anywhere</h3>
+            <h3>
+              {profile
+                ? profile.captureShortcut
+                  ? `${shortcutLabel(profile.captureShortcut, /Mac/.test(navigator.userAgent))} captures from anywhere`
+                  : 'Capture from the menu bar icon'
+                : '⌥Space captures from anywhere'}
+            </h3>
             <p className="muted">
               The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the
               inbox — the worker routes it, raw is never deleted.
