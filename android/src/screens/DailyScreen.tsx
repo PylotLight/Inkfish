@@ -17,11 +17,13 @@ export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Eleme
   const { ui, c } = useTheme();
   const { readDaily, appendDaily } = useStore();
   const [body, setBody] = useState('');
+  const [rel, setRel] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     const d = await readDaily();
+    setRel(d.rel);
     // The file's own `# YYYY-MM-DD` heading duplicates the page title.
     setBody(d.body.replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n+/, ''));
   }
@@ -66,7 +68,7 @@ export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Eleme
       </View>
       {msg && <Text style={ui.err}>{msg}</Text>}
 
-      {body.trim() ? <Markdown text={body} /> : <Text style={[ui.meta, { marginTop: 12 }]}>Nothing logged yet today.</Text>}
+      {body.trim() ? <Markdown text={body} notePath={rel} /> : <Text style={[ui.meta, { marginTop: 12 }]}>Nothing logged yet today.</Text>}
     </ScrollView>
   );
 }

@@ -7,6 +7,13 @@ import type { NoteDoc } from '../lib/format';
 import { Markdown } from '../components/Markdown';
 import { Icon } from '../components/Icon';
 import { folderOf } from '../lib/when';
+import { followMoves } from '../lib/vault';
+
+/** Show the title above the page unless the body already opens with that same `# H1`. */
+function showTitle(title: string, body: string): boolean {
+  const h1 = /^#\s+(.+)$/m.exec(body.trimStart().split('\n')[0] ?? '')?.[1]?.trim();
+  return !h1 || h1 !== title.trim();
+}
 
 const AUTOSAVE_MS = 700;
 
@@ -52,7 +59,8 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   useEffect(() => {
     const d = docRef.current;
     if (!d || mode !== 'view' || timer.current || textRef.current !== saved.current) return;
-    const e = notes.find((n) => n.id === d.id) ?? notes.find((n) => n.path === d.path);
+    // Path-id notes lose their id when sync renames them: follow the recorded move.
+    const e = notes.find((n) => n.id === d.id) ?? notes.find((n) => n.path === followMoves(d.path)) ?? notes.find((n) => n.path === d.path);
     if (!e || (e.updatedAt === d.updatedAt && e.path === d.path)) return;
     let live = true;
     void openNote(e.id).then((fresh) => {
@@ -148,8 +156,8 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60 }}>
           <Pressable onPress={() => setMode('edit')}>
-            {!/^#\s/.test(text.trimStart()) && <Text style={[ui.display, { marginBottom: 8 }]}>{doc.title}</Text>}
-            <Markdown text={text || '_Empty note — tap to write._'} />
+            {showTitle(doc.title, text) && <Text style={[ui.display, { marginBottom: 8 }]}>{doc.title}</Text>}
+            <Markdown text={text || '_Empty note — tap to write._'} notePath={doc.path} />
             {doc.tags.length > 0 && (
               <Text style={[ui.meta, { marginTop: 20, color: c.accent }]}>{doc.tags.map((t) => `#${t}`).join('  ')}</Text>
             )}

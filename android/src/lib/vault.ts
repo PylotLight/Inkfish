@@ -31,6 +31,7 @@ import {
   type Project
 } from './format';
 import { bodyOf, frontmatterHead, planSave, relocate, withHead } from './notesave';
+import { relinkAfterRename } from './relink';
 
 const DOC = FileSystem.documentDirectory ?? '';
 const APP = `${DOC}inkfish/`;
@@ -706,6 +707,80 @@ export async function getNote(id: string): Promise<NoteDoc | null> {
   return null;
 }
 
+// --- moves this app knows about (sync renames, phone renames) --------------------
+// Notes without a front matter `id` are identified by their path, so an open
+// editor loses its note when sync (or the drawer) renames it. Remember recent
+// moves so the editor and `saveNote` can follow them.
+
+const moved = new Map<string, string>();
+
+export function recordMoves(moves: ReadonlyArray<{ from: string; to: string }>): void {
+  for (const m of moves) {
+    if (m.from === m.to) continue;
+    moved.set(m.from, m.to);
+    moved.delete(m.to);
+  }
+  // Keep it small: only the latest few hundred matter for open views.
+  while (moved.size > 500) moved.delete(moved.keys().next().value as string);
+}
+
+/** Where `path` lives now after any recorded moves (itself when it never moved). */
+export function followMoves(path: string): string {
+  let p = path;
+  for (let i = 0; i < 20 && moved.has(p); i++) p = moved.get(p)!;
+  return p;
+}
+
+// --- every vault file (notes + attachments) ---------------------------------------
+
+/** Vault-relative paths of every non-hidden file in the vault (any type). */
+export async function listVaultFiles(): Promise<string[]> {
+  const out: string[] = [];
+  let pending: Array<{ uri: string; rel: string }> = [{ uri: VAULT, rel: '' }];
+  while (pending.length) {
+    const batch = pending;
+    pending = [];
+    await mapLimit(batch, 6, async (dir) => {
+      let names: string[];
+      try {
+        names = await FileSystem.readDirectoryAsync(dir.uri);
+      } catch {
+        return;
+      }
+      await mapLimit(
+        names.filter((n) => !n.startsWith('.')),
+        8,
+        async (n) => {
+          const rel = dir.rel ? `${dir.rel}/${n}` : n;
+          try {
+            const info = await FileSystem.getInfoAsync(`${dir.uri}${n}`);
+            if (!info.exists) return;
+            if (info.isDirectory) pending.push({ uri: `${dir.uri}${n}/`, rel });
+            else out.push(rel);
+          } catch {
+            // vanished mid-walk
+          }
+        }
+      );
+    });
+  }
+  return out.sort();
+}
+
+let attachmentsTask: Promise<string[]> | null = null;
+
+/** Non-note files in the vault (images, audio, …) for resolving image refs. Cached until `invalidateAttachments`. */
+export function listAttachments(): Promise<string[]> {
+  attachmentsTask ??= listVaultFiles()
+    .then((all) => all.filter((p) => !/\.(md|markdown|txt)$/i.test(p)))
+    .catch(() => []);
+  return attachmentsTask;
+}
+
+export function invalidateAttachments(): void {
+  attachmentsTask = null;
+}
+
 export interface SaveContext {
   /** Body the editor opened / last saved (merge base, and how a moved note is found again). */
   base?: string;
@@ -733,7 +808,9 @@ export async function saveNote(id: string, markdown: string, ctx: SaveContext = 
         // unreadable — skip
       }
     }
-    const rel = relocate(candidates, ctx.base, ctx.path);
+    // A rename this app saw (sync or drawer) wins; else find it by content.
+    const followed = followMoves(ctx.path);
+    const rel = followed !== ctx.path && candidates.some((c) => c.path === followed) ? followed : relocate(candidates, ctx.base, ctx.path);
     const abs = absForRel(rel);
     const info = await FileSystem.getInfoAsync(abs);
     if (!info.exists) {
@@ -846,7 +923,37 @@ export async function renameNoteFile(oldRel: string, newName: string): Promise<s
   const info = await FileSystem.getInfoAsync(`${VAULT}${oldRel}`);
   if (!info.exists || info.isDirectory) throw new Error('note not found');
   await FileSystem.moveAsync({ from: `${VAULT}${oldRel}`, to: `${VAULT}${next}` });
+  recordMoves([{ from: oldRel, to: next }]);
+  try {
+    await relinkVault(oldRel, next);
+  } catch {
+    // the rename itself happened; links are best-effort (same as the Mac)
+  }
   return next;
+}
+
+/**
+ * Point other notes' `[[wikilinks]]` and relative markdown links at a renamed
+ * note (same rewrite as the Mac's rename). Returns the notes it changed.
+ */
+export async function relinkVault(oldRel: string, newRel: string): Promise<string[]> {
+  const files = await listVaultFiles();
+  const all = new Set(files);
+  const notes: Array<{ path: string; text: string }> = [];
+  await mapLimit(
+    files.filter((p) => p.toLowerCase().endsWith('.md')),
+    8,
+    async (p) => {
+      try {
+        notes.push({ path: p, text: await readText(`${VAULT}${p}`) });
+      } catch {
+        // unreadable — leave it
+      }
+    }
+  );
+  const changed = relinkAfterRename(notes, oldRel, newRel, (rel) => all.has(rel));
+  for (const n of changed) await writeText(`${VAULT}${n.path}`, n.text);
+  return changed.map((n) => n.path);
 }
 
 /** Rename a vault folder. Returns the new rel. */

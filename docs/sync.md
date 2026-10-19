@@ -147,6 +147,7 @@ A sync session:
 | `inbox/<id>.md` | Ids are unique per capture; status changes are frontmatter-only → per-key merge. |
 | `assets/**` | Immutable, unique names → never conflict. |
 | Folders | Implicit from paths; a rename is delete + add of the same hash, detected and applied as a move. |
+| Renamed notes | A rename that also changed the note (Mac title → filename, edit + sidebar rename) is "X gone, Y new" with different hashes. The phone pairs those by text (same front matter `id`, else the same body with the title line ignored; ties stay unpaired) and applies a move plus a pull/push — or, when the other side edited X meanwhile, a move plus a three-way merge at Y (conflict copy on overlap). Planner-side only (`renames.ts`): the Mac just sees normal `moves` + `writes`, so any Mac build works. |
 
 Why not a CRDT (Loro/Automerge) now: they need native or WASM bindings in
 Hermes, and they want to own the document — a second source of truth next to
