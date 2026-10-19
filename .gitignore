@@ -46,3 +46,6 @@ bench-results.json
 # expo prebuild output (generated native projects)
 android/android/
 android/ios/
+
+# packages/cli: written at publish time (scripts/prepare-publish.mjs)
+packages/cli/release.json

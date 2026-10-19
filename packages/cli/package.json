@@ -1,0 +1,41 @@
+{
+  "name": "@pylotlight/inkfish",
+  "version": "0.0.0-dev",
+  "description": "Run Inkfish (menu-bar quick capture with AI auto-sort, macOS) with bunx or npx: downloads the release, verifies it, caches it, opens it",
+  "license": "MIT",
+  "author": "PylotLight",
+  "homepage": "https://github.com/PylotLight/Inkfish/tree/main/packages/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PylotLight/Inkfish.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/PylotLight/Inkfish/issues",
+  "keywords": [
+    "inkfish",
+    "notes",
+    "quick-capture",
+    "menu-bar",
+    "electron",
+    "macos"
+  ],
+  "type": "module",
+  "bin": {
+    "inkfish": "bin/inkfish.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "app.config.mjs",
+    "release.json"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "test": "bun test ./test"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

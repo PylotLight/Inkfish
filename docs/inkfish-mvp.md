@@ -1,5 +1,8 @@
 # Inkfish MVP — inbox → processed notes
 
+> Historical: the original MVP spec, kept for the reasoning behind it. Some of
+> it is out of date. Current features are in the [README](../README.md).
+
 Menu-bar quick capture with auto AI sort. Same animal vein as blobfish:
 glassfish (transparent/glass UI), angler (lure for stray thoughts),
 remora (sticks notes to projects) were the runners-up. Picked: **inkfish**

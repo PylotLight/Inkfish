@@ -14,13 +14,17 @@ renderer (React, browser) ──invoke───────┘
 - `src/main/window.ts` — main `BrowserWindow` creation, `showWindow`/`hideWindow`, vibrancy state.
 - `src/main/popover.ts` — 380×520 capture popover (`vibrancy: popover`,
   frameless, always-on-top, hides on blur), `togglePopover()` near the cursor.
-- `src/main/tray.ts` — system tray + context menu (New note / Show Inkfish /
-  Quit). Left-click pops the menu; it never auto-shows the window.
+- `src/main/tray.ts` — menu bar icon. Left-click pops quick capture under the
+  icon, right-click shows the menu (New note / Append to today / Open today /
+  Show Inkfish / Quit). `src/main/menubar.ts` (menu bar mode) decides whether
+  the icon exists, what a click opens, and hides the Dock icon.
+- `src/main/mini-window.ts` — floating always-on-top note windows (pop out
+  with ⇧⌘M), tucking, snapping, per-display geometry.
 - `src/main/vault.ts` — vault writer: inbox `.md` + frontmatter, project
   routing, undo (`.undone`), assets, Teams `.vtt` parsing. `.md` files are the
   source of truth; nothing here deletes raw.
-- `src/main/db.ts` — sqlite index (`node:sqlite` + FTS5, `inkfish.db` in the
-  vault root), in-memory fallback. Embeddings column reserved for sqlite-vec.
+- `src/main/db.ts` — sqlite index (`node:sqlite` + FTS5, `inkfish.db` in app
+  data, a cache rebuilt from the notes), in-memory fallback. Embeddings column reserved for sqlite-vec.
 - `src/main/ai.ts` — `transcribe()` / `classify()` / `summarize()` / `speak()`
   abstraction: Apple → rules chain, provider reported per result.
 - `src/main/ipc.ts` — every renderer→main call. Sections mirror the preload bridge.

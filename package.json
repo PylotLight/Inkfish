@@ -1,24 +1,12 @@
 {
   "name": "inkfish",
+  "private": true,
   "version": "0.2.10",
   "description": "Inkfish — menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
   "license": "MIT",
   "author": "PylotLight <lochois@gmail.com>",
   "type": "module",
   "main": "./out/main/index.js",
-  "bin": {
-    "inkfish": "./bin/inkfish.mjs"
-  },
-  "files": [
-    "out/**/*",
-    "bin/**/*",
-    "build/icon.png",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "dev:bare": "electron-vite dev",
@@ -40,7 +28,8 @@
     "postinstall": "install-electron",
     "stt:build": "bun scripts/build-stt.ts",
     "bench:stt": "bun scripts/bench-stt.ts",
-    "test:electron-ai": "electron scripts/electron-ai-smoke.mjs"
+    "test:electron-ai": "electron scripts/electron-ai-smoke.mjs",
+    "test:cli": "bun test ./packages/cli/test"
   },
   "build": {
     "appId": "com.pylotlight.inkfish",

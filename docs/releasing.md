@@ -17,10 +17,13 @@ What happens, end to end:
    Changelog sections, compare links included), commits
    `chore(release): vX.Y.Z` and creates the annotated tag `vX.Y.Z`.
 2. **`.github/workflows/release.yml`** (triggered by the tag push):
-   - builds macOS artifacts (`zip` + `dmg`, Apple silicon / arm64 only) on `macos-14`
+   - builds macOS artifacts (`zip` + `dmg`, Apple silicon / arm64 only) on
+     `macos-15`, or the self-hosted Mac named by the `INKFISH_MAC_RUNNER` repo variable
    - generates release notes with git-cliff and publishes the GitHub release
-   - renders the Homebrew cask (version + sha256s) and commits it to
+   - renders the Homebrew cask (version + sha256) and commits it to
      `Casks/inkfish.rb` on main — see below
+   - publishes the bunx/npx launcher `@pylotlight/inkfish` to npm (dry run
+     until `NPM_PUBLISH` is set) — see below
 
 Prerequisites locally: `git-cliff` on PATH (`brew install git-cliff` or
 `cargo install git-cliff`).
@@ -55,24 +58,19 @@ One caveat: the workflow pushes the cask commit straight to main. If you ever
 turn on branch protection for main, either allow GitHub Actions to bypass it
 or the `homebrew` job needs a PAT — the rest of the release is unaffected.
 
-Until the first release is published, the committed cask has placeholder
-checksums and the download URLs 404 — that's expected; the `v0.1.0` release
-fills in real values.
+## npm launcher (`bunx @pylotlight/inkfish`)
 
-## npm / Bun launcher
+`packages/cli` is a tiny launcher package: on first run it downloads this
+release's `Inkfish-<version>-mac-arm64.zip`, checks it against the SHA-256
+baked into the package at publish time, caches it in `~/.cache/inkfish` and
+opens it. The npm version always equals the app version.
 
-`package.json` declares `bin: { inkfish: ./bin/inkfish.mjs }`, so once
-published to npm the app also runs via:
-
-```bash
-bunx inkfish
-npx inkfish
-```
-
-The launcher boots the checked-in `out/` build with a pinned Electron
-(on-demand fetch on first run, cached after). Publishing to npm is manual for
-now (`npm publish` after the release workflow, once `out/` is built) —
-Homebrew + GitHub releases remain the primary distribution.
+The release workflow's `npm` job publishes it after the cask bump, from
+`ubuntu-latest` with npm trusted publishing (OIDC + provenance, no token).
+It's gated by the repo variable `NPM_PUBLISH=true`; until then each release
+does a dry run (`npm publish --dry-run`) and warns. One-time setup (first
+manual publish, trusted publisher on npmjs.com, the variable):
+[packages/cli/DEVELOPING.md](../packages/cli/DEVELOPING.md#publishing).
 
 ## Code signing (optional, later)
 
