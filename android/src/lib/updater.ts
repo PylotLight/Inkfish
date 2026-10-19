@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Application from 'expo-application';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { compareVersions, pickRelease, updateFor, type GhRelease, type PickOptions, type Release } from './releases';
 
 /**
  * In-app updates from GitHub Releases — no Play Store, no EAS.
@@ -10,77 +11,36 @@ import * as IntentLauncher from 'expo-intent-launcher';
  * downloads the APK into cache, and hands it to Android's package installer
  * (the user taps Install once; Android asks to allow "install unknown apps"
  * the first time). Same signing key, so it updates in place and keeps data.
+ * Which release to offer (stable only, or test builds too) is decided in ./releases.
  */
 
 const REPO = 'PylotLight/Inkfish';
-const TAG_PREFIX = 'android-v';
 
-export interface Release {
-  version: string;
-  tag: string;
-  notes: string;
-  apkUrl: string;
-  apkSize: number;
-  publishedAt: string;
-}
+export { compareVersions, type Release } from './releases';
 
 export function currentVersion(): string {
   return Application.nativeApplicationVersion ?? '0.0.0';
 }
 
-/** -1 / 0 / 1 for dotted numeric versions (`0.2.10` > `0.2.9`). Pre-release tails ignored. */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
-  const pb = b.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length, 3); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d) return d > 0 ? 1 : -1;
-  }
-  return 0;
-}
-
-interface GhAsset {
-  name: string;
-  browser_download_url: string;
-  size: number;
-}
-interface GhRelease {
-  tag_name: string;
-  draft: boolean;
-  prerelease: boolean;
-  body: string | null;
-  published_at: string;
-  assets: GhAsset[];
-}
-
-/** Newest published Android release (null when none). Throws on network errors. */
-export async function latestRelease(): Promise<Release | null> {
+async function fetchReleases(): Promise<GhRelease[]> {
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
     headers: { Accept: 'application/vnd.github+json' }
   });
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
-  const list = (await res.json()) as GhRelease[];
-  const candidates = list
-    .filter((r) => !r.draft && !r.prerelease && r.tag_name.startsWith(TAG_PREFIX))
-    .map((r) => ({ r, apk: r.assets.find((a) => a.name.endsWith('.apk')) }))
-    .filter((x): x is { r: GhRelease; apk: GhAsset } => !!x.apk)
-    .sort((x, y) => compareVersions(y.r.tag_name.slice(TAG_PREFIX.length), x.r.tag_name.slice(TAG_PREFIX.length)));
-  const top = candidates[0];
-  if (!top) return null;
-  return {
-    version: top.r.tag_name.slice(TAG_PREFIX.length),
-    tag: top.r.tag_name,
-    notes: (top.r.body ?? '').trim(),
-    apkUrl: top.apk.browser_download_url,
-    apkSize: top.apk.size,
-    publishedAt: top.r.published_at
-  };
+  return (await res.json()) as GhRelease[];
+}
+
+/**
+ * Newest published Android release (null when none). Test builds (pre-releases, X.Y.Z-beta.N)
+ * only with `includePrereleases` ("Beta updates" in Settings). Throws on network errors.
+ */
+export async function latestRelease(opts: PickOptions = { includePrereleases: false }): Promise<Release | null> {
+  return pickRelease(await fetchReleases(), opts);
 }
 
 /** The newer release, or null when this build is current. */
-export async function checkForUpdate(): Promise<Release | null> {
-  const r = await latestRelease();
-  return r && compareVersions(r.version, currentVersion()) > 0 ? r : null;
+export async function checkForUpdate(opts: PickOptions = { includePrereleases: false }): Promise<Release | null> {
+  return updateFor(await fetchReleases(), currentVersion(), opts);
 }
 
 /** Download the APK (resumable, with progress 0–1). Returns the local file URI. */

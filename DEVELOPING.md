@@ -80,6 +80,24 @@ Mac and Android release independently:
 - `bun scripts/release.ts patch --app android`: tags `android-vX.Y.Z` (patch from the last android tag). The tag runs `.github/workflows/android-release.yml` (signed APK, GitHub release, never marked latest).
 - `--app both` does both; leave `--app` off to see what changed per app since its last tag and pick (`src/shared/sync/**` changes suggest both). `--yes` skips the prompt, `--push` pushes, `--dry-run` changes nothing.
 
+### Pre-releases (test builds)
+
+Add `--pre` to cut a test build instead of a real release, for either app or both:
+
+```fish
+bun scripts/release.ts patch --app both --pre --yes   # v0.2.15-beta.1 + android-v0.2.8-beta.1
+bun scripts/release.ts patch --app both --pre --yes   # again: v0.2.15-beta.2 + android-v0.2.8-beta.2
+bun scripts/release.ts patch --app both --yes         # done testing: v0.2.15 + android-v0.2.8
+```
+
+- Versions are semver pre-releases, `X.Y.Z-beta.N`. The first `--pre` takes the normal bump (patch by default) and adds `-beta.1`; running it again bumps N; a normal release afterwards ships plain `X.Y.Z`. A bigger bump (`minor --pre`) goes past an open beta. `--pre=rc` gives `-rc.N`; `prerelease` as the first word works the same as `--pre`. `--dry-run` shows the plan.
+- Desktop test builds bump `package.json` (the app has to know its own version) but leave `CHANGELOG.md` alone: `cliff.toml` ignores pre-release tags, so the final release's section covers everything since the last stable one.
+- Change detection still counts from each app's last **stable** tag.
+- Workflows: any tag with a `-` is a GitHub **pre-release**, never marked latest, with a "test build" note at the top of the release notes (changes since the last stable tag). The Mac workflow skips the Homebrew cask and npm jobs, so `brew` and `bunx @pylotlight/inkfish` users never get a test build. Android gets a signed APK as usual. A beta shares its final's `versionCode`, so beta → beta → final each install over the last.
+- In the apps: test builds are only offered with **Beta updates** on (Mac: Settings → About & updates; Android: Settings › Updates). It's off by default, and "latest" ignores pre-releases. Someone on a beta with the toggle off isn't offered anything until the final `X.Y.Z` ships (no downgrade), then gets that. Versions compare as SemVer 2.0 everywhere (`0.2.15-beta.1 < 0.2.15-beta.2 < 0.2.15`).
+- Sync doesn't care: the handshake compares integer `protocol` / `minPeer` numbers, never app versions, so a beta talks to a stable build of the same protocol and never shows "update phone" / "update Mac" just for being a beta.
+- npm: skipped for pre-releases on purpose. An npm version can't be reused once published, and a dist-tag slip would move `latest` for every `bunx` user; testers get the Mac build from the GitHub pre-release. (The publish step would still use the `next` dist-tag if it ever ran on one.)
+
 Release notes carry a `tested with android-vX` (Mac) / `tested with vY` (Android) line. Sync stays compatible across mixed versions through the `protocol` / `minPeer` handshake; a too-old side shows "update phone" / "update Mac" on its sync badge. Details, the tap, signing and the npm setup: [docs/releasing.md](docs/releasing.md).
 
 ## Repo map

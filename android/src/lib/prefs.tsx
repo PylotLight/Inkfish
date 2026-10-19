@@ -14,9 +14,11 @@ export interface Prefs {
   blur: boolean;
   /** Check GitHub for a new APK on launch/foreground (every 6 h at most). */
   autoUpdate: boolean;
+  /** Also offer test builds (GitHub pre-releases, android-vX.Y.Z-beta.N). Off = full releases only. */
+  betaUpdates: boolean;
 }
 
-export const DEFAULT_PREFS: Prefs = { theme: 'deep', accent: 'mint', textSize: 'default', blur: true, autoUpdate: true };
+export const DEFAULT_PREFS: Prefs = { theme: 'deep', accent: 'mint', textSize: 'default', blur: true, autoUpdate: true, betaUpdates: false };
 
 export const THEMES: Array<{ id: ThemeId; name: string }> = [
   { id: 'deep', name: 'Deep' },
@@ -52,6 +54,7 @@ function clean(raw: unknown): Partial<Prefs> {
   if (TEXT_SIZES.some((s) => s.id === r['textSize'])) out.textSize = r['textSize'] as TextSizeId;
   if (typeof r['blur'] === 'boolean') out.blur = r['blur'];
   if (typeof r['autoUpdate'] === 'boolean') out.autoUpdate = r['autoUpdate'];
+  if (typeof r['betaUpdates'] === 'boolean') out.betaUpdates = r['betaUpdates'];
   return out;
 }
 

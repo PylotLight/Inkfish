@@ -4,6 +4,11 @@ name: release
 # Builds the artifacts, publishes a GitHub release with generated notes,
 # then updates the Homebrew cask in this repo (it doubles as the tap), then
 # publishes the bunx/npx launcher to npm (gated by the NPM_PUBLISH repo variable).
+#
+# Pre-release tags (anything with a '-', e.g. v0.2.15-beta.1 from `release.ts --pre`)
+# are test builds: GitHub pre-release (never "latest"), notes say so, and the
+# Homebrew cask + npm jobs are skipped, so brew / bunx users never get them. The
+# app only offers them with "Include pre-releases" on (src/shared/update-feed.ts).
 # See docs/releasing.md.
 # Workflows register from the default branch (main).
 on:
@@ -117,11 +122,33 @@ jobs:
           tool: git-cliff
 
       - name: generate release notes
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          git-cliff --latest --strip all --output RELEASE_NOTES.md
-          # Which phone build this Mac build was tested against (newest android-v* tag).
-          ANDROID=$(git tag --list 'android-v*' --sort=-v:refname | grep -v -- '-.*-' | head -1 || true)
-          if [ -n "$ANDROID" ]; then printf '\ntested with %s\n' "$ANDROID" >> RELEASE_NOTES.md; fi
+          pre=false; case "$TAG" in *-*) pre=true ;; esac
+          echo "pre=$pre" >> "$GITHUB_OUTPUT"
+          # Everything since the previous *stable* tag: a beta lists all it adds over the last release,
+          # and the final release after betas covers them too (cliff.toml ignore_tags folds beta tags in).
+          # A range instead of --latest, which picks the wrong span once ignored beta tags exist.
+          # PREV = newest stable tag below this tag's X.Y.Z.
+          BASE="${TAG%%-*}"
+          PREV=$( { git tag --list 'v[0-9]*' | grep -v -- '-'; echo "$BASE"; } | sort -uV | grep -B1 -x "$BASE" | head -1)
+          [ "$PREV" = "$BASE" ] && PREV=""
+          git-cliff ${PREV:+"$PREV..$TAG"} --tag "$TAG" --strip all --output CLIFF.md
+          {
+            if [ "$pre" = true ]; then
+              echo "> **test build** (pre-release${PREV:+, changes since $PREV}). Not offered to normal installs: only Macs with Settings → About & updates → Beta updates on see it. No Homebrew cask or npm update."
+              echo
+            fi
+            cat CLIFF.md
+            # Which phone build this Mac build was tested against: newest stable android-v* tag
+            # (newest android tag of any kind for a test build).
+            if [ "$pre" = true ]; then ANDROID=$(git -c versionsort.suffix=- tag --list 'android-v*' --sort=-v:refname | head -1 || true)
+            else ANDROID=$(git tag --list 'android-v*' --sort=-v:refname | grep -v -- '-.*-' | head -1 || true); fi
+            if [ -n "$ANDROID" ]; then printf '\ntested with %s\n' "$ANDROID"; fi
+          } > RELEASE_NOTES.md
+          rm CLIFF.md
           cat RELEASE_NOTES.md
 
       - name: download artifacts
@@ -134,9 +161,12 @@ jobs:
       - name: publish release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.notes.outputs.pre == 'true' && format('{0} (test build)', github.ref_name) || github.ref_name }}
           body_path: RELEASE_NOTES.md
           files: dist/*
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ steps.notes.outputs.pre == 'true' }}
+          # a test build must never become "latest" (the cask, `bunx …@latest` and /releases/latest read it)
+          make_latest: ${{ steps.notes.outputs.pre == 'true' && 'false' || 'legacy' }}
           fail_on_unmatched_files: true
 
   # This repo doubles as the Homebrew tap (brew taps any repo with a Casks/
@@ -146,6 +176,8 @@ jobs:
   homebrew:
     name: homebrew cask
     needs: release
+    # stable releases only: brew users never get a test build
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -196,9 +228,13 @@ jobs:
   # NPM_TOKEN) doesn't support self-hosted runners. Gated by the repo variable NPM_PUBLISH=true:
   # until then every release does a dry run (stamp + `npm publish --dry-run`, no auth) and warns,
   # so the job gets exercised without publishing anything (packages/cli/DEVELOPING.md#publishing).
+  # Skipped for pre-release tags: npm versions can never be reused once published and a slip in the
+  # dist-tag would move `latest` for every bunx user, while testers get the Mac build from the GitHub
+  # pre-release anyway. (The `next` dist-tag below stays as a backstop.)
   npm:
     name: npm launcher
     needs: homebrew
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

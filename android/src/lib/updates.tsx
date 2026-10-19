@@ -34,14 +34,22 @@ export function UpdatesProvider({ children }: { children: ReactNode }): React.JS
   const [lastChecked, setLastChecked] = useState<number | null>(null);
   const file = useRef<string | null>(null);
   const busy = useRef(false);
+  // the release `file` was downloaded for (state is stale inside check)
+  const offered = useRef<Release | null>(null);
+  const checkedOnce = useRef(false);
 
+  const beta = prefs.betaUpdates;
   const check = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
+    checkedOnce.current = true;
     setStatus('checking');
     setError(null);
     try {
-      const r = await checkForUpdate();
+      const r = await checkForUpdate({ includePrereleases: beta });
+      // a different build than the one already downloaded (e.g. beta turned off) → download again
+      if (r?.version !== offered.current?.version) file.current = null;
+      offered.current = r;
       setRelease(r);
       setStatus(r ? (file.current ? 'ready' : 'available') : 'current');
       setLastChecked(Date.now());
@@ -51,7 +59,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }): React.JS
     } finally {
       busy.current = false;
     }
-  }, []);
+  }, [beta]);
 
   const update = useCallback(async () => {
     if (!release || busy.current) return;
@@ -72,6 +80,15 @@ export function UpdatesProvider({ children }: { children: ReactNode }): React.JS
       busy.current = false;
     }
   }, [release]);
+
+  // Flipping "Beta updates" re-checks right away (offers or withdraws a test build), once
+  // anything has been checked: not on launch, when prefs load from disk.
+  const lastBeta = useRef(beta);
+  useEffect(() => {
+    if (lastBeta.current === beta) return;
+    lastBeta.current = beta;
+    if (checkedOnce.current) void check();
+  }, [beta, check]);
 
   // Auto-check on launch + on foreground, throttled.
   const lastRef = useRef<number>(0);

@@ -93,7 +93,7 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpda
       {upd.release && (upd.status === 'available' || upd.status === 'ready' || upd.status === 'downloading') && (
         <Pressable onPress={onUpdates} style={[ui.row, { gap: 6, marginTop: 6 }]} accessibilityLabel="Update available">
           <Icon as={ArrowDownToLine} size={14} color={c.accent} />
-          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Inkfish {upd.release.version} is available</Text>
+          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Inkfish {upd.release.version}{upd.release.prerelease ? ' (beta)' : ''} is available</Text>
         </Pressable>
       )}
 
