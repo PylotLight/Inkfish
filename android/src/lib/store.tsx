@@ -17,7 +17,7 @@ interface Store {
   routeInbox: (id: string, projectName?: string) => Promise<void>;
   undoInbox: (id: string) => Promise<void>;
   openNote: (id: string) => Promise<NoteDoc | null>;
-  saveNote: (id: string, markdown: string) => Promise<NoteDoc | null>;
+  saveNote: (id: string, markdown: string, ctx?: vault.SaveContext) => Promise<NoteDoc | null>;
   newNote: (dir: string, name?: string) => Promise<string>;
   createDir: (parentRel: string, name: string) => Promise<string>;
   deleteFile: (rel: string) => Promise<void>;
@@ -172,8 +172,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       routeInbox,
       undoInbox,
       openNote: (id) => vault.getNote(id),
-      saveNote: async (id, md) => {
-        const d = await vault.saveNote(id, md);
+      saveNote: async (id, md, ctx) => {
+        const d = await vault.saveNote(id, md, ctx);
         await refresh();
         return d;
       },

@@ -43,6 +43,8 @@ export interface NoteEntry {
 
 export interface NoteDoc extends NoteEntry {
   markdown: string;
+  /** Raw front matter block the file had when read (`---…---`), '' when none. */
+  head?: string;
 }
 
 export interface ClassifyResult {
