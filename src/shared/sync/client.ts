@@ -15,7 +15,7 @@ import {
   type Random
 } from './protocol'
 import { parseHello } from './server'
-import { compat, INCOMPATIBLE_STATUS, outdatedApp, parseIncompatible, peerVersion, SELF_VERSION, SyncIncompatible, versionHeaders } from './compat'
+import { compat, INCOMPATIBLE_STATUS, outdatedApp, parseIncompatible, peerVersion, SELF_VERSION, SyncIncompatible, versionHeaders, type PeerVersion } from './compat'
 
 /** Phone side: talk to a paired Mac over HTTP. `fetch` is injected for tests. */
 
@@ -60,10 +60,10 @@ export async function hello(fetchFn: Fetch, host: string, port: number, timeoutM
 }
 
 /** Throws SyncIncompatible when this phone and the Mac that sent `h` can't sync. Older Macs (no fields) count as protocol 1. */
-export function assertCompatible(h: Hello): void {
+export function assertCompatible(h: Hello, self: PeerVersion = SELF_VERSION): void {
   const theirs = peerVersion(h)
-  const app = outdatedApp('phone', compat(SELF_VERSION, theirs))
-  if (app) throw new SyncIncompatible(app, `Mac v${theirs.protocol}, phone v${SELF_VERSION.protocol}`)
+  const app = outdatedApp('phone', compat(self, theirs))
+  if (app) throw new SyncIncompatible(app, `Mac v${theirs.protocol}, phone v${self.protocol}`)
 }
 
 /**

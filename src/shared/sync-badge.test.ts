@@ -148,3 +148,39 @@ describe('badgeChanged (throttle repaint gate)', () => {
     expect(badgeChanged(a, run([]))).toBe(true)
   })
 })
+
+describe('handshake mismatch (protocol / minPeer)', () => {
+  test('phone too old → outdated, "update phone", beats a live session', () => {
+    const b = run([peer({ lastSync: NOW - 60_000 }, { lastSeen: NOW - 1000, inFlight: 1, outdated: { at: NOW - 1000, app: 'phone' } })])
+    expect(b.state).toBe('outdated')
+    expect(b.label.startsWith('update phone')).toBe(true)
+    expect(b.peers[0]).toMatchObject({ state: 'outdated', update: 'phone' })
+    expect(b.nextChangeAt).not.toBeNull()
+  })
+
+  test('Mac too old → "update Mac" wins over a phone that only needs updating', () => {
+    const b = run([
+      peer({ id: 'p1', name: 'Pixel' }, { outdated: { at: NOW - 1000, app: 'phone' } }),
+      peer({ id: 'p2', name: 'Tab' }, { outdated: { at: NOW - 1000, app: 'mac' } })
+    ])
+    expect(b.state).toBe('outdated')
+    expect(b.label).toBe('update Mac — Tab needs a newer Inkfish here to sync')
+  })
+
+  test('a later successful sync clears it; it also expires', () => {
+    expect(run([peer({ lastSync: NOW - 10 }, { lastSeen: NOW - 10, outdated: { at: NOW - 60_000, app: 'phone' } })]).state).toBe('synced')
+    expect(run([peer({}, { outdated: { at: NOW - ERROR_MS - 1, app: 'phone' } })]).state).toBe('offline')
+  })
+
+  test('no outdated field (older activity shape) behaves as before', () => {
+    const b = run([peer({ lastSync: NOW - 60_000 }, { lastSeen: NOW - 60_000 })])
+    expect(b.state).toBe('synced')
+    expect(b.peers[0]!.update).toBeNull()
+  })
+
+  test('badgeChanged notices an update flag flip', () => {
+    const a = run([peer({}, {})])
+    const b = run([peer({}, { outdated: { at: NOW, app: 'phone' } })])
+    expect(badgeChanged(a, b)).toBe(true)
+  })
+})

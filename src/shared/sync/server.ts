@@ -4,9 +4,7 @@ import { ignored } from './plan'
 import {
   aad,
   openJson,
-  MIN_PEER,
   PAIR_TTL_MS,
-  PROTOCOL,
   safeRel,
   sealJson,
   SKEW_MS,
@@ -57,6 +55,8 @@ export interface ServerHost {
   /** Optional sink for apply problems (sync log). Never throws. */
   note?: (msg: string) => void
   now?: () => number
+  /** Override the advertised protocol / minPeer (tests). Defaults to this build's. */
+  version?: PeerVersion
 }
 
 export interface HttpResult {
@@ -91,7 +91,8 @@ export function createHandler(
 
   return async (method, path, peerId, body, meta) => {
     if (method === 'GET' && path === '/v1/hello') {
-      const h: Hello = { app: 'inkfish', v: PROTOCOL, id: host.device.id, name: host.device.name, protocol: PROTOCOL, minPeer: MIN_PEER }
+      const self = host.version ?? SELF_VERSION
+      const h: Hello = { app: 'inkfish', v: self.protocol, id: host.device.id, name: host.device.name, protocol: self.protocol, minPeer: self.minPeer }
       return { status: 200, body: JSON.stringify(h), type: 'application/json' }
     }
     if (method !== 'POST') return fail(405, 'method')
@@ -100,8 +101,9 @@ export function createHandler(
 
     // Handshake: refuse (loudly) a phone we can't talk to, or one that needs a newer Mac.
     const theirs: PeerVersion = peerVersion(meta)
-    const app = outdatedApp('mac', compat(SELF_VERSION, theirs))
-    if (app) return fail(INCOMPATIBLE_STATUS, incompatibleBody(app, SELF_VERSION, theirs))
+    const self = host.version ?? SELF_VERSION
+    const app = outdatedApp('mac', compat(self, theirs))
+    if (app) return fail(INCOMPATIBLE_STATUS, incompatibleBody(app, self, theirs))
 
     // Pairing: sealed with the key from the QR on screen.
     if (path === '/v1/pair') {

@@ -52,3 +52,17 @@ describe('android sync indicator', () => {
     expect(agoText(NOW - 26 * 3_600_000, NOW)).toBe('Yesterday');
   });
 });
+
+describe('android sync indicator: protocol mismatch', () => {
+  test('Mac too old → "update Mac", danger, tap opens sync settings', () => {
+    const i = ind({ phase: 'outdated', outdated: 'mac' });
+    expect(i).toMatchObject({ state: 'outdated', short: 'update Mac', tone: 'danger', tap: 'open', spinning: false });
+    expect(i.label).toBe('Update Inkfish on MacBook to keep syncing');
+  });
+
+  test('phone too old → "update phone"', () => {
+    const i = ind({ phase: 'outdated', outdated: 'phone' });
+    expect(i.short).toBe('update phone');
+    expect(i.label).toContain('this phone');
+  });
+});
