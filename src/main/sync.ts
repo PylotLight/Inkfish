@@ -1,14 +1,21 @@
 import { BrowserWindow, safeStorage } from 'electron'
 import { createHash, randomBytes } from 'node:crypto'
 import {
+  appendFileSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
   type Dirent
 } from 'node:fs'
 import { createServer, type Server } from 'node:http'
@@ -31,6 +38,7 @@ import {
   toBase64,
   type Entry,
   type Manifest,
+  type PartialStore,
   type PendingPair,
   type SyncFs,
   type SyncLogEntry
@@ -377,8 +385,24 @@ const macFs: SyncFs = {
     const attempt = (): void => {
       mkdirSync(dirname(abs), { recursive: true })
       const tmp = join(dirname(abs), `.${randomBytes(4).toString('hex')}.inkfish-sync`)
-      writeFileSync(tmp, data)
-      renameSync(tmp, abs)
+      // temp + fsync + rename: a crash / power cut never leaves a half-written note in the vault.
+      const fd = openSync(tmp, 'w')
+      try {
+        writeSync(fd, data)
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
+      try {
+        renameSync(tmp, abs)
+      } catch (err) {
+        try {
+          unlinkSync(tmp)
+        } catch {
+          // already gone
+        }
+        throw err
+      }
     }
     try {
       attempt()
@@ -468,6 +492,75 @@ function flushChanged(): void {
   broadcastStatus()
 }
 
+/** Resumable uploads land here (app data, never the vault) until complete + verified. */
+function partialDir(): string | null {
+  const d = appDataDir()
+  return d ? join(d, 'sync-partials') : null
+}
+
+const diskPartials: PartialStore = {
+  async size(k) {
+    const d = partialDir()
+    try {
+      return d ? statSync(join(d, safeKey(k))).size : 0
+    } catch {
+      return 0
+    }
+  },
+  async append(k, data) {
+    const d = partialDir()
+    if (!d) throw new Error('no app data dir')
+    mkdirSync(d, { recursive: true })
+    appendFileSync(join(d, safeKey(k)), data)
+  },
+  async read(k) {
+    const d = partialDir()
+    if (!d) return new Uint8Array()
+    return new Uint8Array(readFileSync(join(d, safeKey(k))))
+  },
+  async drop(k) {
+    const d = partialDir()
+    if (d) rmSync(join(d, safeKey(k)), { force: true })
+  }
+}
+
+function safeKey(k: string): string {
+  return k.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80) || 'x'
+}
+
+/** Drop partial uploads nobody finished within a day (a phone that gave up). */
+function sweepPartials(): void {
+  const d = partialDir()
+  if (!d) return
+  try {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n)
+      if (Date.now() - statSync(p).mtimeMs > 24 * 3600_000) rmSync(p, { force: true })
+    }
+  } catch {
+    // nothing to sweep
+  }
+}
+
+async function readRange(rel: string, offset: number, length: number): Promise<{ data: Uint8Array; size: number }> {
+  const abs = absFor(rel)
+  const fd = openSync(abs, 'r')
+  try {
+    const size = statSync(abs).size
+    const n = Math.max(0, Math.min(length, size - offset))
+    const buf = Buffer.alloc(n)
+    let got = 0
+    while (got < n) {
+      const r = readSync(fd, buf, got, n - got, offset + got)
+      if (r <= 0) break
+      got += r
+    }
+    return { data: new Uint8Array(buf.buffer, buf.byteOffset, got), size }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 // --- server -------------------------------------------------------------------
 
 const handler = createHandler({
@@ -476,6 +569,8 @@ const handler = createHandler({
     return { id: s.deviceId, name: s.deviceName }
   },
   fs: macFs,
+  partials: diskPartials,
+  readRange,
   random: (n) => new Uint8Array(randomBytes(n)),
   getPeer: async (id) => {
     const p = load().peers.find((x) => x.id === id)
@@ -529,6 +624,7 @@ const handler = createHandler({
 export function startSync(): void {
   if (server || !vaultConfigured()) return
   const s = load()
+  sweepPartials()
   migratePeerKeys()
   const srv = createServer((req, res) => {
     const chunks: Buffer[] = []

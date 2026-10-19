@@ -29,12 +29,52 @@ export interface SyncFs {
   /** Remove (implementations may move to a local trash instead). */
   remove(path: string): Promise<void>
   move(from: string, to: string): Promise<void>
+  /**
+   * Optional: size + mtime (same units as the manifest) or null if missing.
+   * Lets the engine notice a file that changed while the sync ran and leave
+   * it for the next run instead of overwriting the edit.
+   */
+  stat?(path: string): Promise<{ size: number; mtime: number } | null>
+  /** Optional: somewhere to keep half-downloaded big files across runs (resume). */
+  partial?: PartialStore
+}
+
+/** Append-only store of partial downloads, keyed by content hash. Survives app restarts. */
+export interface PartialStore {
+  size(key: string): Promise<number>
+  append(key: string, data: Uint8Array): Promise<void>
+  read(key: string): Promise<Uint8Array>
+  drop(key: string): Promise<void>
+}
+
+export interface ApplyWrite {
+  path: string
+  data: Uint8Array
+  /** sha256 of data: the Mac verifies it before writing. */
+  hash?: string
+  /** Hash the Mac had at this path when we planned (null = no file). If it changed since, the Mac leaves it for the next run. */
+  expect?: string | null
 }
 
 export interface Remote {
   manifest(): Promise<Manifest>
   get(paths: string[]): Promise<Record<string, Uint8Array>>
-  apply(req: { moves: ApplyReq['moves']; writes: Array<{ path: string; data: Uint8Array }>; deletes: string[] }): Promise<Manifest>
+  apply(req: { moves: ApplyReq['moves']; writes: ApplyWrite[]; deletes: string[]; deleteExpect?: Record<string, string> }): Promise<Manifest>
+  /** Optional (Mac feature `chunks`): a byte range of one file. null = gone. */
+  chunk?(path: string, offset: number, length: number): Promise<{ data: Uint8Array; size: number } | null>
+  /** Optional (Mac feature `chunks`): resumable upload of one big file. `offset: -1` asks how much the Mac already has. */
+  put?(req: { path: string; hash: string; size: number; offset: number; data?: Uint8Array; expect?: string | null }): Promise<{ have: number; done: boolean; deferred?: boolean }>
+}
+
+/** Files at least this big go in resumable chunks when both sides support it. */
+export const CHUNK_MIN = 6 * 1024 * 1024
+export const CHUNK_SIZE = 2 * 1024 * 1024
+
+export class SyncCancelled extends Error {
+  constructor() {
+    super('sync cancelled')
+    this.name = 'SyncCancelled'
+  }
 }
 
 export interface SyncState {
@@ -64,6 +104,10 @@ export interface SyncReport {
   cleaned?: number
   /** Pulls skipped because the file changed (or arrived damaged) since the manifest; next run retries. */
   skipped?: number
+  /** Changes left for the next run because a file was edited (here or on the Mac) while this one ran. */
+  deferred?: number
+  /** Big files that continued from an earlier, interrupted run. */
+  resumed?: number
   /** Wall time of the run (ms). */
   ms?: number
 }
@@ -109,6 +153,10 @@ class Progress {
   total(files: number, bytes: number): void {
     this.p = { ...this.p, total: files, bytesTotal: bytes }
     this.emit(true)
+  }
+  bytes(current: string, bytes: number): void {
+    this.p = { ...this.p, bytesDone: this.p.bytesDone + bytes, current }
+    this.emit(false)
   }
   step(current: string, bytes: number): void {
     this.p = { ...this.p, done: this.p.done + 1, bytesDone: this.p.bytesDone + bytes, current }
@@ -274,6 +322,10 @@ export async function runSync(opts: {
   repair?: boolean
   /** Live progress (throttled to PROGRESS_THROTTLE_MS; never per file). */
   onProgress?: (p: SyncProgress) => void
+  /** Stop between steps (throws SyncCancelled). Whatever landed stays landed; the next run picks up from there. */
+  signal?: AbortSignal
+  /** Chunking thresholds (tests). Defaults: CHUNK_MIN / CHUNK_SIZE. */
+  chunk?: { min: number; size: number }
   /** Clock (tests). */
   clock?: () => number
 }): Promise<SyncReport> {
@@ -344,9 +396,47 @@ async function runSyncInner(
   const mergeFrom = new Set(ops.flatMap((o) => (o.op === 'merge' ? [o.remoteFrom ?? o.path] : [])))
   const fetched: Record<string, Uint8Array> = { ...prefetched }
   const written = new Set<string>()
-  const toFetch = transferOrder([...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)), remoteMan)
-  progress.total(toFetch.length, toFetch.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
+  const cancelled = (): void => {
+    if (opts.signal?.aborted) throw new SyncCancelled()
+  }
+  // Did this local file change since we listed it (an edit while the sync ran)? Then leave it alone.
+  const touched = new Set<string>()
+  const editedSince = async (p: string): Promise<boolean> => {
+    if (!fs.stat || touched.has(p)) return false
+    try {
+      const st = await fs.stat(p)
+      const was = local[p]
+      if (!was) return st !== null
+      return !st || st.size !== was.size || st.mtime !== was.mtime
+    } catch {
+      return false
+    }
+  }
+  const defer = (): void => {
+    report.deferred = (report.deferred ?? 0) + 1
+  }
+  const all = transferOrder([...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)), remoteMan)
+  const chunkMin = opts.chunk?.min ?? CHUNK_MIN
+  const chunkSize = opts.chunk?.size ?? CHUNK_SIZE
+  const chunked = (p: string): boolean => !!remote.chunk && !!fs.partial && (remoteMan[p]?.size ?? 0) >= chunkMin
+  const toFetch = all.filter((p) => !chunked(p))
+  const bigFiles = all.filter(chunked)
+  progress.total(all.length, all.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
+  const land = async (p: string, data: Uint8Array): Promise<void> => {
+    const want = remoteMan[p]!.hash
+    if (mergeFrom.has(p)) fetched[p] = data
+    if (!pullSet.has(p)) return
+    if (await editedSince(p)) return defer()
+    await fs.write(p, data, want)
+    touched.add(p)
+    written.add(p)
+    localNow[p] = { hash: want, size: data.length, mtime: Date.now() }
+    if (isText(p)) bytesOf.set(p, data)
+    report.pulled++
+    report.changedLocal.push(p)
+  }
   await mapLimit(batchPaths(toFetch, remoteMan), GET_CONCURRENCY, async (batch) => {
+    cancelled()
     const got = await remote.get(batch)
     await mapLimit(batch, WRITE_CONCURRENCY, async (p) => {
       const data = got[p]
@@ -358,17 +448,56 @@ async function runSyncInner(
         report.skipped = (report.skipped ?? 0) + 1
         return
       }
-      if (mergeFrom.has(p)) fetched[p] = data
-      if (pullSet.has(p)) {
-        await fs.write(p, data, want)
-        written.add(p)
-        localNow[p] = { hash: want, size: data.length, mtime: Date.now() }
-        if (isText(p)) bytesOf.set(p, data)
-        report.pulled++
-        report.changedLocal.push(p)
-      }
+      await land(p, data)
     })
   })
+  // Big files: resumable byte ranges, kept in the partial store between runs (app killed,
+  // Wi-Fi dropped, Mac asleep → the next run continues from the last chunk).
+  for (const p of bigFiles) {
+    cancelled()
+    const e = remoteMan[p]!
+    const store = fs.partial!
+    let have = await store.size(e.hash).catch(() => 0)
+    if (have > e.size) {
+      await store.drop(e.hash)
+      have = 0
+    }
+    if (have > 0) report.resumed = (report.resumed ?? 0) + 1
+    progress.bytes(p, have)
+    let gone = false
+    while (have < e.size) {
+      cancelled()
+      const c = await remote.chunk!(p, have, Math.min(chunkSize, e.size - have))
+      if (!c || c.size !== e.size || c.data.length === 0) {
+        gone = true // changed or deleted on the Mac since the manifest
+        break
+      }
+      await store.append(e.hash, c.data)
+      have += c.data.length
+      progress.bytes(p, c.data.length)
+    }
+    progress.step(p, 0)
+    if (gone) {
+      await store.drop(e.hash).catch(() => undefined)
+      report.skipped = (report.skipped ?? 0) + 1
+      continue
+    }
+    const data = await store.read(e.hash)
+    if (sha256(data) !== e.hash) {
+      await store.drop(e.hash) // damaged: start clean next time
+      report.skipped = (report.skipped ?? 0) + 1
+      continue
+    }
+    await land(p, data)
+    await store.drop(e.hash).catch(() => undefined)
+  }
+  // Checkpoint: what landed is agreed now, so an interrupted run doesn't redo it.
+  if (written.size) {
+    const cp: Base = { ...base }
+    for (const p of written) cp[p] = remoteMan[p]!.hash
+    await state.saveBase(cp).catch(() => undefined)
+  }
+  cancelled()
 
   const moves: ApplyReq['moves'] = []
   const writes: Array<{ path: string; data: Uint8Array }> = []
@@ -382,6 +511,10 @@ async function runSyncInner(
         if (written.has(o.path)) break
         const data = prefetched[o.path]
         if (!data || sha256(data) !== o.hash) break // vanished / changed remotely mid-sync; next run sorts it out
+        if (await editedSince(o.path)) {
+          defer()
+          break
+        }
         await fs.write(o.path, data, o.hash)
         localNow[o.path] = { hash: o.hash, size: data.length, mtime: Date.now() }
         if (isText(o.path)) bytesOf.set(o.path, data)
@@ -393,6 +526,10 @@ async function runSyncInner(
         pushPaths.push(o.path)
         break
       case 'deleteLocal':
+        if (await editedSince(o.path)) {
+          defer() // edited here while we synced: the edit wins, next run pushes it
+          break
+        }
         await fs.remove(o.path)
         delete localNow[o.path]
         report.deleted++
@@ -403,6 +540,10 @@ async function runSyncInner(
         report.deleted++
         break
       case 'moveLocal':
+        if ((await editedSince(o.from)) || (await editedSince(o.to))) {
+          defer()
+          break
+        }
         await fs.move(o.from, o.to)
         renameEntries(localNow, [{ from: o.from, to: o.to }])
         report.moved++
@@ -433,6 +574,7 @@ async function runSyncInner(
           if (w.path !== o.path || w.text !== undefined) {
             const h = sha256(data)
             await fs.write(w.path, data, h)
+            touched.add(w.path)
             localNow[w.path] = { hash: h, size: data.length, mtime: Date.now() }
             report.changedLocal.push(w.path)
           }
@@ -470,9 +612,47 @@ async function runSyncInner(
   if (moves.length || writes.length || deletes.length) {
     progress.phase('uploading')
     progress.total(writes.length, writes.reduce((n, w) => n + w.data.length, 0))
-    const batches = batchWrites(writes)
+    // Every write says what it is (hash, verified by the Mac) and what it replaces
+    // (expect: if the Mac's copy changed since we planned, it's left for next run).
+    const sealed = (w: { path: string; data: Uint8Array }): ApplyWrite => ({
+      path: w.path,
+      data: w.data,
+      hash: localNow[w.path]?.hash === undefined || localNow[w.path]!.size !== w.data.length ? sha256(w.data) : localNow[w.path]!.hash,
+      expect: remoteMan[w.path]?.hash ?? null
+    })
+    const deleteExpect: Record<string, string> = {}
+    for (const d of deletes) if (remoteMan[d]) deleteExpect[d] = remoteMan[d]!.hash
+    // Big files: resumable chunked upload first (Mac feature `chunks`).
+    const small: typeof writes = []
+    for (const w of writes) {
+      if (!remote.put || w.data.length < chunkMin) {
+        small.push(w)
+        continue
+      }
+      cancelled()
+      const s = sealed(w)
+      let st = await remote.put({ path: s.path, hash: s.hash!, size: w.data.length, offset: -1, expect: s.expect })
+      if (st.have > 0 && !st.done) report.resumed = (report.resumed ?? 0) + 1
+      progress.bytes(w.path, st.have)
+      while (!st.done && !st.deferred) {
+        cancelled()
+        const from = st.have
+        const part = w.data.subarray(from, Math.min(w.data.length, from + chunkSize))
+        st = await remote.put({ path: s.path, hash: s.hash!, size: w.data.length, offset: from, data: part, expect: s.expect })
+        progress.bytes(w.path, Math.max(0, st.have - from))
+      }
+      progress.step(w.path, 0)
+      if (st.deferred) defer()
+    }
+    const batches = batchWrites(small)
     const send = async (b: typeof writes, extra: { moves?: ApplyReq['moves']; deletes?: string[] }): Promise<Manifest> => {
-      const m = await remote.apply({ moves: extra.moves ?? [], writes: b, deletes: extra.deletes ?? [] })
+      cancelled()
+      const m = await remote.apply({
+        moves: extra.moves ?? [],
+        writes: b.map(sealed),
+        deletes: extra.deletes ?? [],
+        ...(extra.deletes?.length ? { deleteExpect } : {})
+      })
       for (const w of b) progress.step(w.path, w.data.length)
       return m
     }
@@ -483,6 +663,10 @@ async function runSyncInner(
       remoteAfter = await send(batches[batches.length - 1]!, { deletes })
     }
   }
+
+  // Writes / deletes the Mac left alone because its copy changed while we ran.
+  for (const w of writes) if (remoteAfter[w.path] && remoteAfter[w.path]!.hash !== localNow[w.path]?.hash && remoteAfter[w.path]!.hash !== remoteMan[w.path]?.hash) defer()
+  for (const d of deletes) if (remoteAfter[d] && remoteAfter[d]!.hash !== remoteMan[d]?.hash) defer()
 
   // Pushed `work/x.md`, the Mac stored it as `Work/x.md`: follow its spelling now, not next run.
   await adoptCase(fs, localNow, remoteAfter, report)

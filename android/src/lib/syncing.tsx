@@ -12,8 +12,10 @@ import {
   runFromReport,
   runSync,
   supportsProgress,
+  SyncCancelled,
   SyncHeld,
   SyncIncompatible,
+  HttpError,
   type BigDelete,
   type GuardChoice,
   type MacPeer,
@@ -98,6 +100,13 @@ function askDelete(d: BigDelete, macName: string): Promise<GuardChoice> {
 }
 const fetchFn = fetch as unknown as Parameters<typeof httpRemote>[0];
 
+/** Network-level failure (no answer at all), as opposed to the Mac saying no. */
+function lostConnection(e: unknown): boolean {
+  if (e instanceof HttpError || e instanceof SyncIncompatible || e instanceof SyncHeld) return false;
+  const m = e instanceof Error ? `${e.name} ${e.message}` : String(e);
+  return /network request failed|aborted|AbortError|timeout|ECONN|EHOSTUNREACH|socket/i.test(m);
+}
+
 function deviceName(): string {
   const c = Platform.constants as { Model?: string; Brand?: string };
   return (c.Model || c.Brand || 'Android').slice(0, 40);
@@ -123,6 +132,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const running = useRef(false);
   const again = useRef(false);
   const repairNext = useRef(false);
+  /** Cancels the running sync (unpair). Fresh per run. */
+  const abort = useRef<AbortController | null>(null);
   /** Note changes before this time come from a sync's own refresh: don't nudge another sync. */
   const quietUntil = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,6 +167,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       return;
     }
     running.current = true;
+    abort.current = new AbortController();
     setError(null);
     const t0 = Date.now();
     const done = async (e: SyncLogEntry): Promise<void> => {
@@ -188,11 +200,17 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         // Newer Macs show this phone's progress live (a request a second at most; older Macs skip it).
         const poster = supportsProgress(found.hello) ? progressPoster(fetchFn, host, peer, id, random) : null;
         const tRun = Date.now();
-        const remote = httpRemote(fetchFn, host, peer, id, random);
+        // Remember where the Mac answered right away, so an interrupted run reconnects fast next time.
+        if (peer.lastHost !== host) await persistMac({ ...peer, lastHost: host }).catch(() => undefined);
+        const remote = httpRemote(fetchFn, host, peer, id, random, {
+          features: Array.isArray(found.hello.features) ? found.hello.features : [],
+          retry: { attempts: 4, signal: abort.current?.signal }
+        });
         const repair = repairNext.current;
         repairNext.current = false;
         const report = await runSync({
           repair,
+          signal: abort.current?.signal,
           onProgress: (p) => {
             setProgress(p);
             poster?.post(p);
@@ -251,7 +269,18 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         });
         return;
       }
+      if (e instanceof SyncCancelled) {
+        setPhase(macRef.current ? 'idle' : 'unpaired');
+        return;
+      }
       const message = shortError(e);
+      // Lost the Mac mid-run (Wi-Fi dropped, Mac asleep, app backgrounded): that's "offline",
+      // not an error. What landed stays; the next run picks up from there.
+      if (lostConnection(e)) {
+        setPhase('offline');
+        await done({ at: Date.now(), peer: peer.name, kind: 'error', message: `connection lost — ${message}` });
+        return;
+      }
       setError(message);
       setPhase('error');
       await done({ at: Date.now(), peer: peer.name, kind: 'error', message });
@@ -323,6 +352,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const unpair = useCallback(async () => {
     if (!id) return;
+    abort.current?.abort();
     const v = await forgetMac({ id, mac: macRef.current });
     setMac(v.mac);
     setPhase('unpaired');

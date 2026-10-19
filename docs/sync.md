@@ -46,6 +46,29 @@ tested TypeScript (`src/shared/sync/`):
   missing, never delete (except identical duplicate copies, to trash).
 - **History**: back-to-back rows from the same phone (applies, identical errors, no-op syncs) collapse
   into one row with a ×N count.
+- **Speed**: one concurrent stat walk on the phone with a size+mtime hash cache, no second walk
+  per run, notes transferred first, 3 `get` batches in flight, written as they land. Bench:
+  `bun scripts/bench-sync.ts` (`--legacy` for the old walk); budget test in `perf.test.ts`.
+- **Progress**: the engine emits throttled progress (≤4/s); the phone shows it (header %, drawer
+  bar, Settings › Sync details) and posts it to the Mac (`/v1/progress`, ≤1/s) when the Mac's hello
+  lists the `progress` feature; `/v1/done` carries a run summary. Mac popover + tray show it.
+- **Resilience** (all additive — `hello.features`; the protocol number is part of the AAD so it
+  only changes when the wire breaks):
+  - every request retries with exponential backoff + jitter on network errors / 5xx / damaged
+    replies; never on 401 / 426 / 400. Replays are safe (fresh seal each attempt, idempotent ops)
+  - files ≥6 MB move in 2 MB chunks (`/v1/chunk`, `/v1/put`, feature `chunks`), kept in a partial
+    store (phone `.sync/partial/`, Mac app data `sync-partials/`) so a killed app / dropped Wi-Fi /
+    sleeping Mac resumes from the last chunk; verified by sha256 before anything touches the vault
+  - pulls are hash-checked before they're written; the Mac verifies each write's hash; writes and
+    deletes carry `expect` (what the Mac had when the phone planned) — a file edited on the Mac
+    mid-sync is left for the next run's merge, never clobbered or deleted
+  - the phone re-checks size/mtime before overwriting / deleting / moving a local file, so an edit
+    made while a sync runs is never overwritten
+  - checkpoint after downloads (base saved), so an interrupted run doesn't redo them
+  - Mac applies / puts are serialized (two phones, or a retry racing its original, never interleave)
+  - Mac writes are temp + fsync + rename; phone writes temp + move
+  - a lost connection mid-run shows "offline" (not an error); unpair cancels a running sync
+  - fault-injection tests: `src/shared/sync/resilience.test.ts`
 - Tests: `src/shared/sync/e2e.test.ts` runs pairing + multi-round sync over
   the real handler with two in-memory vaults.
 

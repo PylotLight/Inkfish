@@ -114,7 +114,10 @@ export interface Hello {
 }
 
 /** Extras this build's Mac side serves (see Hello.features). */
-export const FEATURES = ['progress', 'summary'] as const
+export const FEATURES = ['progress', 'summary', 'chunks', 'expect'] as const
+
+/** Largest chunk the Mac serves / accepts. */
+export const MAX_CHUNK = 4 * 1024 * 1024
 
 export interface ProgressReq {
   /** SyncProgress plus `sentAt` (phone clock) so the Mac can re-base times. */
@@ -147,11 +150,44 @@ export interface GetRes {
 
 export interface ApplyReq {
   moves: Array<{ from: string; to: string }>
-  writes: Array<{ path: string; data: string }>
+  /** `hash` / `expect`: newer phones only (see engine ApplyWrite). */
+  writes: Array<{ path: string; data: string; hash?: string; expect?: string | null }>
   deletes: string[]
+  /** path → hash the phone saw; the Mac skips a delete whose file changed since. Newer phones only. */
+  deleteExpect?: Record<string, string>
 }
 export interface ApplyRes {
   manifest: Manifest
+  /** Paths left alone because they changed on the Mac since the phone planned. */
+  deferred?: string[]
+}
+
+/** Feature `chunks`: a byte range of one file. */
+export interface ChunkReq {
+  path: string
+  offset: number
+  length: number
+}
+export interface ChunkRes {
+  /** base64; empty when gone */
+  data: string
+  /** whole file size, -1 when gone */
+  size: number
+}
+
+/** Feature `chunks`: resumable upload. offset -1 = "how much do you have?". */
+export interface PutReq {
+  path: string
+  hash: string
+  size: number
+  offset: number
+  data?: string
+  expect?: string | null
+}
+export interface PutRes {
+  have: number
+  done: boolean
+  deferred?: boolean
 }
 
 /** Paths are vault-relative, forward slashes, no `..`, nothing hidden at the top. */

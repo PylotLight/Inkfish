@@ -1,5 +1,5 @@
-import { fromBase64 } from './bytes'
-import { decodeFiles, encodeFiles, type Remote, type SyncProgress } from './engine'
+import { fromBase64, toBase64 } from './bytes'
+import { decodeFiles, type Remote, type SyncProgress } from './engine'
 import type { PeerRun } from './progress'
 import type { Manifest } from './plan'
 import {
@@ -7,7 +7,12 @@ import {
   openJson,
   PEER_HEADER,
   sealJson,
+  type ApplyReq,
   type ApplyRes,
+  type ChunkReq,
+  type ChunkRes,
+  type PutReq,
+  type PutRes,
   type DoneReq,
   type ProgressReq,
   type GetRes,
@@ -102,6 +107,53 @@ export async function findMacHello(
   return found
 }
 
+/** An HTTP-level failure from the Mac (status kept, so retries can tell transient from final). */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
+/** Worth another try: network trouble, timeouts, damaged replies, a busy / restarting Mac. Never auth, handshake or bad requests. */
+export function retryable(err: unknown): boolean {
+  if (err instanceof SyncIncompatible) return false
+  if (err instanceof HttpError) return err.status >= 500 || err.status === 408 || err.status === 429 || err.status === 422
+  return true
+}
+
+export interface RetryOpts {
+  attempts?: number
+  baseMs?: number
+  maxMs?: number
+  signal?: AbortSignal
+  sleep?: (ms: number) => Promise<void>
+  random?: () => number
+}
+
+/** Exponential backoff with full jitter. Throws the last error once out of attempts, or right away if it isn't retryable. */
+export async function withRetry<T>(f: () => Promise<T>, o: RetryOpts = {}): Promise<T> {
+  const attempts = o.attempts ?? 4
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const rnd = o.random ?? Math.random
+  let last: unknown
+  for (let i = 0; i < attempts; i++) {
+    if (o.signal?.aborted) throw last ?? new Error('cancelled')
+    try {
+      return await f()
+    } catch (err) {
+      last = err
+      if (!retryable(err) || i === attempts - 1) throw err
+      const cap = Math.min(o.maxMs ?? 4000, (o.baseMs ?? 300) * 2 ** i)
+      await sleep(Math.round(cap * (0.5 + rnd() / 2)))
+    }
+  }
+  throw last
+}
+
 async function call<Req, Res>(
   fetchFn: Fetch,
   base: string,
@@ -121,7 +173,7 @@ async function call<Req, Res>(
     const app = parseIncompatible(text)
     if (app) throw new SyncIncompatible(app, text.split(':').slice(2).join(':'))
   }
-  if (!r.ok) throw new Error(r.status === 401 ? 'This phone is no longer paired with the Mac' : `Mac said ${r.status}: ${text.slice(0, 80)}`)
+  if (!r.ok) throw new HttpError(r.status, r.status === 401 ? (/stale/.test(text) ? 'Phone and Mac clocks are too far apart (check date & time)' : 'This phone is no longer paired with the Mac') : `Mac said ${r.status}: ${text.slice(0, 80)}`)
   return openJson<Res>(key, text, aad('res', path, me)).body
 }
 
@@ -137,17 +189,59 @@ export async function pairWithMac(fetchFn: Fetch, qr: PairPayload, me: { id: str
   return { id: res.id, name: res.name, key: qr.key, hosts: qr.hosts, port: qr.port, lastHost: host }
 }
 
-export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random): Remote {
+export interface RemoteOpts {
+  /** Hello.features of this Mac — turns on chunked transfers when it has `chunks`. */
+  features?: readonly string[]
+  /** Per-request retry (backoff + jitter). Pass `{ attempts: 1 }` to turn it off. */
+  retry?: RetryOpts
+}
+
+/**
+ * The Mac as a Remote. Every request retries on transient failures (all of
+ * them are safe to replay: reads are reads, applies are idempotent — same
+ * bytes to the same path, moves/deletes of something already moved/deleted
+ * are no-ops — and each attempt is freshly sealed, so the replay guard is
+ * happy).
+ */
+export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random, opts: RemoteOpts = {}): Remote {
   const base = `http://${host}:${peer.port}`
   const key = fromBase64(peer.key)
-  return {
-    manifest: async () => (await call<object, ManifestRes>(fetchFn, base, '/v1/manifest', me, key, {}, random)).manifest,
-    get: async (paths) => decodeFiles((await call<{ paths: string[] }, GetRes>(fetchFn, base, '/v1/get', me, key, { paths }, random)).files),
-    apply: async (req): Promise<Manifest> =>
-      (
-        await call<object, ApplyRes>(fetchFn, base, '/v1/apply', me, key, { moves: req.moves, writes: encodeFiles(req.writes), deletes: req.deletes }, random, 120_000)
-      ).manifest
+  const r = <T>(f: () => Promise<T>): Promise<T> => withRetry(f, opts.retry)
+  const remote: Remote = {
+    manifest: () => r(async () => (await call<object, ManifestRes>(fetchFn, base, '/v1/manifest', me, key, {}, random)).manifest),
+    get: (paths) => r(async () => decodeFiles((await call<{ paths: string[] }, GetRes>(fetchFn, base, '/v1/get', me, key, { paths }, random)).files)),
+    apply: (req): Promise<Manifest> =>
+      r(async () => {
+        const writes = req.writes.map((w) => ({
+          path: w.path,
+          data: toBase64(w.data),
+          ...(w.hash ? { hash: w.hash } : {}),
+          ...(w.expect !== undefined ? { expect: w.expect } : {})
+        }))
+        const body: ApplyReq = { moves: req.moves, writes, deletes: req.deletes, ...(req.deleteExpect ? { deleteExpect: req.deleteExpect } : {}) }
+        return (await call<ApplyReq, ApplyRes>(fetchFn, base, '/v1/apply', me, key, body, random, 120_000)).manifest
+      })
   }
+  if (opts.features?.includes('chunks')) {
+    remote.chunk = (path, offset, length) =>
+      r(async () => {
+        const c = await call<ChunkReq, ChunkRes>(fetchFn, base, '/v1/chunk', me, key, { path, offset, length }, random)
+        return c.size < 0 ? null : { data: fromBase64(c.data), size: c.size }
+      })
+    remote.put = (q) =>
+      r(async () =>
+        call<PutReq, PutRes>(
+          fetchFn,
+          base,
+          '/v1/put',
+          me,
+          key,
+          { path: q.path, hash: q.hash, size: q.size, offset: q.offset, ...(q.data ? { data: toBase64(q.data) } : {}), ...(q.expect !== undefined ? { expect: q.expect } : {}) },
+          random
+        )
+      )
+  }
+  return remote
 }
 
 /** End the session. `summary` (a PeerRun) shows in the Mac's sync history; older Macs ignore it. */
