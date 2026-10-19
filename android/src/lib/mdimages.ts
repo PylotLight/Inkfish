@@ -52,13 +52,15 @@ export function splitImages(line: string): InlineToken[] {
     if (hits.some((h) => index >= h.index && index < h.index + h.length)) continue;
     const name = (m[1] ?? '').trim();
     if (!name) continue;
-    const size = parseImageAlt((m[2] ?? '').replace(/^\|/, ''));
+    // `|300`, `|alias`, `|alias|300x200` — same size rule as markdown alts.
+    const size = parseImageAlt(m[2] ?? '');
+    const alias = size.alt.replace(/^\|/, '').trim();
     hits.push({
       index,
       length: m[0].length,
       tok: {
         t: 'img',
-        alt: size.alt || name.split('/').pop()!.replace(/\.[^.]+$/, ''),
+        alt: alias || name.split('/').pop()!.replace(/\.[^.]+$/, ''),
         src: name,
         embed: true,
         ...(size.width ? { width: size.width } : {}),
