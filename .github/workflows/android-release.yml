@@ -69,9 +69,21 @@ jobs:
           cache-read-only: false
 
       # Self-hosted runners don't ship the Android SDK; hosted ones do (ANDROID_HOME set).
+      # `env.ANDROID_HOME` in an `if:` only sees workflow-level env (always empty), so check the
+      # runner's real env in a shell step instead.
+      - name: has android sdk?
+        id: sdk
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+
+      # The legacy `tools` package (setup-android's default) is gone from Google's SDK repo,
+      # so only ask for platform-tools; gradle pulls platforms/build-tools itself.
       - name: android sdk (only if the runner lacks one)
-        if: env.ANDROID_HOME == ''
+        if: steps.sdk.outputs.present != 'true'
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: restore android/node_modules
         id: android-nm
