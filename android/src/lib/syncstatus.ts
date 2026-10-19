@@ -38,6 +38,20 @@ export interface SyncIndicator {
   pct?: number | null;
 }
 
+/** Re-render at most this often for progress within one stage (the engine posts every 250 ms). */
+export const PROGRESS_RENDER_MS = 500;
+
+/**
+ * Whether a progress tick is worth a React update: stage changes and the
+ * final tick always are; otherwise at most every PROGRESS_RENDER_MS. Every
+ * tick still goes to the Mac's live view — only phone re-renders are thinned.
+ */
+export function progressWorthRender(prev: SyncProgress | null, next: SyncProgress, lastAt: number, now: number): boolean {
+  if (!prev || prev.stage !== next.stage) return true;
+  if (next.total > 0 && next.done >= next.total && prev.done < prev.total) return true;
+  return now - lastAt >= PROGRESS_RENDER_MS;
+}
+
 export function syncIndicator(s: IndicatorInput, now = Date.now()): SyncIndicator {
   const mac = s.macName ?? 'your Mac';
   const last = s.lastSync ? ` · last synced ${agoText(s.lastSync, now)}` : '';

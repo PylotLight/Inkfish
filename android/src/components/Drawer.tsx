@@ -209,7 +209,7 @@ type NameModal =
 export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { notes, projects, dirs, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
+  const { notes, projects, dirs, indexed, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
   const [q, setQ] = useState('');
   // Folders start collapsed (Obsidian-style) so a big vault opens instantly.
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
@@ -259,7 +259,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
   }, []);
 
   const tree = useMemo(() => {
-    const t = buildTree(notes.slice(0, 2000), dirs);
+    const t = buildTree(notes, dirs);
     // Empty top-level projects still get a header so they don't vanish.
     const have = new Set(t.roots.map((r) => r.rel));
     for (const p of projects) {
@@ -494,7 +494,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           windowSize={5}
           removeClippedSubviews
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : 'No notes yet.'}</Text>}
+          ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : indexed ? 'No notes yet.' : 'Loading notes…'}</Text>}
           contentContainerStyle={{ paddingBottom: 24 }}
         />
         <SyncRow />

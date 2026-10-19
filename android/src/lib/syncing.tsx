@@ -27,6 +27,7 @@ import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog';
 import { shortError } from './sync';
 import { recordMoves } from './vault';
 import { afterSync } from './syncafter';
+import { progressWorthRender } from './syncstatus';
 
 export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error' | 'outdated';
 
@@ -118,7 +119,7 @@ function deviceName(): string {
  * the current Wi-Fi; if it isn't there, it quietly reports "offline".
  */
 export function SyncProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const { refresh, notes, inbox } = useStore();
+  const { refresh, notes, inbox, indexed } = useStore();
   const [id, setId] = useState<string | null>(null);
   const [mac, setMac] = useState<MacPeer | null>(null);
   const [phase, setPhase] = useState<SyncPhase>('unpaired');
@@ -130,6 +131,9 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [macInfo, setMacInfo] = useState<MacInfo | null>(null);
   const running = useRef(false);
+  /** Last progress actually rendered (ticks between are thinned, see progressWorthRender). */
+  const shownProgress = useRef<SyncProgress | null>(null);
+  const shownAt = useRef(0);
   const again = useRef(false);
   const repairNext = useRef(false);
   /** Cancels the running sync (unpair). Fresh per run. */
@@ -212,7 +216,12 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
           repair,
           signal: abort.current?.signal,
           onProgress: (p) => {
-            setProgress(p);
+            const now = Date.now();
+            if (progressWorthRender(shownProgress.current, p, shownAt.current, now)) {
+              shownProgress.current = p;
+              shownAt.current = now;
+              setProgress(p);
+            }
             poster?.post(p);
           },
           fs: androidFs,
@@ -286,6 +295,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       await done({ at: Date.now(), peer: peer.name, kind: 'error', message });
     } finally {
       running.current = false;
+      shownProgress.current = null;
       setProgress(null);
     }
   }, [id, persistMac, refresh]);
@@ -300,19 +310,22 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [syncNow]);
 
   // Local edits (captures, saves, routing) → sync a few seconds later.
+  // Launch fills the lists twice (saved index, then the fresh scan): neither is an edit.
   const first = useRef(true);
   useEffect(() => {
+    if (!indexed) return;
     if (first.current) {
       first.current = false;
       return;
     }
     if (Date.now() < quietUntil.current) return; // our own post-sync refresh, not a local edit
     nudge();
-  }, [notes, inbox, nudge]);
+  }, [notes, inbox, nudge, indexed]);
 
-  // Launch + foreground.
+  // Launch + foreground. The launch sync waits for the first index scan, so the
+  // sync walk never competes with the drawer for the file-system bridge.
   useEffect(() => {
-    if (!id || !mac) return;
+    if (!id || !mac || !indexed) return;
     const t = setTimeout(() => void syncNow(), 1500);
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
@@ -334,7 +347,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, mac?.id]);
+  }, [id, mac?.id, indexed]);
 
   const pair = useCallback(
     async (qr: string) => {
