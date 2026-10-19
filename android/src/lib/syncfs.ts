@@ -7,8 +7,11 @@ import {
   sha256,
   toBase64,
   toHex,
+  walkManifest,
   type Base,
-  type Entry,
+  type HashCache,
+  type WalkIo,
+  type WalkRoot,
   type MacPeer,
   type Manifest,
   type SyncFs,
@@ -62,8 +65,23 @@ async function writeJson(uri: string, v: unknown): Promise<void> {
 }
 
 // --- hash cache: path → size/mtime/hash, so unchanged files aren't re-read ---
-type HashCache = Record<string, { size: number; mtime: number; hash: string }>;
 const CACHE_URI = `${SYNC_DIR}hashes.json`;
+
+const phoneIo: WalkIo = {
+  readDir: (uri) => FileSystem.readDirectoryAsync(uri),
+  async stat(uri) {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists) return { exists: false, isDirectory: false, size: 0, mtime: 0 };
+    return { exists: true, isDirectory: info.isDirectory, size: info.size ?? 0, mtime: info.modificationTime ?? 0 };
+  },
+  hash: async (uri) => sha256(fromBase64(await FileSystem.readAsStringAsync(uri, B64)))
+};
+
+const ROOTS: WalkRoot[] = [
+  { uri: R.vault, prefix: '', deep: true, skip: ['inbox', 'daily'] }, // staging lives elsewhere
+  { uri: R.inbox, prefix: 'inbox', deep: false },
+  { uri: R.daily, prefix: 'daily', deep: false }
+];
 
 /** Remove now-empty folders from `uri`'s parent up to (not including) its sync root. */
 async function pruneEmptyParents(uri: string): Promise<void> {
@@ -83,63 +101,20 @@ async function pruneEmptyParents(uri: string): Promise<void> {
 
 export const androidFs: SyncFs = {
   async list(opts): Promise<Manifest> {
-    // Heal before manifesting (same rule as the Mac): a case-duplicate must
-    // never be advertised, or the two sides recreate each other's losers.
-    try {
-      await mergeCaseDuplicates();
-    } catch {
-      // best-effort; the walk below still works
-    }
     const cache = opts?.fresh ? {} : await readJson<HashCache>(CACHE_URI, {});
-    const next: HashCache = {};
-    const m: Manifest = {};
-    const add = async (uri: string, rel: string): Promise<void> => {
-      if (ignored(rel)) return;
-      const info = await FileSystem.getInfoAsync(uri);
-      if (!info.exists || info.isDirectory) return;
-      const size = info.size ?? 0;
-      const mtime = info.modificationTime ?? 0;
-      if (size > 200 * 1024 * 1024) return;
-      const c = cache[rel];
-      let hash: string;
-      if (c && c.size === size && c.mtime === mtime) hash = c.hash;
-      else hash = sha256(fromBase64(await FileSystem.readAsStringAsync(uri, B64)));
-      next[rel] = { size, mtime, hash };
-      const e: Entry = { hash, size, mtime: mtime * 1000 };
-      m[rel] = e;
-    };
-    const walk = async (dir: string, prefix: string): Promise<void> => {
-      let names: string[] = [];
+    let r = await walkManifest(phoneIo, ROOTS, cache);
+    // Heal only when the walk saw case-duplicate names (the heal is a full
+    // extra tree walk). Same rule as the Mac: a duplicate is never advertised.
+    if (r.caseDupes) {
       try {
-        names = await FileSystem.readDirectoryAsync(dir);
+        await mergeCaseDuplicates();
+        r = await walkManifest(phoneIo, ROOTS, r.cache);
       } catch {
-        return;
+        // best-effort; the manifest we have still works
       }
-      for (const n of names) {
-        if (n.startsWith('.')) continue;
-        const rel = prefix ? `${prefix}/${n}` : n;
-        if (!prefix && (n === 'inbox' || n === 'daily')) continue; // staging lives elsewhere
-        const uri = `${dir}${n}`;
-        const info = await FileSystem.getInfoAsync(uri);
-        if (info.isDirectory) await walk(`${uri}/`, rel);
-        else await add(uri, rel);
-      }
-    };
-    await walk(R.vault, '');
-    for (const [dir, prefix] of [
-      [R.inbox, 'inbox'],
-      [R.daily, 'daily']
-    ] as const) {
-      let names: string[] = [];
-      try {
-        names = await FileSystem.readDirectoryAsync(dir);
-      } catch {
-        continue;
-      }
-      for (const n of names) if (!n.startsWith('.')) await add(`${dir}${n}`, `${prefix}/${n}`);
     }
-    await writeJson(CACHE_URI, next);
-    return m;
+    if (r.dirty || opts?.fresh) await writeJson(CACHE_URI, r.cache);
+    return r.manifest;
   },
   async read(rel) {
     return fromBase64(await FileSystem.readAsStringAsync(uriFor(rel), B64));
