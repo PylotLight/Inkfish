@@ -166,6 +166,22 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
           >
             <Text style={[ui.quietText, { color: c.muted }]}>Unpair</Text>
           </Pressable>
+          <Pressable
+            onPress={() =>
+              Alert.alert(
+                'Repair sync?',
+                `Re-checks every file and copies anything missing on this phone or on ${sync.mac?.name}. Nothing is deleted, except duplicate conflict copies identical to the note they came from (they go to Trash).`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Repair', onPress: () => void sync.repair() }
+                ]
+              )
+            }
+            disabled={sync.phase === 'finding' || sync.phase === 'syncing'}
+            style={[ui.quiet, { marginTop: 4 }]}
+          >
+            <Text style={[ui.quietText, { color: c.muted }]}>Repair sync</Text>
+          </Pressable>
           {sync.log.length > 0 && (
             <View style={{ marginTop: 10 }}>
               <Text style={[ui.meta, { marginBottom: 2 }]}>Recent syncs</Text>
