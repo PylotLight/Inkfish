@@ -66,6 +66,8 @@ async function writeJson(uri: string, v: unknown): Promise<void> {
 
 // --- hash cache: path → size/mtime/hash, so unchanged files aren't re-read ---
 const CACHE_URI = `${SYNC_DIR}hashes.json`;
+/** Hashes of files sync just wrote (the engine knows them): folded into the cache on the next walk. */
+let known: HashCache = {};
 
 const phoneIo: WalkIo = {
   readDir: (uri) => FileSystem.readDirectoryAsync(uri),
@@ -101,7 +103,8 @@ async function pruneEmptyParents(uri: string): Promise<void> {
 
 export const androidFs: SyncFs = {
   async list(opts): Promise<Manifest> {
-    const cache = opts?.fresh ? {} : await readJson<HashCache>(CACHE_URI, {});
+    const cache = opts?.fresh ? {} : { ...(await readJson<HashCache>(CACHE_URI, {})), ...known };
+    known = {};
     let r = await walkManifest(phoneIo, ROOTS, cache);
     // Heal only when the walk saw case-duplicate names (the heal is a full
     // extra tree walk). Same rule as the Mac: a duplicate is never advertised.
@@ -119,7 +122,7 @@ export const androidFs: SyncFs = {
   async read(rel) {
     return fromBase64(await FileSystem.readAsStringAsync(uriFor(rel), B64));
   },
-  async write(rel, data) {
+  async write(rel, data, hash) {
     const uri = uriFor(rel);
     const parent = parentOf(uri);
     const payload = toBase64(data);
@@ -137,6 +140,10 @@ export const androidFs: SyncFs = {
       // recreate it and retry once before giving up.
       await mkdirp(parent);
       await attempt();
+    }
+    if (hash) {
+      const info = await FileSystem.getInfoAsync(uri);
+      if (info.exists && !info.isDirectory) known[rel] = { size: info.size ?? data.length, mtime: info.modificationTime ?? 0, hash };
     }
   },
   async remove(rel) {

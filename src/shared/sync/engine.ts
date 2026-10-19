@@ -20,8 +20,12 @@ export interface SyncFs {
    */
   list(opts?: { fresh?: boolean }): Promise<Manifest>
   read(path: string): Promise<Uint8Array>
-  /** Atomic write (temp + rename), creating parent dirs. */
-  write(path: string, data: Uint8Array): Promise<void>
+  /**
+   * Atomic write (temp + rename), creating parent dirs. `hash` is the sha256
+   * of `data` when the engine already knows it, so a hash cache can record
+   * it instead of re-reading the file on the next walk.
+   */
+  write(path: string, data: Uint8Array, hash?: string): Promise<void>
   /** Remove (implementations may move to a local trash instead). */
   remove(path: string): Promise<void>
   move(from: string, to: string): Promise<void>
@@ -351,7 +355,7 @@ async function runSyncInner(
       }
       if (mergeFrom.has(p)) fetched[p] = data
       if (pullSet.has(p)) {
-        await fs.write(p, data)
+        await fs.write(p, data, want)
         written.add(p)
         localNow[p] = { hash: want, size: data.length, mtime: Date.now() }
         if (isText(p)) bytesOf.set(p, data)
@@ -373,7 +377,7 @@ async function runSyncInner(
         if (written.has(o.path)) break
         const data = prefetched[o.path]
         if (!data || sha256(data) !== o.hash) break // vanished / changed remotely mid-sync; next run sorts it out
-        await fs.write(o.path, data)
+        await fs.write(o.path, data, o.hash)
         localNow[o.path] = { hash: o.hash, size: data.length, mtime: Date.now() }
         if (isText(o.path)) bytesOf.set(o.path, data)
         report.pulled++
@@ -422,8 +426,9 @@ async function runSyncInner(
         for (const w of result) {
           const data = w.text !== undefined ? utf8Encode(w.text) : w.from === 'local' ? ours : theirs
           if (w.path !== o.path || w.text !== undefined) {
-            await fs.write(w.path, data)
-            localNow[w.path] = { hash: sha256(data), size: data.length, mtime: Date.now() }
+            const h = sha256(data)
+            await fs.write(w.path, data, h)
+            localNow[w.path] = { hash: h, size: data.length, mtime: Date.now() }
             report.changedLocal.push(w.path)
           }
           if (isText(w.path)) bytesOf.set(w.path, data)
