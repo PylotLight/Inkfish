@@ -20,6 +20,7 @@ import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } fr
 import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog';
 import { shortError } from './sync';
 import { recordMoves } from './vault';
+import { afterSync } from './syncafter';
 
 export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error' | 'outdated';
 
@@ -39,6 +40,12 @@ interface SyncCtx {
   pair: (qr: string) => Promise<string>;
   unpair: () => Promise<void>;
   syncNow: () => Promise<void>;
+  /**
+   * One-shot repair: rehash every file, copy anything either side is missing
+   * (never deletes), and trash identical duplicate copies. For when the two
+   * devices disagree and a normal sync doesn't fix it.
+   */
+  repair: () => Promise<void>;
   /** Debounced sync after a local change (capture, save). */
   nudge: () => void;
 }
@@ -97,6 +104,9 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const [log, setLog] = useState<SyncLogEntry[]>([]);
   const running = useRef(false);
   const again = useRef(false);
+  const repairNext = useRef(false);
+  /** Note changes before this time come from a sync's own refresh: don't nudge another sync. */
+  const quietUntil = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const macRef = useRef<MacPeer | null>(null);
   macRef.current = mac;
@@ -119,9 +129,10 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
     [id]
   );
 
-  const syncNow = useCallback(async () => {
+  const run = useCallback(async (opts: { repair?: boolean } = {}) => {
     const peer = macRef.current;
     if (!peer || !id) return;
+    if (opts.repair) repairNext.current = true;
     if (running.current) {
       again.current = true;
       return;
@@ -148,7 +159,10 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         const host = found.host;
         setPhase('syncing');
         const remote = httpRemote(fetchFn, host, peer, id, random);
+        const repair = repairNext.current;
+        repairNext.current = false;
         const report = await runSync({
+          repair,
           fs: androidFs,
           remote,
           state: stateFor(peer.id),
@@ -157,11 +171,17 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         });
         setHeld(null);
         await markDone(fetchFn, host, peer, id, random).catch(() => undefined);
-        // Renames that arrived as moves: let an open note follow its file.
-        recordMoves(report.movedLocal ?? []);
+        const after = afterSync(report);
+        // Renames that arrived as moves (or case adoptions): let an open note follow its file.
+        recordMoves(after.moves);
         setLastReport(report);
         await persistMac({ ...peer, lastHost: host, lastSync: Date.now() });
-        if (report.changedLocal.length) await refresh();
+        // Always: list, drawer and open note pick up pulls/moves/deletes now, not on restart.
+        if (after.refresh) {
+          quietUntil.current = Date.now() + after.quietMs;
+          await refresh();
+          quietUntil.current = Date.now() + after.quietMs;
+        }
         await done({
           at: Date.now(),
           peer: peer.name,
@@ -172,7 +192,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
           conflicts: report.conflicts,
           deleted: report.deleted,
           moved: report.moved,
-          ms: Date.now() - t0
+          ms: Date.now() - t0,
+          ...(repair || after.note ? { message: [repair ? 'repair' : '', after.note ?? ''].filter(Boolean).join(' · ') } : {})
         });
         setPhase('idle');
       } while (again.current);
@@ -204,6 +225,9 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
     }
   }, [id, persistMac, refresh]);
 
+  const syncNow = useCallback(() => run(), [run]);
+  const repair = useCallback(() => run({ repair: true }), [run]);
+
   const nudge = useCallback(() => {
     if (!macRef.current) return;
     if (timer.current) clearTimeout(timer.current);
@@ -217,6 +241,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       first.current = false;
       return;
     }
+    if (Date.now() < quietUntil.current) return; // our own post-sync refresh, not a local edit
     nudge();
   }, [notes, inbox, nudge]);
 
@@ -269,8 +294,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [id]);
 
   const value = useMemo(
-    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, outdated, held, log, pair, unpair, syncNow, nudge }),
-    [phase, mac, lastReport, error, outdated, held, log, pair, unpair, syncNow, nudge]
+    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge }),
+    [phase, mac, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

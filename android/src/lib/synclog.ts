@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { appendCapped, type SyncLogEntry } from './sync';
+import { appendCollapsed, type SyncLogEntry } from './sync';
 import { syncRoots } from './vault';
 
 export type { SyncLogEntry };
@@ -32,7 +32,7 @@ export async function appendSyncLog(e: SyncLogEntry): Promise<void> {
     } catch {
       // fresh log
     }
-    await FileSystem.writeAsStringAsync(uri, JSON.stringify(appendCapped(log, e)), UTF8);
+    await FileSystem.writeAsStringAsync(uri, JSON.stringify(appendCollapsed(log, e)), UTF8);
   } catch {
     // never break sync for logging
   }

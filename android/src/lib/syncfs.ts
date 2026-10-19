@@ -65,8 +65,24 @@ async function writeJson(uri: string, v: unknown): Promise<void> {
 type HashCache = Record<string, { size: number; mtime: number; hash: string }>;
 const CACHE_URI = `${SYNC_DIR}hashes.json`;
 
+/** Remove now-empty folders from `uri`'s parent up to (not including) its sync root. */
+async function pruneEmptyParents(uri: string): Promise<void> {
+  const root = [R.vault, R.inbox, R.daily].find((r) => uri.startsWith(r));
+  if (!root) return;
+  let dir = parentOf(uri);
+  while (dir.length > root.length && dir.startsWith(root)) {
+    try {
+      if ((await FileSystem.readDirectoryAsync(dir)).length > 0) return;
+      await FileSystem.deleteAsync(dir, { idempotent: true });
+    } catch {
+      return;
+    }
+    dir = parentOf(dir.slice(0, -1));
+  }
+}
+
 export const androidFs: SyncFs = {
-  async list(): Promise<Manifest> {
+  async list(opts): Promise<Manifest> {
     // Heal before manifesting (same rule as the Mac): a case-duplicate must
     // never be advertised, or the two sides recreate each other's losers.
     try {
@@ -74,7 +90,7 @@ export const androidFs: SyncFs = {
     } catch {
       // best-effort; the walk below still works
     }
-    const cache = await readJson<HashCache>(CACHE_URI, {});
+    const cache = opts?.fresh ? {} : await readJson<HashCache>(CACHE_URI, {});
     const next: HashCache = {};
     const m: Manifest = {};
     const add = async (uri: string, rel: string): Promise<void> => {
@@ -156,6 +172,7 @@ export const androidFs: SyncFs = {
     const dest = `${TRASH}${stamp}/${rel}`;
     await mkdirp(parentOf(dest));
     await FileSystem.moveAsync({ from: uri, to: dest });
+    await pruneEmptyParents(uri);
   },
   async move(from, to) {
     const a = uriFor(from);
@@ -164,6 +181,9 @@ export const androidFs: SyncFs = {
     if (!info.exists) return;
     await mkdirp(parentOf(b));
     await FileSystem.moveAsync({ from: a, to: b });
+    // A case adoption (`work/x.md` → `Work/x.md`) must not leave an empty
+    // `work/` behind, or the case-heal would fold `Work/` back into it.
+    await pruneEmptyParents(a);
   }
 };
 

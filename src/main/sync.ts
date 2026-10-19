@@ -19,7 +19,7 @@ import {
   createHandler,
   encodePairUri,
   ignored,
-  appendCapped,
+  appendCollapsed,
   PAIR_TTL_MS,
   PEER_HEADER,
   PROTOCOL_HEADER,
@@ -263,7 +263,7 @@ export function appendSyncLog(e: SyncLogEntry): void {
     } catch {
       // fresh log
     }
-    writeFileSync(p, JSON.stringify(appendCapped(log, e)))
+    writeFileSync(p, JSON.stringify(appendCollapsed(log, e)))
   } catch {
     // never break sync for logging
   }
@@ -468,11 +468,14 @@ const handler = createHandler({
         message: `merged ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`
       })
     }
+    // One row per burst, not per request: back-to-back applies from this phone fold together.
+    const files = new Set(rels).size
     appendSyncLog({
       at: Date.now(),
       peer: name,
       kind: 'apply',
-      message: `${rels.length} file change(s) from ${name}`
+      files,
+      message: `${files} file change(s) from ${name}`
     })
     broadcastChanged()
     broadcastStatus()

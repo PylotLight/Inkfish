@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { appendCapped, summarize, shortError, SYNC_LOG_CAP, type SyncLogEntry } from './log'
+import { appendCapped, appendCollapsed, summarize, shortError, SYNC_LOG_CAP, type SyncLogEntry } from './log'
 
 const base: SyncLogEntry = { at: 1, peer: 'Mac', kind: 'sync' }
 
@@ -23,5 +23,34 @@ describe('sync log', () => {
   test('shortError is one line and capped', () => {
     expect(shortError(new Error('a\nb'))).toBe('a')
     expect(shortError('x'.repeat(500))).toHaveLength(300)
+  })
+
+  test('back-to-back applies from one phone collapse into one row', () => {
+    const apply = (at: number, files: number, peer = 'Pixel'): SyncLogEntry => ({ at, peer, kind: 'apply', files, message: `${files} file change(s) from ${peer}` })
+    let log: SyncLogEntry[] = []
+    log = appendCollapsed(log, apply(1000, 10))
+    log = appendCollapsed(log, apply(2000, 11))
+    log = appendCollapsed(log, apply(3000, 23))
+    expect(log).toHaveLength(1)
+    expect(log[0]!.files).toBe(44)
+    expect(log[0]!.repeat).toBe(3)
+    expect(log[0]!.at).toBe(3000)
+    expect(summarize(log[0]!)).toBe('44 file changes from Pixel (×3)')
+    // Another peer, or a gap past the window, starts a new row.
+    log = appendCollapsed(log, apply(4000, 1, 'Other'))
+    log = appendCollapsed(log, apply(4000 + 10 * 60_000, 2, 'Other'))
+    expect(log).toHaveLength(3)
+    expect(summarize(log[1]!)).toBe('1 file change from Other')
+  })
+
+  test('identical errors and no-op syncs collapse; real syncs do not', () => {
+    let log: SyncLogEntry[] = []
+    log = appendCollapsed(log, { ...base, at: 1, kind: 'error', message: 'offline' })
+    log = appendCollapsed(log, { ...base, at: 2, kind: 'error', message: 'offline' })
+    log = appendCollapsed(log, { ...base, at: 3 })
+    log = appendCollapsed(log, { ...base, at: 4 })
+    log = appendCollapsed(log, { ...base, at: 5, pulled: 2 })
+    log = appendCollapsed(log, { ...base, at: 6, pulled: 2 })
+    expect(log.map((e) => summarize(e))).toEqual(['offline (×2)', 'nothing to do (×2)', '↓2', '↓2'])
   })
 })

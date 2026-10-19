@@ -169,6 +169,21 @@ export async function resolveDirRel(dirRel: string): Promise<string> {
   return out.join('/');
 }
 
+/** True when the folder holds nothing but hidden files (or nothing at all). */
+async function dirIsEmpty(uri: string): Promise<boolean> {
+  try {
+    const names = await FileSystem.readDirectoryAsync(uri);
+    for (const n of names) {
+      if (!n.startsWith('.')) return false;
+      const info = await FileSystem.getInfoAsync(`${uri}${n}`);
+      if (info.exists && info.isDirectory) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function uniqueName(dir: string, file: string): Promise<string> {
   const dot = file.lastIndexOf('.');
   const base = dot > 0 ? file.slice(0, dot) : file;
@@ -290,7 +305,16 @@ export async function mergeCaseDuplicates(): Promise<CaseMergeReport> {
         fileGroups.set(key, arr);
       }
     }
-    for (const [key, group] of dirGroups) {
+    for (const [key, all] of dirGroups) {
+      if (all.length < 2) continue;
+      // An empty spelling (a seeded `work/`, or one sync just emptied by
+      // adopting the Mac's `Work/`) is dropped, never chosen as the survivor —
+      // otherwise the heal fights the Mac's spelling and sync loops.
+      const group: string[] = [];
+      for (const n of all) {
+        if (await dirIsEmpty(`${dir}${n}/`)) await FileSystem.deleteAsync(`${dir}${n}`, { idempotent: true });
+        else group.push(n);
+      }
       if (group.length < 2) continue;
       const survivor = pickSurvivor(group);
       if (survivor !== key) await FileSystem.moveAsync({ from: `${dir}${survivor}`, to: `${dir}${key}` });
