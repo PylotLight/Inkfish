@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Menu, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
+import { SyncBadge } from './SyncIndicator';
 
 export interface HeadAction {
   icon: LucideIcon;
@@ -20,13 +21,16 @@ export function ScreenHead({
   title,
   onMenu,
   actions = [],
-  left
+  left,
+  sync = true
 }: {
   title: string;
   onMenu?: () => void;
   actions?: HeadAction[];
   /** Replaces the menu button (e.g. a close/back action). */
   left?: HeadAction;
+  /** Show the sync badge (connected Mac · syncing · synced x ago · offline · error). */
+  sync?: boolean;
 }): React.JSX.Element {
   const { ui, c } = useTheme();
   const lead = left ?? (onMenu ? { icon: Menu, onPress: onMenu, label: 'Open files' } : null);
@@ -43,6 +47,7 @@ export function ScreenHead({
         {title}
       </Text>
       <View style={ui.row}>
+        {sync && <SyncBadge />}
         {actions.map((a) => (
           <Pressable key={a.label} onPress={a.onPress} style={ui.iconBtn} hitSlop={6} accessibilityLabel={a.label}>
             <Icon as={a.icon} color={a.active ? c.accent : undefined} />

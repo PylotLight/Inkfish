@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { CalendarDays, House, Inbox, Plus, Settings, type LucideIcon } from 'lucide-react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { InboxScreen } from './src/screens/InboxScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { Icon } from './src/components/Icon';
 import { Drawer } from './src/components/Drawer';
+import { OpenSyncContext } from './src/components/SyncIndicator';
 import { EditorScreen } from './src/screens/EditorScreen';
 import { DailyScreen } from './src/screens/DailyScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
@@ -82,6 +83,14 @@ function Shell(): React.JSX.Element {
     return () => sub.remove();
   }, [drawer, composing, openId, tab]);
 
+  // Sync badge long-press / review → the sync section lives in Settings.
+  const openSync = useCallback(() => {
+    setDrawer(false);
+    setComposing(null);
+    setOpenId(null);
+    setTab('settings');
+  }, []);
+
   const consumeShared = (): void => {
     shareSeen.current = false;
     setShared(null);
@@ -124,66 +133,68 @@ function Shell(): React.JSX.Element {
   ];
 
   return (
-    <View style={[styles.safe, { backgroundColor: t.c.bg }]}>
-      <StatusBar barStyle={t.statusBar} backgroundColor={t.c.bg} />
-      {error && (
-        <View style={[styles.errBar, { paddingTop: insets.top }]}>
-          <Text style={[styles.errText, { color: t.c.danger }]}>{error}</Text>
-        </View>
-      )}
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-        {composing ? (
-          <CaptureScreen
-            startVoice={composing.voice}
-            onClose={() => {
-              setComposing(null);
-              if (shared) consumeShared();
-            }}
-            onSaved={() => setComposing(null)}
-            shared={shared}
-            onSharedConsumed={consumeShared}
-          />
-        ) : openId ? (
-          <EditorScreen noteId={openId} onClose={() => setOpenId(null)} />
-        ) : tab === 'home' ? (
-          <HomeScreen
-            onMenu={() => setDrawer(true)}
-            onOpen={(id) => setOpenId(id)}
-            onCompose={(o) => setComposing({ voice: !!o?.voice })}
-            onInbox={() => setTab('inbox')}
-            onToday={() => setTab('today')}
-            onUpdates={() => setTab('settings')}
-          />
-        ) : tab === 'inbox' ? (
-          <InboxScreen onOpen={(id) => setOpenId(id)} onMenu={() => setDrawer(true)} />
-        ) : tab === 'today' ? (
-          <DailyScreen onMenu={() => setDrawer(true)} />
-        ) : (
-          <SettingsScreen onMenu={() => setDrawer(true)} />
+    <OpenSyncContext.Provider value={openSync}>
+      <View style={[styles.safe, { backgroundColor: t.c.bg }]}>
+        <StatusBar barStyle={t.statusBar} backgroundColor={t.c.bg} />
+        {error && (
+          <View style={[styles.errBar, { paddingTop: insets.top }]}>
+            <Text style={[styles.errText, { color: t.c.danger }]}>{error}</Text>
+          </View>
         )}
-      </View>
-      {/* Floating glass toolbar (Obsidian-style). Hidden in the editor and the
-          capture sheet — both have their own close action. */}
-      {!openId && !composing && (
-        <View style={[t.ui.barWrap, { bottom: insets.bottom + 14 }]}>
-          {prefs.blur ? (
-            <BlurView intensity={70} tint={t.blurTint} style={t.ui.bar}>
-              {tabs}
-            </BlurView>
+        <View style={{ flex: 1, paddingTop: insets.top }}>
+          {composing ? (
+            <CaptureScreen
+              startVoice={composing.voice}
+              onClose={() => {
+                setComposing(null);
+                if (shared) consumeShared();
+              }}
+              onSaved={() => setComposing(null)}
+              shared={shared}
+              onSharedConsumed={consumeShared}
+            />
+          ) : openId ? (
+            <EditorScreen noteId={openId} onClose={() => setOpenId(null)} />
+          ) : tab === 'home' ? (
+            <HomeScreen
+              onMenu={() => setDrawer(true)}
+              onOpen={(id) => setOpenId(id)}
+              onCompose={(o) => setComposing({ voice: !!o?.voice })}
+              onInbox={() => setTab('inbox')}
+              onToday={() => setTab('today')}
+              onUpdates={() => setTab('settings')}
+            />
+          ) : tab === 'inbox' ? (
+            <InboxScreen onOpen={(id) => setOpenId(id)} onMenu={() => setDrawer(true)} />
+          ) : tab === 'today' ? (
+            <DailyScreen onMenu={() => setDrawer(true)} />
           ) : (
-            <View style={[t.ui.bar, { backgroundColor: t.c.barSolid }]}>{tabs}</View>
+            <SettingsScreen onMenu={() => setDrawer(true)} />
           )}
         </View>
-      )}
-      <Drawer
-        open={drawer}
-        onClose={() => setDrawer(false)}
-        onOpenNote={(id) => {
-          setDrawer(false);
-          setOpenId(id);
-        }}
-      />
-    </View>
+        {/* Floating glass toolbar (Obsidian-style). Hidden in the editor and the
+            capture sheet — both have their own close action. */}
+        {!openId && !composing && (
+          <View style={[t.ui.barWrap, { bottom: insets.bottom + 14 }]}>
+            {prefs.blur ? (
+              <BlurView intensity={70} tint={t.blurTint} style={t.ui.bar}>
+                {tabs}
+              </BlurView>
+            ) : (
+              <View style={[t.ui.bar, { backgroundColor: t.c.barSolid }]}>{tabs}</View>
+            )}
+          </View>
+        )}
+        <Drawer
+          open={drawer}
+          onClose={() => setDrawer(false)}
+          onOpenNote={(id) => {
+            setDrawer(false);
+            setOpenId(id);
+          }}
+        />
+      </View>
+    </OpenSyncContext.Provider>
   );
 }
 
