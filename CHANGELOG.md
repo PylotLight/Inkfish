@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-10-19
+
+### Added
+
+- **(notes)** File name follows the note title + inline-editable header title (#72) ([40480e9](https://github.com/PylotLight/Inkfish/commit/40480e9438cd1b9926175e389fc3750bf43fbd42))
+- **(sidebar)** Hover rename/delete actions, inline rename, smart delete with glance + undo (#70) ([fd7f2a9](https://github.com/PylotLight/Inkfish/commit/fd7f2a919b425d4a82b48a67cd59cab559914ec1))
+- **(cli)** Bunx/npx launcher @pylotlight/inkfish + gated npm publish in release, user-facing README + DEVELOPING.md (#73) ([acb7cda](https://github.com/PylotLight/Inkfish/commit/acb7cdaf2157a07e31aad77c6ea5a9db05ad00df))
+
+### Fixed
+
+- **(images)** Block images render below revealed source, click selects without revealing (#69) ([a92cae4](https://github.com/PylotLight/Inkfish/commit/a92cae4d294bb817db00f94c468976b1c898db2e))
+- **(images)** Don't reveal ref source when the caret only landed on it from paste/resize (#71) ([546f1d9](https://github.com/PylotLight/Inkfish/commit/546f1d9cc33fbbcaa53d127bbef8c3b3fb665be6))
+
 ## [0.2.10] - 2026-10-16
 
 ### Added
@@ -230,6 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.11]: https://github.com/PylotLight/Inkfish/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/PylotLight/Inkfish/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/PylotLight/Inkfish/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/PylotLight/Inkfish/compare/v0.2.7...v0.2.8
