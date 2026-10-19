@@ -10,6 +10,8 @@ import FolderTree, { type KindFilter, type RowActions, type TreeTarget } from '.
 import { DeletePopover, UndoToast, type Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
 import Home from './views/Home'
+import Journal from './views/Journal'
+import { dailyRefs } from '../../shared/journal'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
@@ -43,7 +45,7 @@ export function isCaptureWindow(): boolean {
 }
 
 type Selection = { id: string; origin: 'inbox' | 'note' } | null
-type Scope = 'home' | 'notes' | 'inbox'
+type Scope = 'home' | 'notes' | 'inbox' | 'journal'
 
 /** Open-note tab (notes only — inbox docs are ephemeral, never tabbed). */
 interface Tab {
@@ -1447,6 +1449,9 @@ function Main(): React.JSX.Element {
     return allNotes.find((n) => n.path === `daily/${day}.md`) ?? null
   }, [allNotes])
 
+  /** Every daily note, newest day first — Home's Daily cards + the Journal (index rows only). */
+  const journalDays = useMemo(() => dailyRefs(allNotes), [allNotes])
+
   /** Day notes that exist, oldest first (`YYYY-MM-DD` → entry). */
   const dayNotes = useMemo(() => {
     const out: Array<{ day: string; entry: NoteEntry }> = []
@@ -1482,7 +1487,7 @@ function Main(): React.JSX.Element {
 
   const pickScope = (s: Scope): void => {
     setScope(s)
-    if (s === 'home') {
+    if (s === 'home' || s === 'journal') {
       void autosave.flushAll()
       // Tabs stay open (Obsidian-style) — just park the active selection.
       setSel(null)
@@ -1534,11 +1539,18 @@ function Main(): React.JSX.Element {
   const leaveSettings = (): void => {
     if (settingsOpen) setSettingsOpen(false)
   }
+  /** The Journal: every daily note as one timeline (sidebar button, ribbon, Home → Daily, ⌘⇧J). */
+  const openJournal = (): void => {
+    leaveSettings()
+    setShowMeeting(false)
+    pickScope('journal')
+  }
   const activeTab = activeNoteId ? tabs.find((t) => t.id === activeNoteId) ?? null : null
   const paletteCommands: RunnableCommand[] = [
     { id: 'new-note', title: 'New Note', section: 'Notes', keywords: ['create', 'file', 'add'], run: () => { leaveSettings(); doCreateFile(targetDir) } },
     { id: 'new-folder', title: 'New Folder', section: 'Notes', keywords: ['create', 'directory'], run: () => { leaveSettings(); doCreateFolder() } },
     { id: 'today', title: "Open Today's Note", section: 'Notes', accelerator: 'CmdOrCtrl+Shift+D', keywords: ['daily', 'journal', 'day-log', 'today'], run: () => { leaveSettings(); void openToday() } },
+    { id: 'journal', title: 'Open Journal', section: 'Notes', accelerator: 'CmdOrCtrl+Shift+J', keywords: ['daily', 'journal', 'days', 'diary', 'log', 'calendar', 'history'], run: () => openJournal() },
     { id: 'day-prev', title: 'Previous Day Note', section: 'Notes', keywords: ['daily', 'yesterday', 'journal', 'back'], enabled: !!dayNav?.onPrev, run: () => { leaveSettings(); dayNav?.onPrev?.() } },
     { id: 'day-next', title: 'Next Day Note', section: 'Notes', keywords: ['daily', 'tomorrow', 'journal', 'forward'], enabled: !!dayNav?.onNext, run: () => { leaveSettings(); dayNav?.onNext?.() } },
     { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
@@ -1621,6 +1633,7 @@ function Main(): React.JSX.Element {
     window.addEventListener('inkfish:open-settings', onOpen)
     return () => window.removeEventListener('inkfish:open-settings', onOpen)
   }, [])
+  const openJournalRef = useRef<() => void>(() => undefined)
   const openTodayRef = useRef(() => {
     leaveSettings()
     void openToday()
@@ -1629,6 +1642,7 @@ function Main(): React.JSX.Element {
     leaveSettings()
     void openToday()
   }
+  openJournalRef.current = () => openJournal()
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return
@@ -1645,6 +1659,11 @@ function Main(): React.JSX.Element {
         e.preventDefault()
         e.stopPropagation()
         openTodayRef.current()
+        return
+      } else if (key === 'j' && e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        openJournalRef.current()
         return
       }
       if (!mode) return
@@ -1719,6 +1738,15 @@ function Main(): React.JSX.Element {
             }}
           >
             <Icon name="sun" size={18} />
+          </button>
+          <button
+            className={`ribbon-btn${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
+            title={`Journal (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
+            aria-label="Journal"
+            aria-current={scope === 'journal' && !settingsOpen && !showMeeting ? 'page' : undefined}
+            onClick={openJournal}
+          >
+            <Icon name="journal" size={18} />
           </button>
           <button
             className={`ribbon-btn${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
@@ -1808,6 +1836,14 @@ function Main(): React.JSX.Element {
             }}
           >
             <Icon name="sun" size={16} /> Today
+          </button>
+          <button
+            className={`side-action${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
+            title={`Journal: every daily note in one timeline (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
+            aria-pressed={scope === 'journal' && !settingsOpen && !showMeeting}
+            onClick={openJournal}
+          >
+            <Icon name="journal" size={16} /> Journal
           </button>
           <button
             className={`side-action${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
@@ -1964,6 +2000,8 @@ function Main(): React.JSX.Element {
                   notes={finalNotes}
                   inbox={inbox}
                   today={todayEntry}
+                  days={journalDays}
+                  onOpenJournal={openJournal}
                   titleOf={titleOf}
                   onOpenNote={selectNote}
                   onOpenInbox={() => pickScope('inbox')}
@@ -1977,6 +2015,17 @@ function Main(): React.JSX.Element {
                     setScope('notes')
                   }}
                   notify={notify}
+                />
+              </main>
+            ) : scope === 'journal' ? (
+              <main className="view-scroll" aria-label="Journal">
+                <Journal
+                  days={journalDays}
+                  onOpen={(id) => {
+                    selectNote(id)
+                    focusEndOn(id)
+                  }}
+                  onOpenToday={() => void openToday()}
                 />
               </main>
             ) : (
