@@ -3144,6 +3144,127 @@ input.side-search:focus {
   background: var(--accent, #4fd1a5);
 }
 
+/* Sync badge (sidebar footer): sync glyph + state dot, hidden until a phone is paired.
+   Solid popover, no backdrop-filter — the window's native vibrancy does the glass. */
+.sync-badge-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.sync-badge-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.foot-btn .sync-badge-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+.s-offline .sync-badge-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.25px var(--muted);
+}
+.foot-btn.s-offline .sync-badge-dot {
+  box-shadow:
+    inset 0 0 0 1.25px var(--muted),
+    0 0 0 1.5px var(--bg);
+}
+.foot-btn.s-offline .sync-badge-icon {
+  opacity: 0.55;
+}
+.s-synced .sync-badge-dot {
+  background: var(--ok);
+}
+.s-syncing .sync-badge-dot {
+  background: var(--accent);
+}
+.s-error .sync-badge-dot {
+  background: var(--danger);
+}
+.foot-btn.s-error {
+  color: var(--danger);
+}
+
+/* Only animates while a phone session is actually in flight. */
+.foot-btn.s-syncing .sync-badge-icon {
+  color: var(--accent);
+  animation: sync-spin 1.1s linear infinite;
+}
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foot-btn.s-syncing .sync-badge-icon {
+    animation: none;
+  }
+}
+
+.sync-pop {
+  position: absolute;
+  right: -34px;
+  bottom: calc(100% + 6px);
+  z-index: 60;
+  width: max-content;
+  min-width: 200px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 92%, var(--text));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.sync-pop-head {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.sync-pop-row {
+  display: grid;
+  grid-template-columns: 6px 1fr;
+  column-gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.sync-pop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-pop-meta,
+.sync-pop-err {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sync-pop-err {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.sync-pop-foot {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* Slim icon toolbar above the tree (Obsidian-style). */
 .tree-toolbar {
   display: flex;

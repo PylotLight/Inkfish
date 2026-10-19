@@ -27,6 +27,7 @@ export type IconName =
   | 'pencil'
   | 'trash'
   | 'more'
+  | 'sync'
 
 const PATHS: Record<IconName, React.JSX.Element> = {
   'panel-left': (
@@ -127,6 +128,14 @@ const PATHS: Record<IconName, React.JSX.Element> = {
       <circle cx="5.5" cy="12" r="1" />
       <circle cx="12" cy="12" r="1" />
       <circle cx="18.5" cy="12" r="1" />
+    </>
+  ),
+  sync: (
+    <>
+      <path d="M20 11.5A8 8 0 0 0 6.2 6.3L4 8.5" />
+      <path d="M4 4v4.5h4.5" />
+      <path d="M4 12.5a8 8 0 0 0 13.8 5.2l2.2-2.2" />
+      <path d="M20 20v-4.5h-4.5" />
     </>
   )
 }
