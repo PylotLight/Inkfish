@@ -62,18 +62,20 @@ async function mkdir(uri: string): Promise<void> {
 }
 
 let ensureTreeTask: Promise<void> | null = null;
+let treeMade = false;
 
+/**
+ * Make the app's folders (once per launch). Cheap: no vault walk. Case-duplicate
+ * healing used to run here on EVERY call — a full sequential stat walk of the
+ * vault, images included, before every list, open and save. Now it runs only
+ * when an index scan (below) or the sync walk actually sees a case-duplicate.
+ */
 export function ensureTree(): Promise<void> {
+  if (treeMade) return Promise.resolve();
   if (ensureTreeTask) return ensureTreeTask;
   const task = (async () => {
-    for (const d of [VAULT, INBOX, DAILY, ASSETS, UNDONE]) await mkdir(d);
-    // Heal case-duplicate dirs (Personal vs personal) so this phone converges
-    // with the Mac. Concurrent callers share this one filesystem pass.
-    try {
-      await mergeCaseDuplicates();
-    } catch {
-      // healing is best-effort; lists below still work
-    }
+    await Promise.all([VAULT, INBOX, DAILY, ASSETS, UNDONE].map((d) => mkdir(d)));
+    treeMade = true;
   })();
   ensureTreeTask = task;
   task.finally(() => {
@@ -81,6 +83,12 @@ export function ensureTree(): Promise<void> {
   }).catch(() => undefined);
   return task;
 }
+
+/**
+ * Names that are certainly files, not folders (images, audio, docs): listing
+ * code records them without a stat. Saves one bridge call per attachment.
+ */
+const SKIP_STAT = /\.(png|jpe?g|gif|webp|heic|heif|bmp|svg|avif|tiff?|m4a|mp3|wav|ogg|opus|aac|flac|mp4|mov|webm|pdf|zip|json|txt|csv)$/i;
 
 async function writeText(uri: string, text: string): Promise<void> {
   await FileSystem.writeAsStringAsync(uri, text, {
@@ -94,14 +102,12 @@ async function readText(uri: string): Promise<string> {
 
 async function childDirs(dir: string): Promise<string[]> {
   try {
-    const names = await FileSystem.readDirectoryAsync(dir);
-    const out: string[] = [];
-    for (const n of names) {
-      if (n.startsWith('.')) continue;
+    const names = (await FileSystem.readDirectoryAsync(dir)).filter((n) => !n.startsWith('.') && !SKIP_STAT.test(n) && !n.endsWith('.md'));
+    const hits = await mapLimit(names, 8, async (n) => {
       const info = await FileSystem.getInfoAsync(`${dir}${n}`);
-      if (info.exists && info.isDirectory) out.push(n);
-    }
-    return out.sort((a, b) => a.localeCompare(b));
+      return info.exists && info.isDirectory;
+    });
+    return names.filter((_, i) => hits[i]).sort((a, b) => a.localeCompare(b));
   } catch {
     return [];
   }
@@ -109,14 +115,12 @@ async function childDirs(dir: string): Promise<string[]> {
 
 async function childFiles(dir: string): Promise<string[]> {
   try {
-    const names = await FileSystem.readDirectoryAsync(dir);
-    const out: string[] = [];
-    for (const n of names) {
-      if (n.startsWith('.') || !n.endsWith('.md')) continue;
+    const names = (await FileSystem.readDirectoryAsync(dir)).filter((n) => !n.startsWith('.') && n.endsWith('.md'));
+    const hits = await mapLimit(names, 8, async (n) => {
       const info = await FileSystem.getInfoAsync(`${dir}${n}`);
-      if (info.exists && !info.isDirectory) out.push(n);
-    }
-    return out.sort();
+      return info.exists && !info.isDirectory;
+    });
+    return names.filter((_, i) => hits[i]).sort();
   } catch {
     return [];
   }
@@ -365,12 +369,19 @@ interface ScannedFile {
   mtime: number;
 }
 
-interface VaultScan {
+export interface VaultScan {
   files: ScannedFile[];
   dirs: string[];
+  /** Non-note files (images, audio…), vault-relative — recorded without a stat. */
+  attachments: string[];
+  /** Some folder holds two names that differ only by case (needs a heal). */
+  caseDupes: boolean;
 }
 
-type ScannedChild = { kind: 'dir'; uri: string; rel: string } | { kind: 'file'; file: ScannedFile };
+type ScannedChild =
+  | { kind: 'dir'; uri: string; rel: string }
+  | { kind: 'file'; file: ScannedFile }
+  | { kind: 'attachment'; rel: string };
 
 async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
@@ -386,14 +397,32 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
   return results;
 }
 
-/** One bounded-concurrency inventory pass for notes and visible folders. */
+function hasCaseDupes(names: readonly string[]): boolean {
+  const seen = new Set<string>();
+  for (const n of names) {
+    const k = foldName(n);
+    if (seen.has(k)) return true;
+    seen.add(k);
+  }
+  return false;
+}
+
+/**
+ * One bounded-concurrency inventory pass for notes, folders and attachments.
+ * Every folder of a level is listed (the v0.2.14 walk only descended into the
+ * first 6 folders of each level and silently dropped the rest — notes went
+ * missing from the drawer in bigger vaults). Attachments by extension skip the stat.
+ */
 async function scanVault(root = VAULT, relBase = ''): Promise<VaultScan> {
   const files: ScannedFile[] = [];
   const dirs: string[] = [];
+  const attachments: string[] = [];
+  let caseDupes = false;
   let pending = [{ uri: root, rel: relBase }];
 
   while (pending.length) {
-    const parents = pending.splice(0, 6);
+    const parents = pending;
+    pending = [];
     const groups = await mapLimit(parents, 6, async (parent): Promise<ScannedChild[]> => {
       let names: string[];
       try {
@@ -402,16 +431,20 @@ async function scanVault(root = VAULT, relBase = ''): Promise<VaultScan> {
         return [];
       }
       const visible = names.filter((name) => !name.startsWith('.'));
+      // Only what the heal handles (folders + notes; reserved top-level names are never healed).
+      const healable = visible.filter((n) => !SKIP_STAT.test(n) && !(parent.rel === '' && RESERVED.has(foldName(n))));
+      if (!caseDupes && hasCaseDupes(healable)) caseDupes = true;
       const children = await mapLimit(visible, 8, async (name): Promise<ScannedChild | null> => {
         const uri = `${parent.uri}${name}`;
         const rel = parent.rel ? `${parent.rel}/${name}` : name;
         const top = rel.split('/')[0] ?? '';
         if (top === 'inbox' || top === 'daily') return null;
+        if (SKIP_STAT.test(name)) return { kind: 'attachment', rel };
         try {
           const info = await FileSystem.getInfoAsync(uri);
           if (!info.exists) return null;
           if (info.isDirectory) return { kind: 'dir', uri: `${uri}/`, rel };
-          if (!name.endsWith('.md')) return null;
+          if (!name.endsWith('.md')) return /\.markdown$/i.test(name) ? null : { kind: 'attachment', rel };
           return {
             kind: 'file',
             file: {
@@ -428,11 +461,14 @@ async function scanVault(root = VAULT, relBase = ''): Promise<VaultScan> {
       return children.filter((child): child is ScannedChild => child !== null);
     });
 
-    pending = [];
     for (const group of groups) {
       for (const child of group) {
         if (child.kind === 'file') {
           files.push(child.file);
+          continue;
+        }
+        if (child.kind === 'attachment') {
+          attachments.push(child.rel);
           continue;
         }
         const top = child.rel.split('/')[0] ?? '';
@@ -445,7 +481,8 @@ async function scanVault(root = VAULT, relBase = ''): Promise<VaultScan> {
   }
 
   dirs.sort((a, b) => a.localeCompare(b));
-  return { files, dirs };
+  attachments.sort();
+  return { files, dirs, attachments, caseDupes };
 }
 
 /** Recursive vault walk — every non-hidden `.md` (our notes + imported trees). */
@@ -455,6 +492,13 @@ async function walkVault(dir: string, relBase: string, out: string[]): Promise<v
 }
 
 const noteEntryCache = new Map<string, { size: number; mtime: number; entry: NoteEntry }>();
+/** Note id → vault rel from the latest index, so opening a note is one file, not a vault scan. */
+const idToRel = new Map<string, string>();
+
+function rememberIds(entries: readonly NoteEntry[]): void {
+  idToRel.clear();
+  for (const e of entries) idToRel.set(e.id, e.path);
+}
 
 async function entriesFromFiles(files: ScannedFile[]): Promise<NoteEntry[]> {
   const entries = await mapLimit(files, 8, async (file): Promise<NoteEntry | null> => {
@@ -530,17 +574,120 @@ export interface VaultIndex {
   dirs: string[];
 }
 
-/** Load all sidebar/store data from one filesystem inventory. */
-export async function listVaultIndex(): Promise<VaultIndex> {
+let indexTask: Promise<VaultIndex> | null = null;
+
+/**
+ * Load all sidebar/store data from one filesystem inventory. Concurrent callers
+ * share one pass. `onPartial` (first launch, no saved index) gets a stat-only
+ * index — file names as titles, paths as ids — before every note is read, so
+ * the drawer fills in seconds instead of after the last file read.
+ */
+export function listVaultIndex(opts: { onPartial?: (index: VaultIndex) => void } = {}): Promise<VaultIndex> {
+  if (indexTask) return indexTask;
+  const task = buildVaultIndex(opts.onPartial);
+  indexTask = task;
+  task.finally(() => {
+    if (indexTask === task) indexTask = null;
+  }).catch(() => undefined);
+  return task;
+}
+
+/** Index row from the stat alone: the file name stands in for the title until the file is read. */
+function provisionalEntry(file: ScannedFile): NoteEntry {
+  return { ...entryFromFile(file.rel, '', { size: file.size, mtime: file.mtime }), title: fileLabel(file.rel) };
+}
+
+async function buildVaultIndex(onPartial?: (index: VaultIndex) => void): Promise<VaultIndex> {
   await ensureTree();
   let scan = await scanVault();
-  if (scan.files.length === 0) {
+  if (scan.caseDupes) {
+    // Heal only when this walk saw `Personal` + `personal` (same rule as sync).
+    try {
+      await mergeCaseDuplicates();
+    } catch {
+      // best-effort
+    }
+    scan = await scanVault();
+  }
+  if (scan.files.length === 0 && scan.dirs.length === 0) {
     await Promise.all(['personal', 'work', 'reading'].map((name) => mkdir(`${VAULT}${name}/`)));
     scan = await scanVault();
   }
+  const dirs = scan.dirs;
+  const projects = projectsFromNames(dirs.filter((dir) => !dir.includes('/')));
+  if (onPartial) {
+    const unread = scan.files.filter((f) => {
+      const c = noteEntryCache.get(f.rel);
+      return !c || c.size !== f.size || c.mtime !== f.mtime;
+    }).length;
+    if (unread > 200) {
+      const rough = scan.files.map((f) => noteEntryCache.get(f.rel)?.entry ?? provisionalEntry(f));
+      rough.sort((a, b) => b.updatedAt - a.updatedAt);
+      onPartial({ notes: rough, dirs, projects });
+    }
+  }
   const notes = await entriesFromFiles(scan.files);
   notes.sort((a, b) => b.updatedAt - a.updatedAt);
-  return { notes, dirs: scan.dirs, projects: projectsFromNames(scan.dirs.filter((dir) => !dir.includes('/'))) };
+  rememberIds(notes);
+  attachmentsTask = Promise.resolve(scan.attachments.filter((p) => !/\.(md|markdown|txt)$/i.test(p)));
+  return { notes, dirs, projects };
+}
+
+// --- persisted index snapshot ------------------------------------------------------
+// The drawer, Home and search all read the note index. Building it from files
+// means a stat per note (and a read per changed note), so the last index is
+// kept on disk and shown immediately on launch; the scan then only re-reads
+// what changed (size/mtime) and swaps the fresh index in. Files stay the truth:
+// a missing or corrupt snapshot just means one full scan. Not synced (lives
+// outside vault/ and staging/).
+
+const INDEX_SNAPSHOT = `${APP}.cache/index-v1.json`;
+
+export interface IndexSnapshot {
+  v: 1;
+  savedAt: number;
+  notes: NoteEntry[];
+  dirs: string[];
+  projects: Project[];
+  inbox: InboxItem[];
+  attachments?: string[];
+}
+
+function seedFromSnapshot(snap: IndexSnapshot): void {
+  for (const e of snap.notes) {
+    if (!noteEntryCache.has(e.path)) noteEntryCache.set(e.path, { size: e.size, mtime: e.updatedAt, entry: e });
+  }
+  if (idToRel.size === 0) rememberIds(snap.notes);
+  if (!attachmentsTask && snap.attachments) attachmentsTask = Promise.resolve(snap.attachments);
+}
+
+/** Last launch's index (one file read), or null. Seeds the per-file cache so the next scan only reads changes. */
+export async function loadIndexSnapshot(): Promise<IndexSnapshot | null> {
+  try {
+    const raw = JSON.parse(await readText(INDEX_SNAPSHOT)) as Partial<IndexSnapshot>;
+    if (raw.v !== 1 || !Array.isArray(raw.notes) || !Array.isArray(raw.dirs) || !Array.isArray(raw.projects) || !Array.isArray(raw.inbox)) return null;
+    const snap = raw as IndexSnapshot;
+    seedFromSnapshot(snap);
+    return snap;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[]): Promise<void> {
+  const snap: IndexSnapshot = {
+    v: 1,
+    savedAt: Date.now(),
+    notes: index.notes,
+    dirs: index.dirs,
+    projects: index.projects,
+    inbox,
+    attachments: attachmentsTask ? await attachmentsTask : undefined
+  };
+  await mkdir(`${APP}.cache/`);
+  const tmp = `${INDEX_SNAPSHOT}.tmp`;
+  await writeText(tmp, JSON.stringify(snap));
+  await FileSystem.moveAsync({ from: tmp, to: INDEX_SNAPSHOT });
 }
 
 // --- inbox ---
@@ -581,14 +728,14 @@ export async function writeInboxItem(input: InboxWriteInput): Promise<InboxItem>
 export async function listInbox(): Promise<InboxItem[]> {
   await ensureTree();
   const files = await childFiles(INBOX);
-  const items: InboxItem[] = [];
-  for (const f of files) {
+  const read = await mapLimit(files, 8, async (f): Promise<InboxItem | null> => {
     try {
-      items.push(inboxFromFile(f.replace(/\.md$/, ''), await readText(`${INBOX}${f}`)));
+      return inboxFromFile(f.replace(/\.md$/, ''), await readText(`${INBOX}${f}`));
     } catch {
-      // skip unreadable captures
+      return null; // skip unreadable captures
     }
-  }
+  });
+  const items = read.filter((i): i is InboxItem => i !== null);
   return items.sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -718,15 +865,55 @@ async function allNoteRels(): Promise<string[]> {
   return rels;
 }
 
+/** Read one note file as a doc: a stat and a read, in parallel. */
+async function docAt(rel: string): Promise<NoteDoc | null> {
+  const abs = absForRel(rel);
+  try {
+    const [info, text] = await Promise.all([FileSystem.getInfoAsync(abs), readText(abs)]);
+    if (!info.exists || info.isDirectory) return null;
+    const e = entryFromFile(rel, text, {
+      size: info.size ?? 0,
+      mtime: info.modificationTime ? info.modificationTime * 1000 : Date.now()
+    });
+    return { ...e, markdown: bodyOf(text), head: frontmatterHead(text) };
+  } catch {
+    return null;
+  }
+}
+
+/** Where a note id most likely lives, without touching the disk. */
+export function candidateRels(id: string): string[] {
+  const out: string[] = [];
+  const known = idToRel.get(id);
+  if (known) out.push(known, followMoves(known));
+  if (id.endsWith('.md')) out.push(id, followMoves(id)); // path-id notes (no front matter id)
+  out.push(`inbox/${id}.md`); // inbox items open in the editor by their id
+  return [...new Set(out)];
+}
+
+/**
+ * Open a note by id. Used to scan the whole vault one file at a time (two
+ * bridge calls per note until it hit the right one) on every open and twice
+ * per save. Now: the index says which file, so it's a stat + a read.
+ */
 export async function getNote(id: string): Promise<NoteDoc | null> {
-  await ensureTree();
-  // Ids are `inbox:` refs or file ids — scan (V1 has no index; files are truth).
-  for (const rel of await allNoteRels()) {
-    const e = await noteEntryForRel(rel);
-    if (e && e.id === id) {
-      const text = await readText(absForRel(rel));
-      return { ...e, markdown: bodyOf(text), head: frontmatterHead(text) };
-    }
+  // Fast path, verified by the id read back from the file so a stale index can't open the wrong note.
+  for (const rel of candidateRels(id)) {
+    const doc = await docAt(rel);
+    // A path opens the file at that path even when it has a front matter id
+    // (rows from a not-yet-read first-launch index carry paths as ids).
+    if (doc && (doc.id === id || rel === id)) return doc;
+  }
+  // Slow path (note created outside this index): share/run one parallel index pass.
+  const [index, staged] = await Promise.all([
+    listVaultIndex(),
+    Promise.all([childFiles(INBOX), childFiles(DAILY)]).then(([i, d]) => [...i.map((f) => `inbox/${f}`), ...d.map((f) => `daily/${f}`)])
+  ]);
+  const hit = index.notes.find((e) => e.id === id);
+  if (hit) return docAt(hit.path);
+  for (const rel of staged) {
+    const doc = await docAt(rel);
+    if (doc && doc.id === id) return doc;
   }
   return null;
 }
@@ -805,6 +992,17 @@ export function invalidateAttachments(): void {
   attachmentsTask = null;
 }
 
+/** Tests/bench: forget every in-memory cache, like a fresh app process. */
+export function resetMemoryForTests(): void {
+  noteEntryCache.clear();
+  idToRel.clear();
+  moved.clear();
+  attachmentsTask = null;
+  indexTask = null;
+  treeMade = false;
+  rescanWanted = false;
+}
+
 export interface SaveContext {
   /** Body the editor opened / last saved (merge base, and how a moved note is found again). */
   base?: string;
@@ -820,6 +1018,25 @@ export interface SaveContext {
  * or deleted under the editor is found again (or recreated) instead of the
  * edit being silently dropped. See `notesave.ts`.
  */
+let rescanWanted = false;
+
+/** True once after a save wrote more than the note itself (a conflict copy): the index needs a full rescan. */
+export function takeRescan(): boolean {
+  const r = rescanWanted;
+  rescanWanted = false;
+  return r;
+}
+
+/** The index row for a doc (drops the body), and remember it so the next scan doesn't re-read the file. */
+export function entryOfDoc(doc: NoteDoc): NoteEntry {
+  const { markdown: _m, head: _h, ...entry } = doc;
+  if (!doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')) {
+    noteEntryCache.set(doc.path, { size: doc.size, mtime: doc.updatedAt, entry });
+    idToRel.set(doc.id, doc.path);
+  }
+  return entry;
+}
+
 export async function saveNote(id: string, markdown: string, ctx: SaveContext = {}): Promise<NoteDoc | null> {
   let doc = await getNote(id);
   if (!doc && ctx.path !== undefined && ctx.base !== undefined) {
@@ -857,6 +1074,7 @@ export async function saveNote(id: string, markdown: string, ctx: SaveContext = 
     const cAbs = absForRel(plan.conflict.path);
     await mkdir(cAbs.slice(0, cAbs.lastIndexOf('/') + 1));
     await writeText(cAbs, plan.conflict.text);
+    rescanWanted = true;
   }
   doc = await getNote(doc.id);
   return doc;

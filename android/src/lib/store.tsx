@@ -1,10 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { InteractionManager } from 'react-native';
 import { rulesClassify, type InboxItem, type NoteDoc, type NoteEntry, type NoteKind, type Project } from './format';
 import * as vault from './vault';
 import { purgeTrash } from './trash';
 
 interface Store {
+  /** The shell can render: last launch's index (or nothing, first run) is in. Never waits on a vault scan. */
   ready: boolean;
+  /** The background scan of the vault finished at least once this launch (lists are fresh). */
+  indexed: boolean;
   error: string | null;
   inbox: InboxItem[];
   notes: NoteEntry[];
@@ -30,6 +34,19 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
+/** Resolve after the current frame has been drawn (and touch handling settled). */
+function afterFirstPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      InteractionManager.runAfterInteractions(() => resolve());
+    });
+  });
+}
+
+function sameEntry(a: NoteEntry, b: NoteEntry): boolean {
+  return a === b || (a.id === b.id && a.path === b.path && a.updatedAt === b.updatedAt && a.size === b.size && a.title === b.title);
+}
+
 function retainArray<T>(previous: T[], next: T[], equal: (a: T, b: T) => boolean = Object.is): T[] {
   return previous.length === next.length && previous.every((item, index) => equal(item, next[index]!)) ? previous : next;
 }
@@ -49,6 +66,8 @@ function sameInboxItem(a: InboxItem, b: InboxItem): boolean {
 
 export function StoreProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [ready, setReady] = useState(false);
+  const [indexed, setIndexed] = useState(false);
+  const snapshotTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [notes, setNotes] = useState<NoteEntry[]>([]);
@@ -56,6 +75,41 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [dirs, setDirs] = useState<string[]>([]);
   const refreshTask = useRef<Promise<void> | null>(null);
   const refreshAgain = useRef(false);
+
+  const apply = useCallback((index: vault.VaultIndex, ib: InboxItem[]): void => {
+    setProjects((previous) => retainArray(previous, index.projects, (a, b) => a.id === b.id && a.name === b.name && a.dir === b.dir));
+    setDirs((previous) => retainArray(previous, index.dirs));
+    setInbox((previous) => retainArray(previous, ib, sameInboxItem));
+    setNotes((previous) => retainArray(previous, index.notes, sameEntry));
+  }, []);
+
+  /** First-launch stat-only index: folders + file names, no inbox (it arrives with the full pass). */
+  const applyRough = useCallback((index: vault.VaultIndex): void => {
+    setProjects(index.projects);
+    setDirs(index.dirs);
+    setNotes((previous) => (previous.length ? previous : index.notes));
+  }, []);
+
+  /** Swap one saved note's row in place. False when it isn't a plain in-place update. */
+  const notesRef = useRef<NoteEntry[]>([]);
+  notesRef.current = notes;
+  const patchEntry = useCallback((entry: NoteEntry, openedAt?: string): boolean => {
+    if (entry.path.startsWith('inbox/') || entry.path.startsWith('daily/')) return false;
+    if (openedAt !== undefined && openedAt !== entry.path) return false;
+    const at = notesRef.current.findIndex((n) => n.path === entry.path);
+    if (at < 0 || notesRef.current[at]!.id !== entry.id) return false;
+    setNotes((previous) => {
+      const i = previous.findIndex((n) => n.path === entry.path);
+      if (i < 0) return previous;
+      const next = previous.slice();
+      next.splice(i, 1);
+      // keep newest-first order
+      const j = next.findIndex((n) => n.updatedAt <= entry.updatedAt);
+      next.splice(j < 0 ? next.length : j, 0, entry);
+      return next;
+    });
+    return true;
+  }, []);
 
   const refresh = useCallback((): Promise<void> => {
     if (refreshTask.current) {
@@ -67,12 +121,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
         refreshAgain.current = false;
         vault.invalidateAttachments();
         try {
-          const [index, ib] = await Promise.all([vault.listVaultIndex(), vault.listInbox()]);
-          setProjects((previous) => retainArray(previous, index.projects, (a, b) => a.id === b.id && a.name === b.name && a.dir === b.dir));
-          setDirs((previous) => retainArray(previous, index.dirs));
-          setInbox((previous) => retainArray(previous, ib, sameInboxItem));
-          setNotes((previous) => retainArray(previous, index.notes));
+          const [index, ib] = await Promise.all([
+            // Nothing on screen yet (first launch / no saved index): show names as soon as the stat pass is done.
+            vault.listVaultIndex(notesRef.current.length === 0 ? { onPartial: applyRough } : {}),
+            vault.listInbox()
+          ]);
+          apply(index, ib);
           setError(null);
+          // Persist for the next launch's instant drawer (debounced: saves come in bursts).
+          if (snapshotTimer.current) clearTimeout(snapshotTimer.current);
+          snapshotTimer.current = setTimeout(() => {
+            snapshotTimer.current = null;
+            void vault.saveIndexSnapshot(index, ib).catch(() => undefined);
+          }, 1500);
         } catch (e) {
           setError(e instanceof Error ? e.message : String(e));
         }
@@ -83,16 +144,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       if (refreshTask.current === task) refreshTask.current = null;
     }).catch(() => undefined);
     return task;
-  }, []);
+  }, [apply, applyRough]);
 
+  // Launch: show the last index at once (one file read), render, THEN scan the
+  // vault in the background and swap the fresh lists in. Nothing here blocks
+  // the first frame on the file system; trash purge waits until things settle.
   useEffect(() => {
-    void vault
-      .ensureTree()
-      .then(refresh)
-      .then(() => purgeTrash().catch(() => undefined))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setReady(true));
-  }, [refresh]);
+    let live = true;
+    void (async () => {
+      const snap = await vault.loadIndexSnapshot();
+      if (!live) return;
+      if (snap) apply({ notes: snap.notes, dirs: snap.dirs, projects: snap.projects }, snap.inbox);
+      setReady(true);
+      await afterFirstPaint();
+      if (!live) return;
+      try {
+        await vault.ensureTree();
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+      if (!live) return;
+      setIndexed(true);
+      setTimeout(() => void purgeTrash().catch(() => undefined), 10_000);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [apply, refresh]);
 
   const capture = useCallback(
     async (raw: string, kind: NoteKind, projectHint: string, assets: string[]) => {
@@ -162,6 +241,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const value = useMemo<Store>(
     () => ({
       ready,
+      indexed,
       error,
       inbox,
       notes,
@@ -175,6 +255,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       openNote: (id) => vault.getNote(id),
       saveNote: async (id, md, ctx) => {
         const d = await vault.saveNote(id, md, ctx);
+        // Autosave fires every ~700 ms of typing: patch the one row instead of
+        // rescanning the whole vault. Anything unusual still gets a full refresh.
+        if (d && !vault.takeRescan() && patchEntry(vault.entryOfDoc(d), ctx?.path)) return d;
         await refresh();
         return d;
       },
@@ -211,7 +294,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       appendDaily: captureDaily,
       readDaily: () => vault.readDaily()
     }),
-    [ready, error, inbox, notes, projects, dirs, refresh, capture, captureDaily, routeInbox, undoInbox]
+    [ready, indexed, error, inbox, notes, projects, dirs, refresh, patchEntry, capture, captureDaily, routeInbox, undoInbox]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

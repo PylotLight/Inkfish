@@ -113,7 +113,26 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     onClose();
   }
 
-  if (loading) return <View style={ui.center}><ActivityIndicator color={c.accent} /></View>;
+  if (loading) {
+    // Show the page frame + title from the index right away; the body fills in.
+    const known = notes.find((n) => n.id === noteId);
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <View style={[ui.topBar, { marginHorizontal: 10 }]}>
+          <Pressable onPress={onClose} style={ui.iconBtn} accessibilityLabel="Back">
+            <Icon as={ChevronLeft} />
+          </Pressable>
+          <Text style={[ui.meta, { flex: 1, marginTop: 0 }]} numberOfLines={1}>
+            {known ? folderOf(known.path) : ''}
+          </Text>
+        </View>
+        <View style={{ paddingHorizontal: 20 }}>
+          {known ? <Text style={[ui.display, { marginBottom: 8 }]}>{known.title}</Text> : null}
+          <ActivityIndicator color={c.accent} style={{ marginTop: 16, alignSelf: 'flex-start' }} />
+        </View>
+      </View>
+    );
+  }
 
   const status = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Edited' : state === 'error' ? 'Not saved' : '';
 
