@@ -3213,14 +3213,16 @@ input.side-search:focus {
   }
 }
 
+/* Portalled to <body>, `position: fixed`; left/top/max-width/max-height come from
+   placePopover (popover.ts) so it stays inside the sidebar ∩ window at any width. */
 .sync-pop {
-  position: absolute;
-  right: -34px;
-  bottom: calc(100% + 6px);
+  position: fixed;
   z-index: 60;
+  box-sizing: border-box;
   width: max-content;
-  min-width: 220px;
+  min-width: 0;
   max-width: 300px;
+  overflow: hidden;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -3235,17 +3237,19 @@ input.side-search:focus {
 .sync-pop-head {
   font-weight: 500;
   margin-bottom: 6px;
+  overflow-wrap: anywhere;
 }
 
 .sync-pop-row {
   display: grid;
-  grid-template-columns: 6px 1fr;
+  grid-template-columns: 6px minmax(0, 1fr);
   column-gap: 8px;
   align-items: center;
   padding: 3px 0;
 }
 
 .sync-pop-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3254,6 +3258,8 @@ input.side-search:focus {
 .sync-pop-meta,
 .sync-pop-err {
   grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 11px;
 }
@@ -3294,6 +3300,8 @@ input.side-search:focus {
 }
 
 .sync-pop-file {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
