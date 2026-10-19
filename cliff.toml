@@ -67,6 +67,8 @@ commit_parsers = [
 protect_breaking_commits = false
 tag_pattern = "v[0-9]*"
 skip_tags = ""
-ignore_tags = ""
+# pre-release tags (v0.2.15-beta.1): their commits fold into the next stable section, so
+# CHANGELOG.md only has real releases and the final's notes cover its betas
+ignore_tags = "^v[0-9]+\\.[0-9]+\\.[0-9]+-"
 topo_order = false
 sort_commits = "oldest"
