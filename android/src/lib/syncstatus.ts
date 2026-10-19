@@ -1,4 +1,5 @@
 import type { SyncPhase } from './syncing';
+import { percent, progressLine, progressShort, type SyncProgress } from './sync';
 import { when } from './when';
 
 /**
@@ -19,6 +20,8 @@ export interface IndicatorInput {
   heldCount?: number;
   /** Phase 'outdated': which app needs updating (protocol handshake). */
   outdated?: 'mac' | 'phone' | null;
+  /** Live progress while syncing. */
+  progress?: SyncProgress | null;
 }
 
 export interface SyncIndicator {
@@ -31,6 +34,8 @@ export interface SyncIndicator {
   spinning: boolean;
   /** What a tap does: run a sync, open the sync settings, or nothing (already running). */
   tap: 'sync' | 'open' | 'none';
+  /** 0–100 while a transfer runs (progress bar), else null. */
+  pct?: number | null;
 }
 
 export function syncIndicator(s: IndicatorInput, now = Date.now()): SyncIndicator {
@@ -41,8 +46,20 @@ export function syncIndicator(s: IndicatorInput, now = Date.now()): SyncIndicato
       return { state: 'hidden', short: '', label: 'Not paired with a Mac', tone: 'faint', spinning: false, tap: 'open' };
     case 'finding':
       return { state: 'connecting', short: 'looking…', label: `Looking for ${mac}…`, tone: 'muted', spinning: true, tap: 'none' };
-    case 'syncing':
-      return { state: 'syncing', short: 'syncing', label: `Syncing with ${mac}…`, tone: 'accent', spinning: true, tap: 'none' };
+    case 'syncing': {
+      const p = s.progress && s.progress.stage !== 'finding' && s.progress.stage !== 'done' ? s.progress : null;
+      if (!p) return { state: 'syncing', short: 'syncing', label: `Syncing with ${mac}…`, tone: 'accent', spinning: true, tap: 'none', pct: null };
+      const transfer = p.stage === 'downloading' || p.stage === 'uploading';
+      return {
+        state: 'syncing',
+        short: progressShort(p),
+        label: `Syncing with ${mac} · ${progressLine(p, now)}`,
+        tone: 'accent',
+        spinning: true,
+        tap: 'none',
+        pct: transfer ? percent(p) : null
+      };
+    }
     case 'offline':
       return { state: 'offline', short: 'offline', label: `${mac} isn't on this Wi-Fi${last}`, tone: 'faint', spinning: false, tap: 'sync' };
     case 'held': {
