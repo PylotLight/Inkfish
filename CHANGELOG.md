@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2026-10-19
+
+### Added
+
+- **(release)** Per-app releases + sync protocol handshake (#81) ([d4de2c4](https://github.com/PylotLight/Inkfish/commit/d4de2c4080dfd1d2714a37a7d6e3c75a613c7e84))
+
+### Fixed
+
+- **(ci)** Android-release skips setup-android on hosted runners, drop removed 'tools' package (#80) ([75fc5d9](https://github.com/PylotLight/Inkfish/commit/75fc5d95da285ccb188829516da0af46590f8f7f))
+
 ## [0.2.12] - 2026-10-19
 
 ### Added
@@ -257,6 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.13]: https://github.com/PylotLight/Inkfish/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/PylotLight/Inkfish/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/PylotLight/Inkfish/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/PylotLight/Inkfish/compare/v0.2.9...v0.2.10
