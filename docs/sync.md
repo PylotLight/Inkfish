@@ -36,6 +36,16 @@ tested TypeScript (`src/shared/sync/`):
   Big-deletion guard: if a run would delete ≥10 files and ≥20% of what's synced on one side,
   the phone asks first — Keep them (copied back from the side that has them), Delete everywhere,
   or Not now (nothing changes; sync pauses and asks again). In the background it always pauses.
+- **Path spelling** (`src/shared/sync/paths.ts`): the Mac vault is usually on APFS (case-insensitive,
+  case-preserving), Android is case-sensitive. A path that differs only by case / Unicode form is the
+  same file; the phone renames its copy to the Mac's spelling (never the other way) before planning and
+  again after pushing. Without this a phone `work/` vs Mac `Work/` looped forever (fixed after v0.2.13).
+- **Duplicate copies**: conflict copies identical to the note (or an older copy) are trashed on both
+  sides, and a conflict copy is never created when one with the same bytes already exists.
+- **Repair** (phone Settings › Sync › Repair sync): rehash everything, copy whatever either side is
+  missing, never delete (except identical duplicate copies, to trash).
+- **History**: back-to-back rows from the same phone (applies, identical errors, no-op syncs) collapse
+  into one row with a ×N count.
 - Tests: `src/shared/sync/e2e.test.ts` runs pairing + multi-round sync over
   the real handler with two in-memory vaults.
 
