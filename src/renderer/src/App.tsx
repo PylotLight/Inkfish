@@ -28,6 +28,7 @@ import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { Icon } from './views/icons'
+import SyncBadge from './views/SyncBadge'
 import FolderPicker from './views/FolderPicker'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
 import { matchesTags, parseTagQuery } from '../../shared/tags'
@@ -1836,6 +1837,7 @@ function Main(): React.JSX.Element {
             <span className="vault-name">{vaultLabel(vaultInfo?.root)}</span>
           </button>
           <div className="foot-actions">
+            <SyncBadge onOpen={() => openSettingsAt('sync')} />
             <button
               className="foot-btn"
               onClick={openSettings}

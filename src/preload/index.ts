@@ -29,6 +29,7 @@ import type {
 } from '../shared/types'
 import type { SyncStatus } from '../main/sync'
 import type { SyncLogEntry } from '../shared/sync'
+import type { SyncBadge } from '../shared/sync-badge'
 import type { TrashEntry as TrashItem } from '../main/vault'
 import type { CopyImageResult } from '../main/image-clipboard'
 import type { MiniHeaderState, MiniSettingsState } from '../main/mini-window'
@@ -176,6 +177,13 @@ const api = {
       const fn = (): void => cb()
       ipcRenderer.on('sync:status-changed', fn)
       return () => ipcRenderer.removeListener('sync:status-changed', fn)
+    },
+    /** Live sync badge (sidebar footer). Pushed from main on real sync events, throttled. */
+    badge: (): Promise<SyncBadge> => ipcRenderer.invoke('sync:badge'),
+    onBadge: (cb: (b: SyncBadge) => void): (() => void) => {
+      const fn = (_e: unknown, b: SyncBadge): void => cb(b)
+      ipcRenderer.on('sync:badge', fn)
+      return () => ipcRenderer.removeListener('sync:badge', fn)
     }
   },
   /** Files changed outside the UI (a phone synced). */

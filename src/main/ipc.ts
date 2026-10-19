@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from 'electron'
-import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncStatus, unpair, type SyncStatus } from './sync'
+import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncBadge, syncStatus, unpair, type SyncStatus } from './sync'
+import type { SyncBadge } from '../shared/sync-badge'
 import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
@@ -240,6 +241,7 @@ export function registerIpc(): void {
   ipcMain.handle('sync:unpair', (_e: IpcMainInvokeEvent, id: string): SyncStatus => unpair(id))
   ipcMain.handle('sync:rename', (_e: IpcMainInvokeEvent, name: string): SyncStatus => renameDevice(name))
   ipcMain.handle('sync:log', (): SyncLogEntry[] => readSyncLog())
+  ipcMain.handle('sync:badge', (): SyncBadge => syncBadge())
 
   ipcMain.handle('ping', () => 'pong')
 

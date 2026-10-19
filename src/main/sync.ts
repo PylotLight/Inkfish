@@ -33,6 +33,8 @@ import {
 import { indexFile } from './db'
 import { migratePeers, openPeer, sealPeer, type StoredPeer } from './peer-keys'
 import { profile } from './profile'
+import { setTrayTooltip } from './tray'
+import { badgeChanged, deriveSyncBadge, emptyActivity, trayTooltip, type PeerActivity, type SyncBadge } from '../shared/sync-badge'
 import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
 
 /**
@@ -57,6 +59,8 @@ export interface SyncStatus {
   port: number
   peers: SyncPeerInfo[]
   pairing: { svg: string; uri: string; exp: number } | null
+  /** Live badge (sidebar footer + tray tooltip). */
+  badge: SyncBadge
 }
 
 interface Stored {
@@ -140,6 +144,93 @@ function broadcastChanged(): void {
 }
 function broadcastStatus(): void {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('sync:status-changed')
+  scheduleBadge()
+}
+
+// --- live badge -----------------------------------------------------------------
+// Event-driven: every request from a paired phone (and pair/unpair/listen
+// changes) schedules one throttled recompute; the only timer is a single
+// one-shot at the next moment the derived state flips on its own (session
+// idle, online window expiring). No polling.
+
+const activity = new Map<string, PeerActivity>()
+let lastBadge: SyncBadge | null = null
+let badgeTimer: ReturnType<typeof setTimeout> | null = null
+let expiryTimer: ReturnType<typeof setTimeout> | null = null
+const BADGE_THROTTLE_MS = 250
+
+function actFor(id: string): PeerActivity {
+  let a = activity.get(id)
+  if (!a) {
+    a = emptyActivity()
+    activity.set(id, a)
+  }
+  return a
+}
+
+function currentBadge(now = Date.now()): SyncBadge {
+  const s = load()
+  return deriveSyncBadge(
+    {
+      running: !!server,
+      error: listenError,
+      peers: s.peers.map((p) => ({ id: p.id, name: p.name, lastSync: p.lastSync ?? null, activity: activity.get(p.id) ?? null }))
+    },
+    now
+  )
+}
+
+function scheduleBadge(): void {
+  if (badgeTimer) return
+  badgeTimer = setTimeout(() => {
+    badgeTimer = null
+    publishBadge()
+  }, BADGE_THROTTLE_MS)
+  badgeTimer.unref?.()
+}
+
+function publishBadge(): void {
+  const b = currentBadge()
+  if (expiryTimer) clearTimeout(expiryTimer)
+  expiryTimer = null
+  if (b.nextChangeAt !== null) {
+    expiryTimer = setTimeout(scheduleBadge, Math.max(250, b.nextChangeAt - Date.now() + 50))
+    expiryTimer.unref?.()
+  }
+  setTrayTooltip(trayTooltip(profile.name, b))
+  if (!badgeChanged(lastBadge, b)) return
+  lastBadge = b
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('sync:badge', b)
+}
+
+export function syncBadge(): SyncBadge {
+  return currentBadge()
+}
+
+const SESSION_PATHS = new Set(['/v1/manifest', '/v1/get', '/v1/apply'])
+
+/** Track a request from a paired phone around the handler. Returns the "after" hook. */
+function trackRequest(peerId: string | null, path: string): (status: number, body: string) => void {
+  if (!peerId || !load().peers.some((p) => p.id === peerId)) return () => undefined
+  const a = actFor(peerId)
+  a.inFlight++
+  if (SESSION_PATHS.has(path) && a.sessionSince === null) a.sessionSince = Date.now()
+  scheduleBadge()
+  let done = false
+  return (status, body) => {
+    if (done) return
+    done = true
+    a.inFlight = Math.max(0, a.inFlight - 1)
+    const now = Date.now()
+    if (status === 200) {
+      a.lastSeen = now
+      if (path === '/v1/done') a.sessionSince = null
+    } else if (status >= 400 && status !== 404) {
+      a.lastError = { at: now, message: `${path.replace('/v1/', '')}: ${status} ${body}`.slice(0, 200) }
+      a.sessionSince = null
+    }
+    scheduleBadge()
+  }
 }
 
 // --- sync history log (Settings › Sync › Recent) --------------------------------
@@ -397,13 +488,17 @@ export function startSync(): void {
     req.on('end', () => {
       const url = (req.url ?? '/').split('?')[0] ?? '/'
       const peer = req.headers[PEER_HEADER]
-      handler(req.method ?? 'GET', url, typeof peer === 'string' ? peer : null, Buffer.concat(chunks).toString('utf8'))
+      const peerId = typeof peer === 'string' ? peer : null
+      const after = trackRequest(peerId, url)
+      handler(req.method ?? 'GET', url, peerId, Buffer.concat(chunks).toString('utf8'))
         .then((r) => {
+          after(r.status, r.type === 'text/plain' && r.status !== 200 ? r.body : '')
           res.writeHead(r.status, { 'content-type': r.type, 'cache-control': 'no-store' })
           res.end(r.body)
         })
         .catch((err: unknown) => {
           console.error('[sync] request failed', err)
+          after(500, err instanceof Error ? err.message : 'error')
           res.writeHead(500, { 'content-type': 'text/plain' })
           res.end('error')
         })
@@ -437,6 +532,9 @@ export function startSync(): void {
 export function stopSync(): void {
   server?.close()
   server = null
+  if (badgeTimer) clearTimeout(badgeTimer)
+  if (expiryTimer) clearTimeout(expiryTimer)
+  badgeTimer = expiryTimer = null
 }
 
 export function syncStatus(): SyncStatus {
@@ -452,7 +550,8 @@ export function syncStatus(): SyncStatus {
     hosts: hosts(),
     port: s.port,
     peers: s.peers.map((p) => ({ id: p.id, name: p.name, pairedAt: p.pairedAt, lastSync: p.lastSync ?? null })),
-    pairing: pendingQr
+    pairing: pendingQr,
+    badge: currentBadge()
   }
 }
 
@@ -478,7 +577,9 @@ export function cancelPairing(): SyncStatus {
 export function unpair(id: string): SyncStatus {
   const s = load()
   s.peers = s.peers.filter((p) => p.id !== id)
+  activity.delete(id)
   save()
+  scheduleBadge()
   return syncStatus()
 }
 
@@ -486,5 +587,6 @@ export function renameDevice(name: string): SyncStatus {
   const s = load()
   s.deviceName = name.trim().slice(0, 40) || s.deviceName
   save()
+  scheduleBadge()
   return syncStatus()
 }

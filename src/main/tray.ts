@@ -15,6 +15,15 @@ export interface TrayCallbacks {
 }
 
 let tray: Tray | null = null
+/** Latest tooltip pushed by sync status (survives the tray being torn down / recreated). */
+let tooltipText: string | null = null
+
+/** Set the tray tooltip (sync badge summary). Cheap no-op when unchanged or there's no tray. */
+export function setTrayTooltip(text: string): void {
+  if (text === tooltipText) return
+  tooltipText = text
+  if (tray && !tray.isDestroyed()) tray.setToolTip(text)
+}
 
 // 1x1 transparent PNG used only if the generated assets are missing.
 const FALLBACK_ICON =
@@ -36,7 +45,7 @@ function resolveIcon(): NativeImage {
 export function createAppTray(cb: TrayCallbacks): void {
   if (tray) return
   tray = new Tray(resolveIcon())
-  tray.setToolTip(`${profile.name} — click for menu`)
+  tray.setToolTip(tooltipText ?? `${profile.name} — click for menu`)
   // macOS: a dev profile's tray icon carries its badge text so it's never mistaken for the release app's.
   if (profile.badge && process.platform === 'darwin') tray.setTitle(profile.badge)
   const atTray = (): [number | undefined, number | undefined, number | undefined, number | undefined] => {
