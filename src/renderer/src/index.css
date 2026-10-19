@@ -3219,8 +3219,8 @@ input.side-search:focus {
   bottom: calc(100% + 6px);
   z-index: 60;
   width: max-content;
-  min-width: 200px;
-  max-width: 240px;
+  min-width: 220px;
+  max-width: 300px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -3261,6 +3261,44 @@ input.side-search:focus {
 .sync-pop-err {
   color: var(--danger);
   overflow-wrap: anywhere;
+}
+
+.sync-pop-progress,
+.sync-pop-runs {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+  min-width: 0;
+}
+
+.sync-pop-runs {
+  padding-top: 3px;
+  border-top: 1px dashed var(--border);
+}
+
+.sync-pop-bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.sync-pop-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+
+.sync-pop-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
 }
 
 .sync-pop-foot {

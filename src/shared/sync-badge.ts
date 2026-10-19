@@ -8,6 +8,8 @@
  * Kept free of electron/node imports so it's unit-tested with bun test.
  */
 
+import { progressShort, type LiveProgress, type PeerRun } from './sync/progress'
+
 export type SyncBadgeState = 'none' | 'offline' | 'syncing' | 'synced' | 'error' | 'outdated'
 
 /** Which app needs updating before a phone can sync (protocol handshake, src/shared/sync/compat). */
@@ -25,6 +27,12 @@ export interface PeerActivity {
   lastError: { at: number; message: string } | null
   /** Newest handshake refusal (426): which side is too old. Cleared by the next success. Optional so older callers still type-check. */
   outdated?: { at: number; app: OutdatedApp } | null
+  /** Live progress the phone posted during this session (newer phones only). */
+  progress?: LiveProgress | null
+  /** Address the phone's last request came from. */
+  ip?: string | null
+  /** Protocol the phone advertised on its last request. */
+  protocol?: number | null
 }
 
 export interface BadgePeerInput {
@@ -32,6 +40,8 @@ export interface BadgePeerInput {
   name: string
   lastSync: number | null
   activity?: PeerActivity | null
+  /** Newest-last finished sessions the phone reported (capped). */
+  runs?: PeerRun[]
 }
 
 export interface BadgeInput {
@@ -53,6 +63,12 @@ export interface BadgePeerRow {
   error: string | null
   /** Set when this phone can't sync until one side updates ("update phone" / "update Mac"). */
   update: OutdatedApp | null
+  /** Live progress while syncing (null otherwise, or from phones that don't send it). */
+  progress: LiveProgress | null
+  /** Recent sessions, newest last. */
+  runs: PeerRun[]
+  ip: string | null
+  protocol: number | null
 }
 
 export interface SyncBadge {
@@ -110,7 +126,11 @@ function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: num
       lastSync: p.lastSync,
       inFlight: a.inFlight,
       error: errLive ? (a.lastError?.message ?? null) : null,
-      update: outdatedLive && old ? old.app : null
+      update: outdatedLive && old ? old.app : null,
+      progress: state === 'syncing' && a.progress && a.progress.stage !== 'done' ? a.progress : null,
+      runs: p.runs ?? [],
+      ip: a.ip ?? null,
+      protocol: a.protocol ?? null
     },
     next
   }
@@ -143,7 +163,10 @@ export function deriveSyncBadge(input: BadgeInput, now: number): SyncBadge {
     }
   }
   const syncing = peers.filter((p) => p.state === 'syncing')
-  if (syncing.length) return { ...base, state: 'syncing', label: `Syncing with ${names(syncing)}…` }
+  if (syncing.length) {
+    const live = syncing.length === 1 ? syncing[0]!.progress : null
+    return { ...base, state: 'syncing', label: `Syncing with ${names(syncing)}…${live ? ` ${progressShort(live)}` : ''}` }
+  }
   const errored = peers.filter((p) => p.state === 'error')
   if (errored.length) return { ...base, state: 'error', label: `Sync error with ${names(errored)}` }
   const synced = peers.filter((p) => p.state === 'synced')
@@ -190,8 +213,26 @@ export function badgeChanged(a: SyncBadge | null, b: SyncBadge): boolean {
   if (a.state !== b.state || a.inFlight !== b.inFlight || a.lastSync !== b.lastSync || a.peers.length !== b.peers.length) return true
   return a.peers.some((p, i) => {
     const q = b.peers[i]
-    return !q || p.id !== q.id || p.state !== q.state || p.inFlight !== q.inFlight || p.lastSync !== q.lastSync || p.error !== q.error || p.name !== q.name || p.update !== q.update
+    return (
+      !q ||
+      p.id !== q.id ||
+      p.state !== q.state ||
+      p.inFlight !== q.inFlight ||
+      p.lastSync !== q.lastSync ||
+      p.error !== q.error ||
+      p.name !== q.name ||
+      p.update !== q.update ||
+      p.ip !== q.ip ||
+      p.protocol !== q.protocol ||
+      p.runs.length !== q.runs.length ||
+      p.runs[p.runs.length - 1]?.at !== q.runs[q.runs.length - 1]?.at ||
+      progressKey(p.progress) !== progressKey(q.progress)
+    )
   })
+}
+
+function progressKey(p: LiveProgress | null): string {
+  return p ? `${p.stage}:${p.done}:${p.total}:${p.bytesDone}:${p.current ?? ''}` : ''
 }
 
 function names(ps: BadgePeerRow[]): string {

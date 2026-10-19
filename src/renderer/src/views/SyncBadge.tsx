@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ago, freshLabel, type BadgePeerRow, type SyncBadge as Badge } from '../../../shared/sync-badge'
+import { percent, progressLine, runLine } from '../../../shared/sync/progress'
 import { Icon } from './icons'
 
 /**
@@ -66,6 +67,32 @@ export default function SyncBadge({ onOpen }: { onOpen: () => void }): React.JSX
                 {p.inFlight > 0 ? ` · ${p.inFlight} in flight` : ''}
                 {' · '}seen {ago(p.lastSeen, now)} · synced {ago(p.lastSync, now)}
               </span>
+              {p.progress && (
+                <span className="sync-pop-progress">
+                  <span className="sync-pop-bar" aria-hidden="true">
+                    <span style={{ width: `${percent(p.progress) ?? 0}%` }} />
+                  </span>
+                  <span className="sync-pop-meta">{progressLine(p.progress, now)}</span>
+                  {p.progress.current && <span className="sync-pop-meta sync-pop-file">{p.progress.current}</span>}
+                </span>
+              )}
+              {(p.ip || p.protocol) && (
+                <span className="sync-pop-meta">
+                  {[p.ip, p.protocol ? `protocol v${p.protocol}` : null].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {p.runs.length > 0 && (
+                <span className="sync-pop-runs">
+                  {[...p.runs]
+                    .reverse()
+                    .slice(0, 5)
+                    .map((r) => (
+                      <span key={r.at} className={`sync-pop-meta${r.error ? ' sync-pop-err' : ''}`}>
+                        {ago(r.at, now)} · {runLine(r)}
+                      </span>
+                    ))}
+                </span>
+              )}
               {p.update && <span className="sync-pop-err">{p.update === 'mac' ? 'update Mac — this phone needs a newer Inkfish here' : 'update phone — its Inkfish is too old for this Mac'}</span>}
               {p.error && <span className="sync-pop-err">{p.error}</span>}
             </div>
