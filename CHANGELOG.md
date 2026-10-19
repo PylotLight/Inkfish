@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2026-10-19
+
+### Added
+
+- **(sync)** Live sync badge in sidebar footer + tray tooltip (#78) ([2f8eece](https://github.com/PylotLight/Inkfish/commit/2f8eece9b845f09740c7910e02fa7711a0a9312f))
+- **(android)** Sync indicator in header + drawer (#79) ([0687026](https://github.com/PylotLight/Inkfish/commit/06870269d655f54420b2ac50d29cad4092f73be4))
+
+### Fixed
+
+- V0.2.11 review fixes (#75) ([11d13ad](https://github.com/PylotLight/Inkfish/commit/11d13ad5a4874aaaee0482c98493a9e42a05016b))
+- Title sync perf + review leftovers (#77) ([03a5f49](https://github.com/PylotLight/Inkfish/commit/03a5f493d6ab6414a952565f880d2e5d1f350fe7))
+- **(android)** Editor saves keep front matter and never clobber or drop sync changes (#74) ([1c744ce](https://github.com/PylotLight/Inkfish/commit/1c744ce15bf16a567f701718bcf1171787800349))
+- **(android)** Renames sync as moves, real images, front matter titles/tags, rename relinks (#76) ([96f87be](https://github.com/PylotLight/Inkfish/commit/96f87be4ec7421bc4830c7d44fb07e488b521ff2))
+
 ## [0.2.11] - 2026-10-19
 
 ### Added
@@ -243,6 +257,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.12]: https://github.com/PylotLight/Inkfish/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/PylotLight/Inkfish/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/PylotLight/Inkfish/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/PylotLight/Inkfish/compare/v0.2.8...v0.2.9
