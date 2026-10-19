@@ -105,6 +105,24 @@ export interface Hello {
   protocol?: number
   /** Oldest phone protocol this Mac accepts. Missing → 1. */
   minPeer?: number
+  /**
+   * Optional extras this Mac understands (additive, no protocol bump — the
+   * protocol number is part of the AAD, so it only changes when the wire does).
+   * `progress`: POST /v1/progress; `summary`: /v1/done takes the run summary.
+   */
+  features?: string[]
+}
+
+/** Extras this build's Mac side serves (see Hello.features). */
+export const FEATURES = ['progress', 'summary'] as const
+
+export interface ProgressReq {
+  /** SyncProgress plus `sentAt` (phone clock) so the Mac can re-base times. */
+  progress: unknown
+}
+export interface DoneReq {
+  /** PeerRun (src/shared/sync/progress) — absent from older phones. */
+  summary?: unknown
 }
 
 export interface PairReq {

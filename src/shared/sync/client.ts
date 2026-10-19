@@ -1,5 +1,6 @@
 import { fromBase64 } from './bytes'
-import { decodeFiles, encodeFiles, type Remote } from './engine'
+import { decodeFiles, encodeFiles, type Remote, type SyncProgress } from './engine'
+import type { PeerRun } from './progress'
 import type { Manifest } from './plan'
 import {
   aad,
@@ -7,6 +8,8 @@ import {
   PEER_HEADER,
   sealJson,
   type ApplyRes,
+  type DoneReq,
+  type ProgressReq,
   type GetRes,
   type Hello,
   type ManifestRes,
@@ -147,6 +150,66 @@ export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: stri
   }
 }
 
-export async function markDone(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random): Promise<void> {
-  await call<object, object>(fetchFn, `http://${host}:${peer.port}`, '/v1/done', me, fromBase64(peer.key), {}, random)
+/** End the session. `summary` (a PeerRun) shows in the Mac's sync history; older Macs ignore it. */
+export async function markDone(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random, summary?: PeerRun): Promise<void> {
+  await call<DoneReq, object>(fetchFn, `http://${host}:${peer.port}`, '/v1/done', me, fromBase64(peer.key), summary ? { summary } : {}, random)
+}
+
+/** Does this Mac take live progress (Hello.features)? */
+export function supportsProgress(h: Hello | null | undefined): boolean {
+  return Array.isArray(h?.features) && h.features.includes('progress')
+}
+
+/**
+ * Phone → Mac live progress, throttled and fire-and-forget: at most one
+ * request in flight and one every `everyMs`; the newest value wins, and the
+ * last one is always sent. Errors are swallowed (display only).
+ */
+export function progressPoster(
+  fetchFn: Fetch,
+  host: string,
+  peer: MacPeer,
+  me: string,
+  random: Random,
+  everyMs = 1000,
+  clock: () => number = Date.now
+): { post: (p: SyncProgress) => void; flush: () => Promise<void> } {
+  let latest: SyncProgress | null = null
+  let inFlight: Promise<void> | null = null
+  let lastSent = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let dead = false
+  const send = (): void => {
+    timer = null
+    if (!latest || inFlight || dead) return
+    const p = latest
+    latest = null
+    lastSent = clock()
+    inFlight = call<ProgressReq, object>(fetchFn, `http://${host}:${peer.port}`, '/v1/progress', me, fromBase64(peer.key), { progress: { ...p, sentAt: clock() } }, random, 5000)
+      .then(() => undefined)
+      .catch(() => {
+        dead = true // older Mac / gone: stop trying this session
+      })
+      .finally(() => {
+        inFlight = null
+        if (latest) schedule()
+      })
+  }
+  const schedule = (): void => {
+    if (timer || dead) return
+    timer = setTimeout(send, Math.max(0, everyMs - (clock() - lastSent)))
+  }
+  return {
+    post: (p) => {
+      latest = p
+      schedule()
+    },
+    flush: async () => {
+      if (timer) clearTimeout(timer)
+      timer = null
+      if (inFlight) await inFlight
+      if (latest) send()
+      if (inFlight) await inFlight
+    }
+  }
 }
