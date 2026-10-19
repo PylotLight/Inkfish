@@ -11,6 +11,8 @@ import type { Manifest } from './plan'
  */
 
 export const PROTOCOL = 1
+/** Oldest peer protocol this build still syncs with (see ./compat). */
+export const MIN_PEER = 1
 export const DEFAULT_PORT = 47821
 /** Pairing QR validity. */
 export const PAIR_TTL_MS = 5 * 60 * 1000
@@ -95,9 +97,14 @@ export const PEER_HEADER = 'x-inkfish-peer'
 
 export interface Hello {
   app: 'inkfish'
+  /** Pre-handshake protocol field; kept for older phones. */
   v: number
   id: string
   name: string
+  /** Protocol this Mac speaks. Missing on older Macs → treat as 1. */
+  protocol?: number
+  /** Oldest phone protocol this Mac accepts. Missing → 1. */
+  minPeer?: number
 }
 
 export interface PairReq {

@@ -4,6 +4,7 @@ import { ignored } from './plan'
 import {
   aad,
   openJson,
+  MIN_PEER,
   PAIR_TTL_MS,
   PROTOCOL,
   safeRel,
@@ -19,6 +20,7 @@ import {
   type PairRes,
   type Random
 } from './protocol'
+import { compat, incompatibleBody, INCOMPATIBLE_STATUS, outdatedApp, peerVersion, SELF_VERSION, type PeerVersion } from './compat'
 
 /**
  * The Mac side of the protocol, transport-agnostic: feed it a method, path,
@@ -65,7 +67,15 @@ export interface HttpResult {
 
 const MAX_BODY = 64 * 1024 * 1024
 
-export function createHandler(host: ServerHost): (method: string, path: string, peerId: string | null, body: string) => Promise<HttpResult> {
+/** What the phone said about itself (the x-inkfish-protocol / x-inkfish-min-peer headers). Absent on older phones. */
+export interface PeerMeta {
+  protocol?: unknown
+  minPeer?: unknown
+}
+
+export function createHandler(
+  host: ServerHost
+): (method: string, path: string, peerId: string | null, body: string, meta?: PeerMeta) => Promise<HttpResult> {
   const seen = new Map<string, number>() // nonce → ts (replay guard)
   const now = (): number => host.now?.() ?? Date.now()
   const fail = (status: number, msg: string): HttpResult => ({ status, body: msg, type: 'text/plain' })
@@ -79,14 +89,19 @@ export function createHandler(host: ServerHost): (method: string, path: string, 
     return true
   }
 
-  return async (method, path, peerId, body) => {
+  return async (method, path, peerId, body, meta) => {
     if (method === 'GET' && path === '/v1/hello') {
-      const h: Hello = { app: 'inkfish', v: PROTOCOL, id: host.device.id, name: host.device.name }
+      const h: Hello = { app: 'inkfish', v: PROTOCOL, id: host.device.id, name: host.device.name, protocol: PROTOCOL, minPeer: MIN_PEER }
       return { status: 200, body: JSON.stringify(h), type: 'application/json' }
     }
     if (method !== 'POST') return fail(405, 'method')
     if (!peerId || !/^[A-Za-z0-9_-]{8,64}$/.test(peerId)) return fail(400, 'peer')
     if (body.length > MAX_BODY) return fail(413, 'too large')
+
+    // Handshake: refuse (loudly) a phone we can't talk to, or one that needs a newer Mac.
+    const theirs: PeerVersion = peerVersion(meta)
+    const app = outdatedApp('mac', compat(SELF_VERSION, theirs))
+    if (app) return fail(INCOMPATIBLE_STATUS, incompatibleBody(app, SELF_VERSION, theirs))
 
     // Pairing: sealed with the key from the QR on screen.
     if (path === '/v1/pair') {

@@ -12,8 +12,23 @@ export { runSync, encodeFiles, decodeFiles, bigDeletion, SyncHeld, GUARD_MIN, GU
 export type { BigDelete, GuardChoice } from './engine'
 export type { SyncFs, Remote, SyncState, SyncReport } from './engine'
 export { createHandler, parseHello } from './server'
-export type { ServerHost, PeerRecord, PendingPair, HttpResult } from './server'
-export { findMac, hello, pairWithMac, httpRemote, markDone } from './client'
+export type { ServerHost, PeerRecord, PendingPair, HttpResult, PeerMeta } from './server'
+export {
+  compat,
+  outdatedApp,
+  peerVersion,
+  updateLabel,
+  incompatibleBody,
+  parseIncompatible,
+  versionHeaders,
+  SyncIncompatible,
+  SELF_VERSION,
+  PROTOCOL_HEADER,
+  MIN_PEER_HEADER,
+  INCOMPATIBLE_STATUS
+} from './compat'
+export type { Compat, PeerVersion, Side } from './compat'
+export { findMac, findMacHello, assertCompatible, hello, pairWithMac, httpRemote, markDone } from './client'
 export type { Fetch, MacPeer } from './client'
 export { appendCapped, summarize, shortError, SYNC_LOG_CAP } from './log'
 export type { SyncLogEntry, SyncLogKind } from './log'
