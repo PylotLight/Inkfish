@@ -5,7 +5,9 @@ import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultIn
 import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
 import Capture from './views/Capture'
-import FolderTree, { type KindFilter, type TreeTarget } from './views/FolderTree'
+import FolderTree, { type KindFilter, type RowActions, type TreeTarget } from './views/FolderTree'
+import { DeletePopover, UndoToast, type Anchor } from './views/DeletePopover'
+import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
 import Home from './views/Home'
 import InboxQueue from './views/InboxQueue'
 import NoteEditor from './views/NoteEditor'
@@ -134,6 +136,12 @@ function Main(): React.JSX.Element {
   const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(null)
   const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
+  /** Sidebar: note id whose row is in inline-rename mode. */
+  const [treeRename, setTreeRename] = useState<string | null>(null)
+  /** Sidebar: delete glance for a note with real content. */
+  const [delAsk, setDelAsk] = useState<{ entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null>(null)
+  /** Undo toast after a delete (restores the trash entry). */
+  const [undoDel, setUndoDel] = useState<{ key: number; message: string; trashId: string; rel: string; wasOpen: boolean } | null>(null)
   /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
    *  the collapsed rail, ⌘\ or the palette. */
   const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
@@ -913,41 +921,147 @@ function Main(): React.JSX.Element {
     [autosave, notify, refreshNotes]
   )
 
+  /** Path of the open note (to follow it across a rename/move). */
+  const openNotePath = (): string | null =>
+    selRef.current?.origin === 'note'
+      ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+      : null
+
+  /** Rename `rel` on disk to `name` and follow it everywhere (tabs, open note, titles). */
+  const applyRename = useCallback(
+    (rel: string, name: string, openPath: string | null) => {
+      window.api.files
+        .rename(rel, name)
+        .then((newRel) => {
+          notify(`Renamed → ${newRel.split('/').pop()}`)
+          window.api.notes
+            .list(null)
+            .then((all) => {
+              setAllNotes(all)
+              window.api.notes.titles().then(setTitles).catch(console.error)
+              followPathChange(rel, newRel, all, openPath)
+            })
+            .catch(console.error)
+          refreshInbox()
+          refreshProjects()
+        })
+        .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
+    },
+    [notify, refreshInbox, refreshProjects, followPathChange]
+  )
+
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
       flushBeforeFileOp()
       const current = rel.split('/').pop() ?? rel
       // Path of the open note before the rename (to follow it across).
-      const openPath = sel?.origin === 'note'
-        ? (doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null)
-        : null
+      const openPath = openNotePath()
       setPrompt({
         title: isDir ? 'Rename folder' : 'Rename file',
         initial: isDir ? current : current.replace(/\.md$/, ''),
         confirm: 'Rename',
-        onSubmit: (v) => {
-          window.api.files
-            .rename(rel, v)
-            .then((newRel) => {
-              notify(`Renamed → ${newRel.split('/').pop()}`)
-              window.api.notes
-                .list(null)
-                .then((all) => {
-                  setAllNotes(all)
-                  window.api.notes.titles().then(setTitles).catch(console.error)
-                  followPathChange(rel, newRel, all, openPath)
-                })
-                .catch(console.error)
-              refreshInbox()
-              refreshProjects()
-            })
-            .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
-        }
+        onSubmit: (v) => applyRename(rel, v, openPath)
       })
     },
-    [sel, doc, allNotes, notify, refreshInbox, refreshProjects, followPathChange]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [applyRename]
   )
 
+  /**
+   * Move `rel` to Inkfish's Trash and tidy up: tabs under it close (the open one hands off to a
+   * neighbour), the center clears if the open note went. Resolves with the trash entry (for Undo).
+   */
+  const performTrash = useCallback(
+    async (rel: string): Promise<{ id: string; wasOpen: boolean } | null> => {
+      await autosave.flushAll()
+      const active = selRef.current
+      const wasOpen = active?.origin === 'note' && (() => {
+        const p = openNotePath()
+        return p !== null && (p === rel || p.startsWith(`${rel}/`))
+      })()
+      try {
+        const entry = await window.api.files.trash(rel)
+        setTreeRename(null)
+        // Drop tabs under the trashed path; follow with a neighbor.
+        setTabs((prev) => {
+          const remaining = prev.filter((t) => t.path !== rel && !t.path.startsWith(`${rel}/`))
+          if (remaining.length !== prev.length && active?.origin === 'note') {
+            const gone = !remaining.some((t) => t.id === active.id) &&
+              prev.some((t) => t.id === active.id && (t.path === rel || t.path.startsWith(`${rel}/`)))
+            if (gone) {
+              const next = remaining[remaining.length - 1]
+              if (next) openEntry(next.id, 'note')
+              else {
+                setSel(null)
+                setDoc(null)
+              }
+            }
+          }
+          return remaining
+        })
+        // Clear the center if the open note is gone.
+        const all = await window.api.notes.list(null)
+        setAllNotes(all)
+        const cur = selRef.current
+        if (cur?.origin === 'note' && !all.some((n) => n.id === cur.id)) {
+          setSel(null)
+          setDoc(null)
+          setDrafts((d) => {
+            if (d[cur.id] === undefined) return d
+            const next = { ...d }
+            delete next[cur.id]
+            return next
+          })
+        }
+        refreshInbox()
+        refreshProjects()
+        window.api.notes.titles().then(setTitles).catch(console.error)
+        return { id: entry.id, wasOpen }
+      } catch (err) {
+        notify(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+        return null
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [autosave, notify, refreshInbox, refreshProjects, openEntry]
+  )
+
+  /** Trash + Undo toast (every delete path ends here). */
+  const trashWithUndo = useCallback(
+    async (rel: string, name: string) => {
+      const res = await performTrash(rel)
+      if (!res) return
+      setUndoDel({ key: Date.now(), message: `Trashed ${name}`, trashId: res.id, rel, wasOpen: res.wasOpen })
+    },
+    [performTrash]
+  )
+
+  /** Undo: restore the trash entry; reopen it if it was the open note. */
+  const undoTrash = useCallback(
+    async (u: { trashId: string; rel: string; wasOpen: boolean }) => {
+      try {
+        const [restored] = await window.api.files.restoreTrash([u.trashId])
+        const all = await window.api.notes.list(null)
+        setAllNotes(all)
+        window.api.notes.titles().then(setTitles).catch(console.error)
+        refreshInbox()
+        refreshProjects()
+        const back = restored ?? u.rel
+        notify(`Restored ${back.split('/').pop()?.replace(/\.md$/, '')}`)
+        if (u.wasOpen) {
+          const found = all.find((n) => n.path === back)
+          if (found) selectNote(found.id)
+        }
+      } catch (err) {
+        notify(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [notify, refreshInbox, refreshProjects, selectNote]
+  )
+
+  const closeUndo = useCallback(() => setUndoDel(null), [])
+
+  /** Folders (and anything that isn't a single note): the modal confirm, then Trash + Undo. */
   const doTrash = useCallback(
     (rel: string, name: string) => {
       flushBeforeFileOp()
@@ -955,62 +1069,85 @@ function Main(): React.JSX.Element {
         title: `Delete ${name}?`,
         body: 'It moves to Trash for 7 days. Restore it any time from Settings › Trash.',
         confirm: 'Move to Trash',
-        onConfirm: () => {
-          window.api.files
-            .trash(rel)
-            .then(() => {
-              notify(`Trashed ${name}`)
-              // Drop tabs under the trashed path; follow with a neighbor.
-              setTabs((prev) => {
-                const remaining = prev.filter((t) => t.path !== rel && !t.path.startsWith(`${rel}/`))
-                if (remaining.length !== prev.length) {
-                  const active = selRef.current
-                  if (active?.origin === 'note' && (active.id === selRef.current?.id)) {
-                    const gone = !remaining.some((t) => t.id === active.id) &&
-                      prev.some((t) => t.id === active.id && (t.path === rel || t.path.startsWith(`${rel}/`)))
-                    if (gone) {
-                      const next = remaining[remaining.length - 1]
-                      if (next) openEntry(next.id, 'note')
-                      else {
-                        setSel(null)
-                        setDoc(null)
-                      }
-                    }
-                  }
-                }
-                return remaining
-              })
-              // Clear the center if the open note is gone.
-              if (sel?.origin === 'note') {
-                window.api.notes
-                  .list(null)
-                  .then((all) => {
-                    setAllNotes(all)
-                    if (!all.some((n) => n.id === sel.id)) {
-                      setSel(null)
-                      setDoc(null)
-                      setDrafts((d) => {
-                        if (d[sel.id] === undefined) return d
-                        const next = { ...d }
-                        delete next[sel.id]
-                        return next
-                      })
-                    }
-                  })
-                  .catch(console.error)
-              } else {
-                refreshNotes()
-              }
-              refreshInbox()
-              refreshProjects()
-              window.api.notes.titles().then(setTitles).catch(console.error)
-            })
-            .catch((err: unknown) => notify(`Delete failed: ${err instanceof Error ? err.message : String(err)}`))
-        }
+        onConfirm: () => void trashWithUndo(rel, name)
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sel, notify, refreshNotes, refreshInbox, refreshProjects]
+    [trashWithUndo]
+  )
+
+  /** The sidebar row for a note, if it's on screen (anchor for the glance, inline rename target). */
+  const rowEl = (id: string): HTMLElement | null =>
+    document.querySelector<HTMLElement>(`.ftree [data-note-id="${CSS.escape(id)}"]`)
+
+  /**
+   * Smart note delete: (near-)empty notes go straight to Trash with Undo; real content gets the
+   * glance confirm anchored to its row. `skipConfirm` (⇧ / second ⌘⌫) always goes straight through.
+   */
+  const deleteNote = useCallback(
+    async (entry: NoteEntry, anchor: Anchor | null, skipConfirm: boolean) => {
+      const name = titleOf(entry)
+      if (skipConfirm) {
+        setDelAsk(null)
+        await trashWithUndo(entry.path, name)
+        return
+      }
+      await autosave.flushAll()
+      let md: string | null = null
+      try {
+        md = (await window.api.notes.get(entry.id))?.markdown ?? null
+      } catch {
+        md = null
+      }
+      // Unreadable → treat as content (ask) rather than silently deleting.
+      if (md !== null && !deleteNeedsConfirm(md)) {
+        await trashWithUndo(entry.path, name)
+        return
+      }
+      const r = anchor ?? rowEl(entry.id)?.getBoundingClientRect() ?? null
+      // No row on screen (sidebar hidden / filtered): centred under the top bar.
+      const fallback: Anchor = { top: 80, bottom: 80, left: window.innerWidth / 2 - 150, right: window.innerWidth }
+      setDelAsk({
+        entry,
+        title: name,
+        lines: md ? previewLines(md) : [],
+        anchor: r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : fallback
+      })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [titleOf, autosave, trashWithUndo]
+  )
+
+  /** Rename a note: inline in its sidebar row when it's visible, the dialog otherwise. */
+  const renameNoteFile = useCallback(
+    (entry: NoteEntry) => {
+      if (rowEl(entry.id)) {
+        flushBeforeFileOp()
+        setTreeRename(entry.id)
+      } else doRename(entry.path, false)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doRename]
+  )
+
+  const rowActions = useMemo<RowActions>(
+    () => ({
+      renamingId: treeRename,
+      startRename: (entry) => {
+        flushBeforeFileOp()
+        setTreeRename(entry.id)
+      },
+      endRename: (entry, value) => {
+        setTreeRename(null)
+        const name = value === null ? null : renameCommit(entry.path, value)
+        if (name) applyRename(entry.path, name, openNotePath())
+        // Hand focus back to the row so F2 / ⌘⌫ keep working from the keyboard.
+        window.setTimeout(() => rowEl(entry.id)?.querySelector<HTMLButtonElement>('.filerow')?.focus(), 0)
+      },
+      remove: (entry, anchor, skip) => void deleteNote(entry, anchor, skip)
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [treeRename, applyRename, deleteNote]
   )
 
   /** Context menu items for a tree target, the open note, or a tab. */
@@ -1037,8 +1174,8 @@ function Main(): React.JSX.Element {
           { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
           { label: 'Move to…', action: () => openMovePicker(rel, 'file', name, menu?.x, menu?.y) },
-          { label: 'Rename…', action: () => doRename(rel, false) },
-          { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(rel, name) }
+          { label: 'Rename…', action: () => renameNoteFile(doc) },
+          { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
         ]
       }
       if (target.kind === 'dir') {
@@ -1071,14 +1208,20 @@ function Main(): React.JSX.Element {
         ]
       }
       const name = target.name
+      const entry = allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
       return [
+        { label: 'Rename  F2', action: () => (entry ? renameNoteFile(entry) : doRename(target.rel, false)) },
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
+        ...(entry ? [{ label: 'Open in Mini Window', action: () => popOut(entry.id) }] : []),
         { label: 'Move to…', action: () => openMovePicker(target.rel, 'file', name, menu?.x, menu?.y) },
-        { label: 'Rename…', action: () => doRename(target.rel, false) },
-        { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => doTrash(target.rel, name) }
+        {
+          label: `Delete “${name.slice(0, 32)}”  ⌘⌫`,
+          danger: true,
+          action: () => (entry ? void deleteNote(entry, null, false) : doTrash(target.rel, name))
+        }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, renameNoteFile, deleteNote, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
   )
 
   // --- derived -------------------------------------------------------------------
@@ -1466,6 +1609,7 @@ function Main(): React.JSX.Element {
               onNewFolder={doCreateFolder}
               targetDir={targetDir}
               onMove={(rel, k, dest) => void doMove(rel, k, dest)}
+              rowActions={rowActions}
               filters={
                 // Only worth a row when there is something to filter between (or a filter is on).
                 kindsPresent > 1 || kind !== 'all' ? (
@@ -1734,6 +1878,34 @@ function Main(): React.JSX.Element {
             void doMove(m.rel, m.kind, dir)
           }}
           onClose={() => setMovePick(null)}
+        />
+      )}
+      {delAsk && (
+        <DeletePopover
+          anchor={delAsk.anchor}
+          title={delAsk.title}
+          path={delAsk.entry.path}
+          lines={delAsk.lines}
+          size={delAsk.entry.size}
+          updatedAt={delAsk.entry.updatedAt}
+          onConfirm={() => {
+            const d = delAsk
+            setDelAsk(null)
+            void trashWithUndo(d.entry.path, d.title)
+          }}
+          onCancel={() => {
+            const id = delAsk.entry.id
+            setDelAsk(null)
+            window.setTimeout(() => rowEl(id)?.querySelector<HTMLButtonElement>('.filerow')?.focus(), 0)
+          }}
+        />
+      )}
+      {undoDel && !toast && (
+        <UndoToast
+          key={undoDel.key}
+          message={undoDel.message}
+          onClose={closeUndo}
+          onUndo={() => void undoTrash(undoDel)}
         />
       )}
       {toast && <div className="toast glass">{toast}</div>}
