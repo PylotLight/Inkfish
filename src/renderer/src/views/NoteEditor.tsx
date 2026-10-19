@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import {
   Decoration,
@@ -77,7 +77,12 @@ interface Props {
   onDraft: (id: string, markdown: string) => void
   /** ⌘S — autosave makes it a no-op flush; kept so muscle memory never does anything odd. */
   onFlush?: () => void
+  /** Header title edited inline (Enter / blur). Empty string = cleared. */
   onRename: (title: string) => void
+  /** Tooltip for the inline title (what a rename does: file rename vs display title). */
+  renameHint?: string
+  /** The editor lost focus (title → filename sync commits right away). */
+  onEditorBlur?: () => void
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
   compact?: boolean
@@ -103,13 +108,11 @@ interface Props {
  * (sidebar, lists, queue). Edits are ALSO lifted via `onDraft`, where the
  * parent autosaves them (Obsidian-style: no Save button, nothing "unsaved").
  */
-function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint, onEditorBlur, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
   const [cmFailed, setCmFailed] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const [nameDraft, setNameDraft] = useState('')
   const textRef = useRef(text)
   textRef.current = text
   /** True once the user has typed — guards the doc.markdown fallback below. */
@@ -331,11 +334,6 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
     )
   }
 
-  const commitRename = (): void => {
-    setRenaming(false)
-    onRename(nameDraft.trim())
-  }
-
   return (
     <div
       className="editor"
@@ -388,36 +386,7 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
           </div>
         )}
         <div className="ed-title">
-          {renaming ? (
-            <input
-              className="rename-input"
-              value={nameDraft}
-              autoFocus
-              onChange={(e) => setNameDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitRename()
-                if (e.key === 'Escape') setRenaming(false)
-              }}
-              onBlur={commitRename}
-              aria-label="Note title (empty restores filename)"
-              placeholder="Custom title — empty restores filename"
-            />
-          ) : (
-            <>
-              <h2>{title || 'Untitled'}</h2>
-              <button
-                className="btn ghost sm icon"
-                title="Rename (stored in app config, file untouched)"
-                aria-label="Rename note"
-                onClick={() => {
-                  setNameDraft(title)
-                  setRenaming(true)
-                }}
-              >
-                ✎
-              </button>
-            </>
-          )}
+          <InlineTitle title={title || 'Untitled'} hint={renameHint} onCommit={onRename} onDone={() => viewRef.current?.focus()} />
         </div>
         <div className="row ed-actions">
           <button
@@ -520,7 +489,12 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
       )}
       {/* AI: Raw / Processed view + Process selection (user-driven, see NoteAi). */}
       <NoteAi viewRef={viewRef} doc={doc} text={text}>
-        <div className="ed-live">
+        <div
+          className="ed-live"
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onEditorBlur?.()
+          }}
+        >
           {cmFailed ? (
             <textarea
               className="ed-fallback"
@@ -535,6 +509,66 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, onMore, com
         </div>
       </NoteAi>
     </div>
+  )
+}
+
+/**
+ * The big header title, editable in place (Obsidian inline title): click into it and type.
+ * Enter or blur commits, Esc cancels. Plain text only; one line.
+ */
+function InlineTitle({ title, hint, onCommit, onDone }: { title: string; hint?: string; onCommit: (t: string) => void; onDone: () => void }): React.JSX.Element {
+  const ref = useRef<HTMLHeadingElement>(null)
+  const editing = useRef(false)
+  const cancelled = useRef(false)
+  // Show the current title whenever we're not mid-edit (rename landed, note switched).
+  // Text is set here, never as React children — the browser owns the node while you type.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && !editing.current && el.textContent !== title) el.textContent = title
+  }, [title])
+  const read = (): string => (ref.current?.textContent ?? '').replace(/\s+/g, ' ').trim()
+  return (
+    <h2
+      ref={ref}
+      className="ed-inline-title"
+      contentEditable="plaintext-only"
+      spellCheck={false}
+      role="textbox"
+      aria-label="Note title"
+      title={hint ?? 'Click to rename'}
+      onFocus={() => {
+        editing.current = true
+        cancelled.current = false
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          ref.current?.blur()
+          onDone()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          cancelled.current = true
+          if (ref.current) ref.current.textContent = title
+          ref.current?.blur()
+        }
+      }}
+      onPaste={(e) => {
+        // One line of plain text, whatever the clipboard holds.
+        e.preventDefault()
+        const text = e.clipboardData.getData('text/plain').replace(/\s+/g, ' ')
+        document.execCommand('insertText', false, text)
+      }}
+      onBlur={() => {
+        editing.current = false
+        const next = read()
+        if (cancelled.current || !next || next === title) {
+          if (ref.current) ref.current.textContent = title
+          return
+        }
+        onCommit(next)
+      }}
+    />
   )
 }
 

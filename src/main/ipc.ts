@@ -3,7 +3,7 @@ import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, sync
 import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
-import { moveEntry, type MoveEntryResult } from './move'
+import { moveEntry, renameToTitle, type MoveEntryResult, type TitleRenameResult } from './move'
 import { remapMiniNotes } from './mini-window'
 import { setTags } from '../shared/tags'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -576,6 +576,29 @@ export function registerIpc(): void {
     reindexVault(paths.root)
     remapMiniNotes(rel, next)
     return next
+  })
+  // Filename follows the note title (header inline title + auto-named notes): in-place rename,
+  // collision-safe, inbound links/[[wikilinks]] fixed. Targeted reindex — this runs while typing.
+  ipcMain.handle('files:rename-to-title', (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): TitleRenameResult => {
+    if (typeof rel !== 'string' || typeof title !== 'string') throw new Error('bad rename')
+    const paths = requireNotes()
+    const res = renameToTitle(rel, title, paths)
+    if (res.rel === rel) return res
+    // The file name IS the title now — a stale custom display title would hide it.
+    migrateTitles(rel, res.rel)
+    setTitleOverride(res.rel, '')
+    removeNote(rel)
+    indexFile(join(paths.root, res.rel), res.rel)
+    remapMiniNotes(rel, res.rel)
+    for (const r of res.rewritten) {
+      indexFile(join(paths.root, r), r)
+      const saved = getNote(r, paths.root)
+      if (!saved) continue
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('inkfish:note-saved', saved)
+      }
+    }
+    return res
   })
   ipcMain.handle('files:move', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): string => {
     const paths = requireNotes()

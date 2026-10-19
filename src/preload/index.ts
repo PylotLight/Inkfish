@@ -244,6 +244,9 @@ const api = {
     mkdir: (parentRel: string, name: string): Promise<string> => ipcRenderer.invoke('files:mkdir', parentRel, name),
     rename: (rel: string, newName: string): Promise<string> => ipcRenderer.invoke('files:rename', rel, newName),
     move: (rel: string, destDirRel: string): Promise<string> => ipcRenderer.invoke('files:move', rel, destDirRel),
+    /** Rename a note in place to its title's file name (`Title 2.md` on collision); fixes links into it. */
+    renameToTitle: (rel: string, title: string): Promise<{ rel: string; rewritten: string[] }> =>
+      ipcRenderer.invoke('files:rename-to-title', rel, title),
     /** Collision-safe move (`Name 2.md`) that also fixes relative links broken by it. */
     moveTo: (rel: string, destDirRel: string): Promise<{ rel: string; renamed: boolean; moved: Array<{ from: string; to: string }>; rewritten: string[] }> =>
       ipcRenderer.invoke('files:move-to', rel, destDirRel),
