@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { runSync, CHUNK_SIZE, type PartialStore, type SyncReport } from './engine'
+import { runSync, type PartialStore, type SyncReport } from './engine'
+
+/** Small chunks so the resume tests stay fast (the logic is size-independent). */
+const CHUNK_SIZE = 64 * 1024
+const chunk = { min: 3 * CHUNK_SIZE, size: CHUNK_SIZE }
 import { httpRemote, withRetry, HttpError, type Fetch, type MacPeer } from './client'
 import { createHandler, memPartials } from './server'
 import { sha256 } from './hash'
@@ -99,7 +103,7 @@ function blob(n: number, seed: number): Uint8Array {
 }
 
 const sync = (phone: Phone, remote: ReturnType<ReturnType<typeof macServer>['remote']>, state: MemState): Promise<SyncReport> =>
-  runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+  runSync({ fs: phone, remote, state, remoteName: 'Mac', chunk })
 
 async function converged(phone: Phone, mac: CiFs, s: ReturnType<typeof macServer>, state: MemState): Promise<void> {
   const r = await sync(phone, s.remote(), state)

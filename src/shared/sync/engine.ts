@@ -324,6 +324,8 @@ export async function runSync(opts: {
   onProgress?: (p: SyncProgress) => void
   /** Stop between steps (throws SyncCancelled). Whatever landed stays landed; the next run picks up from there. */
   signal?: AbortSignal
+  /** Chunking thresholds (tests). Defaults: CHUNK_MIN / CHUNK_SIZE. */
+  chunk?: { min: number; size: number }
   /** Clock (tests). */
   clock?: () => number
 }): Promise<SyncReport> {
@@ -414,7 +416,9 @@ async function runSyncInner(
     report.deferred = (report.deferred ?? 0) + 1
   }
   const all = transferOrder([...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)), remoteMan)
-  const chunked = (p: string): boolean => !!remote.chunk && !!fs.partial && (remoteMan[p]?.size ?? 0) >= CHUNK_MIN
+  const chunkMin = opts.chunk?.min ?? CHUNK_MIN
+  const chunkSize = opts.chunk?.size ?? CHUNK_SIZE
+  const chunked = (p: string): boolean => !!remote.chunk && !!fs.partial && (remoteMan[p]?.size ?? 0) >= chunkMin
   const toFetch = all.filter((p) => !chunked(p))
   const bigFiles = all.filter(chunked)
   progress.total(all.length, all.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
@@ -463,7 +467,7 @@ async function runSyncInner(
     let gone = false
     while (have < e.size) {
       cancelled()
-      const c = await remote.chunk!(p, have, Math.min(CHUNK_SIZE, e.size - have))
+      const c = await remote.chunk!(p, have, Math.min(chunkSize, e.size - have))
       if (!c || c.size !== e.size || c.data.length === 0) {
         gone = true // changed or deleted on the Mac since the manifest
         break
@@ -621,7 +625,7 @@ async function runSyncInner(
     // Big files: resumable chunked upload first (Mac feature `chunks`).
     const small: typeof writes = []
     for (const w of writes) {
-      if (!remote.put || w.data.length < CHUNK_MIN) {
+      if (!remote.put || w.data.length < chunkMin) {
         small.push(w)
         continue
       }
@@ -633,7 +637,7 @@ async function runSyncInner(
       while (!st.done && !st.deferred) {
         cancelled()
         const from = st.have
-        const part = w.data.subarray(from, Math.min(w.data.length, from + CHUNK_SIZE))
+        const part = w.data.subarray(from, Math.min(w.data.length, from + chunkSize))
         st = await remote.put({ path: s.path, hash: s.hash!, size: w.data.length, offset: from, data: part, expect: s.expect })
         progress.bytes(w.path, Math.max(0, st.have - from))
       }
