@@ -4,6 +4,7 @@ import {
   type EditorState,
   StateEffect,
   StateField,
+  type Transaction,
   type TransactionSpec
 } from '@codemirror/state'
 import { findImages, moveImageEdits, resizeImageEdit } from '../../shared/images'
@@ -102,10 +103,64 @@ export function selectionTouches(state: EditorState, from: number, to: number): 
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
 }
 
+/**
+ * An image ref whose source stays hidden even though the caret touches it,
+ * because the caret got there as a side effect rather than by the user
+ * putting it there: a pasted / dropped / moved ref leaves the caret right
+ * after itself. Without this the dimmed `![|481](…)` source showed above the
+ * picture after every paste and stayed up through every resize (the gesture
+ * froze it revealed, then put the caret back on its edge). It clears on the
+ * next deliberate caret move (arrow keys, a click on text) or typing, so
+ * walking the caret onto the ref still reveals it like before. Gestures
+ * (resize, move, click-select) map it along but never clear it, so Chromium's
+ * native mouse selection mid-drag can't either.
+ */
+export const concealImage = StateEffect.define<{ from: number; to: number } | null>()
+
+export const concealedImageField = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(concealImage)) return e.value
+    if (value && tr.docChanged) {
+      const from = tr.changes.mapPos(value.from, 1)
+      const to = tr.changes.mapPos(value.to, -1)
+      value = to > from ? { from, to } : null
+    }
+    const gesture = !!tr.startState.field(imageGestureField, false) || !!tr.state.field(imageGestureField, false)
+    if (gesture) return value
+    const inserted = insertedRefAtCaret(tr)
+    if (inserted) return inserted
+    if (tr.isUserEvent('select') || tr.isUserEvent('input.type') || tr.isUserEvent('delete')) return null
+    return value
+  }
+})
+
+/** The image ref this transaction inserted whole, if the new caret sits on it. */
+function insertedRefAtCaret(tr: Transaction): { from: number; to: number } | null {
+  if (!tr.docChanged || !tr.selection) return null
+  if (tr.isUserEvent('input.type') || tr.isUserEvent('delete')) return null
+  const sel = tr.state.selection.main
+  if (!sel.empty) return null
+  const line = tr.state.doc.lineAt(sel.head)
+  for (const im of findImages(line.text)) {
+    const from = line.from + im.index
+    const to = from + im.length
+    if (sel.head < from || sel.head > to) continue
+    let whole = false
+    tr.changes.iterChangedRanges((_fA, _tA, fB, tB) => {
+      if (fB <= from && tB >= to) whole = true
+    })
+    if (whole) return { from, to }
+  }
+  return null
+}
+
 /** Whether live preview should show the source of the image ref at `from..to`. */
 export function imageSourceRevealed(state: EditorState, from: number, to: number): boolean {
   const g = state.field(imageGestureField, false)
   if (g && g.from <= to && g.to >= from) return g.revealed
+  const c = state.field(concealedImageField, false)
+  if (c && c.from <= to && c.to >= from) return false
   return selectionTouches(state, from, to)
 }
 
