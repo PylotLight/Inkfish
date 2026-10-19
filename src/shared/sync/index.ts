@@ -30,5 +30,6 @@ export {
 export type { Compat, PeerVersion, Side } from './compat'
 export { findMac, findMacHello, assertCompatible, hello, pairWithMac, httpRemote, markDone } from './client'
 export type { Fetch, MacPeer } from './client'
-export { appendCapped, summarize, shortError, SYNC_LOG_CAP } from './log'
+export { appendCapped, appendCollapsed, summarize, shortError, SYNC_LOG_CAP, COLLAPSE_MS } from './log'
+export { foldPath, caseAdoptions, rebaseCase, redundantCopies, conflictOriginal, bumpOriginal, copyExists } from './paths'
 export type { SyncLogEntry, SyncLogKind } from './log'
