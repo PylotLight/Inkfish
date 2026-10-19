@@ -25,6 +25,10 @@ tested TypeScript (`src/shared/sync/`):
 - **Discovery**: last good IP → QR IPs → sweep of those /24s for the Mac's
   id on `/v1/hello`. No mDNS needed.
 - **Endpoints**: `GET /v1/hello`, `POST /v1/pair | manifest | get | apply | done`.
+- **Handshake** (`src/shared/sync/compat.ts`): `/v1/hello` carries `protocol` + `minPeer`;
+  the phone sends `x-inkfish-protocol` / `x-inkfish-min-peer` on every POST. Missing = protocol 1.
+  If one side is too old the Mac answers `426 incompatible:<mac|phone>:…` and the badges say
+  "update phone" / "update Mac" (the phone also checks the hello before syncing).
 - **State**: the phone keeps the per-Mac base manifest + base note texts in
   `inkfish/.sync/<macId>/`; the Mac is stateless apart from paired keys.
   Deletes go to trash on both sides (Mac app trash, phone `inkfish/trash/`), kept 7 days.
