@@ -8,11 +8,12 @@ export { renameCandidates, renameScore, matchRenames, applyRenames } from './ren
 export type { Gone, Added, RenamePair } from './renames'
 export type { Entry, Manifest, Base, Op, MergeKind, Write } from './plan'
 export * from './protocol'
-export { runSync, encodeFiles, decodeFiles, bigDeletion, SyncHeld, GUARD_MIN, GUARD_SHARE, PROGRESS_THROTTLE_MS, transferOrder } from './engine'
+export { runSync, encodeFiles, decodeFiles, bigDeletion, SyncHeld, SyncCancelled, GUARD_MIN, GUARD_SHARE, PROGRESS_THROTTLE_MS, CHUNK_MIN, CHUNK_SIZE, transferOrder } from './engine'
+export type { PartialStore, ApplyWrite } from './engine'
 export type { SyncProgress, SyncStage } from './engine'
 export type { BigDelete, GuardChoice } from './engine'
 export type { SyncFs, Remote, SyncState, SyncReport } from './engine'
-export { createHandler, parseHello } from './server'
+export { createHandler, parseHello, memPartials } from './server'
 export type { ServerHost, PeerRecord, PendingPair, HttpResult, PeerMeta } from './server'
 export {
   compat,
@@ -29,7 +30,8 @@ export {
   INCOMPATIBLE_STATUS
 } from './compat'
 export type { Compat, PeerVersion, Side } from './compat'
-export { findMac, findMacHello, assertCompatible, hello, pairWithMac, httpRemote, markDone, supportsProgress, progressPoster } from './client'
+export { findMac, findMacHello, assertCompatible, hello, pairWithMac, httpRemote, markDone, supportsProgress, progressPoster, withRetry, retryable, HttpError } from './client'
+export type { RemoteOpts, RetryOpts } from './client'
 export type { Fetch, MacPeer } from './client'
 export { appendCapped, appendCollapsed, summarize, shortError, SYNC_LOG_CAP, COLLAPSE_MS } from './log'
 export { foldPath, caseAdoptions, rebaseCase, redundantCopies, conflictOriginal, bumpOriginal, copyExists } from './paths'

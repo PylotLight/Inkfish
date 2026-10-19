@@ -93,7 +93,7 @@ class PhoneFs implements SyncFs {
     for (const p of this.files.keys()) if (p.startsWith(pre)) out.add(p.slice(pre.length).split('/')[0]!)
     return [...out]
   }
-  private async stat(rel: string): Promise<{ dir: boolean; size: number; mtime: number }> {
+  private async statRel(rel: string): Promise<{ dir: boolean; size: number; mtime: number }> {
     this.c.stat++
     await this.cost(COST.stat)
     const f = this.files.get(rel)
@@ -120,7 +120,7 @@ class PhoneFs implements SyncFs {
     const heal = async (dir: string): Promise<void> => {
       for (const n of await this.readDir(dir)) {
         const rel = dir ? `${dir}/${n}` : n
-        const st = await this.stat(rel)
+        const st = await this.statRel(rel)
         if (st.dir) await heal(rel)
       }
     }
@@ -130,10 +130,10 @@ class PhoneFs implements SyncFs {
     const walk = async (dir: string): Promise<void> => {
       for (const n of await this.readDir(dir)) {
         const rel = dir ? `${dir}/${n}` : n
-        const st = await this.stat(rel)
+        const st = await this.statRel(rel)
         if (st.dir) await walk(rel)
         else {
-          const st2 = await this.stat(rel) // add() stats again
+          const st2 = await this.statRel(rel) // add() stats again
           const c = this.cache[rel]
           const hash = c && c.size === st2.size && c.mtime === st2.mtime ? c.hash : await this.hashOf(rel)
           next[rel] = { size: st2.size, mtime: st2.mtime, hash }
@@ -155,7 +155,7 @@ class PhoneFs implements SyncFs {
       {
         readDir: (uri) => this.readDir(toRel(uri)),
         stat: async (uri) => {
-          const st = await this.stat(toRel(uri))
+          const st = await this.statRel(toRel(uri))
           return { exists: true, isDirectory: st.dir, size: st.size, mtime: st.mtime }
         },
         hash: (uri) => this.hashOf(toRel(uri))
