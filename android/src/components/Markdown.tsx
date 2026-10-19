@@ -1,26 +1,60 @@
-import React, { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Dimensions, Image, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useTheme, type AppTheme } from '../theme';
+import { blockImage, fitImage, isAudio, resolveImage, splitImages, vaultFileUri, type ImageToken } from '../lib/mdimages';
+import { listAttachments, vaultRootUri } from '../lib/vault';
 
-/** Tiny markdown renderer — headings, bold, bullets, code fences, images. No deps. */
-export function Markdown({ text }: { text: string }): React.JSX.Element {
+/**
+ * Tiny markdown renderer — headings, bold, bullets, code fences, images. No deps.
+ * Images (`![alt|300](src)`, `![[x.png]]`) render as real images, block or
+ * inline, resolved against the vault the same way the Mac does.
+ */
+export function Markdown({ text, notePath }: { text: string; notePath?: string | null }): React.JSX.Element {
   const blocks = useMemo(() => parse(text), [text]);
   const t = useTheme();
+  const hasImages = useMemo(() => /!\[/.test(text), [text]);
+  const [files, setFiles] = useState<readonly string[]>([]);
+  const [width, setWidth] = useState(() => Dimensions.get('window').width - 40);
+  useEffect(() => {
+    if (!hasImages) return;
+    let live = true;
+    void listAttachments().then((f) => {
+      if (live) setFiles(f);
+    });
+    return () => {
+      live = false;
+    };
+  }, [hasImages, text]);
+  const ctx = useMemo<ImgCtx>(() => ({ notePath: notePath ?? null, files, width }), [notePath, files, width]);
+  const onLayout = (e: LayoutChangeEvent): void => {
+    const w = Math.floor(e.nativeEvent.layout.width);
+    if (w > 0 && w !== width) setWidth(w);
+  };
   return (
-    <View>
-      {blocks.map((b, i) => (
-        <Block key={i} block={b} md={t.md} />
-      ))}
-    </View>
+    <ImageContext.Provider value={ctx}>
+      <View onLayout={onLayout}>
+        {blocks.map((b, i) => (
+          <Block key={i} block={b} md={t.md} />
+        ))}
+      </View>
+    </ImageContext.Provider>
   );
 }
+
+interface ImgCtx {
+  notePath: string | null;
+  files: readonly string[];
+  /** Column width images are capped to. */
+  width: number;
+}
+const ImageContext = createContext<ImgCtx>({ notePath: null, files: [], width: 320 });
 
 type Block =
   | { t: 'h'; level: number; text: string }
   | { t: 'p'; text: string }
   | { t: 'li'; text: string }
   | { t: 'code'; text: string }
-  | { t: 'img'; alt: string; src: string }
+  | { t: 'img'; img: ImageToken }
   | { t: 'task'; done: boolean; text: string }
   | { t: 'quote'; text: string }
   | { t: 'hr' }
@@ -61,11 +95,9 @@ function parse(text: string): Block[] {
       out.push({ t: 'h', level: h[1]?.length ?? 1, text: h[2] ?? '' });
       continue;
     }
-    const img = /^!\[(.*?)\]\((.*?)\)\s*$/.exec(line.trim());
+    const img = line.includes('![') ? blockImage(line) : null;
     if (img) {
-      // Drop an Obsidian display-width suffix (`![alt|300](…)`, `|300x200`) from the alt.
-      const alt = (img[1] ?? '').replace(/\s*\|\s*\d+(?:\s*x\s*\d+)?\s*$/, '');
-      out.push({ t: 'img', alt, src: img[2] ?? '' });
+      out.push({ t: 'img', img });
       continue;
     }
     if (/^\s*-\s+/.test(line) || /^\s*\*\s+/.test(line)) {
@@ -86,12 +118,21 @@ function parse(text: string): Block[] {
   return out;
 }
 
-/** Inline `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, [links](…), [[wikilinks]]. */
+/** Image refs inside a line split out first, then inline styles on the text between them. */
 function runs(text: string, base: object, md: AppTheme['md']): React.ReactNode[] {
+  if (!text.includes('![')) return styled(text, base, md, '');
+  return splitImages(text).flatMap((tok, i): React.ReactNode[] =>
+    tok.t === 'text' ? styled(tok.text, base, md, `${i}-`) : [<MdImage key={`i${i}`} img={tok} inline md={md} />]
+  );
+}
+
+/** Inline `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, [links](…), [[wikilinks]]. */
+function styled(text: string, base: object, md: AppTheme['md'], key: string): React.ReactNode[] {
   const parts = text.split(
     /(\*\*[^*]+\*\*|~~[^~]+~~|`[^`]+`|\[\[[^\]]+\]\]|\[.+?\]\(.+?\)|(?<![\w*])\*[^*\s][^*]*\*(?!\w)|(?<!\w)_[^_\s][^_]*_(?!\w))/g
   );
-  return parts.map((p, i) => {
+  return parts.map((p, j) => {
+    const i = `${key}${j}`;
     if (!p) return null;
     const b = /^\*\*(.+)\*\*$/.exec(p);
     if (b) return <Text key={i} style={[base, md.bold]}>{b[1]}</Text>;
@@ -107,6 +148,58 @@ function runs(text: string, base: object, md: AppTheme['md']): React.ReactNode[]
     if (l) return <Text key={i} style={[base, md.link]}>{l[1]}</Text>;
     return <Text key={i} style={base}>{p}</Text>;
   });
+}
+
+const sizeCache = new Map<string, { w: number; h: number }>();
+
+/** A note image: resolved against the vault, sized like the Mac (`|300` = width), capped to the column. */
+function MdImage({ img, inline, md }: { img: ImageToken; inline?: boolean; md: AppTheme['md'] }): React.JSX.Element {
+  const { notePath, files, width: column } = useContext(ImageContext);
+  const { c } = useTheme();
+  const target = useMemo(() => resolveImage(img, notePath, files), [img, notePath, files]);
+  const uri = target ? (target.kind === 'remote' ? target.uri : vaultFileUri(vaultRootUri(), target.rel)) : null;
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(() => (uri ? (sizeCache.get(uri) ?? null) : null));
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    if (!uri || isAudio(img.src)) return;
+    const hit = sizeCache.get(uri);
+    if (hit) {
+      setNatural(hit);
+      return;
+    }
+    let live = true;
+    Image.getSize(
+      uri,
+      (w, h) => {
+        sizeCache.set(uri, { w, h });
+        if (live) setNatural({ w, h });
+      },
+      () => {
+        if (live) setFailed(true);
+      }
+    );
+    return () => {
+      live = false;
+    };
+  }, [uri, img.src]);
+
+  const label = img.alt || img.src.split('/').pop() || 'image';
+  if (isAudio(img.src)) return <Text style={md.imgRef}>Voice memo · {label}</Text>;
+  if (!uri || failed) return <Text style={md.imgRef}>Image · {label}</Text>;
+  // Inline images without a size stay small so they sit in the line; block ones fill the column.
+  const want = inline && !img.width ? { width: Math.min(natural?.w ?? 160, 160) } : img;
+  const size = fitImage(natural, { width: want.width, height: img.height }, column);
+  const image = (
+    <Image
+      source={{ uri }}
+      style={{ width: size.width, height: size.height, borderRadius: 6, backgroundColor: inline ? undefined : c.inset }}
+      resizeMode="contain"
+      accessibilityLabel={label}
+      onError={() => setFailed(true)}
+    />
+  );
+  return inline ? image : <View style={{ marginVertical: 6 }}>{image}</View>;
 }
 
 function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.Element | null {
@@ -133,7 +226,7 @@ function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.E
         </View>
       );
     case 'img':
-      return <Text style={md.imgRef}>{/\.(m4a|wav|mp3|ogg)$/i.test(block.src) ? 'Voice memo' : 'Image'} · {block.alt || block.src.split('/').pop()}</Text>;
+      return <MdImage img={block.img} md={md} />;
     case 'task':
       return (
         <Text style={md.p}>

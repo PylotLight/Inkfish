@@ -3,6 +3,7 @@
  * (`src/main/vault.ts`, `src/main/ai.ts`). No RN / Expo imports here so the
  * file can be unit-tested with plain `tsc` + node.
  */
+import { parseTags } from '../../../src/shared/tags';
 
 export type NoteKind = 'text' | 'voice' | 'image' | 'meeting';
 export type NoteStatus = 'inbox' | 'processing' | 'ready' | 'archived';
@@ -102,7 +103,8 @@ export function stringifyFrontmatter(data: Record<string, unknown>): string {
 
 function unquote(s: string): string {
   s = s.trim();
-  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"');
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"');
+  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
   return s;
 }
 
@@ -114,24 +116,65 @@ function parseList(s: string): string[] {
   return inner.split(',').map((x) => unquote(x.trim()));
 }
 
-/** Minimal `---\nkey: value\n---\nbody` parser. Returns [data, body]. */
+/**
+ * Minimal `---\nkey: value\n---\nbody` parser. Returns [data, body]. Top-level
+ * keys only; inline lists (`tags: [a, b]`) and YAML block lists
+ * (`tags:` + `  - a` lines, as Obsidian and the Mac write them) become arrays.
+ * Other indented lines (nested maps, folded text) are skipped, never read as keys.
+ */
 export function parseFrontmatter(md: string): [Record<string, string | string[]>, string] {
   if (!md.startsWith('---')) return [{}, md];
   const end = md.indexOf('\n---', 3);
   if (end === -1) return [{}, md];
   const data: Record<string, string | string[]> = {};
-  for (const line of md.slice(3, end).split('\n')) {
+  let listKey: string | null = null;
+  for (const raw of md.slice(3, end).split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const item = /^(?:\s+-|-)\s+(.*)$/.exec(line) ?? /^\s*-$/.exec(line);
+    if (listKey && item) {
+      const v = unquote(item[1] ?? '');
+      const arr = data[listKey];
+      if (v) data[listKey] = Array.isArray(arr) ? [...arr, v] : [v];
+      continue;
+    }
+    if (/^\s/.test(line)) continue; // nested / continuation line
+    listKey = null;
     const i = line.indexOf(':');
     if (i === -1) continue;
     const key = line.slice(0, i).trim();
     const val = line.slice(i + 1).trim();
     if (!key) continue;
+    if (!val) {
+      // `key:` alone: a block list may follow.
+      data[key] = '';
+      listKey = key;
+      continue;
+    }
     data[key] = val.startsWith('[') ? parseList(val) : unquote(val);
   }
   return [data, md.slice(end + 4).replace(/^\n/, '')];
 }
 
 // --- titles / bodies (same rules as Mac `db.ts` + `ai.ts`) ---
+
+/**
+ * Display title for a note file: front matter `title:` wins (same rule as Mac
+ * title sync), then the first `# H1`, then the first line.
+ */
+export function titleFromFile(fm: Record<string, string | string[]>, body: string): string {
+  const t = fm['title'];
+  if (typeof t === 'string' && t.trim()) return t.trim().slice(0, 120);
+  return titleFromBody(body);
+}
+
+/** Markdown image/embed refs, stripped from list snippets so they read as text. */
+export function snippetText(body: string): string {
+  return body
+    .replace(/!\[\[[^\]\n]*\]\]/g, '')
+    .replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export function titleFromBody(body: string): string {
   const h = /^#\s+(.+)$/m.exec(body);
@@ -237,14 +280,15 @@ export function entryFromFile(
   const fromPath = projectFromPath(vaultRel);
   const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null);
   const inboxId = str(fm['inbox']);
-  const tags = Array.isArray(fm['tags']) ? (fm['tags'] as string[]) : [];
+  // Inline `[a, b]`, YAML block lists and `a, b` scalars — the Mac's own reader.
+  const tags = parseTags(text);
   let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN;
   if (!Number.isFinite(createdAt)) createdAt = stat.mtime;
-  const clean = body.replace(/^#\s+.*\n/, '').trim();
+  const clean = snippetText(body.replace(/^\s*#\s+.*(\n|$)/, ''));
   return {
     id,
     path: vaultRel,
-    title: titleFromBody(body),
+    title: titleFromFile(fm, body),
     kind,
     status,
     projectId,

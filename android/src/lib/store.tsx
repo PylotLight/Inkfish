@@ -65,6 +65,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
     const task = (async () => {
       do {
         refreshAgain.current = false;
+        vault.invalidateAttachments();
         try {
           const [index, ib] = await Promise.all([vault.listVaultIndex(), vault.listInbox()]);
           setProjects((previous) => retainArray(previous, index.projects, (a, b) => a.id === b.id && a.name === b.name && a.dir === b.dir));

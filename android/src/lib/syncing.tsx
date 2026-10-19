@@ -17,6 +17,7 @@ import {
 import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } from './syncfs';
 import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog';
 import { shortError } from './sync';
+import { recordMoves } from './vault';
 
 export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error';
 
@@ -147,6 +148,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         });
         setHeld(null);
         await markDone(fetchFn, host, peer, id, random).catch(() => undefined);
+        // Renames that arrived as moves: let an open note follow its file.
+        recordMoves(report.movedLocal ?? []);
         setLastReport(report);
         await persistMac({ ...peer, lastHost: host, lastSync: Date.now() });
         if (report.changedLocal.length) await refresh();
