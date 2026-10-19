@@ -8,12 +8,16 @@ import {
   httpRemote,
   markDone,
   pairWithMac,
+  progressPoster,
+  runFromReport,
   runSync,
+  supportsProgress,
   SyncHeld,
   SyncIncompatible,
   type BigDelete,
   type GuardChoice,
   type MacPeer,
+  type SyncProgress,
   type SyncReport
 } from './sync';
 import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } from './syncfs';
@@ -24,8 +28,20 @@ import { afterSync } from './syncafter';
 
 export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error' | 'outdated';
 
+/** What we last learned about the paired Mac (Settings › Sync details). */
+export interface MacInfo {
+  host: string;
+  port: number;
+  protocol: number;
+  features: string[];
+  seenAt: number;
+}
+
 interface SyncCtx {
   phase: SyncPhase;
+  /** Live progress while a sync runs (throttled by the engine; null when idle). */
+  progress: SyncProgress | null;
+  macInfo: MacInfo | null;
   mac: MacPeer | null;
   lastSync: number | null;
   lastReport: SyncReport | null;
@@ -102,6 +118,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
   const [held, setHeld] = useState<BigDelete | null>(null);
   const [log, setLog] = useState<SyncLogEntry[]>([]);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [macInfo, setMacInfo] = useState<MacInfo | null>(null);
   const running = useRef(false);
   const again = useRef(false);
   const repairNext = useRef(false);
@@ -148,6 +166,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       do {
         again.current = false;
         setPhase('finding');
+        const t1 = Date.now();
+        setProgress({ stage: 'finding', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: t1, stageAt: t1 });
         const found = await findMacHello(fetchFn, peer);
         if (!found) {
           setPhase('offline');
@@ -157,12 +177,26 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         assertCompatible(found.hello);
         setOutdated(null);
         const host = found.host;
+        setMacInfo({
+          host,
+          port: peer.port,
+          protocol: found.hello.protocol ?? found.hello.v ?? 1,
+          features: Array.isArray(found.hello.features) ? found.hello.features : [],
+          seenAt: Date.now()
+        });
         setPhase('syncing');
+        // Newer Macs show this phone's progress live (a request a second at most; older Macs skip it).
+        const poster = supportsProgress(found.hello) ? progressPoster(fetchFn, host, peer, id, random) : null;
+        const tRun = Date.now();
         const remote = httpRemote(fetchFn, host, peer, id, random);
         const repair = repairNext.current;
         repairNext.current = false;
         const report = await runSync({
           repair,
+          onProgress: (p) => {
+            setProgress(p);
+            poster?.post(p);
+          },
           fs: androidFs,
           remote,
           state: stateFor(peer.id),
@@ -170,7 +204,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
           confirmDelete: (d) => askDelete(d, peer.name)
         });
         setHeld(null);
-        await markDone(fetchFn, host, peer, id, random).catch(() => undefined);
+        await poster?.flush().catch(() => undefined);
+        await markDone(fetchFn, host, peer, id, random, runFromReport(report, Date.now(), Date.now() - tRun)).catch(() => undefined);
         const after = afterSync(report);
         // Renames that arrived as moves (or case adoptions): let an open note follow its file.
         recordMoves(after.moves);
@@ -222,6 +257,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       await done({ at: Date.now(), peer: peer.name, kind: 'error', message });
     } finally {
       running.current = false;
+      setProgress(null);
     }
   }, [id, persistMac, refresh]);
 
@@ -294,8 +330,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [id]);
 
   const value = useMemo(
-    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge }),
-    [phase, mac, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge]
+    () => ({ phase, progress, macInfo, mac, lastSync: mac?.lastSync ?? null, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge }),
+    [phase, progress, macInfo, mac, lastReport, error, outdated, held, log, pair, unpair, syncNow, repair, nudge]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -82,6 +82,8 @@ export interface SyncProgress {
   current?: string
   /** When the run started (epoch ms). */
   startedAt: number
+  /** When the current stage started (epoch ms). */
+  stageAt?: number
 }
 
 /** Progress callbacks fire at most this often (plus once per stage change and at the end). */
@@ -95,12 +97,13 @@ class Progress {
     private readonly cb: ((p: SyncProgress) => void) | undefined,
     private readonly clock: () => number
   ) {
-    this.p = { stage: 'comparing', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: clock() }
+    const t = clock()
+    this.p = { stage: 'comparing', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: t, stageAt: t }
     this.emit(true)
   }
   phase(stage: SyncStage): void {
     if (this.p.stage === stage) return
-    this.p = { ...this.p, stage, done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: undefined }
+    this.p = { ...this.p, stage, done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: undefined, stageAt: this.clock() }
     this.emit(true)
   }
   total(files: number, bytes: number): void {

@@ -20,6 +20,7 @@ import {
   encodePairUri,
   ignored,
   appendCollapsed,
+  pushRun,
   PAIR_TTL_MS,
   PEER_HEADER,
   PROTOCOL_HEADER,
@@ -178,7 +179,7 @@ function currentBadge(now = Date.now()): SyncBadge {
     {
       running: !!server,
       error: listenError,
-      peers: s.peers.map((p) => ({ id: p.id, name: p.name, lastSync: p.lastSync ?? null, activity: activity.get(p.id) ?? null }))
+      peers: s.peers.map((p) => ({ id: p.id, name: p.name, lastSync: p.lastSync ?? null, activity: activity.get(p.id) ?? null, runs: p.runs ?? [] }))
     },
     now
   )
@@ -214,10 +215,14 @@ export function syncBadge(): SyncBadge {
 const SESSION_PATHS = new Set(['/v1/manifest', '/v1/get', '/v1/apply'])
 
 /** Track a request from a paired phone around the handler. Returns the "after" hook. */
-function trackRequest(peerId: string | null, path: string): (status: number, body: string) => void {
+function trackRequest(peerId: string | null, path: string, ip?: string | null, protocol?: unknown): (status: number, body: string) => void {
   if (!peerId || !load().peers.some((p) => p.id === peerId)) return () => undefined
   const a = actFor(peerId)
   a.inFlight++
+  if (ip) a.ip = ip.replace(/^::ffff:/, '')
+  const proto = typeof protocol === 'string' ? Number(protocol) : NaN
+  a.protocol = Number.isInteger(proto) && proto > 0 ? proto : (a.protocol ?? 1)
+  if (path === '/v1/manifest' && a.sessionSince === null) a.progress = null // a fresh session
   if (SESSION_PATHS.has(path) && a.sessionSince === null) a.sessionSince = Date.now()
   scheduleBadge()
   let done = false
@@ -229,7 +234,10 @@ function trackRequest(peerId: string | null, path: string): (status: number, bod
     if (status === 200) {
       a.lastSeen = now
       a.outdated = null
-      if (path === '/v1/done') a.sessionSince = null
+      if (path === '/v1/done') {
+        a.sessionSince = null
+        a.progress = null
+      }
     } else if (status === INCOMPATIBLE_STATUS && parseIncompatible(body)) {
       // Handshake refusal: show "update phone" / "update Mac" instead of a generic error.
       a.lastSeen = now
@@ -499,6 +507,19 @@ const handler = createHandler({
   // Off the request path: the phone's next batch shouldn't wait for re-indexing.
   // Bursts (several apply batches in one sync) become one reindex + one log row.
   changed: (rels, peerId) => queueChanged(rels, peerId),
+  progress: (id, p) => {
+    actFor(id).progress = p
+    scheduleBadge()
+  },
+  finished: (id, run) => {
+    const p = load().peers.find((x) => x.id === id)
+    if (p) {
+      p.runs = pushRun(p.runs, run)
+      save()
+    }
+    actFor(id).progress = null
+    scheduleBadge()
+  },
   note: (msg) => {
     appendSyncLog({ at: Date.now(), peer: '', kind: 'error', message: msg })
     broadcastStatus()
@@ -521,7 +542,7 @@ export function startSync(): void {
       const url = (req.url ?? '/').split('?')[0] ?? '/'
       const peer = req.headers[PEER_HEADER]
       const peerId = typeof peer === 'string' ? peer : null
-      const after = trackRequest(peerId, url)
+      const after = trackRequest(peerId, url, req.socket.remoteAddress ?? null, req.headers[PROTOCOL_HEADER])
       const meta = { protocol: req.headers[PROTOCOL_HEADER], minPeer: req.headers[MIN_PEER_HEADER] }
       handler(req.method ?? 'GET', url, peerId, Buffer.concat(chunks).toString('utf8'), meta)
         .then((r) => {

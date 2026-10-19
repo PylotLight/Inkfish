@@ -1,3 +1,4 @@
+import type { PeerRun } from '../shared/sync/progress'
 import type { PeerRecord } from '../shared/sync'
 
 /**
@@ -20,7 +21,11 @@ export interface AsyncSafeStorage {
 }
 
 /** key holds safeStorage-encrypted base64 when `enc` is true */
-export type StoredPeer = PeerRecord & { enc?: boolean }
+export type StoredPeer = PeerRecord & {
+  enc?: boolean
+  /** Recent sessions the phone reported (newest last, capped). */
+  runs?: PeerRun[]
+}
 
 /** Seal a fresh peer key for storage (plaintext fallback when no keychain, same as before). */
 export async function sealPeer(ss: AsyncSafeStorage, p: PeerRecord): Promise<StoredPeer> {

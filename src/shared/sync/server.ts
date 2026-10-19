@@ -10,6 +10,9 @@ import {
   SKEW_MS,
   type ApplyReq,
   type ApplyRes,
+  type DoneReq,
+  type ProgressReq,
+  FEATURES,
   type GetReq,
   type GetRes,
   type Hello,
@@ -18,6 +21,7 @@ import {
   type PairRes,
   type Random
 } from './protocol'
+import { cleanProgress, cleanRun, type LiveProgress, type PeerRun } from './progress'
 import { compat, incompatibleBody, INCOMPATIBLE_STATUS, outdatedApp, peerVersion, SELF_VERSION, type PeerVersion } from './compat'
 
 /**
@@ -57,6 +61,10 @@ export interface ServerHost {
   now?: () => number
   /** Override the advertised protocol / minPeer (tests). Defaults to this build's. */
   version?: PeerVersion
+  /** Live progress a phone posted (`/v1/progress`). Already sanitized. */
+  progress?: (peerId: string, p: LiveProgress) => void
+  /** A phone finished a session and said how it went (`/v1/done` summary). Already sanitized. */
+  finished?: (peerId: string, run: PeerRun) => void
 }
 
 export interface HttpResult {
@@ -92,7 +100,15 @@ export function createHandler(
   return async (method, path, peerId, body, meta) => {
     if (method === 'GET' && path === '/v1/hello') {
       const self = host.version ?? SELF_VERSION
-      const h: Hello = { app: 'inkfish', v: self.protocol, id: host.device.id, name: host.device.name, protocol: self.protocol, minPeer: self.minPeer }
+      const h: Hello = {
+        app: 'inkfish',
+        v: self.protocol,
+        id: host.device.id,
+        name: host.device.name,
+        protocol: self.protocol,
+        minPeer: self.minPeer,
+        features: [...FEATURES]
+      }
       return { status: 200, body: JSON.stringify(h), type: 'application/json' }
     }
     if (method !== 'POST') return fail(405, 'method')
@@ -199,8 +215,27 @@ export function createHandler(
         }
         return ok(key, path, peerId, { manifest: await host.fs.list() } satisfies ApplyRes)
       }
+      case '/v1/progress': {
+        const p = cleanProgress((req as ProgressReq | null)?.progress, now())
+        if (p) {
+          try {
+            host.progress?.(peerId, p)
+          } catch {
+            // display only
+          }
+        }
+        return ok(key, path, peerId, {})
+      }
       case '/v1/done': {
         host.touchPeer(peerId, now())
+        const run = cleanRun((req as DoneReq | null)?.summary, now())
+        if (run) {
+          try {
+            host.finished?.(peerId, run)
+          } catch {
+            // display only
+          }
+        }
         return ok(key, path, peerId, {})
       }
       default:

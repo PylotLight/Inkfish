@@ -6,6 +6,7 @@ import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
 import { useStore } from '../lib/store';
 import { useUpdates } from '../lib/updates';
 import { useSync } from '../lib/syncing';
+import { SyncDetails } from '../components/SyncDetails';
 import { PairScanner } from '../components/PairScanner';
 import { when } from '../lib/when';
 import { summarize } from '../lib/sync';
@@ -23,6 +24,7 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
   const [scanned, setScanned] = useState(false);
   const upd = useUpdates();
   const sync = useSync();
+  const [details, setDetails] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [trash, setTrash] = useState<TrashItem[]>([]);
   const [showAllTrash, setShowAllTrash] = useState(false);
@@ -182,6 +184,10 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
           >
             <Text style={[ui.quietText, { color: c.muted }]}>Repair sync</Text>
           </Pressable>
+          <Pressable onPress={() => setDetails(true)} style={[ui.quiet, { marginTop: 4 }]}>
+            <Text style={[ui.quietText, { color: c.muted }]}>Sync details</Text>
+          </Pressable>
+          <SyncDetails visible={details} onClose={() => setDetails(false)} />
           {sync.log.length > 0 && (
             <View style={{ marginTop: 10 }}>
               <Text style={[ui.meta, { marginBottom: 2 }]}>Recent syncs</Text>

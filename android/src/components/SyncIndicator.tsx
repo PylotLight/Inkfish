@@ -31,10 +31,11 @@ export function useSyncIndicator(): Indicator {
         lastSync: sync.lastSync,
         error: sync.error,
         heldCount: sync.held ? sync.held.local.length + sync.held.remote.length : 0,
-        outdated: sync.outdated
+        outdated: sync.outdated,
+        progress: sync.progress
       }),
-    // lastSync / phase changes are what move it; `when()` text refreshes with them.
-    [sync.phase, sync.mac?.name, sync.lastSync, sync.error, sync.held, sync.outdated]
+    // lastSync / phase / progress changes are what move it; `when()` text refreshes with them.
+    [sync.phase, sync.mac?.name, sync.lastSync, sync.error, sync.held, sync.outdated, sync.progress]
   );
 }
 
@@ -116,6 +117,11 @@ export function SyncRow(): React.JSX.Element | null {
         <Text style={[ui.meta, { marginTop: 0 }, ind.tone === 'danger' && { color: c.danger }]} numberOfLines={2}>
           {ind.label}
         </Text>
+        {ind.pct != null && (
+          <View style={{ height: 3, borderRadius: 2, backgroundColor: c.border, overflow: 'hidden', marginTop: 4 }}>
+            <View style={{ width: `${ind.pct}%`, height: 3, backgroundColor: c.accent }} />
+          </View>
+        )}
       </View>
     </Pressable>
   );
