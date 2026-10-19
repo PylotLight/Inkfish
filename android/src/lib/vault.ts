@@ -32,6 +32,7 @@ import {
 } from './format';
 import { bodyOf, frontmatterHead, planSave, relocate, withHead } from './notesave';
 import { relinkAfterRename } from './relink';
+import { appendToDailyFile, formatEntry, localDay, stripLegacyTitle } from '../../../src/shared/daily';
 
 const DOC = FileSystem.documentDirectory ?? '';
 const APP = `${DOC}inkfish/`;
@@ -1256,28 +1257,28 @@ export async function createNoteFile(dirRel: string): Promise<string> {
 
 /** Local calendar day — matches Mac `localDay` (UTC filed mornings under yesterday). */
 function todayName(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return localDay(d);
 }
 
+/** Append a compact `- HH:MM text` line to today's note (same shape as Mac — see shared/daily). */
 export async function appendDaily(raw: string, kind: NoteKind = 'text'): Promise<string> {
   await ensureTree();
   const text = raw.trim();
   if (!text) throw new Error('daily note is empty');
-  const rel = `daily/${todayName()}.md`;
-  const uri = `${DAILY}${todayName()}.md`;
-  const stamp = new Date().toTimeString().slice(0, 5);
-  const section = `## ${stamp}${kind !== 'text' ? ` · ${kind}` : ''}\n\n${text}\n\n`;
+  const now = new Date();
+  const rel = `daily/${todayName(now)}.md`;
+  const uri = `${DAILY}${todayName(now)}.md`;
+  const entry = formatEntry(text, kind, now);
   const exists = (await FileSystem.getInfoAsync(uri)).exists;
   if (!exists) {
     const fm = stringifyFrontmatter({
       kind: 'daily',
-      created: new Date().toISOString(),
+      created: now.toISOString(),
       source: 'android'
     });
-    await writeText(uri, `${fm}# ${todayName()}\n\n${section}`);
+    await writeText(uri, `${fm}${entry}\n`);
   } else {
-    const prev = await readText(uri);
-    await writeText(uri, `${prev.replace(/\s+$/, '')}\n\n${section}`);
+    await writeText(uri, appendToDailyFile(await readText(uri), entry));
   }
   return rel;
 }
@@ -1289,7 +1290,8 @@ export async function readDaily(d = new Date()): Promise<{ rel: string; body: st
   if (!(await FileSystem.getInfoAsync(uri)).exists) return { rel, body: '' };
   const { parseFrontmatter } = await import('./format');
   const [, body] = parseFrontmatter(await readText(uri));
-  return { rel, body };
+  // Older notes opened with a `# YYYY-MM-DD` heading that repeats the screen title.
+  return { rel, body: stripLegacyTitle(body) };
 }
 
 // --- assets ---

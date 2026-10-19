@@ -1687,6 +1687,22 @@ select.sm {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* Day notes: ‹ Tue 20 Oct › — small steppers hugging the title. */
+.ed-head .ed-title.ed-title-day {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ed-head .ed-title-day .ed-daynav {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted, inherit);
+}
+.ed-head .ed-title-day .ed-daynav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
 .ed-head .ed-actions {
   margin-left: auto;
   flex-wrap: wrap;

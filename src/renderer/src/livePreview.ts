@@ -66,6 +66,9 @@ const CODE_SPAN_RE = /`([^`\n]+?)`/g
 const BOLD_RE = /\*\*(.+?)\*\*/g
 const TRIPLE_RE = /\*\*\*(.+?)\*\*\*/g
 const ITALIC_RE = /(^|[^*\w])\*([^*\n]+?)\*/g
+// Underscore emphasis only at word boundaries (CommonMark): `_x_`, `__x__` — never snake_case.
+const UNDER_BOLD_RE = /(^|[^\w_])__(?=[^\s_])([^_\n]*?[^\s_])__(?![\w_])/g
+const UNDER_ITALIC_RE = /(^|[^\w_])_(?=[^\s_])([^_\n]*?[^\s_])_(?![\w_])/g
 const STRIKE_RE = /~~(.+?)~~/g
 const LINK_RE = /\[([^\]\n]*)\]\(([^)\n]*)\)/g
 
@@ -821,6 +824,20 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       hide(starFrom, starFrom + 1)
       hide(sTo - 1, sTo)
       mark(starFrom + 1, sTo - 1, 'lp-em')
+    }
+    // `__bold__` / `_italic_` (underscore forms; same hide-markers + style as the `*` forms).
+    for (const [re, n, cls] of [[UNDER_BOLD_RE, 2, 'lp-bold'], [UNDER_ITALIC_RE, 1, 'lp-em']] as const) {
+      for (const m of rest.matchAll(re)) {
+        const prefix = m[1] ?? ''
+        const inner = m[2] ?? ''
+        const from = restBase + (m.index ?? 0) + prefix.length
+        const to = from + n + inner.length + n
+        if (overlaps(claimed, from, to)) continue
+        claimed.push([from, to])
+        hide(from, from + n)
+        hide(to - n, to)
+        mark(from + n, to - n, cls)
+      }
     }
     for (const m of rest.matchAll(STRIKE_RE)) {
       const i = m.index ?? 0

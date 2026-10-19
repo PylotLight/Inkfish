@@ -4,6 +4,7 @@ import type { NoteDoc } from '../../../shared/types'
 import { MINI_WINDOW_REVEAL_ZONE, isPopKey, miniHash, noteIdFromMiniHash } from '../../../shared/mini-window'
 import { applyPrefs, loadPrefs } from '../theme'
 import { baseName } from '../text'
+import { dailyTitleForPath } from '../../../shared/daily'
 import NoteEditor from './NoteEditor'
 import { MINI_HINT_KEY, MINI_HINT_MS, miniHintText, shouldShowMiniHint } from '../../../shared/mini-window-tear'
 
@@ -50,7 +51,7 @@ export default function MiniNote(): React.JSX.Element {
       .then((d) => {
         setDoc(d)
         setMissing(!d)
-        if (d) document.title = `${baseName(d.path)} — Inkfish Mini`
+        if (d) document.title = `${dailyTitleForPath(d.path) ?? baseName(d.path)} — Inkfish Mini`
       })
       .catch(() => setMissing(true))
   }, [noteId])
@@ -216,7 +217,7 @@ export default function MiniNote(): React.JSX.Element {
     else hideTimer.current = window.setTimeout(() => setRevealed(false), 500)
   }
 
-  const title = doc ? baseName(doc.path) : noteId
+  const title = doc ? dailyTitleForPath(doc.path) ?? baseName(doc.path) : noteId
 
   return (
     <div

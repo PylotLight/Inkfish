@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { InboxItem, NoteEntry } from '../../../shared/types'
 import { plain, timeAgo } from '../text'
+import { parseEntries } from '../../../shared/daily'
 
 interface Props {
   notes: NoteEntry[]
@@ -165,7 +166,7 @@ function TodaySection({
   const [busy, setBusy] = useState(false)
   const [sections, setSections] = useState<Array<{ time: string; text: string }>>([])
 
-  // Read the log's timestamped sections (`## HH:MM …`) for the preview.
+  // Read the note's timestamped entries (`- HH:MM …`, or older `## HH:MM` sections) for the preview.
   useEffect(() => {
     if (!entry) {
       setSections([])
@@ -176,21 +177,7 @@ function TodaySection({
       .get(entry.id)
       .then((doc) => {
         if (!live || !doc) return
-        const lines = doc.markdown.split('\n')
-        const secs: Array<{ time: string; text: string }> = []
-        for (let i = 0; i < lines.length; i++) {
-          const m = /^##\s+(.+?)\s*$/.exec(lines[i] ?? '')
-          if (!m) continue
-          let text = ''
-          for (let j = i + 1; j < lines.length; j++) {
-            const t = (lines[j] ?? '').trim()
-            if (t) {
-              text = t.slice(0, 120)
-              break
-            }
-          }
-          secs.push({ time: m[1] ?? '', text })
-        }
+        const secs = parseEntries(doc.markdown).map((e) => ({ time: e.time, text: plain(e.text).slice(0, 120) }))
         setSections(secs.slice(-3).reverse())
       })
       .catch(console.error)
@@ -207,7 +194,7 @@ function TodaySection({
       await window.api.daily.append(body, 'text')
       setDraft('')
       onAppended()
-      notify('Appended to Today ☀')
+      notify("Added to today's note ☀")
     } catch (err: unknown) {
       notify(`Append failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -225,7 +212,7 @@ function TodaySection({
       </div>
       {sections.length === 0 && (
         <p className="muted small hsec-empty">
-          {entry ? 'Log started — nothing appended yet.' : 'Nothing logged yet — jot the first update below.'}
+          'Nothing logged yet — jot the first line below.'
         </p>
       )}
       {sections.length > 0 && (

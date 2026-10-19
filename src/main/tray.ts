@@ -60,8 +60,8 @@ export function createAppTray(cb: TrayCallbacks): void {
   const buildMenu = (): Menu =>
     Menu.buildFromTemplate([
       { label: `New note${hint(profile.captureShortcut)}`, click: cb.onCapture },
-      { label: `Append to today${hint(profile.dailyShortcut)}`, click: () => cb.onDailyAt(...atTray()) },
-      { label: 'Open today', click: cb.onOpenToday },
+      { label: `Add to today's note${hint(profile.dailyShortcut)}`, click: () => cb.onDailyAt(...atTray()) },
+      { label: "Open today's note", click: cb.onOpenToday },
       { label: `Show ${profile.name}`, click: cb.onShow },
       { type: 'separator' },
       ...(cb.menuExtras?.() ?? []),

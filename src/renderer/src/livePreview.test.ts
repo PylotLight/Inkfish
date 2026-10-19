@@ -301,3 +301,15 @@ describe('live preview: caret left on a ref by paste/resize does not reveal its 
     expect(m.imageSourceRevealed(s, from, from + ref.length + 4)).toBe(true)
   })
 })
+
+describe('live preview underscore emphasis', () => {
+  test('_italic_ and __bold__ hide their markers like the * forms', () => {
+    expect(decorated('x\n_Day started._', 0).visible).toBe('x\nDay started.')
+    expect(decorated('x\na __big__ deal', 0).visible).toBe('x\na big deal')
+    expect(decorated('x\n*star* and _under_', 0).visible).toBe('x\nstar and under')
+  })
+  test('snake_case and lone underscores stay literal', () => {
+    expect(decorated('x\nsome_var_name here', 0).visible).toBe('x\nsome_var_name here')
+    expect(decorated('x\na _ b _ c', 0).visible).toBe('x\na _ b _ c')
+  })
+})
