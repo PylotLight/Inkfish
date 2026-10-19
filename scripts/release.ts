@@ -221,8 +221,9 @@ function cutAndroid(p: ReturnType<typeof planAndroid>, desktopTag: string | null
 const desktopPlan = apps.includes('desktop') ? planDesktop() : null
 const androidPlan = apps.includes('android') ? planAndroid() : null
 // What each side ships alongside (the "tested with" line in the release notes).
-const desktopTag = desktopPlan?.tag ?? lastTags.desktop
-const androidTag = androidPlan?.tag ?? lastTags.android
+// A test build pairs with the other side's open beta when there is one.
+const desktopTag = desktopPlan?.tag ?? (args.pre ? openPrerelease('desktop', tags) : null) ?? lastTags.desktop
+const androidTag = androidPlan?.tag ?? (args.pre ? openPrerelease('android', tags) : null) ?? lastTags.android
 
 if (args.dryRun) {
   if (desktopPlan) {

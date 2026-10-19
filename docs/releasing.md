@@ -7,6 +7,7 @@ have their own tag series and workflow, so either can ship without the other.
 | --- | --- | --- |
 | desktop (Mac) | `vX.Y.Z` | `.github/workflows/release.yml` |
 | android | `android-vX.Y.Z` | `.github/workflows/android-release.yml` (never marked latest) |
+| either, test build | `vX.Y.Z-beta.N` / `android-vX.Y.Z-beta.N` | same workflows, as a GitHub pre-release |
 
 ```bash
 bun scripts/release.ts                       # show what changed per app since its last tag, ask which to ship
@@ -15,7 +16,13 @@ bun scripts/release.ts patch --app desktop   # v0.2.12 → v0.2.13 (package.json
 bun scripts/release.ts patch --app both      # both, android tag on the desktop release commit
 bun scripts/release.ts --yes --push          # CI / no prompt: ship whatever changed
 bun scripts/release.ts --dry-run             # plan + changelog preview, change nothing
+bun scripts/release.ts --app both --pre      # test builds: v0.2.15-beta.1 + android-v0.2.8-beta.1 (again → beta.2)
 ```
+
+**Pre-releases** (`--pre`): `X.Y.Z-beta.N` tags become GitHub pre-releases
+(not latest, no cask, no npm) that the apps only offer with "Beta updates"
+on. A normal release afterwards ships `X.Y.Z`. Details:
+[DEVELOPING.md](../DEVELOPING.md#pre-releases-test-builds).
 
 Default bump is **patch**, from each app's own last tag. `minor | major | x.y.z`
 work too (`x.y.z` needs a single `--app`); `auto` lets git-cliff pick
