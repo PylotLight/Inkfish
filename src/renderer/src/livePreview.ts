@@ -6,6 +6,7 @@ import { findImages, imageCandidates, imageSourceOf, isBlockImage } from '../../
 import { copyImage, copyImagePath, copyMarkdown, imageMenuItems, revealImage } from './imageActions'
 import {
   beginImageGestureSpec,
+  concealedImageField,
   endImageGestureSpec,
   imageClickSpec,
   imageGestureField,
@@ -31,7 +32,9 @@ import {
  * Images: `![alt](src)`; `![alt|300](src)` (Obsidian size syntax, also
  * `|300x200`) at that width. Elsewhere the source is replaced by the picture.
  * While the caret/selection touches the ref its source is shown (dimmed) so it
- * stays editable: a ref alone on its line (a "block image") then renders as a
+ * stays editable — unless the caret only landed there as a side effect of a
+ * paste / drop / move (concealedImageField), so the source never pops up
+ * through a later resize until the caret is put on it on purpose. A ref alone on its line (a "block image") then renders as a
  * block widget BELOW the source line at the left edge, never inline beside the
  * text; a ref mixed with text keeps its picture inline after the source.
  * Pictures can be resized from a hover handle and dragged to move (see
@@ -855,7 +858,8 @@ export function livePreview(opts: LivePreviewOptions): Extension {
       // rebuild on caret moves in notes without images.
       const gesture =
         tr.effects.some((e) => e.is(setImageGesture)) ||
-        tr.startState.field(selectedImageField, false) !== tr.state.field(selectedImageField, false)
+        tr.startState.field(selectedImageField, false) !== tr.state.field(selectedImageField, false) ||
+        tr.startState.field(concealedImageField, false) !== tr.state.field(concealedImageField, false)
       if (tr.docChanged || gesture || (tr.selection && hasImages)) {
         return { decorations: buildDecorations(tr.state, opts), hasImages }
       }
@@ -863,7 +867,7 @@ export function livePreview(opts: LivePreviewOptions): Extension {
     },
     provide: (f) => EditorView.decorations.from(f, (v) => v.decorations)
   })
-  return [imageGestureField, selectedImageField, field, copySelectedImage]
+  return [imageGestureField, selectedImageField, concealedImageField, field, copySelectedImage]
 }
 
 /**
