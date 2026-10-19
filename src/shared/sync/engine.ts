@@ -1,6 +1,7 @@
 import { utf8Decode, utf8Encode, fromBase64, toBase64 } from './bytes'
 import { plan, resolveMerge, type Base, type Manifest, type Op } from './plan'
 import { applyRenames, matchRenames, renameCandidates } from './renames'
+import { caseAdoptions, copyExists, rebaseCase, redundantCopies, renameEntries } from './paths'
 import type { ApplyReq } from './protocol'
 
 /**
@@ -11,8 +12,11 @@ import type { ApplyReq } from './protocol'
  */
 
 export interface SyncFs {
-  /** Manifest of every syncable file (vault + `inbox/` + `daily/`). */
-  list(): Promise<Manifest>
+  /**
+   * Manifest of every syncable file (vault + `inbox/` + `daily/`).
+   * `fresh`: ignore any size/mtime hash cache and rehash everything (repair).
+   */
+  list(opts?: { fresh?: boolean }): Promise<Manifest>
   read(path: string): Promise<Uint8Array>
   /** Atomic write (temp + rename), creating parent dirs. */
   write(path: string, data: Uint8Array): Promise<void>
@@ -48,6 +52,10 @@ export interface SyncReport {
   changedLocal: string[]
   /** Files this sync moved on this device (renames from the other side), so open views can follow. */
   movedLocal: Array<{ from: string; to: string }>
+  /** Local files renamed to the Mac's spelling of the same path (case / Unicode only). */
+  adopted?: number
+  /** Redundant conflict copies (identical to what's kept) moved to trash. */
+  cleaned?: number
 }
 
 /** A sync that would delete this many files on one side, and this share of what's synced, asks first. */
@@ -125,9 +133,36 @@ export async function runSync(opts: {
    * deletions are held: nothing changes and the run throws `SyncHeld`.
    */
   confirmDelete?: (d: BigDelete) => Promise<GuardChoice>
+  /**
+   * One-shot repair: rehash everything, ignore the saved base for files one
+   * side lacks (so they're copied, never deleted), and trash `name 2.md`
+   * bumps identical to `name.md`.
+   */
+  repair?: boolean
 }): Promise<SyncReport> {
   const { fs, remote, state } = opts
-  const [local, remoteMan, base] = await Promise.all([fs.list(), remote.manifest(), state.loadBase()])
+  const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [], movedLocal: [], adopted: 0, cleaned: 0 }
+  const [local, remoteMan, savedBase] = await Promise.all([fs.list(opts.repair ? { fresh: true } : undefined), remote.manifest(), state.loadBase()])
+  // Same file, different spelling (APFS is case-insensitive, Android isn't): take the Mac's.
+  await adoptCase(fs, local, remoteMan, report)
+  let base = rebaseCase(savedBase, remoteMan)
+  // Repair: forget what we think was synced for anything one side lacks, so
+  // nothing is read as a deletion — missing files are copied, never deleted.
+  if (opts.repair) base = Object.fromEntries(Object.entries(base).filter(([p]) => p in local && p in remoteMan))
+  // Conflict copies identical to what's kept (left behind by the v0.2.13 loop) → trash, on both sides.
+  for (const p of redundantCopies(local, { bumps: opts.repair })) {
+    const h = local[p]!.hash
+    try {
+      await fs.remove(p)
+    } catch {
+      continue
+    }
+    delete local[p]
+    // Make sure the plan reads it as a deletion (not a missing file to pull back).
+    if (remoteMan[p]?.hash === h) base[p] = h
+    report.cleaned = (report.cleaned ?? 0) + 1
+    report.changedLocal.push(p)
+  }
   let ops = plan(local, remoteMan, base)
   // Renames that also changed the note (Mac title → filename, edit + rename) arrive as
   // "X gone, Y new"; pair them back up into moves before anything is deleted.
@@ -146,7 +181,6 @@ export async function runSync(opts: {
       })
     }
   }
-  const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [], movedLocal: [] }
 
   const want = ops.flatMap((o) => (o.op === 'pull' ? [o.path] : o.op === 'merge' ? [o.remoteFrom ?? o.path] : []))
   const fetched: Record<string, Uint8Array> = { ...prefetched }
@@ -201,7 +235,9 @@ export async function runSync(opts: {
                 remote: utf8Decode(theirs),
                 base: (o.base && (await state.getText(o.base))) ?? undefined
               }
-        const result = resolveMerge(o, text, opts.remoteName, opts.now)
+        let result = resolveMerge(o, text, opts.remoteName, opts.now)
+        // Never mint a conflict copy the vault already holds (same bytes): keep ours at the path.
+        if (result.length > 1 && copyExists(o.path, o.remote, local, remoteMan)) result = [result[0]!]
         for (const w of result) {
           const data = w.text !== undefined ? utf8Encode(w.text) : w.from === 'local' ? ours : theirs
           if (w.path !== o.path || w.text !== undefined) {
@@ -238,6 +274,8 @@ export async function runSync(opts: {
 
   // New base = every path both sides now hold identically.
   const localAfter = await fs.list()
+  // Pushed `work/x.md`, the Mac stored it as `Work/x.md`: follow its spelling now, not next run.
+  await adoptCase(fs, localAfter, remoteAfter, report)
   const next: Base = {}
   for (const [p, e] of Object.entries(localAfter)) if (remoteAfter[p]?.hash === e.hash) next[p] = e.hash
   // Cache base texts for notes so the next concurrent edit can three-way merge.
@@ -255,6 +293,22 @@ export async function runSync(opts: {
   await state.saveBase(next)
   await state.pruneTexts(keep)
   return report
+}
+
+async function adoptCase(fs: SyncFs, local: Manifest, remote: Manifest, report: SyncReport): Promise<void> {
+  const done: Array<{ from: string; to: string }> = []
+  for (const mv of caseAdoptions(local, remote)) {
+    try {
+      await fs.move(mv.from, mv.to)
+    } catch {
+      continue // next run tries again
+    }
+    done.push(mv)
+    report.movedLocal.push(mv)
+    report.changedLocal.push(mv.from, mv.to)
+  }
+  renameEntries(local, done)
+  report.adopted = (report.adopted ?? 0) + done.length
 }
 
 /** Notes larger than this are never compared for rename pairing. */
