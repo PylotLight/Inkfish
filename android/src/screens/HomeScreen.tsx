@@ -9,7 +9,8 @@ import { folderOf, longDate, when } from '../lib/when';
 import type { NoteKind } from '../lib/format';
 import { ScreenHead } from '../components/ScreenHead';
 import { Icon } from '../components/Icon';
-import { parseEntries } from '../../../src/shared/daily';
+import { dailyTitle, localDay, parseEntries } from '../../../src/shared/daily';
+import { entryCountLabel, matchesDay } from '../../../src/shared/journal';
 
 interface Props {
   onMenu: () => void;
@@ -17,6 +18,8 @@ interface Props {
   onCompose: (opts?: { voice?: boolean }) => void;
   onInbox: () => void;
   onToday: () => void;
+  /** Journal timeline, or straight to one day's page. */
+  onJournal: (day?: string) => void;
   onUpdates: () => void;
 }
 
@@ -33,9 +36,9 @@ const KIND_ICON: Record<NoteKind, typeof FileText> = {
  * and quiet labels (Obsidian's file list), accent only on the live bits.
  * Search lives in the top bar and swaps the page for results in place.
  */
-export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpdates }: Props): React.JSX.Element {
+export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJournal, onUpdates }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
-  const { inbox, notes, readDaily } = useStore();
+  const { inbox, notes, days, readDaily } = useStore();
   const upd = useUpdates();
   const [query, setQuery] = useState<string | null>(null);
   const [todayLines, setTodayLines] = useState<string[]>([]);
@@ -43,6 +46,16 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpda
   const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing');
   const recent = useMemo(() => notes.slice(0, 8), [notes]);
   const results = useMemo(() => (query ? searchNotesSync(notes, query) : []), [notes, query]);
+  // Daily notes live outside the note index; match them on their saved summaries.
+  const dayHits = useMemo(
+    () => (query?.trim() ? days.filter((d) => matchesDay(d.day, query, d.snippet)).slice(0, 5) : []),
+    [days, query]
+  );
+  // Past days for the Daily strip (today has its own section above).
+  const pastDays = useMemo(() => {
+    const today = localDay();
+    return days.filter((d) => d.day !== today).slice(0, 8);
+  }, [days]);
 
   // Today preview: the last few logged entries (section bodies, newest last).
   useEffect(() => {
@@ -70,7 +83,16 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpda
           />
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={ui.scrollPad}>
-          {query.trim() && results.length === 0 && <Text style={[ui.meta, { marginTop: 12 }]}>No matches.</Text>}
+          {query.trim() && results.length === 0 && dayHits.length === 0 && <Text style={[ui.meta, { marginTop: 12 }]}>No matches.</Text>}
+          {dayHits.map((d) => (
+            <Pressable key={d.path} onPress={() => onJournal(d.day)} style={ui.listRow}>
+              <Icon as={Sun} size={18} color={c.faint} />
+              <View style={ui.listText}>
+                <Text style={ui.title} numberOfLines={1}>{dailyTitle(d.day)}</Text>
+                <Text style={ui.meta} numberOfLines={1}>{d.snippet || 'Daily note'}</Text>
+              </View>
+            </Pressable>
+          ))}
           {results.map((n) => (
             <Pressable key={n.id} onPress={() => onOpen(n.id)} style={ui.listRow}>
               <Icon as={KIND_ICON[n.kind] ?? FileText} size={18} color={c.faint} />
@@ -141,6 +163,52 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpda
             <Text style={[ui.title, { flex: 1, fontWeight: '400' }]} numberOfLines={1}>{l.slice(5).trim()}</Text>
           </Pressable>
         ))
+      )}
+
+      {/* Daily — past days at a glance, separate from Recent; See all opens the Journal. */}
+      {days.length > 0 && (
+        <>
+          <Pressable onPress={() => onJournal()} style={[ui.row, { justifyContent: 'space-between' }]} accessibilityLabel="Open journal">
+            <Text style={ui.label}>Daily</Text>
+            <Text style={[ui.label, { color: c.faint }]}>{`See all ${days.length} ›`}</Text>
+          </Pressable>
+          {pastDays.length === 0 ? (
+            <Text style={[ui.meta, { marginTop: 0 }]}>Past days collect here.</Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -20 }}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 10, paddingVertical: 4 }}
+            >
+              {pastDays.map((d) => (
+                <Pressable
+                  key={d.path}
+                  onPress={() => onJournal(d.day)}
+                  onLongPress={() => onOpen(d.id)}
+                  delayLongPress={450}
+                  style={{ width: 196, padding: 12, borderRadius: 14, borderWidth: 0.5, borderColor: c.border, backgroundColor: c.card }}
+                  accessibilityLabel={`${dailyTitle(d.day)}, ${entryCountLabel(d.count)}`}
+                >
+                  <View style={[ui.row, { justifyContent: 'space-between', marginBottom: 4 }]}>
+                    <Text style={[ui.title, { fontSize: 14 }]} numberOfLines={1}>{dailyTitle(d.day)}</Text>
+                    {d.count > 0 && <Text style={[ui.meta, { marginTop: 0, fontSize: 11.5 }]}>{String(d.count)}</Text>}
+                  </View>
+                  {d.entries.length > 0 ? (
+                    d.entries.slice(0, 2).map((e, k) => (
+                      <Text key={k} style={[ui.meta, { marginTop: 1 }]} numberOfLines={1}>
+                        <Text style={{ color: c.faint }}>{`${e.time}  `}</Text>
+                        {e.text || '…'}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={[ui.meta, { marginTop: 1 }]} numberOfLines={2}>{d.snippet || 'Empty'}</Text>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+        </>
       )}
 
       {/* Recent */}

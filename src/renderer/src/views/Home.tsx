@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { InboxItem, NoteEntry } from '../../../shared/types'
 import { plain, timeAgo } from '../text'
-import { parseEntries } from '../../../shared/daily'
+import { dailyTitle, localDay, parseEntries } from '../../../shared/daily'
+import { entryCountLabel, summarizeDay, type DayRef } from '../../../shared/journal'
+import { cachedBody, loadBody, useBodiesVersion } from '../dayBodies'
 
 interface Props {
   notes: NoteEntry[]
   inbox: InboxItem[]
   /** Today's day-log index entry, if one exists yet (lives in staging, not the tree). */
   today: NoteEntry | null
+  /** Every daily note, newest day first (index rows — bodies are read lazily for the cards). */
+  days: Array<DayRef<NoteEntry>>
+  onOpenJournal: () => void
   titleOf: (n: NoteEntry) => string
   onOpenNote: (id: string) => void
   onOpenInbox: () => void
@@ -30,7 +35,7 @@ function dirOf(path: string): string {
  * Accent is reserved for state: pending inbox count, hover affordances.
  */
 export default function Home({
-  notes, inbox, today, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify
+  notes, inbox, today, days, onOpenJournal, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify
 }: Props): React.JSX.Element {
   const latest = useMemo(
     () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12),
@@ -88,6 +93,8 @@ export default function Home({
       </div>
 
       <TodaySection entry={today} onOpenToday={onOpenToday} onAppended={onTodayAppended} notify={notify} />
+
+      <DailySection days={days} onOpenNote={onOpenNote} onOpenJournal={onOpenJournal} />
 
       <div className="home-grid">
         <section className="hsec" aria-label="Latest notes">
@@ -212,7 +219,7 @@ function TodaySection({
       </div>
       {sections.length === 0 && (
         <p className="muted small hsec-empty">
-          'Nothing logged yet — jot the first line below.'
+          Nothing logged yet — jot the first line below.
         </p>
       )}
       {sections.length > 0 && (
@@ -241,6 +248,70 @@ function TodaySection({
           {busy ? 'Appending…' : 'Append'}
         </button>
       </div>
+    </section>
+  )
+}
+
+/** Cards on Home for the latest past days (today has its own strip above). */
+const DAILY_CARDS = 6
+
+/**
+ * Daily — the last few day notes as compact cards (date, entry count, first lines), kept apart
+ * from Latest so regular notes don't get buried under dates. "Journal" opens the full timeline.
+ */
+function DailySection({
+  days, onOpenNote, onOpenJournal
+}: {
+  days: Array<DayRef<NoteEntry>>
+  onOpenNote: (id: string) => void
+  onOpenJournal: () => void
+}): React.JSX.Element | null {
+  useBodiesVersion()
+  const today = localDay()
+  const recent = useMemo(() => days.filter((d) => d.day !== today).slice(0, DAILY_CARDS), [days, today])
+  // Six small reads at most; cached by (id, updatedAt) so Home re-renders don't refetch.
+  useEffect(() => {
+    for (const d of recent) void loadBody(d.id, d.updatedAt)
+  }, [recent])
+  if (days.length === 0) return null
+  return (
+    <section className="hsec hdaily" aria-label="Daily notes">
+      <div className="htoday-head">
+        <h3 className="hsec-title">Daily</h3>
+        <button className="hlink" onClick={onOpenJournal}>
+          Journal{days.length > 1 ? ` · ${days.length} days` : ''} →
+        </button>
+      </div>
+      {recent.length === 0 ? (
+        <p className="muted small hsec-empty">Only today so far — past days collect here.</p>
+      ) : (
+        <div className="hdaily-grid">
+          {recent.map((d) => {
+            const body = cachedBody(d.id, d.updatedAt)
+            const sum = summarizeDay(body ?? d.snippet, 2)
+            return (
+              <button key={d.id} className="hday" onClick={() => onOpenNote(d.id)} title={`Open ${dailyTitle(d.day)}`}>
+                <span className="hday-head">
+                  <span className="hday-title">{dailyTitle(d.day)}</span>
+                  <span className="hday-count">{body !== undefined && sum.count > 0 ? entryCountLabel(sum.count) : ''}</span>
+                </span>
+                {sum.entries.length > 0 ? (
+                  sum.entries.map((e, i) => (
+                    <span key={`${e.time}-${i}`} className="hday-line">
+                      <span className="hday-time">{e.time}</span>
+                      <span className="hday-text">{e.text || '…'}</span>
+                    </span>
+                  ))
+                ) : (
+                  <span className="hday-line muted">
+                    <span className="hday-text">{sum.text || (body !== undefined ? 'Empty' : ' ')}</span>
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }

@@ -189,3 +189,77 @@ describe('sync progress re-renders', () => {
     expect(progressWorthRender(p({ done: 9 }), p({ done: 10 }), 1000, 1001)).toBe(true);
   });
 });
+
+describe('journal days (staging/daily summaries)', () => {
+  const DAILY = `${fs.root}inkfish/staging/daily/`;
+  const dayName = (i: number): string => {
+    const d = new Date(2025, 0, 1 + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  function seedDays(n: number): void {
+    // seedVault adds a few legacy September days; start this folder clean.
+    for (const k of [...fs.files.keys()]) if (k.startsWith(DAILY)) fs.files.delete(k);
+    for (let i = 0; i < n; i++) {
+      fs.put(
+        `${DAILY}${dayName(i)}.md`,
+        `---\nkind: daily\ncreated: 2025-01-01T00:00:00.000Z\nsource: android\n---\n- 09:0${i % 10} entry ${i}\n- 12:00 · voice · lunch [[x]]\n- 18:30 home\n- 20:00 tv\n- 22:00 bed\n`
+      );
+    }
+    fs.put(`${DAILY}notes.md`, 'not a day');
+  }
+
+  test('lists every day newest first with counts + first entries, from one folder listing', async () => {
+    seedDays(300);
+    fs.resetCounts();
+    const days = await vault.listDays();
+    expect(days).toHaveLength(300);
+    expect(days[0]!.day > days[299]!.day).toBe(true);
+    expect(days[0]!.path).toBe(`daily/${days[0]!.day}.md`);
+    expect(days[0]!.id).toBe(days[0]!.path);
+    expect(days[0]!.count).toBe(5);
+    expect(days[0]!.entries).toHaveLength(4);
+    expect(days[0]!.entries[1]).toEqual({ time: '12:00', text: 'lunch x', kind: 'voice' });
+    expect(days[0]!.snippet).toContain('lunch x');
+    expect(fs.counts.readDir).toBe(1);
+    expect(fs.counts.read).toBe(300);
+    // never walks the vault
+    expect(fs.counts.stat).toBe(300);
+  });
+
+  test('a second pass re-reads only changed days and drops deleted ones', async () => {
+    seedDays(120);
+    await vault.listDays();
+    const changed = `${DAILY}${dayName(5)}.md`;
+    const f = fs.files.get(changed)!;
+    fs.files.set(changed, { text: `${f.text}- 23:00 late\n`, size: f.size + 14, mtime: f.mtime + 10 });
+    fs.files.delete(`${DAILY}${dayName(6)}.md`);
+    fs.resetCounts();
+    const days = await vault.listDays();
+    expect(fs.counts.read).toBe(1);
+    expect(days).toHaveLength(119);
+    expect(days.find((d) => d.day === dayName(5))!.count).toBe(6);
+  });
+
+  test('summaries ride in the saved index: relaunch has them with zero day reads', async () => {
+    seedDays(200);
+    const index = await vault.listVaultIndex();
+    const days = await vault.listDays();
+    await vault.saveIndexSnapshot(index, [], days);
+    vault.resetMemoryForTests();
+    expect(vault.cachedDays()).toHaveLength(0);
+    fs.resetCounts();
+    await vault.loadIndexSnapshot();
+    expect(fs.total()).toBe(1);
+    expect(vault.cachedDays()).toHaveLength(200);
+    expect(vault.cachedDays()[0]!.day).toBe(days[0]!.day);
+    fs.resetCounts();
+    await vault.listDays();
+    expect(fs.counts.read).toBe(0);
+  });
+
+  test('readDay returns the body without front matter; missing day is empty', async () => {
+    seedDays(3);
+    expect(await vault.readDay(dayName(0))).toBe('- 09:00 entry 0\n- 12:00 · voice · lunch [[x]]\n- 18:30 home\n- 20:00 tv\n- 22:00 bed\n');
+    expect(await vault.readDay('1999-01-01')).toBe('');
+  });
+});

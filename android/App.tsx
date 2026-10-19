@@ -19,9 +19,11 @@ import { Drawer } from './src/components/Drawer';
 import { OpenSyncContext } from './src/components/SyncIndicator';
 import { EditorScreen } from './src/screens/EditorScreen';
 import { DailyScreen } from './src/screens/DailyScreen';
+import { JournalScreen } from './src/screens/JournalScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 
-type Tab = 'home' | 'inbox' | 'today' | 'settings';
+// `journal` isn't a toolbar tab: it opens from Home › Daily and the drawer.
+type Tab = 'home' | 'inbox' | 'today' | 'settings' | 'journal';
 
 // Lucide line icons (Obsidian's set). Capture is the centre +, not a tab:
 // it opens as a full-screen sheet over whatever you were looking at.
@@ -44,6 +46,8 @@ function Shell(): React.JSX.Element {
   // Selected doc id: a routed note id OR an inbox item id (editor handles both).
   const [openId, setOpenId] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
+  /** Day open in the Journal pager (kept here so editing a day and coming back lands on it). */
+  const [journalDay, setJournalDay] = useState<string | null>(null);
   const [shared, setShared] = useState<PendingShare | null>(null);
   const shareSeen = useRef(false);
 
@@ -70,18 +74,19 @@ function Shell(): React.JSX.Element {
     setComposing({ voice: false });
   }, [hasShareIntent, shareIntent, resetShareIntent]);
 
-  // Android back: drawer → capture sheet → editor → Home tab → exit.
+  // Android back: drawer → capture sheet → editor → journal day page → Home tab → exit.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (drawer) setDrawer(false);
       else if (composing) setComposing(null);
       else if (openId) setOpenId(null);
+      else if (tab === 'journal' && journalDay) setJournalDay(null);
       else if (tab !== 'home') setTab('home');
       else return false;
       return true;
     });
     return () => sub.remove();
-  }, [drawer, composing, openId, tab]);
+  }, [drawer, composing, openId, tab, journalDay]);
 
   // Sync badge long-press / review → the sync section lives in Settings.
   const openSync = useCallback(() => {
@@ -162,10 +167,16 @@ function Shell(): React.JSX.Element {
               onCompose={(o) => setComposing({ voice: !!o?.voice })}
               onInbox={() => setTab('inbox')}
               onToday={() => setTab('today')}
+              onJournal={(day) => {
+                setJournalDay(day ?? null);
+                setTab('journal');
+              }}
               onUpdates={() => setTab('settings')}
             />
           ) : tab === 'inbox' ? (
             <InboxScreen onOpen={(id) => setOpenId(id)} onMenu={() => setDrawer(true)} />
+          ) : tab === 'journal' ? (
+            <JournalScreen onMenu={() => setDrawer(true)} onEdit={(id) => setOpenId(id)} day={journalDay} onDay={setJournalDay} />
           ) : tab === 'today' ? (
             <DailyScreen onMenu={() => setDrawer(true)} />
           ) : (
@@ -174,7 +185,7 @@ function Shell(): React.JSX.Element {
         </View>
         {/* Floating glass toolbar (Obsidian-style). Hidden in the editor and the
             capture sheet — both have their own close action. */}
-        {!openId && !composing && (
+        {!openId && !composing && !(tab === 'journal' && journalDay) && (
           <View style={[t.ui.barWrap, { bottom: insets.bottom + 14 }]}>
             {prefs.blur ? (
               <BlurView intensity={70} tint={t.blurTint} style={t.ui.bar}>
@@ -191,6 +202,13 @@ function Shell(): React.JSX.Element {
           onOpenNote={(id) => {
             setDrawer(false);
             setOpenId(id);
+          }}
+          onOpenJournal={() => {
+            setDrawer(false);
+            setComposing(null);
+            setOpenId(null);
+            setJournalDay(null);
+            setTab('journal');
           }}
         />
       </View>

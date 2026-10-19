@@ -5643,3 +5643,563 @@ input[type='password'].text-input {
   padding: 8px 10px;
   margin: 0;
 }
+
+/* ---------- Home › Daily: latest past days as compact cards (kept apart from Latest) ---------- */
+.hdaily .htoday-head {
+  margin-bottom: 8px;
+}
+
+.hdaily-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  /* One row: as many cards as fit the width, the rest drop out (no orphan second row). */
+  grid-template-rows: auto;
+  grid-auto-rows: 0;
+  row-gap: 0;
+  column-gap: 10px;
+  overflow: hidden;
+}
+
+.hday {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 13px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--inset-soft);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.hday:hover {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.hday-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.hday-title {
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: color 0.12s ease;
+}
+
+.hday:hover .hday-title {
+  color: var(--accent);
+}
+
+.hday-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hday-line {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  min-height: 1.35em;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hday-time {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hday-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Journal: every daily note as one month-grouped timeline ---------- */
+.journal {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 6px 10px 40px;
+  animation: rise 0.22s ease both;
+}
+
+.journal-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.journal-head h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.journal-head p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+}
+
+.journal-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.journal-filter {
+  width: min(280px, 40vw);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.journal-filter::placeholder {
+  color: var(--muted);
+}
+
+.journal-filter:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+
+.journal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 236px;
+  gap: clamp(20px, 3.5vw, 44px);
+  align-items: start;
+}
+
+.journal-timeline {
+  min-width: 0;
+  outline: none;
+}
+
+/* Month headers pin while you scroll their days. A plain tint, no backdrop blur — the pane
+ * behind is already the vibrancy layer, so a second blur would only cost GPU time. */
+.jmonth {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  padding: 10px 0 7px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+
+.jmonth:not(:first-child) {
+  margin-top: 14px;
+}
+
+.jmonth-count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* One day. content-visibility lets Chromium skip layout/paint for days far offscreen. */
+.jday {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 10px 13px;
+  margin: 0 -10px;
+  border-radius: 10px;
+  cursor: pointer;
+  scroll-margin-top: 44px;
+  scroll-margin-bottom: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+  transition: background 0.12s ease;
+}
+
+.jday {
+  position: relative;
+}
+
+/* Hairline between days, inset so it doesn't bend round the hover radius. */
+.jday + .jday::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10px;
+  right: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.jday.sel::before,
+.jday.sel + .jday::before,
+.jday:hover::before,
+.jday:hover + .jday::before {
+  border-top-color: transparent;
+}
+
+.jday:hover {
+  background: var(--row-hover);
+}
+
+.jday.sel {
+  background: var(--row-active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.jday-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1px;
+  line-height: 1.05;
+}
+
+.jday-num {
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.jday-wd {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.jday.is-today .jday-num {
+  color: var(--accent);
+}
+
+.jday-body {
+  min-width: 0;
+}
+
+.jday-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.jday-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: color 0.12s ease;
+}
+
+.jday:hover .jday-title {
+  color: var(--accent);
+}
+
+.jday-tag {
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.jday-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jentries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.jentries li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.jtime {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.jtext {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.jkind {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--inset-soft);
+  vertical-align: 1px;
+}
+
+.jextra {
+  display: block !important;
+  padding-left: 50px;
+  font-size: 12px;
+}
+
+.jsnippet {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.journal mark {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.jmore {
+  padding: 14px 0 4px;
+  text-align: center;
+}
+
+.jsentinel {
+  height: 1px;
+}
+
+.journal-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.jcal {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--inset-soft);
+  padding: 10px 10px 12px;
+}
+
+.jcal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.jcal-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.jcal-nav {
+  width: 24px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.jcal-nav:hover:not(:disabled) {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.jcal-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.jcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.jcal-wd {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+
+.jcal-cell {
+  aspect-ratio: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.jcal-cell.is-pad {
+  cursor: default;
+}
+
+.jcal-cell:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.jcal-cell.lvl-1 {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.jcal-cell.lvl-2 {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.jcal-cell.lvl-3 {
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+}
+
+.jcal-cell:not(:disabled):hover {
+  outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.jcal-cell.is-today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  opacity: 1;
+}
+
+.jcal-cell.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.jmonths ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.jmonths button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.jmonths button:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.jmonths button.on {
+  color: var(--text);
+  background: var(--row-active);
+}
+
+.jmonths-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jkeys {
+  margin: 0;
+  line-height: 1.8;
+}
+
+.jkeys kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  background: var(--inset-soft);
+}
+
+@media (max-width: 860px) {
+  .journal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .journal-rail {
+    position: static;
+    order: -1;
+  }
+  .jmonths,
+  .jkeys {
+    display: none;
+  }
+}
+
+html[data-theme='paper'] .jmonth {
+  background: color-mix(in srgb, #f1ece2 97%, transparent);
+}

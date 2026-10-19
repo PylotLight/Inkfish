@@ -12,6 +12,7 @@ export type IconName =
   | 'home'
   | 'inbox'
   | 'sun'
+  | 'journal'
   | 'mic'
   | 'record'
   | 'settings'
@@ -58,6 +59,12 @@ const PATHS: Record<IconName, React.JSX.Element> = {
     <>
       <path d="M21.5 12.5H16l-1.8 2.7H9.8L8 12.5H2.5" />
       <path d="M5.5 5.2 2.5 12.5V18a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-5.5l-3-7.3A2 2 0 0 0 16.6 4H7.4a2 2 0 0 0-1.9 1.2z" />
+    </>
+  ),
+  journal: (
+    <>
+      <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 1 5 18.5z" />
+      <path d="M5 17.5A1.5 1.5 0 0 1 6.5 16H19M9 7.5h6M9 11h4" />
     </>
   ),
   sun: (
