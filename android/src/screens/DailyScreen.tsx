@@ -9,7 +9,7 @@ import { Markdown } from '../components/Markdown';
 import { longDate } from '../lib/when';
 
 /**
- * Today log — appends timestamped sections to `daily/YYYY-MM-DD.md`, like Mac.
+ * Today's note — appends compact `- HH:MM text` lines to `daily/YYYY-MM-DD.md`, like Mac.
  * Reads like a journal: date, the log, then a single add-line with an inline
  * send arrow (no block Append button).
  */
@@ -24,8 +24,8 @@ export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Eleme
   async function load(): Promise<void> {
     const d = await readDaily();
     setRel(d.rel);
-    // The file's own `# YYYY-MM-DD` heading duplicates the page title.
-    setBody(d.body.replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n+/, ''));
+    // readDaily already drops the old `# YYYY-MM-DD` heading (it repeated the page title).
+    setBody(d.body);
   }
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Eleme
           style={ui.inputText}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Add to today…"
+          placeholder="Add a line to today…"
           placeholderTextColor={c.faint}
           multiline
           onSubmitEditing={() => void append()}

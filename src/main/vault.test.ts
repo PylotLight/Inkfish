@@ -194,6 +194,10 @@ describe('vault home', () => {
       expect(existsSync(out.path)).toBe(true)
       const again = v.appendDaily('second update', {}, paths)
       expect(again.vaultRel).toBe(out.vaultRel)
+      // Compact entries: front matter, then one `- HH:MM text` line each — no H1, no ## per entry.
+      const { readFileSync } = await import('node:fs')
+      const body = readFileSync(out.path, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '')
+      expect(body).toMatch(/^- \d{2}:\d{2} standup: shipped x\n- \d{2}:\d{2} second update\n$/)
       // Staging rels resolve into app data, vault rels into the vault.
       expect(v.resolveNoteAbs(out.vaultRel, paths)).toBe(out.path)
       expect(v.resolveNoteAbs('work/n.md', paths)).toBe(join(paths.root, 'work/n.md'))

@@ -87,7 +87,7 @@ export default function Capture(): React.JSX.Element {
         })
       }
       setSaved(true)
-      if (dest === 'today') say('Appended to Today ☀', 'Open ☀ Today in the main window to read it', 2600)
+      if (dest === 'today') say("Added to today's note ☀", 'Open ☀ Today in the main window (⌘⇧D) to read it', 2600)
       window.setTimeout(() => {
         setSaved(false)
         setRaw('')
@@ -353,7 +353,7 @@ export default function Capture(): React.JSX.Element {
         className="cap-input"
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
-        placeholder={dest === 'today' ? 'Add to today’s log… (opens via ☀ Today)' : 'Capture a thought…'}
+        placeholder={dest === 'today' ? 'Add a line to today’s note…' : 'Capture a thought…'}
       />
 
       {recState === 'rec' && caption && (
@@ -494,8 +494,8 @@ export default function Capture(): React.JSX.Element {
           </svg>
         </button>
         <span className="flex-sp" />
-        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()} title={dest === 'today' ? 'Append to today’s day-log (open via ☀ Today)' : 'Save to inbox'}>
-          {saving ? 'Saving…' : dest === 'today' ? 'Append to Today' : 'Save'}
+        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()} title={dest === 'today' ? 'Add a timestamped line to today’s note (open via ☀ Today)' : 'Save to inbox'}>
+          {saving ? 'Saving…' : dest === 'today' ? 'Add to Today' : 'Save'}
           <kbd>⌘↵</kbd>
         </button>
       </div>

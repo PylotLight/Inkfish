@@ -97,6 +97,11 @@ interface Props {
   onTagClick?: (tag: string) => void
   /** Every tag in the vault (chip input autocomplete). */
   allTags?: readonly string[]
+  /** Day notes: ‹ › beside the title to step to the previous / next day note (null = none). */
+  dayNav?: { onPrev: (() => void) | null; onNext: (() => void) | null; prevLabel?: string; nextLabel?: string }
+  /** When `id` is (or becomes) the open doc, put the caret at the end and focus — once per token
+   *  (Today opens straight into typing). */
+  focusEnd?: { id: string; token: number } | null
 }
 
 /**
@@ -108,7 +113,7 @@ interface Props {
  * (sidebar, lists, queue). Edits are ALSO lifted via `onDraft`, where the
  * parent autosaves them (Obsidian-style: no Save button, nothing "unsaved").
  */
-function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint, onEditorBlur, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags }: Props): React.JSX.Element {
+function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint, onEditorBlur, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags, dayNav, focusEnd }: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -301,6 +306,18 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, draft])
 
+  // Caret ready at the end (Today opens straight into typing). Runs after the content swap above.
+  const focusedTokenRef = useRef(0)
+  useEffect(() => {
+    if (!focusEnd || focusEnd.token === focusedTokenRef.current || !doc || doc.id !== focusEnd.id) return
+    const v = viewRef.current
+    if (!v || v.state.doc.toString() !== (draft ?? doc.markdown)) return
+    focusedTokenRef.current = focusEnd.token
+    const end = v.state.doc.length
+    v.dispatch({ selection: { anchor: end }, scrollIntoView: true })
+    v.focus()
+  }, [focusEnd, doc, draft])
+
   // In-note find matches over the current source.
   // Hooks live above the `!doc` early return to keep hook order stable.
   const preSrc = text || (doc && !editedRef.current ? doc.markdown : '')
@@ -385,8 +402,30 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
           </button>
           </div>
         )}
-        <div className="ed-title">
+        <div className={`ed-title${dayNav ? ' ed-title-day' : ''}`}>
+          {dayNav && (
+            <button
+              className="btn ghost sm icon ed-daynav"
+              disabled={!dayNav.onPrev}
+              title={dayNav.prevLabel ? `Previous day note · ${dayNav.prevLabel}` : 'No earlier day notes'}
+              aria-label="Previous day note"
+              onClick={() => dayNav.onPrev?.()}
+            >
+              ‹
+            </button>
+          )}
           <InlineTitle title={title || 'Untitled'} hint={renameHint} onCommit={onRename} onDone={() => viewRef.current?.focus()} />
+          {dayNav && (
+            <button
+              className="btn ghost sm icon ed-daynav"
+              disabled={!dayNav.onNext}
+              title={dayNav.nextLabel ? `Next day note · ${dayNav.nextLabel}` : 'This is the latest day'}
+              aria-label="Next day note"
+              onClick={() => dayNav.onNext?.()}
+            >
+              ›
+            </button>
+          )}
         </div>
         <div className="row ed-actions">
           <button

@@ -3,7 +3,7 @@ import type { MenuBarClick, MenuBarSettings as Settings } from '../../../shared/
 
 const CLICKS: Array<{ id: MenuBarClick; label: string; hint: string }> = [
   { id: 'capture', label: 'Quick capture', hint: 'The capture popover drops out under the icon (same as ⌥Space).' },
-  { id: 'today', label: 'Append to today', hint: 'The capture popover, set to append to today’s note (same as ⇧⌥Space).' },
+  { id: 'today', label: "Add to today's note", hint: 'The capture popover, set to append to today’s note (same as ⇧⌥Space).' },
   { id: 'window', label: 'Inkfish window', hint: 'Shows the main window; click again while it’s in front to hide it.' }
 ]
 

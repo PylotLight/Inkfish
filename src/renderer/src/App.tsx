@@ -4,6 +4,7 @@ import logoUrl from './assets/logo.png'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
 import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
+import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
 import FolderTree, { type KindFilter, type RowActions, type TreeTarget } from './views/FolderTree'
 import { DeletePopover, UndoToast, type Anchor } from './views/DeletePopover'
@@ -527,7 +528,11 @@ function Main(): React.JSX.Element {
     [openEntry]
   )
 
-  /** Open today's day-log (where ⌥Space → Today appends land). Creates it on first use. */
+  /** Set whenever a day note opens so the editor puts the caret at its end, ready to type. */
+  const [focusEnd, setFocusEnd] = useState<{ id: string; token: number } | null>(null)
+  const focusEndOn = useCallback((id: string) => setFocusEnd((f) => ({ id, token: (f?.token ?? 0) + 1 })), [])
+
+  /** Open today's note (where capture → Today appends land). Creates an empty one on first use. */
   const openToday = useCallback(async (): Promise<void> => {
     try {
       const { vaultRel } = await window.api.daily.today()
@@ -536,14 +541,14 @@ function Main(): React.JSX.Element {
       const found = all.find((n) => n.path === vaultRel)
       if (found) {
         selectNote(found.id)
-        notify(`Today ✓ · ${vaultRel}`)
+        focusEndOn(found.id)
       } else {
-        notify(`Today ✓ · ${vaultRel}`)
+        notify(`Couldn't find today's note (${vaultRel})`)
       }
     } catch (err: unknown) {
       notify(`Today failed: ${String(err)}`)
     }
-  }, [notify, selectNote])
+  }, [notify, selectNote, focusEndOn])
 
   /** Delete an inbox capture permanently (routed outputs moved aside, raw removed). */
   const deleteInbox = useCallback(
@@ -1442,6 +1447,39 @@ function Main(): React.JSX.Element {
     return allNotes.find((n) => n.path === `daily/${day}.md`) ?? null
   }, [allNotes])
 
+  /** Day notes that exist, oldest first (`YYYY-MM-DD` → entry). */
+  const dayNotes = useMemo(() => {
+    const out: Array<{ day: string; entry: NoteEntry }> = []
+    for (const n of allNotes) {
+      const day = dayOfPath(n.path)
+      if (day) out.push({ day, entry: n })
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day))
+  }, [allNotes])
+  /** Previous / next existing day note around the open one (skips days with no note). Stepping
+   *  forward past the last one onto today opens (and creates) today's note. */
+  const openDay = dayOfPath(doc?.path ?? '')
+  const dayNav = useMemo(() => {
+    if (!openDay) return null
+    const today = localDay()
+    const prev = [...dayNotes].reverse().find((d) => d.day < openDay) ?? null
+    const next = dayNotes.find((d) => d.day > openDay) ?? null
+    const toToday = !next && openDay < today
+    return {
+      prev,
+      next,
+      toToday,
+      onPrev: prev ? () => { selectNote(prev.entry.id); focusEndOn(prev.entry.id) } : null,
+      onNext: next
+        ? () => { selectNote(next.entry.id); focusEndOn(next.entry.id) }
+        : toToday
+          ? () => void openToday()
+          : null,
+      prevLabel: prev ? dailyTitle(prev.day) : undefined,
+      nextLabel: next ? dailyTitle(next.day) : toToday ? `${dailyTitle(today)} (today)` : undefined
+    }
+  }, [openDay, dayNotes, selectNote, openToday, focusEndOn])
+
   const pickScope = (s: Scope): void => {
     setScope(s)
     if (s === 'home') {
@@ -1500,7 +1538,9 @@ function Main(): React.JSX.Element {
   const paletteCommands: RunnableCommand[] = [
     { id: 'new-note', title: 'New Note', section: 'Notes', keywords: ['create', 'file', 'add'], run: () => { leaveSettings(); doCreateFile(targetDir) } },
     { id: 'new-folder', title: 'New Folder', section: 'Notes', keywords: ['create', 'directory'], run: () => { leaveSettings(); doCreateFolder() } },
-    { id: 'today', title: 'Open Today', section: 'Notes', keywords: ['daily', 'journal', 'day-log'], run: () => { leaveSettings(); void openToday() } },
+    { id: 'today', title: "Open Today's Note", section: 'Notes', accelerator: 'CmdOrCtrl+Shift+D', keywords: ['daily', 'journal', 'day-log', 'today'], run: () => { leaveSettings(); void openToday() } },
+    { id: 'day-prev', title: 'Previous Day Note', section: 'Notes', keywords: ['daily', 'yesterday', 'journal', 'back'], enabled: !!dayNav?.onPrev, run: () => { leaveSettings(); dayNav?.onPrev?.() } },
+    { id: 'day-next', title: 'Next Day Note', section: 'Notes', keywords: ['daily', 'tomorrow', 'journal', 'forward'], enabled: !!dayNav?.onNext, run: () => { leaveSettings(); dayNav?.onNext?.() } },
     { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
       leaveSettings()
       setSideCollapsed(false)
@@ -1581,6 +1621,14 @@ function Main(): React.JSX.Element {
     window.addEventListener('inkfish:open-settings', onOpen)
     return () => window.removeEventListener('inkfish:open-settings', onOpen)
   }, [])
+  const openTodayRef = useRef(() => {
+    leaveSettings()
+    void openToday()
+  })
+  openTodayRef.current = () => {
+    leaveSettings()
+    void openToday()
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return
@@ -1592,6 +1640,11 @@ function Main(): React.JSX.Element {
       else if (key === ',' && !e.shiftKey) {
         e.preventDefault()
         openSettingsRef.current()
+        return
+      } else if (key === 'd' && e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        openTodayRef.current()
         return
       }
       if (!mode) return
@@ -1658,8 +1711,8 @@ function Main(): React.JSX.Element {
           <span className="ribbon-sep" aria-hidden />
           <button
             className="ribbon-btn"
-            title="Open today's day-log"
-            aria-label="Today"
+            title={`Today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'})`}
+            aria-label="Today's note"
             onClick={() => {
               leaveSettings()
               void openToday()
@@ -1748,7 +1801,7 @@ function Main(): React.JSX.Element {
         <div className="side-actions" role="toolbar" aria-label="Quick actions">
           <button
             className="side-action"
-            title={`Open today's day-log (appends from ${captureKey || 'capture'} → Today land here)`}
+            title={`Open today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'}) · ${captureKey || 'quick capture'} → Today adds a timestamped line here`}
             onClick={() => {
               leaveSettings()
               void openToday()
@@ -1970,6 +2023,8 @@ function Main(): React.JSX.Element {
                       : 'Click to rename (display title only, file untouched)'
                   }
                   onEditorBlur={() => titleSync.flush()}
+                  {...(dayNav ? { dayNav: { onPrev: dayNav.onPrev, onNext: dayNav.onNext, prevLabel: dayNav.prevLabel, nextLabel: dayNav.nextLabel } } : {})}
+                  focusEnd={focusEnd}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                   onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
                   popOutTitle={popTitle}

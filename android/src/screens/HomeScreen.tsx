@@ -9,6 +9,7 @@ import { folderOf, longDate, when } from '../lib/when';
 import type { NoteKind } from '../lib/format';
 import { ScreenHead } from '../components/ScreenHead';
 import { Icon } from '../components/Icon';
+import { parseEntries } from '../../../src/shared/daily';
 
 interface Props {
   onMenu: () => void;
@@ -46,14 +47,7 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onUpda
   // Today preview: the last few logged entries (section bodies, newest last).
   useEffect(() => {
     void readDaily().then(({ body }) => {
-      const entries = body
-        .split(/^##\s+/m)
-        .slice(1)
-        .map((sec) => {
-          const [head, ...rest] = sec.split('\n');
-          const text = rest.join(' ').replace(/\s+/g, ' ').trim();
-          return `${(head ?? '').trim()}  ${text}`;
-        });
+      const entries = parseEntries(body).map((e) => `${e.time}  ${e.text}`);
       setTodayLines(entries.slice(-3));
     });
   }, [readDaily, notes, inbox]);

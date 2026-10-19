@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
 import { uniqueName } from '../shared/note-move'
+import { appendToDailyFile, formatEntry, localDay as sharedLocalDay, migrateLegacyDaily } from '../shared/daily'
 
 /**
  * Vault writer (main process only). Plain `.md` files are the source of
@@ -782,9 +783,7 @@ export function isStagingRel(rel: string): boolean {
 
 /** Local calendar day (YYYY-MM-DD). A day log follows the wall clock, not UTC —
  *  in Melbourne `toISOString()` filed everything before 11am under yesterday. */
-export function localDay(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+export const localDay = sharedLocalDay
 
 export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPaths()): { abs: string; vaultRel: string } {
   const day = localDay(date)
@@ -794,28 +793,46 @@ export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPath
   return { abs, vaultRel: `daily/${day}.md` }
 }
 
-/** Append a timestamped section to today's day-log. Creates the file on first use. */
+function dailyFrontmatter(source: NoteSource | undefined): string {
+  return stringifyFrontmatter({ kind: 'daily', created: new Date().toISOString(), source: source ?? 'tray' })
+}
+
+/**
+ * Make sure the day note exists (front matter only — an empty page, no title H1, no filler) and
+ * quietly clean up the old generated body (`# <day>` + `## HH:MM` + `_Day started._`) when that
+ * is EXACTLY all the file holds. Anything the user wrote is left alone.
+ */
+export function ensureDaily(
+  date: Date = new Date(),
+  paths: VaultPaths = vaultPaths(),
+  source?: NoteSource
+): { abs: string; vaultRel: string; created: boolean; migrated: boolean } {
+  ensureVault(paths)
+  const { abs, vaultRel } = dailyFile(date, paths)
+  mkdirSync(dirname(abs), { recursive: true })
+  if (!existsSync(abs)) {
+    writeFileSync(abs, dailyFrontmatter(source), 'utf8')
+    return { abs, vaultRel, created: true, migrated: false }
+  }
+  const migrated = migrateLegacyDaily(readFileSync(abs, 'utf8'), localDay(date))
+  if (migrated !== null) {
+    writeFileSync(abs, migrated, 'utf8')
+    return { abs, vaultRel, created: false, migrated: true }
+  }
+  return { abs, vaultRel, created: false, migrated: false }
+}
+
+/** Append a compact `- HH:MM text` entry to today's day note. Creates the file on first use. */
 export function appendDaily(
   raw: string,
   opts: { kind?: NoteKind; date?: Date; source?: NoteSource } = {},
   paths: VaultPaths = vaultPaths()
 ): { vaultRel: string; path: string } {
-  ensureVault(paths)
   const text = raw.trim()
   if (!text) throw new Error('daily note is empty')
-  const { abs, vaultRel } = dailyFile(opts.date ?? new Date(), paths)
-  mkdirSync(dirname(abs), { recursive: true })
-  const stamp = (opts.date ?? new Date()).toTimeString().slice(0, 5)
-  const kind = opts.kind ?? 'text'
-  const header = `# ${localDay(opts.date ?? new Date())}\n\n`
-  const section = `## ${stamp}${kind !== 'text' ? ` · ${kind}` : ''}\n\n${text}\n\n`
-  if (!existsSync(abs)) {
-    const fm = stringifyFrontmatter({ kind: 'daily', created: new Date().toISOString(), source: opts.source ?? 'tray' })
-    writeFileSync(abs, `${fm}${header}${section}`, 'utf8')
-  } else {
-    const prev = readFileSync(abs, 'utf8')
-    writeFileSync(abs, `${prev.replace(/\s+$/, '')}\n\n${section}`, 'utf8')
-  }
+  const at = opts.date ?? new Date()
+  const { abs, vaultRel } = ensureDaily(at, paths, opts.source)
+  writeFileSync(abs, appendToDailyFile(readFileSync(abs, 'utf8'), formatEntry(text, opts.kind ?? 'text', at)), 'utf8')
   return { vaultRel, path: abs }
 }
 
