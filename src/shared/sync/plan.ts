@@ -25,7 +25,16 @@ export type Op =
   | { op: 'deleteRemote'; path: string }
   | { op: 'moveLocal'; from: string; to: string }
   | { op: 'moveRemote'; from: string; to: string }
-  | { op: 'merge'; path: string; kind: MergeKind; local: string; remote: string; base?: string }
+  | {
+      op: 'merge'
+      path: string
+      kind: MergeKind
+      local: string
+      remote: string
+      base?: string
+      /** Read the remote side from this path (a rename this same run moves to `path` on the remote). */
+      remoteFrom?: string
+    }
 
 const IGNORE = [/^\.inkfish\//, /(^|\/)\.DS_Store$/, /(^|\/)\.trash\//, /(^|\/)\.obsidian\//, /~$/, /\.tmp$/]
 

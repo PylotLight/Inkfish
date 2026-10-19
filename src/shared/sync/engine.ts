@@ -1,5 +1,6 @@
 import { utf8Decode, utf8Encode, fromBase64, toBase64 } from './bytes'
 import { plan, resolveMerge, type Base, type Manifest, type Op } from './plan'
+import { applyRenames, matchRenames, renameCandidates } from './renames'
 import type { ApplyReq } from './protocol'
 
 /**
@@ -45,6 +46,8 @@ export interface SyncReport {
   moved: number
   /** Paths changed on this device by the sync (for re-reading lists). */
   changedLocal: string[]
+  /** Files this sync moved on this device (renames from the other side), so open views can follow. */
+  movedLocal: Array<{ from: string; to: string }>
 }
 
 /** A sync that would delete this many files on one side, and this share of what's synced, asks first. */
@@ -126,6 +129,10 @@ export async function runSync(opts: {
   const { fs, remote, state } = opts
   const [local, remoteMan, base] = await Promise.all([fs.list(), remote.manifest(), state.loadBase()])
   let ops = plan(local, remoteMan, base)
+  // Renames that also changed the note (Mac title → filename, edit + rename) arrive as
+  // "X gone, Y new"; pair them back up into moves before anything is deleted.
+  const prefetched: Record<string, Uint8Array> = {}
+  ops = await pairRenames({ ops, local, remoteMan, base, fs, remote, state, prefetched })
   const big = bigDeletion(ops, base)
   if (big) {
     const choice = opts.confirmDelete ? await opts.confirmDelete(big) : 'hold'
@@ -139,10 +146,11 @@ export async function runSync(opts: {
       })
     }
   }
-  const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [] }
+  const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [], movedLocal: [] }
 
-  const want = ops.flatMap((o) => (o.op === 'pull' || o.op === 'merge' ? [o.path] : []))
-  const fetched = await fetchAll(remote, want, remoteMan)
+  const want = ops.flatMap((o) => (o.op === 'pull' ? [o.path] : o.op === 'merge' ? [o.remoteFrom ?? o.path] : []))
+  const fetched: Record<string, Uint8Array> = { ...prefetched }
+  Object.assign(fetched, await fetchAll(remote, [...new Set(want)].filter((p) => !(p in prefetched)), remoteMan))
 
   const moves: ApplyReq['moves'] = []
   const writes: Array<{ path: string; data: Uint8Array }> = []
@@ -175,13 +183,14 @@ export async function runSync(opts: {
         await fs.move(o.from, o.to)
         report.moved++
         report.changedLocal.push(o.from, o.to)
+        report.movedLocal.push({ from: o.from, to: o.to })
         break
       case 'moveRemote':
         moves.push({ from: o.from, to: o.to })
         report.moved++
         break
       case 'merge': {
-        const theirs = fetched[o.path]
+        const theirs = fetched[o.remoteFrom ?? o.path]
         if (!theirs) break
         const ours = await fs.read(o.path)
         const text =
@@ -246,6 +255,55 @@ export async function runSync(opts: {
   await state.saveBase(next)
   await state.pruneTexts(keep)
   return report
+}
+
+/** Notes larger than this are never compared for rename pairing. */
+const RENAME_TEXT_MAX = 1024 * 1024
+
+/** See `renames.ts`. Reads only the candidate notes; anything unreadable keeps the plain plan. */
+async function pairRenames(c: {
+  ops: Op[]
+  local: Manifest
+  remoteMan: Manifest
+  base: Base
+  fs: SyncFs
+  remote: Remote
+  state: SyncState
+  prefetched: Record<string, Uint8Array>
+}): Promise<Op[]> {
+  const { gone, added } = renameCandidates(c.ops, c.local, c.remoteMan, c.base)
+  if (!gone.length || !added.length) return c.ops
+  const small = (m: Manifest, p: string): boolean => (m[p]?.size ?? 0) <= RENAME_TEXT_MAX
+  const goneText = new Map<string, string>()
+  const addedText = new Map<string, string>()
+  const fromRemote: string[] = []
+  try {
+    for (const g of gone) {
+      const h = c.base[g.path]
+      const cached = h ? await c.state.getText(h) : null
+      if (cached !== null) goneText.set(g.path, cached)
+      // No cached base: compare against the copy that survived (close enough to score).
+      else if (g.side === 'remote' && small(c.local, g.path)) goneText.set(g.path, utf8Decode(await c.fs.read(g.path)))
+      else if (g.side === 'local' && small(c.remoteMan, g.path)) fromRemote.push(g.path)
+    }
+    for (const a of added) {
+      if (a.side === 'local' && small(c.local, a.path)) addedText.set(a.path, utf8Decode(await c.fs.read(a.path)))
+      else if (a.side === 'remote' && small(c.remoteMan, a.path)) fromRemote.push(a.path)
+    }
+    if (fromRemote.length) {
+      const got = await fetchAll(c.remote, fromRemote, c.remoteMan)
+      const isGone = new Set(gone.map((g) => g.path))
+      for (const [p, d] of Object.entries(got)) {
+        c.prefetched[p] = d
+        ;(isGone.has(p) ? goneText : addedText).set(p, utf8Decode(d))
+      }
+    }
+  } catch {
+    // Unreadable right now: fall back to the plain plan (delete + add), as older builds did.
+    return c.ops
+  }
+  const pairs = matchRenames(gone, added, (p, which) => (which === 'gone' ? goneText.get(p) : addedText.get(p)) ?? null)
+  return applyRenames(c.ops, pairs, c.local, c.remoteMan, c.base)
 }
 
 // --- base64 transport helpers for Remote implementations --------------------

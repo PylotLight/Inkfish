@@ -16,7 +16,9 @@ describe('Mac file operations as seen by the phone', () => {
     expect(plan(local, remote, base)).toEqual([{ op: 'moveLocal', from: 'work/Untitled.md', to: 'personal/Groceries.md' }]);
   });
 
-  test('#72 title edit renames + changes content → delete old + pull new, no duplicate', () => {
+  // The bare planner still sees delete + pull here; runSync pairs it back into a move by
+  // content (src/shared/sync/renames.ts, tested in renames.test.ts).
+  test('#72 title edit renames + changes content → planner: delete old + pull new, no duplicate', () => {
     const base: Base = { 'work/Untitled.md': 'h1' };
     const local: Manifest = { 'work/Untitled.md': e('h1') };
     const remote: Manifest = { 'work/Groceries.md': e('h2') };
