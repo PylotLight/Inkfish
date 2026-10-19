@@ -1,9 +1,9 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { moveEntry, renameToTitle } from './move'
-import { movePath, type VaultPaths } from './vault'
+import { movePath, renamePath, type VaultPaths } from './vault'
 
 let root = ''
 let paths: VaultPaths
@@ -114,5 +114,59 @@ describe('renameToTitle', () => {
     put('c.md', '[[Untitled]] [[a/Untitled]]')
     renameToTitle('a/Untitled.md', 'Alpha', paths)
     expect(read('c.md')).toBe('[[Untitled]] [[a/Alpha]]')
+  })
+})
+
+describe('renameToTitle review fixes', () => {
+  test('case-sensitive disk: a differently-cased sibling is a different file and is never overwritten', () => {
+    put('foo.md', 'mine')
+    put('Foo.md', 'theirs')
+    // Only meaningful where both exist (Linux / case-sensitive APFS); on a case-insensitive disk put() wrote one file.
+    if (readdirSync(root).length === 2) {
+      const r = renameToTitle('foo.md', 'Foo', paths)
+      expect(r.rel).toBe('Foo 2.md')
+      expect(read('Foo.md')).toBe('theirs')
+      expect(read('Foo 2.md')).toBe('mine')
+    }
+  })
+  test('inbound [[wikilinks]] in another case are found and rewritten', () => {
+    put('notes/Untitled.md', '# Ideas\n')
+    put('other.md', 'see [[UNTITLED]] and [[notes/untitled|x]]')
+    const r = renameToTitle('notes/Untitled.md', 'Ideas', paths)
+    expect(r.rel).toBe('notes/Ideas.md')
+    expect(read('other.md')).toBe('see [[Ideas]] and [[notes/Ideas|x]]')
+  })
+  test('new name already used elsewhere: rewritten bare links get the folder path', () => {
+    put('a/Untitled.md', '# Ideas\n')
+    put('b/Ideas.md', 'the other ideas')
+    put('c.md', '[[Untitled]] vs [[Ideas]]')
+    renameToTitle('a/Untitled.md', 'Ideas', paths)
+    expect(read('c.md')).toBe('[[a/Ideas]] vs [[Ideas]]')
+  })
+  test('# ^ [ ] in a title never reach the file name (they break [[links]])', () => {
+    put('Untitled.md', '')
+    expect(renameToTitle('Untitled.md', 'Japan #travel [draft]^1', paths).rel).toBe('Japan travel draft 1.md')
+  })
+  test('refuses inbox/daily (staging) paths and paths that climb out of the vault', () => {
+    put('x.md', '')
+    expect(() => renameToTitle('inbox/x.md', 'Y', paths)).toThrow()
+    expect(() => renameToTitle('daily/2026-10-19.md', 'Y', paths)).toThrow()
+    expect(() => renameToTitle('../x.md', 'Y', paths)).toThrow()
+    expect(() => renameToTitle('a/../x.md', 'Y', paths)).toThrow()
+    expect(read('x.md')).toBe('')
+  })
+})
+
+describe('renamePath (hand rename)', () => {
+  test('case-only rename of the same file is allowed (APFS resolves both spellings to it)', () => {
+    put('japan.md', 'x')
+    // Simulate a case-insensitive disk: the new spelling resolves to the same inode.
+    linkSync(join(root, 'japan.md'), join(root, 'Japan.md'))
+    expect(() => renamePath('japan.md', 'Japan', paths)).not.toThrow()
+  })
+  test('a different file under another case still blocks the rename', () => {
+    put('japan.md', 'x')
+    put('Japan.md', 'y')
+    if (readdirSync(root).length === 2) expect(() => renamePath('japan.md', 'Japan', paths)).toThrow(/already exists/)
   })
 })

@@ -24,14 +24,15 @@ export function isTitleSyncPath(path: string): boolean {
 }
 
 /**
- * Title → safe file name (no extension): illegal path chars (`/ \ : * ? " < > |`) and control chars
+ * Title → safe file name (no extension): illegal path chars (`/ \ : * ? " < > |`), the characters
+ * that break a `[[wikilink]]` to the file (`# ^ [ ]`, which Obsidian also refuses) and control chars
  * become spaces, whitespace collapses, leading dots go (no hidden files), trimmed, capped at
  * `MAX_TITLE_FILENAME`. Empty string = nothing usable.
  */
 export function sanitizeFileTitle(title: string): string {
   let s = title
     // eslint-disable-next-line no-control-regex
-    .replace(/[/\\:*?"<>|\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/[/\\:*?"<>|#^[\]\u0000-\u001f\u007f]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[.\s]+/, '')
@@ -125,14 +126,17 @@ export function autoRenameTarget(path: string, baseTitle: string, title: string)
 /**
  * Point `[[Old]]` / `[[Old|alias]]` / `[[Old#heading]]` / `[[dir/Old]]` (and `.md` variants) at a
  * renamed note. `oldPath`/`newPath` are vault rels. Bare `[[Old]]` is only rewritten when
- * `bareUnique` (no other note shares the old stem — otherwise it may mean that one). Fenced code
- * is left alone. Returns the new text and the number of links changed.
+ * `bareUnique` (no other note shares the old stem — otherwise it may mean that one). When
+ * `newAmbiguous` (another note already has the new stem) a rewritten bare link gets the folder path
+ * (`[[dir/New]]`) so it can't resolve to that other note. Fenced code is left alone.
+ * Returns the new text and the number of links changed.
  */
 export function rewriteWikiLinks(
   md: string,
   oldPath: string,
   newPath: string,
-  bareUnique: boolean
+  bareUnique: boolean,
+  newAmbiguous = false
 ): { text: string; changed: number } {
   const oldStem = stemOf(oldPath)
   const newStem = stemOf(newPath)
@@ -151,7 +155,7 @@ export function rewriteWikiLinks(
       if (bare.includes('/')) {
         if (bare.replace(/^\/+/, '').toLowerCase() === oldNoExt.toLowerCase()) next = newNoExt
       } else if (bareUnique && bare.toLowerCase() === oldStem.toLowerCase()) {
-        next = newStem
+        next = newAmbiguous && newNoExt.includes('/') ? newNoExt : newStem
       }
       if (next === null) return whole
       changed++

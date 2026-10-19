@@ -7,7 +7,7 @@ import config from '../app.config.mjs'
 import { parseArgs } from '../lib/core.mjs'
 import { helpText, run, uninstallHint } from '../lib/launcher.mjs'
 import { createUI } from '../lib/ui.mjs'
-import { expandHome, isSafeToDelete, leftoversText, shellPath, uninstallPlan } from '../lib/uninstall.mjs'
+import { expandHome, isSafeToDelete, leftoversText, removeCacheDir, shellPath, uninstallPlan } from '../lib/uninstall.mjs'
 
 const roots = []
 const tempHome = () => { const d = mkdtempSync(join(tmpdir(), 'cli-uninstall-')); roots.push(d); return d }
@@ -172,6 +172,33 @@ describe('run --uninstall', () => {
       ['security', 'delete-generic-password', '-s', 'Inkfish Safe Storage'],
     ])
     expect(r.err).toContain('removed keychain item "Inkfish Safe Storage"')
+  })
+})
+
+describe('cache removal', () => {
+  test('removeCacheDir removes version dirs and temp files, keeps anything else and the dir', () => {
+    const d = join(tempHome(), 'inkfish')
+    mkdirSync(join(d, '0.2.10', 'Inkfish.app'), { recursive: true })
+    mkdirSync(join(d, '0.3.0-beta.1'), { recursive: true })
+    mkdirSync(join(d, '.staging-12-abcd'), { recursive: true })
+    writeFileSync(join(d, 'README.md'), 'not ours')
+    const r = removeCacheDir(d)
+    expect(r.removed.sort()).toEqual(['.staging-12-abcd', '0.2.10', '0.3.0-beta.1'])
+    expect(r.kept).toEqual(['README.md'])
+    expect(existsSync(d)).toBe(true)
+    expect(r.removedRoot).toBe(false)
+  })
+  test('an all-ours cache dir goes entirely', () => {
+    const d = join(tempHome(), 'inkfish')
+    mkdirSync(join(d, '0.2.10'), { recursive: true })
+    expect(removeCacheDir(d).removedRoot).toBe(true)
+    expect(existsSync(d)).toBe(false)
+  })
+  test('prompts use the Inkfish data summary, not another app\'s', () => {
+    const home = populated()
+    const text = leftoversText(config, uninstallPlan(config, { env: {}, home }), { home })
+    expect(text).not.toMatch(/bookmarks|logins/)
+    expect(text).toContain(config.uninstall.dataSummary)
   })
 })
 

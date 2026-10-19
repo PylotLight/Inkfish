@@ -4,6 +4,7 @@ import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
 import { moveEntry, renameToTitle, type MoveEntryResult, type TitleRenameResult } from './move'
+import { sanitizeFileTitle } from '../shared/title-sync'
 import { remapMiniNotes } from './mini-window'
 import { setTags } from '../shared/tags'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -582,12 +583,25 @@ export function registerIpc(): void {
   ipcMain.handle('files:rename-to-title', (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): TitleRenameResult => {
     if (typeof rel !== 'string' || typeof title !== 'string') throw new Error('bad rename')
     const paths = requireNotes()
+    const before = getNote(rel, paths.root)
     const res = renameToTitle(rel, title, paths)
-    if (res.rel === rel) return res
-    // The file name IS the title now — a stale custom display title would hide it.
+    // The file name IS the title now — a stale custom display title would hide it. Overrides are
+    // keyed by note id, which is the front matter `id:` when the note has one (not its path), so
+    // clear both. Also when the name already fit (header title typed back to the file name).
+    const clearOverride = (id: string | undefined): void => {
+      if (id && loadTitles()[id] !== undefined) setTitleOverride(id, '')
+    }
+    if (res.rel === rel) {
+      if (sanitizeFileTitle(title)) {
+        clearOverride(rel)
+        clearOverride(before?.id)
+      }
+      return res
+    }
     migrateTitles(rel, res.rel)
-    setTitleOverride(res.rel, '')
-    removeNote(rel)
+    clearOverride(res.rel)
+    clearOverride(before?.id)
+    removeNote(before?.id ?? rel)
     indexFile(join(paths.root, res.rel), res.rel)
     remapMiniNotes(rel, res.rel)
     for (const r of res.rewritten) {

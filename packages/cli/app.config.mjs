@@ -56,6 +56,8 @@ export default {
       { path: '~/Library/Saved Application State/com.pylotlight.inkfish.savedState', what: 'window restore state' },
       { path: '~/Library/Logs/Inkfish', what: 'logs' },
     ],
+    // For the prompts: "Inkfish's own data is still here (…)". Notes are never part of it.
+    dataSummary: 'settings, note index, inbox captures, trash, AI and sync keys',
     // Electron safeStorage key (encrypts the saved AI API key and paired-phone sync keys).
     keychain: [{ service: 'Inkfish Safe Storage', what: 'safeStorage key' }],
     notes: [

@@ -31,7 +31,7 @@ bun packages/cli/scripts/prepare-publish.mjs --version 0.2.10
 cd packages/cli; and bunx npm pack --dry-run; and git checkout package.json; and rm release.json
 ```
 
-`ci.yml`'s `cli` job runs the tests, smokes the bin, and does that stamp + `npm pack --dry-run` against the latest release on every PR that touches `packages/cli`.
+`ci.yml`'s `cli` job runs the tests, smokes the bin, and does that stamp + `npm pack --dry-run` against the latest release on every push and PR (it isn't path-filtered).
 
 ## Publishing
 

@@ -1,7 +1,7 @@
 // --uninstall / --uninstall --all: remove the launcher's cache, list (or delete) what the app itself
 // left behind. Generic: the paths, keychain items and notes come from config.uninstall.
 import { spawnSync } from 'node:child_process'
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, rmdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, normalize, sep } from 'node:path'
 import { cacheRoot, tildify } from './core.mjs'
@@ -50,6 +50,31 @@ export function uninstallPlan(config, { env = process.env, home = homedir(), exi
   }
 }
 
+/** What the launcher itself puts in its cache dir: `<semver>/` version dirs and in-flight temp files. */
+const CACHE_ENTRY = /^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|\.download-[\w-]+\.zip|\.staging-[\w-]+)$/
+
+/**
+ * Empties the launcher cache: removes only entries the launcher creates (version dirs, temp files),
+ * then the dir itself if that left it empty. `<PREFIX>_CACHE_DIR` is used verbatim, so it can point
+ * anywhere (a folder that merely has the app's name in its path); anything else in it is kept.
+ * @returns {{ removed: string[], kept: string[], removedRoot: boolean }}
+ */
+export function removeCacheDir(root) {
+  /** @type {string[]} */
+  let names = []
+  try { names = readdirSync(root) } catch { return { removed: [], kept: [], removedRoot: false } }
+  const removed = []
+  const kept = []
+  for (const n of names) {
+    if (CACHE_ENTRY.test(n)) { rmSync(`${root}/${n}`, { recursive: true, force: true }); removed.push(n) } else kept.push(n)
+  }
+  let removedRoot = false
+  if (!kept.length) {
+    try { rmdirSync(root); removedRoot = true } catch { /* not empty after all / gone */ }
+  }
+  return { removed, kept, removedRoot }
+}
+
 /** The shell lines that remove one keychain item / one preferences domain. */
 export function keychainCommand(item) {
   return `security delete-generic-password -s ${shellQuote(item.service)}`
@@ -78,7 +103,7 @@ export function leftoversText(config, plan, { home = homedir(), purged = false, 
   const found = plan.data.filter((d) => d.exists)
   if (!purged) {
     if (found.length) {
-      lines.push(`${config.displayName}'s own data is still here (settings, profile, logins):`)
+      lines.push(`${config.displayName}'s own data is still here (${dataSummary(config)}):`)
       for (const d of found) lines.push(`  ${t(d.path)}${d.what ? `   ${d.what}` : ''}`)
       lines.push('remove it with:')
       lines.push(`  rm -rf ${found.map((d) => shellPath(d.path, home)).join(' \\\n         ')}`)
@@ -98,6 +123,11 @@ export function leftoversText(config, plan, { home = homedir(), purged = false, 
   lines.push(`  bun remove -g ${pkg}    # only if you installed it globally`)
   for (const n of plan.notes) lines.push(n)
   return lines.join('\n')
+}
+
+/** Short "what's in the app data" for prompts (config.uninstall.dataSummary). */
+function dataSummary(config) {
+  return config.uninstall?.dataSummary || 'settings and app data'
 }
 
 /** pgrep -x <name>. Unknown (no pgrep, no name) counts as not running. */
@@ -160,7 +190,7 @@ export async function runUninstall(config, o) {
     const targets = plan.data.filter((d) => d.exists)
     const kc = plan.keychain.filter((k) => keychainFound[k.service] === true)
     if (targets.length || kc.length) {
-      o.ui.line(`this deletes ${config.displayName}'s data for good (bookmarks, history, logins, settings):`)
+      o.ui.line(`this deletes ${config.displayName}'s data for good (${dataSummary(config)}):`)
       for (const d of targets) o.ui.line(`  ${t(d.path)}`)
       for (const k of kc) o.ui.line(`  keychain: ${k.service}`)
       if (!o.yes) {
@@ -175,8 +205,9 @@ export async function runUninstall(config, o) {
   if (root === '/' || root === home || !root.includes(config.id)) { o.ui.error(`refusing to delete ${root}`); return 1 }
   if (plan.cache.exists) {
     const bytes = size(root)
-    rmSync(root, { recursive: true, force: true })
+    const r = removeCacheDir(root)
     o.ui.step(`removed the launcher cache ${t(root)}${Number.isFinite(bytes) ? ` (${fmt(bytes)})` : ''}`)
+    if (r.kept.length) o.ui.warn(`left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${t(root)} the launcher didn't put there`)
   } else {
     o.ui.step(`launcher cache ${t(root)} is already gone`)
   }

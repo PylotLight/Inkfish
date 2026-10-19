@@ -530,8 +530,8 @@ export default function SettingsView({
                 <div className="setting-label">
                   Name files from title
                   <span className="muted small setting-hint">
-                    Untitled notes take their file name from the first # heading, and editing the big title renames the file.
-                    Rename a file by hand and it keeps that name.
+                    Untitled notes, and notes still named after their first # heading, take their file name from it (links
+                    to them are updated), and editing the big title renames the file. Rename a file by hand and it keeps that name.
                   </span>
                 </div>
                 <button

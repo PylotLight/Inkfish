@@ -23,6 +23,7 @@
  * @property {string} [bundleId]       macOS bundle id (`defaults delete` on --all)
  * @property {{ path: string, what?: string }[]} [userData]  "~/..." or absolute paths the app writes
  * @property {{ service: string, what?: string }[]} [keychain]  generic-password items by service
+ * @property {string} [dataSummary]    what the app data holds, for the --uninstall prompts ("settings, history")
  * @property {string[]} [notes]        printed at the end (default browser, Homebrew, ...)
  */
 

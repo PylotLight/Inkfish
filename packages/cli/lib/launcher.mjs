@@ -10,7 +10,7 @@ import {
 } from './core.mjs'
 import { readManifest, resolveTarget } from './release.mjs'
 import { createUI, rotationLines } from './ui.mjs'
-import { runUninstall } from './uninstall.mjs'
+import { removeCacheDir, runUninstall } from './uninstall.mjs'
 
 /** @typedef {import('./types.mjs').AppConfig} AppConfig */
 /** @typedef {import('./types.mjs').Target} Target */
@@ -190,8 +190,9 @@ export async function run(config, opts) {
     const root = cacheRoot(config, env)
     if (root === '/' || !root.includes(config.id)) { ui.error(`refusing to delete ${root}`); return 1 }
     const size = dirSize(root)
-    rmSync(root, { recursive: true, force: true })
+    const r = removeCacheDir(root)
     ui.step(`cleared ${home(root)} (${formatBytes(size)})`)
+    if (r.kept.length) ui.warn(`left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${home(root)} the launcher didn't put there`)
     return 0
   }
 
@@ -297,11 +298,17 @@ export async function run(config, opts) {
         ui.warn(`${config.appBundle} isn't in the zip (fine for a test asset)`)
       }
       writeFileSync(join(staging, MARKER), JSON.stringify({ version: t.version, sha256: result.sha256, url: t.url, installedAt: new Date().toISOString() }, null, 2))
-      rmSync(finalDir, { recursive: true, force: true })
-      try {
-        renameSync(staging, finalDir) // atomic on the same filesystem
-      } catch (err) {
-        if (!isCached(config, t.version, env)) throw err // someone else won the race: use theirs
+      if (isCached(config, t.version, env) && !testOverride) {
+        // A parallel run finished first (and may already be running the app from it): keep theirs.
+        rmSync(staging, { recursive: true, force: true })
+      } else {
+        rmSync(finalDir, { recursive: true, force: true }) // a half-written leftover (no marker)
+        try {
+          renameSync(staging, finalDir) // atomic on the same filesystem
+        } catch (err) {
+          if (!isCached(config, t.version, env)) throw err // someone else won the race: use theirs
+          rmSync(staging, { recursive: true, force: true })
+        }
       }
       ui.step(`unpacked with ${tool} to ${home(finalDir)}`)
     } catch (err) {
