@@ -183,6 +183,8 @@ const BATCH_FILES = 200
 const GET_CONCURRENCY = 3
 /** Write-only `apply` batches in flight at once (moves go first, deletes last, alone). */
 const APPLY_CONCURRENCY = 2
+/** Local writes in flight at once, per `get` batch. */
+const WRITE_CONCURRENCY = 4
 /** Local reads in flight at once. */
 const READ_CONCURRENCY = 6
 
@@ -343,7 +345,7 @@ async function runSyncInner(
   progress.total(toFetch.length, toFetch.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
   await mapLimit(batchPaths(toFetch, remoteMan), GET_CONCURRENCY, async (batch) => {
     const got = await remote.get(batch)
-    for (const p of batch) {
+    await mapLimit(batch, WRITE_CONCURRENCY, async (p) => {
       const data = got[p]
       const want = remoteMan[p]?.hash
       progress.step(p, remoteMan[p]?.size ?? 0)
@@ -351,7 +353,7 @@ async function runSyncInner(
       // transit): skip it — nothing half-right is ever written; the next run re-plans.
       if (!data || !want || sha256(data) !== want) {
         report.skipped = (report.skipped ?? 0) + 1
-        continue
+        return
       }
       if (mergeFrom.has(p)) fetched[p] = data
       if (pullSet.has(p)) {
@@ -362,7 +364,7 @@ async function runSyncInner(
         report.pulled++
         report.changedLocal.push(p)
       }
-    }
+    })
   })
 
   const moves: ApplyReq['moves'] = []
