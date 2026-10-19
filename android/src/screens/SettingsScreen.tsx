@@ -275,7 +275,7 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.title}>Version {upd.version}</Text>
         {upd.status === 'available' || upd.status === 'ready' ? (
           <Pressable onPress={() => void upd.update()} style={ui.quiet}>
-            <Text style={ui.quietText}>{upd.status === 'ready' ? 'Install' : `Update to ${upd.release?.version}`}</Text>
+            <Text style={ui.quietText}>{upd.status === 'ready' ? 'Install' : `Update to ${upd.release?.version}${upd.release?.prerelease ? ' (beta)' : ''}`}</Text>
           </Pressable>
         ) : upd.status === 'downloading' ? (
           <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Downloading {Math.round(upd.progress * 100)}%</Text>
@@ -301,6 +301,13 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.title}>Check automatically</Text>
         {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.autoUpdate, (v) => update({ autoUpdate: v }))}
       </View>
+      <View style={[ui.row, { justifyContent: 'space-between', marginTop: 12 }]}>
+        <Text style={ui.title}>Beta updates</Text>
+        {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.betaUpdates, (v) => update({ betaUpdates: v }))}
+      </View>
+      <Text style={[ui.meta, { marginTop: 0 }]}>
+        {prefs.betaUpdates ? 'Also offers test builds (pre-releases like 0.2.8-beta.1). They can be rough.' : 'Full releases only.'}
+      </Text>
 
       <Text style={[ui.meta, { marginTop: 28, color: c.faint }]}>
         On this phone: voice memos are transcribed on Mac, search matches text, and routing uses folder keywords.

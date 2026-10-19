@@ -1,7 +1,10 @@
 name: android-release
 
 # Signed Android APK → GitHub Release, picked up by the app's in-app updater
-# (android/src/lib/updater.ts). Trigger: push a tag `android-vX.Y.Z`
+# (android/src/lib/updater.ts). A tag with a '-' (android-vX.Y.Z-beta.N, from
+# `release.ts --pre`) is a test build: GitHub pre-release, notes say so, and the
+# app only offers it with Settings › Updates › Beta updates on.
+# Trigger: push a tag `android-vX.Y.Z`
 #   git tag android-v0.2.0 && git push origin android-v0.2.0
 # or run manually with a version. The Mac release workflow only matches `v*`,
 # and these releases are never marked "latest", so the Homebrew cask is unaffected.
@@ -15,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version, e.g. 0.2.0 (creates tag android-v<version>)"
+        description: "Version, e.g. 0.2.0 or 0.2.1-beta.1 (creates tag android-v<version>; a '-' makes it a pre-release)"
         required: true
 
 permissions:
@@ -43,11 +46,13 @@ jobs:
         id: v
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME#android-v}"; fi
-          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must be X.Y.Z, got '$V'"; exit 1; }
-          IFS=. read -r MA MI PA <<< "$V"
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "version must be X.Y.Z or X.Y.Z-beta.N, got '$V'"; exit 1; }
+          PRE=false; [[ "$V" == *-* ]] && PRE=true
+          # versionCode from X.Y.Z only: a beta shares its final's code, so beta → beta → final each
+          # install over the last (Android only refuses a *lower* code) and stable phones still upgrade.
+          IFS=. read -r MA MI PA <<< "${V%%-*}"
           CODE=$((MA * 10000 + MI * 100 + PA))
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          { echo "version=$V"; echo "code=$CODE"; echo "pre=$PRE"; } >> "$GITHUB_OUTPUT"
           jq --arg v "$V" --argjson c "$CODE" '.expo.version=$v | .expo.android.versionCode=$c' app.json > app.tmp && mv app.tmp app.json
           echo "Inkfish Android $V (versionCode $CODE)"
 
@@ -129,15 +134,27 @@ jobs:
 
       - name: notes
         working-directory: .
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
-          PREV=$(git tag --list 'android-v*' --sort=-v:refname | grep -vx "android-v${{ steps.v.outputs.version }}" | head -1 || true)
+          # since the previous *stable* android tag (betas skipped), so the final after betas covers them
+          # (PREV = newest stable android tag below this version's X.Y.Z)
+          BASE="android-v${VERSION%%-*}"
+          PREV=$( { git tag --list 'android-v*' | grep -vE '^android-v[0-9]+\.[0-9]+\.[0-9]+-'; echo "$BASE"; } | sort -uV | grep -B1 -x "$BASE" | head -1)
+          [ "$PREV" = "$BASE" ] && PREV=""
           RANGE=${PREV:+$PREV..HEAD}
           {
             echo "Inkfish for Android ${{ steps.v.outputs.version }}"
             echo
+            if [ "${{ steps.v.outputs.pre }}" = true ]; then
+              echo "> **test build** (pre-release${PREV:+, changes since $PREV}). Only phones with Settings › Updates › Beta updates on are offered it."
+              echo
+            fi
             git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared | head -40
-            # Which Mac build this phone build was tested against (newest v* tag, android-v* excluded).
-            MAC=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1 || true)
+            # Which Mac build this phone build was tested against (newest stable v* tag, android-v* excluded;
+            # newest v* of any kind for a test build).
+            if [ "${{ steps.v.outputs.pre }}" = true ]; then MAC=$(git -c versionsort.suffix=- tag --list 'v[0-9]*' --sort=-v:refname | head -1 || true)
+            else MAC=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1 || true); fi
             if [ -n "$MAC" ]; then echo; echo "tested with $MAC"; fi
           } > ANDROID_NOTES.md
           cat ANDROID_NOTES.md
@@ -146,7 +163,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v${{ steps.v.outputs.version }}
-          name: Android ${{ steps.v.outputs.version }}
+          name: Android ${{ steps.v.outputs.version }}${{ steps.v.outputs.pre == 'true' && ' (test build)' || '' }}
           body_path: ANDROID_NOTES.md
+          prerelease: ${{ steps.v.outputs.pre == 'true' }}
           make_latest: "false"
           files: Inkfish-android-${{ steps.v.outputs.version }}.apk
