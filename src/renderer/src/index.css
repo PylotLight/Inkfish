@@ -3190,6 +3190,12 @@ input.side-search:focus {
 .foot-btn.s-error {
   color: var(--danger);
 }
+.s-outdated .sync-badge-dot {
+  background: var(--danger);
+}
+.foot-btn.s-outdated {
+  color: var(--danger);
+}
 
 /* Only animates while a phone session is actually in flight. */
 .foot-btn.s-syncing .sync-badge-icon {

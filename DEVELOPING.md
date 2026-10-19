@@ -74,7 +74,13 @@ Any unpackaged run (`bun run dev`, `bun run start`, `electron .`) is **Inkfish D
 
 ## Releasing
 
-`bun run release` bumps the version, regenerates `CHANGELOG.md` with git-cliff and tags `vX.Y.Z`. Pushing the tag runs `.github/workflows/release.yml`: macOS arm64 zip + dmg, GitHub release, Homebrew cask bump, then the npm launcher. Details, the tap, signing and the npm setup: [docs/releasing.md](docs/releasing.md).
+Mac and Android release independently:
+
+- `bun scripts/release.ts patch --app desktop`: bumps `package.json`, regenerates `CHANGELOG.md` with git-cliff, tags `vX.Y.Z`. The tag runs `.github/workflows/release.yml` (macOS arm64 zip + dmg, GitHub release, Homebrew cask, npm launcher).
+- `bun scripts/release.ts patch --app android`: tags `android-vX.Y.Z` (patch from the last android tag). The tag runs `.github/workflows/android-release.yml` (signed APK, GitHub release, never marked latest).
+- `--app both` does both; leave `--app` off to see what changed per app since its last tag and pick (`src/shared/sync/**` changes suggest both). `--yes` skips the prompt, `--push` pushes, `--dry-run` changes nothing.
+
+Release notes carry a `tested with android-vX` (Mac) / `tested with vY` (Android) line. Sync stays compatible across mixed versions through the `protocol` / `minPeer` handshake; a too-old side shows "update phone" / "update Mac" on its sync badge. Details, the tap, signing and the npm setup: [docs/releasing.md](docs/releasing.md).
 
 ## Repo map
 

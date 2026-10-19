@@ -1,16 +1,49 @@
 # Releasing
 
-Releases are tag-driven: one local command cuts the release, one GitHub
-Actions workflow does the rest.
+Releases are tag-driven and per app: the Mac app and the Android app each
+have their own tag series and workflow, so either can ship without the other.
+
+| app | tag | workflow |
+| --- | --- | --- |
+| desktop (Mac) | `vX.Y.Z` | `.github/workflows/release.yml` |
+| android | `android-vX.Y.Z` | `.github/workflows/android-release.yml` (never marked latest) |
 
 ```bash
-bun run release            # let git-cliff pick the next version from commits
-bun run release minor      # or force a bump: patch | minor | major | 1.2.3
-bun run release --dry-run  # preview version + changelog, change nothing
-git push --follow-tags     # or pass --push to do it in one go
+bun scripts/release.ts                       # show what changed per app since its last tag, ask which to ship
+bun scripts/release.ts patch --app android   # android-v0.2.5 → android-v0.2.6 (tag only)
+bun scripts/release.ts patch --app desktop   # v0.2.12 → v0.2.13 (package.json + CHANGELOG + tag)
+bun scripts/release.ts patch --app both      # both, android tag on the desktop release commit
+bun scripts/release.ts --yes --push          # CI / no prompt: ship whatever changed
+bun scripts/release.ts --dry-run             # plan + changelog preview, change nothing
 ```
 
-What happens, end to end:
+Default bump is **patch**, from each app's own last tag. `minor | major | x.y.z`
+work too (`x.y.z` needs a single `--app`); `auto` lets git-cliff pick
+(desktop only). Nothing is pushed without `--push`; otherwise it prints the
+`git push origin HEAD <tags>` to run.
+
+Change detection (no `--app`): `android/**` counts for android, everything
+else that ships counts for desktop, `src/shared/**` counts for both. Docs,
+`*.md`, tests, `Casks/`, `.github/` and the release script itself don't count.
+Anything in `src/shared/sync/**` suggests **both** so the phone and the Mac
+stay on the same sync protocol.
+
+Every release body ends with a `tested with <other app's tag>` line
+(desktop: newest `android-v*`; android: newest `v*`), so you can see which
+pair was tested together. Write hand-edited notes with the same line.
+
+### Mixing versions (sync protocol handshake)
+
+The Mac's `/v1/hello` advertises `protocol` + `minPeer`, the phone sends the
+same as `x-inkfish-protocol` / `x-inkfish-min-peer` headers. Missing = protocol
+1, so older builds keep working. Bump `PROTOCOL` in
+`src/shared/sync/protocol.ts` when the wire format changes and raise
+`MIN_PEER` only when an older peer would actually break: the side that's
+too old then shows **update phone** / **update Mac** on the sync badge
+(Mac sidebar, phone header) instead of failing quietly.
+
+Desktop, end to end (android is just the tag → APK → GitHub release, see
+`android/build/README.md`):
 
 1. **`scripts/release.ts`** bumps `package.json`, regenerates `CHANGELOG.md`
    with [git-cliff](https://git-cliff.org) (conventional commits → Keep a

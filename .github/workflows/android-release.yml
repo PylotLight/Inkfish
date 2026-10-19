@@ -135,7 +135,10 @@ jobs:
           {
             echo "Inkfish for Android ${{ steps.v.outputs.version }}"
             echo
-            git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared/sync | head -40
+            git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared | head -40
+            # Which Mac build this phone build was tested against (newest v* tag, android-v* excluded).
+            MAC=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1 || true)
+            if [ -n "$MAC" ]; then echo; echo "tested with $MAC"; fi
           } > ANDROID_NOTES.md
           cat ANDROID_NOTES.md
 

@@ -7,7 +7,7 @@ import { when } from './when';
  * phase / lastSync changes (launch, foreground, edits, the 90 s open-app poll).
  */
 
-export type IndicatorState = 'hidden' | 'connecting' | 'syncing' | 'synced' | 'idle' | 'offline' | 'held' | 'error';
+export type IndicatorState = 'hidden' | 'connecting' | 'syncing' | 'synced' | 'idle' | 'offline' | 'held' | 'error' | 'outdated';
 export type IndicatorTone = 'accent' | 'muted' | 'faint' | 'danger';
 
 export interface IndicatorInput {
@@ -17,6 +17,8 @@ export interface IndicatorInput {
   error: string | null;
   /** Files waiting on a big-deletion choice (phase 'held'). */
   heldCount?: number;
+  /** Phase 'outdated': which app needs updating (protocol handshake). */
+  outdated?: 'mac' | 'phone' | null;
 }
 
 export interface SyncIndicator {
@@ -49,6 +51,17 @@ export function syncIndicator(s: IndicatorInput, now = Date.now()): SyncIndicato
         state: 'held',
         short: 'review',
         label: n ? `${n} deletion${n === 1 ? '' : 's'} waiting for you` : 'Sync paused — review deletions',
+        tone: 'danger',
+        spinning: false,
+        tap: 'open'
+      };
+    }
+    case 'outdated': {
+      const app = s.outdated ?? 'phone';
+      return {
+        state: 'outdated',
+        short: app === 'mac' ? 'update Mac' : 'update phone',
+        label: app === 'mac' ? `Update Inkfish on ${mac} to keep syncing` : `Update Inkfish on this phone to keep syncing with ${mac}`,
         tone: 'danger',
         spinning: false,
         tap: 'open'
