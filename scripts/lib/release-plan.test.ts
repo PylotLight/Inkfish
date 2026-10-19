@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import {
   appsForPath,
+  baseVersion,
   bumpVersion,
   changesFor,
+  cmpSemver,
   formatSummary,
   latestTag,
+  nextPreNumber,
   nextVersion,
+  openPrerelease,
   parseReleaseArgs,
   suggestApps,
   testedWithLine,
@@ -94,7 +98,7 @@ describe('change detection', () => {
 
 describe('args', () => {
   test('defaults: patch, ask which app', () => {
-    expect(parseReleaseArgs([])).toEqual({ version: 'patch', app: null, push: false, dryRun: false, yes: false, help: false })
+    expect(parseReleaseArgs([])).toEqual({ version: 'patch', app: null, push: false, dryRun: false, yes: false, help: false, pre: null })
   })
   test('patch --app android|desktop|both, --app=, --yes for CI', () => {
     expect(parseReleaseArgs(['patch', '--app', 'android'])).toMatchObject({ version: 'patch', app: 'android' })
@@ -112,5 +116,71 @@ describe('args', () => {
   test('tested-with line', () => {
     expect(testedWithLine('android-v0.2.5')).toBe('tested with android-v0.2.5')
     expect(testedWithLine(null)).toBeNull()
+  })
+})
+
+describe('pre-releases', () => {
+  test('semver precedence: betas sort below their release, numerically', () => {
+    expect(cmpSemver('0.2.15-beta.1', '0.2.15')).toBeLessThan(0)
+    expect(cmpSemver('0.2.15', '0.2.15-beta.1')).toBeGreaterThan(0)
+    expect(cmpSemver('0.2.15-beta.2', '0.2.15-beta.10')).toBeLessThan(0)
+    expect(cmpSemver('0.2.15-beta.9', '0.2.14')).toBeGreaterThan(0)
+    expect(cmpSemver('0.2.15-beta.1', '0.2.15-rc.1')).toBeLessThan(0)
+    expect(cmpSemver('0.2.15-beta', '0.2.15-beta.1')).toBeLessThan(0)
+    expect(cmpSemver('0.2.15-beta.1', '0.2.15-beta.1')).toBe(0)
+    expect(baseVersion('0.2.15-beta.3')).toBe('0.2.15')
+  })
+
+  const stable = ['v0.2.14', 'android-v0.2.7']
+  test('first --pre: patch bump + beta.1, per app', () => {
+    expect(nextVersion('desktop', 'v0.2.14', 'patch', '0.2.14', { tags: stable, pre: 'beta' })).toBe('0.2.15-beta.1')
+    expect(nextVersion('android', 'android-v0.2.7', 'patch', '0.0.0', { tags: stable, pre: 'beta' })).toBe('0.2.8-beta.1')
+    expect(nextVersion('desktop', 'v0.2.14', 'minor', '0.2.14', { tags: stable, pre: 'beta' })).toBe('0.3.0-beta.1')
+  })
+
+  const open = [...stable, 'v0.2.15-beta.1', 'v0.2.15-beta.2', 'android-v0.2.8-beta.1']
+  test('repeated --pre bumps the counter (and never collides across apps)', () => {
+    expect(openPrerelease('desktop', open)).toBe('v0.2.15-beta.2')
+    expect(openPrerelease('android', open)).toBe('android-v0.2.8-beta.1')
+    expect(nextVersion('desktop', latestTag('desktop', open), 'patch', '0.2.15-beta.2', { tags: open, pre: 'beta' })).toBe('0.2.15-beta.3')
+    expect(nextVersion('android', latestTag('android', open), 'patch', '0.0.0', { tags: open, pre: 'beta' })).toBe('0.2.8-beta.2')
+    expect(nextPreNumber('desktop', '0.2.15', 'beta', [...open, 'v0.2.15-beta.10'])).toBe(11)
+    expect(nextPreNumber('desktop', '0.2.15', 'rc', open)).toBe(1)
+  })
+
+  test('a normal release after betas ships the final version', () => {
+    expect(latestTag('desktop', open)).toBe('v0.2.14') // change detection still runs from the last stable tag
+    expect(nextVersion('desktop', 'v0.2.14', 'patch', '0.2.15-beta.2', { tags: open })).toBe('0.2.15')
+    expect(nextVersion('android', 'android-v0.2.7', 'patch', '0.0.0', { tags: open })).toBe('0.2.8')
+  })
+
+  test('a bigger bump goes past the open beta', () => {
+    expect(nextVersion('desktop', 'v0.2.14', 'minor', '0.2.14', { tags: open })).toBe('0.3.0')
+    expect(nextVersion('desktop', 'v0.2.14', 'minor', '0.2.14', { tags: open, pre: 'beta' })).toBe('0.3.0-beta.1')
+    // an open minor beta wins over a patch bump
+    expect(nextVersion('desktop', 'v0.2.14', 'patch', '0.2.14', { tags: ['v0.2.14', 'v0.3.0-beta.1'] })).toBe('0.3.0')
+  })
+
+  test('once the final ships, its betas are closed', () => {
+    const shipped = [...open, 'v0.2.15']
+    expect(openPrerelease('desktop', shipped)).toBeNull()
+    expect(nextVersion('desktop', latestTag('desktop', shipped), 'patch', '0.2.15', { tags: shipped, pre: 'beta' })).toBe('0.2.16-beta.1')
+    expect(nextVersion('desktop', latestTag('desktop', shipped), 'patch', '0.2.15', { tags: shipped })).toBe('0.2.16')
+  })
+
+  test('explicit versions', () => {
+    expect(nextVersion('desktop', 'v0.2.14', '0.4.0', '0.2.14', { tags: open, pre: 'beta' })).toBe('0.4.0-beta.1')
+    expect(nextVersion('desktop', 'v0.2.14', '0.2.15', '0.2.14', { tags: open, pre: 'beta' })).toBe('0.2.15-beta.3')
+    expect(nextVersion('desktop', 'v0.2.14', '0.4.0-rc.7', '0.2.14', { tags: open })).toBe('0.4.0-rc.7')
+  })
+
+  test('args: --pre, --pre=rc, prerelease keyword', () => {
+    expect(parseReleaseArgs(['patch', '--app', 'both', '--pre', '--yes'])).toMatchObject({ version: 'patch', app: 'both', pre: 'beta', yes: true })
+    expect(parseReleaseArgs(['--prerelease'])).toMatchObject({ pre: 'beta' })
+    expect(parseReleaseArgs(['--pre=rc', '--app=desktop'])).toMatchObject({ pre: 'rc', app: 'desktop' })
+    expect(parseReleaseArgs(['prerelease', '--app', 'android'])).toMatchObject({ version: 'patch', pre: 'beta', app: 'android' })
+    expect(parseReleaseArgs(['prerelease', 'minor'])).toMatchObject({ version: 'minor', pre: 'beta' })
+    expect(parseReleaseArgs(['--pre=1x'])).toHaveProperty('error')
+    expect(parseReleaseArgs(['0.3.0-beta.1', '--pre', '--app', 'desktop'])).toHaveProperty('error')
   })
 })

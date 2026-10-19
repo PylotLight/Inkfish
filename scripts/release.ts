@@ -1,4 +1,4 @@
-// Release script: `bun scripts/release.ts [patch|minor|major|x.y.z|auto] [--app desktop|android|both] [--push] [--dry-run] [--yes]`
+// Release script: `bun scripts/release.ts [patch|minor|major|x.y.z|auto] [--app desktop|android|both] [--pre[=beta]] [--push] [--dry-run] [--yes]`
 //
 // Desktop (Mac) and Android ship on their own tag series:
 //   desktop  vX.Y.Z          → .github/workflows/release.yml (dmg/zip, cask, npm launcher)
@@ -16,6 +16,12 @@
 // Android: tags android-vX.Y.Z on HEAD (patch from the last android tag). No
 //   commit: the workflow stamps app.json from the tag.
 //
+// --pre cuts a test build instead: vX.Y.Z-beta.N / android-vX.Y.Z-beta.N (GitHub
+//   pre-release, no cask, no npm, only offered to people with beta updates on).
+//   Running it again bumps N; a normal release afterwards ships X.Y.Z. Desktop
+//   pre-releases bump package.json but leave CHANGELOG.md alone (the final
+//   release's section covers the betas).
+//
 // Default bump is patch. `auto` = git-cliff's suggestion (desktop only).
 // Nothing is pushed without --push. See docs/releasing.md.
 import { execFileSync } from 'node:child_process'
@@ -28,7 +34,9 @@ import {
   appsOf,
   changesFor,
   formatSummary,
+  isPrerelease,
   latestTag,
+  openPrerelease,
   nextVersion,
   parseAppChoice,
   parseReleaseArgs,
@@ -75,11 +83,15 @@ if ('error' in parsed) fail(parsed.error)
 const args = parsed
 
 if (args.help) {
-  console.log(`Usage: bun scripts/release.ts [patch|minor|major|x.y.z|auto] [--app desktop|android|both] [--push] [--dry-run] [--yes]
+  console.log(`Usage: bun scripts/release.ts [patch|minor|major|x.y.z|auto] [--app desktop|android|both] [--pre[=beta]] [--push] [--dry-run] [--yes]
 
   --app       desktop (vX.Y.Z), android (android-vX.Y.Z) or both. Without it the
               script shows what changed since each app's last tag and asks.
   --yes       don't ask: release whatever changed (sync changes → both). For CI.
+  --pre       test build: X.Y.Z-beta.N (GitHub pre-release, no cask / npm,
+              only offered in-app with "beta updates" on). Again → beta.N+1;
+              a normal release afterwards ships X.Y.Z. --pre=rc for rc.N.
+              'prerelease' as the first word means the same.
   --push      push the release commit + tags to origin when done
   --dry-run   show the plan and the changelog preview; change nothing
 
@@ -154,14 +166,16 @@ function planDesktop(): { version: string; tag: string; cliff: { bin: string; ba
   if (args.version === 'auto') {
     // git-cliff weighs conventional commits (feat → minor, fix → patch, breaking → major).
     const suggested = run(cliff.bin, [...cliff.base, '--bumped-version'], true).replace(/^v/, '')
-    version = SEMVER.test(suggested) ? suggested : pkg.version
+    const base = SEMVER.test(suggested) ? suggested : pkg.version
+    version = nextVersion('desktop', lastTags.desktop, base, pkg.version, { tags, pre: args.pre })
     info(`git-cliff suggests ${suggested || '(none)'} → using ${version}`)
   } else {
-    version = nextVersion('desktop', lastTags.desktop, args.version, pkg.version)
+    version = nextVersion('desktop', lastTags.desktop, args.version, pkg.version, { tags, pre: args.pre })
   }
   const tag = `${TAG_PREFIX.desktop}${version}`
   if (tags.includes(tag)) fail(`tag ${tag} already exists`)
-  info(`desktop: ${lastTags.desktop ?? pkg.version} → ${tag}`)
+  const open = openPrerelease('desktop', tags)
+  info(`desktop: ${lastTags.desktop ?? pkg.version}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`)
   return { version, tag, cliff }
 }
 
@@ -171,8 +185,11 @@ function cutDesktop(p: ReturnType<typeof planDesktop>): void {
   pkg.version = p.version
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
   info('updated package.json')
-  cliffExec(['--tag', p.tag, '--output', changelogPath])
-  info('regenerated CHANGELOG.md')
+  if (isPrerelease(p.version)) info('pre-release: CHANGELOG.md left alone (the final release covers it)')
+  else {
+    cliffExec(['--tag', p.tag, '--output', changelogPath])
+    info('regenerated CHANGELOG.md')
+  }
   run('git', ['add', 'package.json', 'CHANGELOG.md'])
   // Re-cutting after a failed push can leave nothing staged — skip the commit and just tag.
   if (run('git', ['diff', '--cached', '--name-only'])) run('git', ['commit', '-m', `chore(release): ${p.tag}`])
@@ -185,10 +202,11 @@ function cutDesktop(p: ReturnType<typeof planDesktop>): void {
 
 function planAndroid(): { version: string; tag: string } {
   const appJson = JSON.parse(readFileSync(join(root, 'android', 'app.json'), 'utf8')) as { expo?: { version?: string } }
-  const version = nextVersion('android', lastTags.android, args.version, appJson.expo?.version ?? '0.0.0')
+  const version = nextVersion('android', lastTags.android, args.version, appJson.expo?.version ?? '0.0.0', { tags, pre: args.pre })
   const tag = `${TAG_PREFIX.android}${version}`
   if (tags.includes(tag)) fail(`tag ${tag} already exists`)
-  info(`android: ${lastTags.android ?? '(none)'} → ${tag}`)
+  const open = openPrerelease('android', tags)
+  info(`android: ${lastTags.android ?? '(none)'}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`)
   return { version, tag }
 }
 
@@ -210,7 +228,8 @@ if (args.dryRun) {
   if (desktopPlan) {
     const preview = run(desktopPlan.cliff.bin, [...desktopPlan.cliff.base, '--unreleased', '--tag', desktopPlan.tag, '--strip', 'all'], true)
     console.log(`\n${preview}\n`)
-    info(`dry run — would update package.json + CHANGELOG.md, commit 'chore(release): ${desktopPlan.tag}' and tag ${desktopPlan.tag}`)
+    const what = isPrerelease(desktopPlan.version) ? 'package.json' : 'package.json + CHANGELOG.md'
+    info(`dry run — would update ${what}, commit 'chore(release): ${desktopPlan.tag}' and tag ${desktopPlan.tag}`)
   }
   if (androidPlan) info(`dry run — would tag ${androidPlan.tag} on ${desktopPlan ? 'the release commit' : 'HEAD'}`)
   if (desktopPlan) info(`desktop notes: ${testedWithLine(androidTag) ?? '(no android tag yet)'}`)

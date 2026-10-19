@@ -76,10 +76,40 @@ function semverKey(v: string): number[] {
   return (v.split('-')[0] ?? '').split('.').map((n) => Number(n) || 0)
 }
 
-function cmpSemver(a: string, b: string): number {
+/** The X.Y.Z part of a version (`0.2.15-beta.1` → `0.2.15`). */
+export function baseVersion(v: string): string {
+  return semverKey(v).slice(0, 3).join('.')
+}
+
+export function isPrerelease(v: string): boolean {
+  return SEMVER.test(v) && v.includes('-')
+}
+
+function preParts(v: string): Array<string | number> {
+  const i = v.indexOf('-')
+  if (i < 0) return []
+  return v.slice(i + 1).split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+}
+
+/** SemVer 2.0 precedence (build metadata not supported): 0.2.15-beta.1 < 0.2.15-beta.2 < 0.2.15 < 0.2.16. */
+export function cmpSemver(a: string, b: string): number {
   const x = semverKey(a)
   const y = semverKey(b)
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
+  const pa = preParts(a)
+  const pb = preParts(b)
+  if (!pa.length || !pb.length) return pb.length - pa.length // a release outranks its pre-releases
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const l = pa[i]
+    const r = pb[i]
+    if (l === undefined) return -1
+    if (r === undefined) return 1
+    if (l === r) continue
+    if (typeof l === 'number' && typeof r === 'number') return l - r
+    if (typeof l === 'number') return -1
+    if (typeof r === 'number') return 1
+    return l < r ? -1 : 1
+  }
   return 0
 }
 
@@ -102,6 +132,20 @@ export function latestTag(app: App, tags: string[]): string | null {
   return best?.tag ?? null
 }
 
+/** Newest pre-release tag of `app`'s series that is ahead of its last stable tag (an open beta), or null. */
+export function openPrerelease(app: App, tags: string[]): string | null {
+  const stable = latestTag(app, tags)
+  const stableV = stable ? versionOfTag(app, stable) : null
+  let best: { tag: string; v: string } | null = null
+  for (const t of tags) {
+    const v = versionOfTag(app, t)
+    if (!v || !v.includes('-')) continue
+    if (stableV && cmpSemver(baseVersion(v), stableV) <= 0) continue // its final already shipped
+    if (!best || cmpSemver(v, best.v) > 0) best = { tag: t, v }
+  }
+  return best?.tag ?? null
+}
+
 export function bumpVersion(current: string, bump: Bump): string {
   const [major = 0, minor = 0, patch = 0] = semverKey(current)
   if (bump === 'major') return `${major + 1}.0.0`
@@ -109,11 +153,52 @@ export function bumpVersion(current: string, bump: Bump): string {
   return `${major}.${minor}.${patch + 1}`
 }
 
-/** Next version for an app from its last tag (or `fallback`, e.g. package.json, when never tagged). */
-export function nextVersion(app: App, lastTag: string | null, bump: Bump | string, fallback = '0.0.0'): string {
-  if (SEMVER.test(bump)) return bump
-  const current = (lastTag && versionOfTag(app, lastTag)) || fallback
-  return bumpVersion(current, bump as Bump)
+export const DEFAULT_PRE_ID = 'beta'
+
+export interface NextVersionOptions {
+  /** Every tag in the repo (to find an open beta and the next beta.N). */
+  tags?: string[]
+  /** Cut a pre-release with this identifier (`beta` → X.Y.Z-beta.N). null/undefined = a normal release. */
+  pre?: string | null
+}
+
+/**
+ * Next version for an app from its last stable tag (or `fallback`, e.g. package.json, when never tagged).
+ *
+ * An open beta (a pre-release tag ahead of the last stable one) is the release in progress:
+ *  - `--pre` again bumps its counter: 0.2.15-beta.1 → 0.2.15-beta.2
+ *  - a normal release finishes it: 0.2.15-beta.2 → 0.2.15
+ * unless the requested bump goes past it (beta of 0.2.15 open, `minor` → 0.3.0 / 0.3.0-beta.1).
+ */
+export function nextVersion(app: App, lastTag: string | null, bump: Bump | string, fallback = '0.0.0', opts: NextVersionOptions = {}): string {
+  const tags = opts.tags ?? []
+  const pre = opts.pre ?? null
+  let base: string
+  if (SEMVER.test(bump)) {
+    if (isPrerelease(bump) || !pre) return bump // explicit version wins as given
+    base = bump
+  } else {
+    const current = (lastTag && versionOfTag(app, lastTag)) || baseVersion(fallback)
+    base = bumpVersion(current, bump as Bump)
+    const open = openPrerelease(app, tags)
+    const openBase = open ? baseVersion(versionOfTag(app, open)!) : null
+    if (openBase && cmpSemver(openBase, base) > 0) base = openBase
+  }
+  if (!pre) return base
+  return `${base}-${pre}.${nextPreNumber(app, base, pre, tags)}`
+}
+
+/** 1 + the highest N among `<prefix><base>-<pre>.N` tags (1 when there are none). */
+export function nextPreNumber(app: App, base: string, pre: string, tags: string[]): number {
+  let n = 0
+  const want = `${base}-${pre}.`
+  for (const t of tags) {
+    const v = versionOfTag(app, t)
+    if (!v?.startsWith(want)) continue
+    const k = Number(v.slice(want.length))
+    if (Number.isInteger(k) && k > n) n = k
+  }
+  return n + 1
 }
 
 /** The cross-app line every release body carries. */
@@ -142,10 +227,12 @@ export interface ReleaseArgs {
   /** Don't prompt: take the detected suggestion (CI). */
   yes: boolean
   help: boolean
+  /** Pre-release identifier (`--pre` → 'beta', `--pre=rc` → 'rc'), or null for a normal release. */
+  pre: string | null
 }
 
 export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string } {
-  const out: ReleaseArgs = { version: 'patch', app: null, push: false, dryRun: false, yes: false, help: false }
+  const out: ReleaseArgs = { version: 'patch', app: null, push: false, dryRun: false, yes: false, help: false, pre: null }
   let sawVersion = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
@@ -153,13 +240,21 @@ export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string 
     else if (a === '--dry-run') out.dryRun = true
     else if (a === '--yes' || a === '-y' || a === '--non-interactive' || a === '--ci') out.yes = true
     else if (a === '--help' || a === '-h') out.help = true
+    else if (a === '--pre' || a === '--prerelease' || a === '--beta') out.pre = DEFAULT_PRE_ID
+    else if (a.startsWith('--pre=') || a.startsWith('--prerelease=')) {
+      const id = a.slice(a.indexOf('=') + 1)
+      if (!/^[A-Za-z][0-9A-Za-z-]*$/.test(id)) return { error: `--pre wants an identifier like beta or rc, got '${id}'` }
+      out.pre = id
+    }
     else if (a === '--app' || a.startsWith('--app=')) {
       const raw = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]
       const c = parseAppChoice(raw)
       if (!c) return { error: `--app wants desktop | android | both, got '${raw ?? ''}'` }
       out.app = c
     } else if (a.startsWith('--')) return { error: `unknown flag ${a}` }
-    else if (!sawVersion) {
+    else if (!sawVersion && (a === 'prerelease' || a === 'pre' || a === 'beta')) {
+      out.pre = DEFAULT_PRE_ID // `release.ts prerelease [minor]` = `--pre`
+    } else if (!sawVersion) {
       if (!SEMVER.test(a) && !(BUMPS as readonly string[]).includes(a) && a !== 'auto') {
         return { error: `'${a}' is neither a semver version, auto, nor one of: ${BUMPS.join(', ')}` }
       }
@@ -171,6 +266,7 @@ export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string 
     return { error: 'an explicit x.y.z needs a single --app (desktop and android are versioned separately)' }
   }
   if (out.app === 'android' && out.version === 'auto') return { error: "'auto' (git-cliff) is desktop only" }
+  if (out.pre && isPrerelease(out.version)) return { error: `${out.version} is already a pre-release version; drop --pre` }
   return out
 }
 
