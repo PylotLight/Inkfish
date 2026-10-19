@@ -1,9 +1,10 @@
+import { joinEntries, splitEntries } from '../daily'
 import { mergeText } from './diff3'
 
 /**
  * Note-aware merges. Frontmatter merges per top-level key (raw lines kept, so
  * neither app's YAML formatting is rewritten); bodies use diff3; day logs are
- * a union of their `## HH:MM` sections.
+ * a union of their timestamped entries (see shared/daily).
  */
 
 interface Fm {
@@ -82,28 +83,29 @@ export function mergeNote(base: string, ours: string, theirs: string): NoteMerge
   return { clean: body.clean, text: joinFrontmatter(fm, body.text) }
 }
 
-/** Day log: union of `## HH:MM …` sections (deduped, time-ordered). Never conflicts. */
+/** Day log: union of timestamped entries (`- HH:MM …` bullets and legacy `## HH:MM` sections),
+ *  deduped, time-ordered. Free text above the first entry keeps ours. Never conflicts. */
 export function mergeDaily(ours: string, theirs: string): string {
-  const parse = (md: string): { head: string; secs: string[] } => {
+  const parse = (md: string): { fm: Fm | null; head: string; blocks: ReturnType<typeof splitEntries>['blocks'] } => {
     const { fm, body } = splitFrontmatter(md)
-    const parts = body.split(/^(?=## )/m)
-    const head = parts[0]!.startsWith('## ') ? '' : parts.shift()!
-    return { head: joinFrontmatter(fm, head), secs: parts.map((s) => s.replace(/\s+$/, '')) }
+    const { head, blocks } = splitEntries(body)
+    return { fm, head: head.replace(/\s+$/, ''), blocks }
   }
   const o = parse(ours), t = parse(theirs)
   const seen = new Set<string>()
-  const all: string[] = []
-  for (const s of [...o.secs, ...t.secs]) {
-    const key = s.replace(/\s+/g, ' ').trim()
+  const all: Array<{ time: string; text: string; bullet: boolean; i: number }> = []
+  for (const b of [...o.blocks, ...t.blocks]) {
+    const key = b.text.replace(/\s+/g, ' ').trim()
     if (seen.has(key)) continue
     seen.add(key)
-    all.push(s)
+    all.push({ ...b, i: all.length })
   }
-  const time = (s: string): string => /^## (\d{1,2}:\d{2})/.exec(s)?.[1]?.padStart(5, '0') ?? '99:99'
   // Stable sort by time; same-minute entries keep ours-then-theirs order.
-  const sorted = all.map((s, i) => ({ s, i })).sort((a, b) => time(a.s).localeCompare(time(b.s)) || a.i - b.i)
-  const head = (o.head || t.head).replace(/\s+$/, '')
-  return `${head}\n\n${sorted.map((x) => x.s).join('\n\n')}\n`
+  all.sort((a, b) => a.time.localeCompare(b.time) || a.i - b.i)
+  const head = o.head || t.head
+  const entries = joinEntries(all)
+  const body = head && entries ? `${head}\n\n${entries}\n` : head ? `${head}\n` : entries ? `${entries}\n` : ''
+  return joinFrontmatter(o.fm ?? t.fm, body)
 }
 
 /** `work/Idea.md` → `work/Idea (conflict · Pixel 8 · 2026-10-08 0914).md` */

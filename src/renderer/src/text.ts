@@ -1,3 +1,5 @@
+import { dailyTitleForPath } from '../../shared/daily'
+
 /** Strip markdown chrome for titles, list rows and dashboard text. */
 export function plain(md: string): string {
   return md
@@ -29,6 +31,9 @@ export function displayTitle(e: Titled, overrides: Record<string, string>): stri
   if (e.path.startsWith('inbox/')) return plain(e.title).slice(0, 120) || e.id
   const o = overrides[e.id]
   if (o && o.trim()) return o.trim()
+  // Day notes keep their sortable `daily/YYYY-MM-DD.md` file name but read as `Tue 20 Oct`.
+  const day = dailyTitleForPath(e.path)
+  if (day) return day
   const b = baseName(e.path)
   if (b) return b
   return plain(e.title).slice(0, 120) || 'Untitled'

@@ -41,3 +41,13 @@ describe('display titles', () => {
     expect(findAll('anything', '')).toEqual([])
   })
 })
+
+describe('daily note titles', () => {
+  test('day notes read as a friendly date; overrides still win', () => {
+    const y = new Date().getFullYear()
+    const e = { id: 'd', path: `daily/${y}-10-20.md`, title: '' }
+    expect(displayTitle(e, {})).toMatch(/^[A-Z][a-z]{2} 20 Oct$/)
+    expect(displayTitle(e, { d: 'custom' })).toBe('custom')
+    expect(displayTitle({ id: 'n', path: 'work/2026-10-20.md', title: '' }, {})).toBe('2026-10-20')
+  })
+})

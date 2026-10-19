@@ -41,7 +41,7 @@ import {
   createNoteFile,
   createProject,
   createDir,
-  dailyFile,
+  ensureDaily,
   deleteInboxItem,
   ensureSeedProjects,
   ensureVault,
@@ -462,10 +462,10 @@ export function registerIpc(): void {
     indexFile(out.path, out.vaultRel)
     return { vaultRel: out.vaultRel }
   })
+  // Open today's note, creating an empty one (front matter only) on first use.
   ipcMain.handle('daily:today', (): { vaultRel: string } => {
     const paths = requireNotes()
-    const { abs, vaultRel } = dailyFile(new Date(), paths)
-    if (!existsSync(abs)) appendDaily('_Day started._', { source: 'tray' }, paths)
+    const { abs, vaultRel } = ensureDaily(new Date(), paths, 'tray')
     indexFile(abs, vaultRel)
     return { vaultRel }
   })
