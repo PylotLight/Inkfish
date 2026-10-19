@@ -2,7 +2,8 @@ name: release
 
 # Triggered by pushing a version tag (v*), e.g. `bun run release --push`.
 # Builds the artifacts, publishes a GitHub release with generated notes,
-# then updates the Homebrew cask in this repo (it doubles as the tap).
+# then updates the Homebrew cask in this repo (it doubles as the tap), then
+# publishes the bunx/npx launcher to npm (gated by the NPM_PUBLISH repo variable).
 # See docs/releasing.md.
 # Workflows register from the default branch (main).
 on:
@@ -184,3 +185,84 @@ jobs:
             git commit -m "chore(tap): inkfish ${{ steps.meta.outputs.version }}"
             git push
           fi
+
+  # bunx/npx launcher (packages/cli -> @pylotlight/inkfish on npm), published only after the GitHub
+  # release + cask bump above succeeded. GitHub-hosted on purpose: npm trusted publishing (OIDC, no
+  # NPM_TOKEN) doesn't support self-hosted runners. Gated by the repo variable NPM_PUBLISH=true:
+  # until then every release does a dry run (stamp + `npm publish --dry-run`, no auth) and warns,
+  # so the job gets exercised without publishing anything (packages/cli/DEVELOPING.md#publishing).
+  npm:
+    name: npm launcher
+    needs: homebrew
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) + provenance
+    env:
+      NPM_PUBLISH: ${{ vars.NPM_PUBLISH }}
+      PKG: "@pylotlight/inkfish"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: publish or dry run?
+        id: gate
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          app="$(node -p 'require("./package.json").version')"
+          if [ "$version" != "$app" ]; then echo "::error::tag $GITHUB_REF_NAME doesn't match package.json version $app"; exit 1; fi
+          if [ "$NPM_PUBLISH" = "true" ]; then mode=publish
+          else
+            mode=dry
+            echo "::warning::npm publish is off (dry run only): set the repo variable NPM_PUBLISH=true once ${PKG} exists on npm with release.yml as its trusted publisher (packages/cli/DEVELOPING.md#publishing)"
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "npm: $mode ${PKG}@${version}"
+
+      # trusted publishing minimums: Node >= 22.14, npm >= 11.5.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: npm >= 11.5.1
+        run: |
+          if ! node -e 'const v=require("child_process").execSync("npm -v").toString().trim().split(".").map(Number);process.exit(v[0]>11||(v[0]===11&&(v[1]>5||(v[1]===5&&v[2]>=1)))?0:1)'; then
+            # a global prefix that isn't writable fails with EACCES (Surffish #267), so install into a user prefix
+            prefix="$RUNNER_TEMP/npm-global"
+            npm install -g --prefix "$prefix" --no-fund --no-audit npm@^11.5.1
+            echo "$prefix/bin" >> "$GITHUB_PATH"
+            export PATH="$prefix/bin:$PATH"
+            hash -r
+          fi
+          echo "node $(node -v), npm $(npm -v)"
+
+      - name: stamp packages/cli (version + release.json with the zip's SHA-256)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node packages/cli/scripts/prepare-publish.mjs --version "$VERSION" --verify-download
+          node packages/cli/bin/inkfish.mjs --version
+          node packages/cli/bin/inkfish.mjs --help >/dev/null
+
+      - name: npm publish ${{ env.PKG }}
+        working-directory: packages/cli
+        env:
+          MODE: ${{ steps.gate.outputs.mode }}
+        run: |
+          tag=latest; case "$VERSION" in *-*) tag=next ;; esac
+          if [ "$MODE" = "dry" ]; then
+            npm publish --dry-run --access public --tag "$tag" || { echo "::warning::npm publish --dry-run refused (version already on npm?), showing npm pack instead"; npm pack --dry-run; }
+            exit 0
+          fi
+          # npm view needs no auth for a public package; failure = the package doesn't exist yet
+          if ! npm view "$PKG" name >/dev/null 2>&1; then
+            echo "::warning::${PKG} isn't on npm yet. Trusted publishing can only be set up on an existing package: do the one-time manual first publish (packages/cli/DEVELOPING.md#publishing); later releases then publish here."
+            exit 0
+          fi
+          if [ "$(npm view "$PKG@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::${PKG}@${VERSION} is already on npm, nothing to do"
+            exit 0
+          fi
+          npm publish --provenance --access public --tag "$tag"
+          echo "::notice::published ${PKG}@${VERSION} (bunx ${PKG}@${VERSION})"

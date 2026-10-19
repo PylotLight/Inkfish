@@ -20,8 +20,10 @@ so you can compare `fullscreen-ui`, `sidebar`, `hud`, etc. against a bright wall
 
 ## Tray
 
-- Left-click pops the context menu (`tray.popUpContextMenu()`). Showing the window
-  happens only via the **Show window** menu item — never automatically.
+- Left-click pops quick capture under the icon; right-click shows the context menu
+  (`tray.popUpContextMenu()`), never both. Menu bar mode (Settings → Appearance →
+  Menu bar, `src/main/menubar.ts`) can switch the click to Today or the main window,
+  hide the Dock icon, or remove the tray icon.
 - Icons: `assets/trayTemplate.png` (macOS, auto dark/light) and `assets/tray.png`
   (Windows/Linux) — both derived from `assets/Inkfish_logo.png`.
   Regenerate with `bun run assets` or drop in your own PNGs.

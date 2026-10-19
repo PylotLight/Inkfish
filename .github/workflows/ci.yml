@@ -95,6 +95,44 @@ jobs:
       - run: bun run typecheck
       - run: bun run build
 
+  # bunx/npx launcher (packages/cli, published as @pylotlight/inkfish by release.yml). Its own tiny
+  # job: no bun install, no Electron. Unit tests (also part of `bun test` above), a smoke of the bin
+  # under Bun and Node, and the release job's stamp + `npm pack --dry-run` against the latest release.
+  cli:
+    name: cli (bunx launcher)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
+    runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: unit tests (version resolution, checksums, cache path, uninstall, local download e2e)
+        run: bun run test:cli
+      - name: the bin runs under Bun, and under Node when the runner has it
+        run: |
+          bun packages/cli/bin/inkfish.mjs --version
+          bun packages/cli/bin/inkfish.mjs --help >/dev/null
+          if command -v node >/dev/null && ! node -e 'process.exit(process.versions.bun ? 0 : 1)'; then
+            node packages/cli/bin/inkfish.mjs --version
+          else
+            echo "no Node.js on this runner, Bun only"
+          fi
+          # unsupported-platform path: friendly message, exit 1, no network
+          if bun packages/cli/bin/inkfish.mjs; then echo "::error::expected exit 1 on linux"; exit 1; fi
+      - name: stamp + pack like release.yml (latest release, no publish)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).tag_name)')"
+          bun packages/cli/scripts/prepare-publish.mjs --version "${tag#v}"
+          bun packages/cli/bin/inkfish.mjs --version
+          cd packages/cli
+          bunx npm pack --dry-run 2>&1 | tee pack.txt
+          grep -q 'release.json' pack.txt || { echo "::error::release.json missing from the pack"; exit 1; }
+          if grep -q 'test/' pack.txt; then echo "::error::tests leaked into the pack"; exit 1; fi
+
   typecheck-android:
     needs: changes
     if: needs.changes.outputs.android == 'true'
