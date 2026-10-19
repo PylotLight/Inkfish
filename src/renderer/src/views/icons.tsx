@@ -24,6 +24,9 @@ export type IconName =
   | 'sort-time'
   | 'collapse-all'
   | 'expand-all'
+  | 'pencil'
+  | 'trash'
+  | 'more'
 
 const PATHS: Record<IconName, React.JSX.Element> = {
   'panel-left': (
@@ -111,7 +114,21 @@ const PATHS: Record<IconName, React.JSX.Element> = {
     </>
   ),
   'collapse-all': <path d="m7 20 5-5 5 5M7 4l5 5 5-5" />,
-  'expand-all': <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+  'expand-all': <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />,
+  pencil: <path d="M16.9 3.6a2.1 2.1 0 0 1 3 3L8.5 18l-4 1 1-4z" />,
+  trash: (
+    <>
+      <path d="M4 6.5h16M9.5 6.5V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.7" />
+      <path d="M6.2 6.5l.9 12.2a2 2 0 0 0 2 1.8h5.8a2 2 0 0 0 2-1.8l.9-12.2M10 10.5v6M14 10.5v6" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="5.5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="18.5" cy="12" r="1" />
+    </>
+  )
 }
 
 export function Icon({

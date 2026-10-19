@@ -3,6 +3,8 @@ import type { NoteEntry, NoteKind } from '../../../shared/types'
 import { canDropInto, dirOf, type MoveKind } from '../../../shared/note-move'
 import { fmtBytes, timeAgo } from '../text'
 import { Icon } from './icons'
+import { renameCommit, renameStem, rowKeyAction } from '../../../shared/note-delete'
+import './SidebarActions.css'
 
 export interface TreeNode {
   name: string
@@ -160,6 +162,19 @@ interface Props {
   filters?: ReactNode
   /** Drag & drop: move a note/folder into `destDir` ('' = vault root). */
   onMove?: (rel: string, kind: MoveKind, destDir: string) => void
+  /** Note row actions (hover buttons, F2/Enter, ⌘⌫, ⌥-click). Absent = plain rows. */
+  rowActions?: RowActions
+}
+
+/** Per-note row actions: inline rename + smart delete. */
+export interface RowActions {
+  /** Note id whose row shows the inline rename field. */
+  renamingId: string | null
+  startRename: (entry: NoteEntry) => void
+  /** `value` null = cancelled (Esc). */
+  endRename: (entry: NoteEntry, value: string | null) => void
+  /** `anchor` = the row's rect (popover sits next to it); `skipConfirm` = ⇧ held / second ⌘⌫. */
+  remove: (entry: NoteEntry, anchor: DOMRect, skipConfirm: boolean) => void
 }
 
 /** Private drag payload type — external drags (Finder files) never look like a tree move. */
@@ -239,7 +254,7 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
   notes, kind, titleOf, selectedId, selectedPath, results, revealDir,
-  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove
+  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove, rowActions
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const [sort, setSort] = useState<TreeSort>(loadSort)
@@ -459,6 +474,7 @@ function FolderTree({
             selected={selectedId === n.id}
             onOpen={() => onOpenFile(n.id)}
             onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
+            actions={rowActions}
           />
         ))}
       </div>
@@ -493,6 +509,7 @@ function FolderTree({
           onOpenFile={onOpenFile}
           onMenu={onMenu}
           dnd={dnd}
+          rowActions={rowActions}
         />
       ))}
       {tree.rootFiles.map((n) => (
@@ -505,6 +522,7 @@ function FolderTree({
           onOpen={() => onOpenFile(n.id)}
           onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
           dnd={dnd}
+          actions={rowActions}
         />
       ))}
       {dragging && (
@@ -521,7 +539,7 @@ function FolderTree({
 }
 
 function Node({
-  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu, dnd
+  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu, dnd, rowActions
 }: {
   node: TreeNode
   titleOf: (n: NoteEntry) => string
@@ -532,6 +550,7 @@ function Node({
   onOpenFile: (id: string) => void
   onMenu: (target: TreeTarget, x: number, y: number) => void
   dnd: Dnd | null
+  rowActions?: RowActions
 }): React.JSX.Element {
   const open = !collapsed.has(node.rel)
   const isDrop = dnd?.dropDir === node.rel
@@ -586,6 +605,7 @@ function Node({
               onOpenFile={onOpenFile}
               onMenu={onMenu}
               dnd={dnd}
+              rowActions={rowActions}
             />
           ))}
           {node.files.map((f) => {
@@ -600,6 +620,7 @@ function Node({
                 onOpen={() => onOpenFile(f.id)}
                 onMenu={(x, y) => onMenu({ kind: 'file', rel: f.path, id: f.id, name: t }, x, y)}
                 dnd={dnd}
+                actions={rowActions}
               />
             )
           })}
@@ -610,7 +631,7 @@ function Node({
 }
 
 export function FileRow({
-  entry, title, selected, bare, onOpen, onMenu, dnd
+  entry, title, selected, bare, onOpen, onMenu, dnd, actions
 }: {
   entry: NoteEntry
   title: string
@@ -621,34 +642,147 @@ export function FileRow({
   onMenu: (x: number, y: number) => void
   /** Tree rows only: drag to move; hovering a note targets its folder. */
   dnd?: Dnd | null
+  /** Hover buttons + keys (rename / delete / ⋯). */
+  actions?: RowActions
 }): React.JSX.Element {
+  const wrapRef = useRef<HTMLDivElement>(null)
   const tip = `${entry.path}\n${entry.size > 0 ? `${fmtBytes(entry.size)} · ` : ''}edited ${timeAgo(entry.updatedAt)} · created ${new Date(entry.createdAt).toLocaleDateString()}`
   // Slim meta for search rows: parent folder + relative time.
   const parent = entry.path.includes('/') ? (entry.path.split('/').slice(0, -1).pop() ?? '') : ''
   const meta = parent ? `${parent} · ${timeAgo(entry.updatedAt)}` : timeAgo(entry.updatedAt)
+  const rowRect = (): DOMRect => (wrapRef.current ?? document.body).getBoundingClientRect()
+  const renaming = actions?.renamingId === entry.id
+
+  if (renaming && actions) {
+    return (
+      <div ref={wrapRef} className={`filerow-wrap renaming${selected ? ' on' : ''}`} data-note-id={entry.id}>
+        <div className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}>
+          {!bare && (
+            <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+          )}
+          <InlineRename rel={entry.path} onDone={(v) => actions.endRename(entry, v)} />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <button
-      className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
-      onClick={onOpen}
-      draggable={!!dnd}
-      onDragStart={dnd ? (e) => dnd.start(e, entry.path, 'file') : undefined}
-      onDragEnd={dnd ? () => dnd.end() : undefined}
-      onDragOver={dnd ? (e) => dnd.over(e, dirOf(entry.path)) : undefined}
-      onDrop={dnd ? (e) => dnd.drop(e, dirOf(entry.path)) : undefined}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        onMenu(e.clientX, e.clientY)
-      }}
-      title={tip}
-    >
-      {!bare && (
-        <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+    <div ref={wrapRef} className={`filerow-wrap${selected ? ' on' : ''}${actions ? ' has-acts' : ''}`} data-note-id={entry.id}>
+      <button
+        className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
+        onClick={(e) => {
+          // ⌥-click deletes (⌥⇧ skips the confirm), as before.
+          if (e.altKey && actions) {
+            e.preventDefault()
+            actions.remove(entry, rowRect(), e.shiftKey)
+            return
+          }
+          onOpen()
+        }}
+        onKeyDown={(e) => {
+          if (!actions) return
+          const act = rowKeyAction(e)
+          if (!act) return
+          e.preventDefault()
+          e.stopPropagation()
+          if (act === 'rename') actions.startRename(entry)
+          else actions.remove(entry, rowRect(), e.shiftKey)
+        }}
+        draggable={!!dnd}
+        onDragStart={dnd ? (e) => dnd.start(e, entry.path, 'file') : undefined}
+        onDragEnd={dnd ? () => dnd.end() : undefined}
+        onDragOver={dnd ? (e) => dnd.over(e, dirOf(entry.path)) : undefined}
+        onDrop={dnd ? (e) => dnd.drop(e, dirOf(entry.path)) : undefined}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onMenu(e.clientX, e.clientY)
+        }}
+        title={tip}
+      >
+        {!bare && (
+          <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+        )}
+        <span className="ftext">
+          <span className="fname">{title}</span>
+          {!bare && <span className="fmeta">{meta}</span>}
+        </span>
+      </button>
+      {actions && (
+        <span className="row-acts">
+          <button
+            className="row-act"
+            tabIndex={-1}
+            title="Rename (F2)"
+            aria-label={`Rename ${title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              actions.startRename(entry)
+            }}
+          >
+            <Icon name="pencil" size={14} />
+          </button>
+          <button
+            className="row-act danger"
+            tabIndex={-1}
+            title="Delete (⌘⌫) · ⇧-click skips the confirm"
+            aria-label={`Delete ${title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              actions.remove(entry, rowRect(), e.shiftKey)
+            }}
+          >
+            <Icon name="trash" size={14} />
+          </button>
+          <button
+            className="row-act"
+            tabIndex={-1}
+            title="More"
+            aria-label={`More actions for ${title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              const r = e.currentTarget.getBoundingClientRect()
+              onMenu(r.left, r.bottom + 4)
+            }}
+          >
+            <Icon name="more" size={14} />
+          </button>
+        </span>
       )}
-      <span className="ftext">
-        <span className="fname">{title}</span>
-        {!bare && <span className="fmeta">{meta}</span>}
-      </span>
-    </button>
+    </div>
+  )
+}
+
+/** In-place file name field: Enter / blur commits, Esc cancels. Shows the name without `.md`. */
+function InlineRename({ rel, onDone }: { rel: string; onDone: (value: string | null) => void }): React.JSX.Element {
+  const [value, setValue] = useState(() => renameStem(rel))
+  const done = useRef(false)
+  const finish = (v: string | null): void => {
+    if (done.current) return
+    done.current = true
+    onDone(v === null ? null : renameCommit(rel, v) === null ? null : v.trim())
+  }
+  return (
+    <input
+      className="row-rename"
+      value={value}
+      autoFocus
+      spellCheck={false}
+      aria-label="Rename note"
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          finish(value)
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          finish(null)
+        }
+      }}
+      onBlur={() => finish(value)}
+    />
   )
 }
 

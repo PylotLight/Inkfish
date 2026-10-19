@@ -1,0 +1,203 @@
+/* ---------- Inkfish: sidebar note row actions (hover buttons, inline rename, delete glance, undo) ---------- */
+
+.filerow-wrap {
+  position: relative;
+}
+
+/* Hover buttons: fade in over the row's right edge; the name makes room so it never runs under them. */
+.row-acts {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.filerow-wrap.has-acts:hover .row-acts,
+.filerow-wrap.has-acts:focus-within .row-acts {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.filerow-wrap.has-acts:hover > .filerow,
+.filerow-wrap.has-acts:focus-within > .filerow {
+  padding-right: 76px;
+}
+
+/* Pointer on the buttons still reads as hovering the row. */
+.filerow-wrap.has-acts:hover > .filerow {
+  background: var(--row-hover);
+}
+.filerow-wrap.has-acts:hover > .filerow.on {
+  background: var(--row-active);
+}
+.filerow-wrap.has-acts:hover > .filerow.bare .fname {
+  color: var(--text);
+}
+
+.row-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.row-act:hover {
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.row-act.danger:hover {
+  color: var(--danger);
+}
+
+/* No hover chrome mid-drag. */
+.ftree.dragging .row-acts {
+  display: none;
+}
+
+/* Inline rename: the field sits exactly where the name was. */
+.filerow-wrap.renaming > .filerow {
+  cursor: default;
+}
+
+.filerow-wrap input.row-rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0 0 0 -4px;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 5px;
+  background: var(--inset-soft, var(--panel));
+  color: var(--text);
+  font: inherit;
+  font-size: inherit;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Delete confirm: compact glance anchored to the row (opaque popup recipe, like .ctxmenu). */
+.del-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.del-pop {
+  position: fixed;
+  z-index: 91;
+  width: 300px;
+  border-radius: 13px;
+  padding: 12px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: scaleIn 0.14s ease both;
+}
+
+html[data-theme='paper'] .del-pop {
+  background: rgba(250, 248, 243, 0.94);
+  box-shadow: 0 18px 48px rgba(30, 25, 15, 0.24);
+}
+
+.del-pop-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.del-pop-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.del-pop-preview {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--inset-soft, var(--panel));
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft, var(--text));
+  max-height: 9.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent);
+  mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+
+.del-pop-preview div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.del-pop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.del-pop-hint {
+  margin-right: auto;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Undo toast: the normal toast with an action button. */
+.toast.undo-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  bottom: 24px;
+  z-index: 51;
+}
+
+.undo-toast .undo-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.undo-toast .undo-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.undo-toast .undo-btn:hover {
+  background: var(--panel-strong);
+}
