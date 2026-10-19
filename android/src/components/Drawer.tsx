@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
+import { SyncRow } from './SyncIndicator';
 import { useStore } from '../lib/store';
 import { fileLabel } from '../lib/vault';
 import type { NoteEntry } from '../lib/format';
@@ -496,6 +497,7 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
           ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : 'No notes yet.'}</Text>}
           contentContainerStyle={{ paddingBottom: 24 }}
         />
+        <SyncRow />
         <Text style={[ui.meta, { marginTop: 4 }]}>Long-press a row for rename · delete · new folder</Text>
       </Animated.View>
       <Modal visible={sheet !== null} transparent animationType="fade" onRequestClose={() => setSheet(null)}>
