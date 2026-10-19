@@ -32,7 +32,8 @@ import {
 } from './format';
 import { bodyOf, frontmatterHead, planSave, relocate, withHead } from './notesave';
 import { relinkAfterRename } from './relink';
-import { appendToDailyFile, formatEntry, localDay, stripLegacyTitle } from '../../../src/shared/daily';
+import { appendToDailyFile, dayOfPath, formatEntry, localDay, splitDailyFile, stripLegacyTitle, type DailyEntry } from '../../../src/shared/daily';
+import { summarizeDay } from '../../../src/shared/journal';
 
 const DOC = FileSystem.documentDirectory ?? '';
 const APP = `${DOC}inkfish/`;
@@ -652,6 +653,8 @@ export interface IndexSnapshot {
   projects: Project[];
   inbox: InboxItem[];
   attachments?: string[];
+  /** Daily-note summaries (Journal / Home Daily) — optional so older snapshots still load. */
+  days?: DayInfo[];
 }
 
 function seedFromSnapshot(snap: IndexSnapshot): void {
@@ -660,6 +663,9 @@ function seedFromSnapshot(snap: IndexSnapshot): void {
   }
   if (idToRel.size === 0) rememberIds(snap.notes);
   if (!attachmentsTask && snap.attachments) attachmentsTask = Promise.resolve(snap.attachments);
+  if (Array.isArray(snap.days)) {
+    for (const d of snap.days) if (!dayCache.has(d.path)) dayCache.set(d.path, d);
+  }
 }
 
 /** Last launch's index (one file read), or null. Seeds the per-file cache so the next scan only reads changes. */
@@ -675,7 +681,7 @@ export async function loadIndexSnapshot(): Promise<IndexSnapshot | null> {
   }
 }
 
-export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[]): Promise<void> {
+export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[], days?: DayInfo[]): Promise<void> {
   const snap: IndexSnapshot = {
     v: 1,
     savedAt: Date.now(),
@@ -683,7 +689,8 @@ export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[]): 
     dirs: index.dirs,
     projects: index.projects,
     inbox,
-    attachments: attachmentsTask ? await attachmentsTask : undefined
+    attachments: attachmentsTask ? await attachmentsTask : undefined,
+    ...(days ? { days } : {})
   };
   await mkdir(`${APP}.cache/`);
   const tmp = `${INDEX_SNAPSHOT}.tmp`;
@@ -996,6 +1003,8 @@ export function invalidateAttachments(): void {
 /** Tests/bench: forget every in-memory cache, like a fresh app process. */
 export function resetMemoryForTests(): void {
   noteEntryCache.clear();
+  dayCache.clear();
+  daysTask = null;
   idToRel.clear();
   moved.clear();
   attachmentsTask = null;
@@ -1281,6 +1290,96 @@ export async function appendDaily(raw: string, kind: NoteKind = 'text'): Promise
     await writeText(uri, appendToDailyFile(await readText(uri), entry));
   }
   return rel;
+}
+
+// --- journal: every daily note, summarized once per change ---------------------------
+// Daily notes live in staging (`staging/daily/YYYY-MM-DD.md`, one flat folder), not the vault.
+// The Journal + Home Daily section draw from these summaries, which ride in the saved index
+// snapshot, so they show instantly at launch; the refresh lists that one folder (a stat per
+// file) and only re-reads days whose size/mtime changed. Full bodies are read per visible page.
+
+/** Index row for one daily note: enough to draw a card / timeline row without reading it. */
+export interface DayInfo {
+  /** Path id (daily notes have no front matter id), opens in the editor. */
+  id: string;
+  path: string;
+  day: string;
+  size: number;
+  updatedAt: number;
+  /** Timestamped entries in the note. */
+  count: number;
+  /** First few entries (plain text), file order. */
+  entries: DailyEntry[];
+  /** Plain text of the day for filtering + free-text previews (capped). */
+  snippet: string;
+}
+
+const DAY_PREVIEW = 4;
+const DAY_TEXT_CAP = 400;
+const dayCache = new Map<string, DayInfo>();
+let daysTask: Promise<DayInfo[]> | null = null;
+
+/** Summarize one day file's text (front matter dropped). Pure apart from the parse. */
+export function dayInfoFromText(rel: string, text: string, stat: { size: number; mtime: number }): DayInfo | null {
+  const day = dayOfPath(rel);
+  if (!day) return null;
+  const all = summarizeDay(splitDailyFile(text).body, 1000);
+  const entries = all.entries.slice(0, DAY_PREVIEW);
+  const snippet = (all.entries.length ? all.entries.map((e) => e.text).join(' · ') : all.text).slice(0, DAY_TEXT_CAP);
+  return { id: rel, path: rel, day, size: stat.size, updatedAt: stat.mtime, count: all.count, entries, snippet };
+}
+
+/** Every daily note, newest day first. Concurrent callers share one pass. */
+export function listDays(): Promise<DayInfo[]> {
+  if (daysTask) return daysTask;
+  const task = (async () => {
+    let names: string[];
+    try {
+      names = (await FileSystem.readDirectoryAsync(DAILY)).filter((n) => /^\d{4}-\d{2}-\d{2}\.md$/.test(n));
+    } catch {
+      names = [];
+    }
+    const rows = await mapLimit(names, 8, async (name): Promise<DayInfo | null> => {
+      const rel = `daily/${name}`;
+      const uri = `${DAILY}${name}`;
+      try {
+        const info = await FileSystem.getInfoAsync(uri);
+        if (!info.exists || info.isDirectory) return null;
+        const size = info.size ?? 0;
+        const mtime = info.modificationTime ? info.modificationTime * 1000 : Date.now();
+        const hit = dayCache.get(rel);
+        if (hit && hit.size === size && hit.updatedAt === mtime) return hit;
+        const row = dayInfoFromText(rel, await readText(uri), { size, mtime });
+        if (row) dayCache.set(rel, row);
+        return row;
+      } catch {
+        return null;
+      }
+    });
+    const present = new Set(names.map((n) => `daily/${n}`));
+    for (const k of dayCache.keys()) if (!present.has(k)) dayCache.delete(k);
+    return rows.filter((r): r is DayInfo => r !== null).sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  })();
+  daysTask = task;
+  task.finally(() => {
+    if (daysTask === task) daysTask = null;
+  }).catch(() => undefined);
+  return task;
+}
+
+/** Summaries from the saved snapshot (no disk), newest first — what the first frame shows. */
+export function cachedDays(): DayInfo[] {
+  return [...dayCache.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+}
+
+/** One day's body (front matter + old `# date` title dropped), '' when there's no note. */
+export async function readDay(day: string): Promise<string> {
+  const uri = `${DAILY}${day}.md`;
+  try {
+    return stripLegacyTitle(splitDailyFile(await readText(uri)).body);
+  } catch {
+    return '';
+  }
 }
 
 export async function readDaily(d = new Date()): Promise<{ rel: string; body: string }> {

@@ -15,6 +15,10 @@ interface Store {
   projects: Project[];
   /** All vault folders (rel), including empty ones. */
   dirs: string[];
+  /** Every daily note summarized, newest day first (Journal + Home Daily; from the saved index at launch). */
+  days: vault.DayInfo[];
+  /** One day's body, read on demand (Journal pages). */
+  readDay: (day: string) => Promise<string>;
   refresh: () => Promise<void>;
   capture: (raw: string, kind: NoteKind, projectHint: string, assets: string[]) => Promise<InboxItem>;
   captureDaily: (raw: string, kind: NoteKind) => Promise<string>;
@@ -51,6 +55,10 @@ function retainArray<T>(previous: T[], next: T[], equal: (a: T, b: T) => boolean
   return previous.length === next.length && previous.every((item, index) => equal(item, next[index]!)) ? previous : next;
 }
 
+function sameDay(a: vault.DayInfo, b: vault.DayInfo): boolean {
+  return a === b || (a.path === b.path && a.size === b.size && a.updatedAt === b.updatedAt);
+}
+
 function sameInboxItem(a: InboxItem, b: InboxItem): boolean {
   return (
     a.id === b.id &&
@@ -73,6 +81,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [dirs, setDirs] = useState<string[]>([]);
+  const [days, setDays] = useState<vault.DayInfo[]>([]);
   const refreshTask = useRef<Promise<void> | null>(null);
   const refreshAgain = useRef(false);
 
@@ -121,18 +130,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
         refreshAgain.current = false;
         vault.invalidateAttachments();
         try {
-          const [index, ib] = await Promise.all([
+          const [index, ib, dayRows] = await Promise.all([
             // Nothing on screen yet (first launch / no saved index): show names as soon as the stat pass is done.
             vault.listVaultIndex(notesRef.current.length === 0 ? { onPartial: applyRough } : {}),
-            vault.listInbox()
+            vault.listInbox(),
+            // One flat staging folder; only changed days are re-read.
+            vault.listDays().catch(() => null)
           ]);
           apply(index, ib);
+          if (dayRows) setDays((previous) => retainArray(previous, dayRows, sameDay));
           setError(null);
           // Persist for the next launch's instant drawer (debounced: saves come in bursts).
           if (snapshotTimer.current) clearTimeout(snapshotTimer.current);
           snapshotTimer.current = setTimeout(() => {
             snapshotTimer.current = null;
-            void vault.saveIndexSnapshot(index, ib).catch(() => undefined);
+            void vault.saveIndexSnapshot(index, ib, dayRows ?? undefined).catch(() => undefined);
           }, 1500);
         } catch (e) {
           setError(e instanceof Error ? e.message : String(e));
@@ -154,7 +166,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
     void (async () => {
       const snap = await vault.loadIndexSnapshot();
       if (!live) return;
-      if (snap) apply({ notes: snap.notes, dirs: snap.dirs, projects: snap.projects }, snap.inbox);
+      if (snap) {
+        apply({ notes: snap.notes, dirs: snap.dirs, projects: snap.projects }, snap.inbox);
+        setDays(vault.cachedDays());
+      }
       setReady(true);
       await afterFirstPaint();
       if (!live) return;
@@ -247,6 +262,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       notes,
       projects,
       dirs,
+      days,
+      readDay: (day) => vault.readDay(day),
       refresh,
       capture,
       captureDaily,
@@ -294,7 +311,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       appendDaily: captureDaily,
       readDaily: () => vault.readDaily()
     }),
-    [ready, indexed, error, inbox, notes, projects, dirs, refresh, patchEntry, capture, captureDaily, routeInbox, undoInbox]
+    [ready, indexed, error, inbox, notes, projects, dirs, days, refresh, patchEntry, capture, captureDaily, routeInbox, undoInbox]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

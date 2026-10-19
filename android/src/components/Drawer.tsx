@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native';
+import { BookOpen, ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
 import { SyncRow } from './SyncIndicator';
@@ -16,6 +16,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onOpenNote: (noteId: string) => void;
+  /** Daily notes live in the Journal (not as a long flat list of dates in the tree). */
+  onOpenJournal: () => void;
 }
 
 interface DirNode {
@@ -206,10 +208,10 @@ type NameModal =
  * Rows are virtualized (FlatList) so opening a folder re-renders one row,
  * not the whole vault. Long-press a row for rename / delete / new folder.
  */
-export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element {
+export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): React.JSX.Element {
   const { ui, c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { notes, projects, dirs, indexed, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
+  const { notes, days, projects, dirs, indexed, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
   const [q, setQ] = useState('');
   // Folders start collapsed (Obsidian-style) so a big vault opens instantly.
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
@@ -477,6 +479,16 @@ export function Drawer({ open, onClose, onOpenNote }: Props): React.JSX.Element 
             </Pressable>
           </View>
         </View>
+        <Pressable
+          onPress={onOpenJournal}
+          style={[ui.row, { gap: 6, paddingVertical: 8, marginBottom: 4 }]}
+          accessibilityLabel="Open journal"
+        >
+          <View style={{ width: 16 }} />
+          <Icon as={BookOpen} size={17} />
+          <Text style={[ui.title, { fontWeight: '600', fontSize: 15, flex: 1 }]}>Journal</Text>
+          {days.length > 0 && <Text style={[ui.meta, { marginTop: 0 }]}>{String(days.length)}</Text>}
+        </Pressable>
         <TextInput
           value={q}
           onChangeText={setQ}
