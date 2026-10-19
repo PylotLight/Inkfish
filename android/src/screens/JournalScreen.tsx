@@ -274,7 +274,6 @@ function DayPager({
         initialNumToRender={1}
         maxToRenderPerBatch={2}
         windowSize={3}
-        removeClippedSubviews
         onMomentumScrollEnd={onSettle}
       />
     </View>
