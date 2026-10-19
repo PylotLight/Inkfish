@@ -242,7 +242,9 @@ const api = {
   files: {
     create: (dirRel: string): Promise<string> => ipcRenderer.invoke('files:create', dirRel),
     mkdir: (parentRel: string, name: string): Promise<string> => ipcRenderer.invoke('files:mkdir', parentRel, name),
-    rename: (rel: string, newName: string): Promise<string> => ipcRenderer.invoke('files:rename', rel, newName),
+    /** Hand rename in place; fixes relative links and [[wikilinks]] into it (like a title rename). */
+    rename: (rel: string, newName: string): Promise<{ rel: string; rewritten: string[] }> =>
+      ipcRenderer.invoke('files:rename', rel, newName),
     move: (rel: string, destDirRel: string): Promise<string> => ipcRenderer.invoke('files:move', rel, destDirRel),
     /** Rename a note in place to its title's file name (`Title 2.md` on collision); fixes links into it. */
     renameToTitle: (rel: string, title: string): Promise<{ rel: string; rewritten: string[] }> =>
@@ -271,6 +273,8 @@ const api = {
       ipcRenderer.sendSync('notes:save-sync', items) as number,
     reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id),
     titles: (): Promise<Record<string, string>> => ipcRenderer.invoke('notes:titles'),
+    /** Notes Inkfish named from their title (they keep following it; see Settings → Name files from title). */
+    titleNamed: (): Promise<string[]> => ipcRenderer.invoke('notes:title-named'),
     setTitle: (id: string, title: string): Promise<Record<string, string>> =>
       ipcRenderer.invoke('notes:set-title', id, title)
   },

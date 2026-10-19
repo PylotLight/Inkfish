@@ -38,6 +38,11 @@ export interface Prefs {
   noteWidth: NoteWidthId
   /** Untitled notes take their file name from the title (first `# H1`); the header title renames the file. */
   nameFromTitle: boolean
+  /**
+   * Also rename notes that are named after their # heading but weren't named by Inkfish (imported
+   * notes). Off by default: only Untitled notes and ones Inkfish named follow their title.
+   */
+  renameHeadingNamed: boolean
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -55,7 +60,8 @@ export const DEFAULT_PREFS: Prefs = {
   blur: true,
   lineNumbers: false,
   noteWidth: 'full',
-  nameFromTitle: true
+  nameFromTitle: true,
+  renameHeadingNamed: false
 }
 
 export interface ThemeDef {
@@ -201,7 +207,8 @@ export function loadPrefs(): Prefs {
     blur: base.blur !== false,
     lineNumbers: (base as Partial<Prefs>).lineNumbers === true,
     noteWidth: noteWidthFrom(base as Record<string, unknown>),
-    nameFromTitle: (base as Partial<Prefs>).nameFromTitle !== false
+    nameFromTitle: (base as Partial<Prefs>).nameFromTitle !== false,
+    renameHeadingNamed: (base as Partial<Prefs>).renameHeadingNamed === true
   }
 }
 

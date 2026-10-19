@@ -24,3 +24,10 @@ describe('noteWidthFrom', () => {
     expect(noteWidthFrom({ noteWidth: 3 })).toBe('full')
   })
 })
+
+describe('title sync prefs', () => {
+  test('name files from title is on, renaming heading-named (imported) notes is opt-in', () => {
+    expect(DEFAULT_PREFS.nameFromTitle).toBe(true)
+    expect(DEFAULT_PREFS.renameHeadingNamed).toBe(false)
+  })
+})

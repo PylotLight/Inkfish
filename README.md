@@ -63,8 +63,8 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 **Notes**
 - Live-preview markdown editor (CodeMirror) with tabs, pinning, in-note find, code highlighting and autosave.
 - Images: paste or drop to save into `assets/`, drag to resize (Obsidian-style `![alt|300](…)` widths), drag to move, right-click to copy.
-- File names follow the note's `# title` until you rename a file by hand. Click the header title to rename in place; links and `[[wikilinks]]` to the note are updated (Settings → Notes → Name files from title).
-- Sidebar file tree with drag and drop, Move to…, tag chips and a breadcrumb. Hover a row to rename or delete; delete shows a glance of the note first and can be undone. Deleted notes stay in Settings → Trash for 7 days.
+- New (Untitled) notes take their file name from their `# title` and keep following it until you rename the file by hand. Notes you bring in (an Obsidian vault) keep their names unless you turn on Settings → Notes → Also rename notes named after their heading. Click the header title to rename in place. Any rename or move (title, hand rename, Move to…, drag and drop) updates links and `[[wikilinks]]` to the note.
+- Sidebar file tree with drag and drop, Move to…, tag chips and a breadcrumb. Enter opens the selected note, F2 or the hover ✎ renames it, ⌘⌫ deletes; delete shows a glance of the note first and can be undone. Deleted notes stay in Settings → Trash for 7 days.
 - Today: a daily note with quick-append from the Home dashboard, the tray, or ⇧⌥Space.
 - ⌘K command palette (commands, notes, `#tags`) and ⌘O note switcher.
 
@@ -78,7 +78,7 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 
 ## Your data
 
-- **Notes:** a plain folder of `.md` files, `~/Inkfish` by default (you pick it on first launch, and an existing Obsidian vault works). Inkfish only writes finished notes and `assets/` there; with Settings → Notes → Name files from title on (the default) it also renames notes that follow their `# title` and updates links to them in other notes. Change it in Settings (Notes home).
+- **Notes:** a plain folder of `.md` files, `~/Inkfish` by default (you pick it on first launch, and an existing Obsidian vault works). Inkfish only writes finished notes and `assets/` there; with Settings → Notes → Name files from title on (the default) it also renames Untitled notes (and ones it named) to follow their `# title`, and any rename or move updates links to the note in other notes. Existing notes named after their heading are only renamed if you turn on "Also rename notes named after their heading" (off by default). Change it in Settings (Notes home).
 - **App data:** `~/Library/Application Support/Inkfish` holds settings, the search index (a cache, rebuilt from your files by Rescan), raw inbox captures, the daily-log scratch and trash.
 - Your AI API key and phone pairing keys are encrypted with the macOS keychain. With no AI provider connected, notes only go to a phone you paired. With one, note text also goes to the provider you configured.
 

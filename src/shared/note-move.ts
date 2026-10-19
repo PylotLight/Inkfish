@@ -150,6 +150,12 @@ export interface LinkRewriteContext {
   remap: (oldRel: string) => string | null
   /** Does this vault rel exist now (after the move)? */
   exists: (rel: string) => boolean
+  /**
+   * Leave a relative link alone when it already resolves from the note's NEW folder (written
+   * there, or fixed already). Makes re-applying a move idempotent — used when merging a window's
+   * unsaved text that may or may not predate the move.
+   */
+  keepResolving?: boolean
 }
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i
@@ -190,6 +196,10 @@ function rewriteDest(rawDest: string, ctx: LinkRewriteContext): string | null {
     }
   }
   if (next === null) {
+    if (ctx.keepResolving && oldDir !== newDir) {
+      const here = normalizeRel(`${newDir}/${decoded}`)
+      if (here !== null && ctx.remap(here) === null && ctx.exists(here)) return null
+    }
     const target = normalizeRel(`${oldDir}/${decoded}`)
     if (target === null) return null
     const newTarget = ctx.remap(target) ?? target

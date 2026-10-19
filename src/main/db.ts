@@ -44,6 +44,12 @@ interface Backend {
   search(query: string, limit: number): Array<NoteRow & { rank: number }>
   countInbox(): number
   clear(): void
+  /** Every indexed vault rel (staging included). */
+  paths(): string[]
+  /** Vault rels whose indexed body contains any of `needles` (already lowercased). */
+  bodiesContaining(needles: string[]): string[]
+  /** Drop every row at `rel` or under `rel/` (a file or a whole folder). */
+  removePath(rel: string): number
 }
 
 /** Cast node:sqlite rows (Record<string, SQLOutputValue>) to our row shape. */
@@ -145,6 +151,8 @@ function createSqliteBackend(dbPath: string): Backend | null {
     const delStmt = db.prepare('DELETE FROM notes WHERE id = ?')
     const countStmt = db.prepare("SELECT COUNT(*) AS n FROM notes WHERE status = 'inbox'")
     const clearStmt = db.prepare('DELETE FROM notes')
+    const pathsStmt = db.prepare('SELECT path FROM notes')
+    const delPathStmt = db.prepare('DELETE FROM notes WHERE path = ? OR substr(path, 1, ?) = ?')
     return {
       upsert: (r) =>
         upsertStmt.run(
@@ -182,7 +190,26 @@ function createSqliteBackend(dbPath: string): Backend | null {
         }
       },
       countInbox: () => (countStmt.get() as { n: number }).n,
-      clear: () => void clearStmt.run()
+      clear: () => void clearStmt.run(),
+      paths: () => rows<Array<{ path: string }>>(pathsStmt.all()).map((r) => r.path),
+      bodiesContaining: (needles) => {
+        if (needles.length === 0) return []
+        // SQLite's lower() only folds ASCII: non-ASCII needles are matched in JS instead.
+        // eslint-disable-next-line no-control-regex
+        const ascii = needles.every((n) => /^[\x00-\x7f]*$/.test(n))
+        if (!ascii) {
+          const all = rows<Array<{ path: string; body: string }>>(db.prepare('SELECT path, body FROM notes').all())
+          return all.filter((r) => bodyHas(r.body, needles)).map((r) => r.path)
+        }
+        const where = needles.map(() => 'instr(lower(body), ?) > 0').join(' OR ')
+        return rows<Array<{ path: string }>>(db.prepare(`SELECT path FROM notes WHERE ${where}`).all(...needles)).map(
+          (r) => r.path
+        )
+      },
+      removePath: (rel) => {
+        const prefix = `${rel}/`
+        return Number(delPathStmt.run(rel, prefix.length, prefix).changes ?? 0)
+      }
     }
   } catch (err) {
     console.warn('[db] node:sqlite unavailable, using in-memory index:', String(err))
@@ -194,6 +221,11 @@ function createSqliteBackend(dbPath: string): Backend | null {
     sqliteHandle = null
     return null
   }
+}
+
+function bodyHas(body: string, needles: string[]): boolean {
+  const lower = body.toLowerCase()
+  return needles.some((n) => lower.includes(n))
 }
 
 // --- memory fallback ---------------------------------------------------------------
@@ -219,7 +251,19 @@ function createMemoryBackend(): Backend {
         .map((r) => ({ ...r, rank: 0 }))
     },
     countInbox: () => [...rows.values()].filter((r) => r.status === 'inbox').length,
-    clear: () => rows.clear()
+    clear: () => rows.clear(),
+    paths: () => [...rows.values()].map((r) => r.path),
+    bodiesContaining: (needles) => [...rows.values()].filter((r) => bodyHas(r.body, needles)).map((r) => r.path),
+    removePath: (rel) => {
+      let n = 0
+      for (const [id, r] of rows) {
+        if (r.path === rel || r.path.startsWith(`${rel}/`)) {
+          rows.delete(id)
+          n++
+        }
+      }
+      return n
+    }
   }
 }
 
@@ -397,6 +441,59 @@ export function getNote(id: string, root: string): NoteDoc | null {
 
 export function removeNote(id: string): void {
   must().remove(id)
+}
+
+/**
+ * Backlink lookup for a rename/move, straight from the index (no file reads): every vault note's
+ * rel (staging `inbox/` / `daily/` left out — they never link into the vault by path) and the ones
+ * whose text mentions any of `needles` (case-insensitive). Candidates are a superset; the caller
+ * parses links in just those files.
+ */
+export function linkLookup(needles: string[]): { notes: string[]; candidates: string[] } {
+  const vaultOnly = (p: string): boolean => !p.startsWith('inbox/') && !p.startsWith('daily/')
+  const lower = [...new Set(needles.map((n) => n.toLowerCase()).filter(Boolean))]
+  return {
+    notes: must().paths().filter(vaultOnly),
+    candidates: must().bodiesContaining(lower).filter(vaultOnly)
+  }
+}
+
+/** Drop a file (or a folder's worth of notes) from the index by path — trash, rename, move. */
+export function removePath(rel: string): number {
+  return must().removePath(rel)
+}
+
+/**
+ * Index one vault path after it appeared (restore, rename, move): a `.md` file, or every `.md`
+ * under a folder (dot entries skipped, like `reindexVault`). Returns how many notes were indexed.
+ */
+export function indexPath(root: string, rel: string): number {
+  const abs = join(root, rel)
+  let st
+  try {
+    st = statSync(abs)
+  } catch {
+    return 0
+  }
+  if (st.isFile()) return rel.endsWith('.md') && indexFile(abs, rel) ? 1 : 0
+  if (!st.isDirectory()) return 0
+  let n = 0
+  const walk = (dir: string): void => {
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith('.md') && indexFile(p, relative(root, p))) n++
+    }
+  }
+  walk(abs)
+  return n
 }
 
 export function countInbox(): number {

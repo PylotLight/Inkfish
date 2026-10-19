@@ -3,8 +3,9 @@ import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, sync
 import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
-import { moveEntry, renameToTitle, type MoveEntryResult, type TitleRenameResult } from './move'
-import { sanitizeFileTitle } from '../shared/title-sync'
+import { moveEntry, renameEntry, renameToTitle, type MoveEntryResult, type TitleRenameResult } from './move'
+import { isTitleSyncPath, sanitizeFileTitle } from '../shared/title-sync'
+import { createMoveLog, mergeLinkMoves, type LinkMove } from '../shared/link-moves'
 import { remapMiniNotes } from './mini-window'
 import { setTags } from '../shared/tags'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -56,11 +57,13 @@ import {
   parseVtt,
   purgeTrash,
   listTrash,
-  restoreTrash,
+  restoreTrashEntries,
+  loadTitleNamed,
+  markTitleNamed,
+  migrateTitleNamed,
   deleteTrash,
   mergeCaseDuplicates,
   readInboxItem,
-  renamePath,
   requireNotes,
   resolveAsset,
   resolveNoteAbs,
@@ -84,6 +87,9 @@ import {
   dbKind,
   getNote,
   indexFile,
+  indexPath,
+  linkLookup,
+  removePath,
   listNotes,
   openDb,
   reindexStaging,
@@ -107,6 +113,32 @@ import {
 } from './stt'
 
 const isMac = process.platform === 'darwin'
+
+/**
+ * Renames/moves whose links were just fixed on disk. A window that still holds text from before
+ * (typed while the rename was in flight, or a mini window's pending autosave) gets them merged into
+ * its next save instead of writing the old links back (shared/link-moves mergeLinkMoves).
+ */
+const moveLog = createMoveLog()
+
+/** Reindex notes whose links a rename/move rewrote and push the new text to every window. */
+function publishRewritten(rewritten: readonly string[], root: string, move: LinkMove | null | undefined): void {
+  if (move) moveLog.add(move)
+  for (const r of rewritten) {
+    indexFile(join(root, r), r)
+    const saved = getNote(r, root)
+    if (!saved) continue
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('inkfish:note-saved', saved)
+    }
+  }
+}
+
+/** Targeted index update for a path that moved (file or folder): no full-vault rescan. */
+function reindexMoved(root: string, from: string, to: string): void {
+  removePath(from)
+  indexPath(root, to)
+}
 
 /** Materials offered in the Glass tab. All are valid on current Electron. */
 const VIBRANCY_OPTIONS: readonly VibrancyName[] = [
@@ -484,8 +516,14 @@ export function registerIpc(): void {
     if (!doc) return null
     const abs = resolveNoteAbs(doc.path, paths)
     if (!existsSync(abs)) return null
+    // Text from before a recent rename/move still has the old links: merge the fix-up in.
+    let text = markdown
+    if (isTitleSyncPath(doc.path)) {
+      const moves = moveLog.recent()
+      if (moves.length) text = mergeLinkMoves(text, doc.path, moves, (p) => existsSync(join(paths.root, p)))
+    }
     // Identical text: no write, no reindex, no watcher churn — just confirm.
-    if (doc.markdown === markdown) return doc
+    if (doc.markdown === text) return doc
     // The editor edits the body; keep the file's front matter (see keepFrontmatter).
     let existing = ''
     try {
@@ -493,7 +531,7 @@ export function registerIpc(): void {
     } catch {
       // unreadable → write the body as-is
     }
-    writeFileSync(abs, keepFrontmatter(existing, markdown), 'utf8')
+    writeFileSync(abs, keepFrontmatter(existing, text), 'utf8')
     removeNote(id)
     indexFile(abs, doc.path)
     const saved = getNote(id, paths.root)
@@ -569,22 +607,30 @@ export function registerIpc(): void {
   ipcMain.handle('files:mkdir', (_e: IpcMainInvokeEvent, parentRel: string, name: string): string =>
     createDir(parentRel, name, requireNotes())
   )
-  ipcMain.handle('files:rename', (_e: IpcMainInvokeEvent, rel: string, newName: string): string => {
+  // Hand rename (sidebar inline rename / Rename… prompt): same link fix-up as a title rename.
+  ipcMain.handle('files:rename', async (_e: IpcMainInvokeEvent, rel: unknown, newName: unknown): Promise<MoveEntryResult> => {
+    if (typeof rel !== 'string' || typeof newName !== 'string') throw new Error('bad rename')
     const paths = requireNotes()
-    const next = renamePath(rel, newName, paths)
+    const res = await renameEntry(rel, newName, paths, linkLookup)
+    if (res.rel === rel) return res
     // Ids are paths — carry title overrides across (whole subtree for dirs).
-    migrateTitles(rel, next)
-    reindexVault(paths.root)
-    remapMiniNotes(rel, next)
-    return next
+    migrateTitles(rel, res.rel)
+    // A file renamed by hand stops following its title; a renamed folder's notes keep their marks.
+    migrateTitleNamed(rel, res.rel, res.rel.toLowerCase().endsWith('.md'))
+    reindexMoved(paths.root, rel, res.rel)
+    remapMiniNotes(rel, res.rel)
+    publishRewritten(res.rewritten, paths.root, res.move)
+    return res
   })
+  ipcMain.handle('notes:title-named', (): string[] => loadTitleNamed())
   // Filename follows the note title (header inline title + auto-named notes): in-place rename,
   // collision-safe, inbound links/[[wikilinks]] fixed. Targeted reindex — this runs while typing.
-  ipcMain.handle('files:rename-to-title', (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): TitleRenameResult => {
+  ipcMain.handle('files:rename-to-title', async (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): Promise<TitleRenameResult> => {
     if (typeof rel !== 'string' || typeof title !== 'string') throw new Error('bad rename')
     const paths = requireNotes()
     const before = getNote(rel, paths.root)
-    const res = renameToTitle(rel, title, paths)
+    // Backlinks come from the index (no full-vault read); only the linking notes are opened.
+    const res = await renameToTitle(rel, title, paths, linkLookup)
     // The file name IS the title now — a stale custom display title would hide it. Overrides are
     // keyed by note id, which is the front matter `id:` when the note has one (not its path), so
     // clear both. Also when the name already fit (header title typed back to the file name).
@@ -599,63 +645,61 @@ export function registerIpc(): void {
       return res
     }
     migrateTitles(rel, res.rel)
+    // Inkfish named this file from its title: it keeps following it (Untitled or not).
+    markTitleNamed(res.rel, true, rel)
     clearOverride(res.rel)
     clearOverride(before?.id)
     removeNote(before?.id ?? rel)
     indexFile(join(paths.root, res.rel), res.rel)
     remapMiniNotes(rel, res.rel)
-    for (const r of res.rewritten) {
-      indexFile(join(paths.root, r), r)
-      const saved = getNote(r, paths.root)
-      if (!saved) continue
-      for (const w of BrowserWindow.getAllWindows()) {
-        if (!w.isDestroyed()) w.webContents.send('inkfish:note-saved', saved)
-      }
-    }
+    publishRewritten(res.rewritten, paths.root, res.move)
     return res
   })
   ipcMain.handle('files:move', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): string => {
     const paths = requireNotes()
     const next = movePath(rel, destDirRel, paths)
     migrateTitles(rel, next)
-    reindexVault(paths.root)
+    migrateTitleNamed(rel, next)
+    reindexMoved(paths.root, rel, next)
     remapMiniNotes(rel, next)
     return next
   })
   // Sidebar drag & drop / folder picker: collision-safe move + relative link fix-ups.
-  ipcMain.handle('files:move-to', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): MoveEntryResult => {
+  ipcMain.handle('files:move-to', async (_e: IpcMainInvokeEvent, rel: unknown, destDirRel: unknown): Promise<MoveEntryResult> => {
     if (typeof rel !== 'string' || typeof destDirRel !== 'string') throw new Error('bad move')
     const paths = requireNotes()
-    const res = moveEntry(rel, destDirRel, paths)
+    const res = await moveEntry(rel, destDirRel, paths, linkLookup)
     if (res.rel === rel) return res
     migrateTitles(rel, res.rel)
-    reindexVault(paths.root)
+    migrateTitleNamed(rel, res.rel)
+    reindexMoved(paths.root, rel, res.rel)
     remapMiniNotes(rel, res.rel)
     // Notes whose links changed: every window drops its cached copy for the new text.
-    for (const r of res.rewritten) {
-      const saved = getNote(r, paths.root)
-      if (!saved) continue
-      for (const w of BrowserWindow.getAllWindows()) {
-        if (!w.isDestroyed()) w.webContents.send('inkfish:note-saved', saved)
-      }
-    }
+    publishRewritten(res.rewritten, paths.root, res.move)
     return res
   })
   ipcMain.handle('files:trash', (_e: IpcMainInvokeEvent, rel: string) => {
     const paths = requireNotes()
     const entry = trashPath(rel, paths)
-    reindexVault(paths.root)
+    // Just that path (a note, or a folder's worth) leaves the index — no full rescan per delete.
+    removePath(rel)
     return entry
   })
   ipcMain.handle('files:purge-trash', (): number => purgeTrash())
   ipcMain.handle('trash:list', () => listTrash())
   ipcMain.handle('trash:restore', (_e: IpcMainInvokeEvent, ids: string[] | 'all'): string[] => {
     const paths = requireNotes()
-    const done = restoreTrash(ids, paths)
-    reindexVault(paths.root)
-    reindexStaging(paths)
+    const done = restoreTrashEntries(ids, paths)
+    // Re-add just what came back (a note, or a folder's notes), wherever it lives.
+    for (const r of done) {
+      if (r.scope === 'vault') indexPath(paths.root, r.rel)
+      else if (!r.isDir) {
+        const base = r.scope === 'inbox' ? paths.inboxDir : paths.dailyDir
+        indexFile(join(base, r.rel), `${r.scope}/${r.rel}`)
+      }
+    }
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('inkfish:vault-changed')
-    return done
+    return done.map((r) => r.rel)
   })
   ipcMain.handle('trash:delete', (_e: IpcMainInvokeEvent, ids: string[] | 'all'): number => deleteTrash(ids))
   ipcMain.handle('files:reveal', (_e: IpcMainInvokeEvent, rel: string): boolean => {

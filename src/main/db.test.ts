@@ -89,3 +89,57 @@ describe('index', () => {
     }
   })
 })
+
+describe('targeted index ops (rename / trash / restore)', () => {
+  const put = async (rel: string, text: string): Promise<void> => {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const { dirname } = await import('node:path')
+    mkdirSync(dirname(join(dir, rel)), { recursive: true })
+    writeFileSync(join(dir, rel), text)
+  }
+
+  for (const backend of ['sqlite', 'memory'] as const) {
+    test(`${backend}: linkLookup finds only notes mentioning the needles, from the index`, async () => {
+      const d = await db()
+      if (backend === 'sqlite') d.openDb(join(dir, 'll.db'))
+      else d.closeDb() // must() falls back to the in-memory index
+      await put('a.md', '# A\nsee [[Japan List]]\n')
+      await put('b.md', '# B\nnothing here\n')
+      await put('c/über.md', '# C\nlink to [[Ünïcode Note]]\n')
+      await put('d.md', '---\nid: n-d\n---\n# D\n[x](../Japan%20List.md)\n')
+      for (const rel of ['a.md', 'b.md', 'c/über.md', 'd.md']) d.indexFile(join(dir, rel), rel)
+      // Staging never counts.
+      await put('inbox/x.md', '[[Japan List]]')
+      d.indexFile(join(dir, 'inbox/x.md'), 'inbox/x.md')
+
+      const r = d.linkLookup(['Japan List.md', 'Japan%20List.md', 'Japan List'])
+      expect(r.candidates.sort()).toEqual(['a.md', 'd.md'])
+      expect(r.notes.sort()).toEqual(['a.md', 'b.md', 'c/über.md', 'd.md'])
+      // Non-ASCII needles are folded in JS (SQLite lower() is ASCII-only).
+      expect(d.linkLookup(['ÜNÏCODE NOTE']).candidates).toEqual(['c/über.md'])
+      expect(d.linkLookup([]).candidates).toEqual([])
+      d.closeDb()
+    })
+
+    test(`${backend}: removePath drops a file or a folder's notes (front matter ids too); indexPath re-adds`, async () => {
+      const d = await db()
+      if (backend === 'sqlite') d.openDb(join(dir, 'rp.db'))
+      else d.closeDb()
+      await put('proj/a.md', '---\nid: n-a\n---\n# A\n')
+      await put('proj/sub/b.md', '# B\n')
+      await put('project-x.md', '# not under proj/\n')
+      for (const rel of ['proj/a.md', 'proj/sub/b.md', 'project-x.md']) d.indexFile(join(dir, rel), rel)
+      expect(d.removePath('proj')).toBe(2)
+      expect(d.listNotes(null).map((n) => n.path)).toEqual(['project-x.md'])
+      expect(d.removePath('project-x.md')).toBe(1)
+      expect(d.listNotes(null)).toEqual([])
+
+      expect(d.indexPath(dir, 'proj')).toBe(2)
+      expect(d.getNote('n-a', dir)?.path).toBe('proj/a.md')
+      expect(d.indexPath(dir, 'project-x.md')).toBe(1)
+      expect(d.indexPath(dir, 'missing.md')).toBe(0)
+      expect(d.listNotes(null)).toHaveLength(3)
+      d.closeDb()
+    })
+  }
+})

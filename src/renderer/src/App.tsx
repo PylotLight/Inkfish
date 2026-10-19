@@ -171,10 +171,18 @@ function Main(): React.JSX.Element {
   /** Set below once its deps exist; the controller calls through these refs. */
   const savedHandlerRef = useRef<(id: string, markdown: string, saved: NoteDoc) => void>(() => undefined)
   const saveErrorRef = useRef<(id: string, err: unknown) => void>(() => undefined)
+  /** Title renames in flight: old id → the id it lands under. Saves for the old id wait for it. */
+  const renameInflightRef = useRef(new Map<string, Promise<string>>())
   const autosaveRef = useRef<Autosave | null>(null)
   if (!autosaveRef.current) {
     autosaveRef.current = createAutosave<NoteDoc>({
-      save: (id, markdown) => window.api.notes.save(id, markdown),
+      save: async (id, markdown) => {
+        // Typed while this note's file is being renamed: write to where it lands, not the old
+        // path (which is gone — that save would fail and the text would wait for the next blur).
+        const moving = renameInflightRef.current.get(id)
+        const target = moving ? await moving.catch(() => id) : id
+        return window.api.notes.save(target, markdown)
+      },
       onSaved: (id, markdown, saved) => savedHandlerRef.current(id, markdown, saved),
       onError: (id, err) => saveErrorRef.current(id, err)
     })
@@ -188,6 +196,16 @@ function Main(): React.JSX.Element {
   const baseTitlesRef = useRef(new Map<string, string>())
   /** Notes with a title rename in flight. */
   const titleRenamingRef = useRef(new Set<string>())
+  /** Notes Inkfish named from their title (main keeps the list): they keep following it. */
+  const titleNamedRef = useRef(new Set<string>())
+  const refreshTitleNamed = useCallback(() => {
+    window.api.notes
+      .titleNamed()
+      .then((list) => {
+        titleNamedRef.current = new Set(list)
+      })
+      .catch(console.error)
+  }, [])
   /** Edits the editor sends under the old id between a rename landing and it re-rendering. */
   const renamedAliasRef = useRef<{ from: string; to: string; doc: NoteDoc | null } | null>(null)
   const titleSyncRunRef = useRef<(id: string, markdown: string) => void>(() => undefined)
@@ -272,7 +290,8 @@ function Main(): React.JSX.Element {
     refreshNotes()
     refreshProjects()
     window.api.notes.titles().then(setTitles).catch(console.error)
-  }, [refreshInbox, refreshNotes, refreshProjects])
+    refreshTitleNamed()
+  }, [refreshInbox, refreshNotes, refreshProjects, refreshTitleNamed])
 
   // Release vs dev profile ("Inkfish Dev"): brand pill, window title, shortcut hints.
   const [profile, setProfile] = useState<AppProfileInfo | null>(null)
@@ -305,6 +324,7 @@ function Main(): React.JSX.Element {
         refreshProjects()
         refreshNotes()
         window.api.notes.titles().then(setTitles).catch(console.error)
+        refreshTitleNamed()
         // 7-day trash sweep on launch (hook point for the future scheduler).
         window.api.files
           .purgeTrash()
@@ -320,7 +340,7 @@ function Main(): React.JSX.Element {
         }
       })
       .catch(console.error)
-  }, [refreshInbox, refreshNotes, refreshProjects, notify])
+  }, [refreshInbox, refreshNotes, refreshProjects, notify, refreshTitleNamed])
 
   // Search-as-you-type lives in the sidebar; results replace the tree.
   useEffect(() => {
@@ -858,6 +878,8 @@ function Main(): React.JSX.Element {
    * default, so every open tab, the open note, cached docs/drafts and the new-note target follow.
    */
   const followPathChange = useCallback((rel: string, newRel: string, all: NoteEntry[], openPath: string | null) => {
+    // Marks follow moves (and a hand rename drops one) in main — pick that up.
+    refreshTitleNamed()
     const byPath = new Map(all.map((n) => [n.path, n]))
     const idMoves = new Map<string, string>()
     setTabs((prev) =>
@@ -904,7 +926,7 @@ function Main(): React.JSX.Element {
         setDoc(null)
       }
     }
-  }, [autosave])
+  }, [autosave, refreshTitleNamed])
 
   /**
    * Rename note `id` (at `path`) in place to `title`'s file name — header inline title and the
@@ -916,13 +938,23 @@ function Main(): React.JSX.Element {
     async (id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }): Promise<string> => {
       if (titleRenamingRef.current.has(id)) return path
       titleRenamingRef.current.add(id)
+      let landed: (to: string) => void = () => undefined
       try {
         await autosave.flush(id)
         const openPath = selRef.current?.origin === 'note'
           ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
           : null
-        const res = await window.api.files.renameToTitle(path, title)
+        // From here until it lands, saves for `id` wait and then go to the new id.
+        renameInflightRef.current.set(id, new Promise<string>((resolve) => (landed = resolve)))
+        let res: { rel: string; rewritten: string[] }
+        try {
+          res = await window.api.files.renameToTitle(path, title)
+        } catch (err) {
+          landed(id)
+          throw err
+        }
         if (res.rel === path) {
+          landed(id)
           baseTitlesRef.current.set(id, opts.baseAfter)
           // Main may have cleared a display-title override; this also re-renders the header so an
           // inline title that didn't change the name snaps back to it.
@@ -933,17 +965,26 @@ function Main(): React.JSX.Element {
         setAllNotes(all)
         window.api.notes.titles().then(setTitles).catch(console.error)
         const newId = all.find((n) => n.path === res.rel)?.id ?? res.rel
+        landed(newId)
+        titleNamedRef.current.delete(path)
+        titleNamedRef.current.add(res.rel)
         baseTitlesRef.current.delete(id)
         baseTitlesRef.current.set(newId, opts.baseAfter)
         titleSync.rename(id, newId)
         if (openPath === path) renamedAliasRef.current = { from: id, to: newId, doc: docRef.current }
         followPathChange(path, res.rel, all, openPath)
+        // Text typed while the rename was in flight: carry it over and write it to the new path
+        // right away (it used to sit unsaved until the next blur).
+        autosave.rename(id, newId)
+        if (autosave.pending(newId) !== undefined) void autosave.flush(newId)
         if (opts.toast || res.rewritten.length > 0) {
           const links = res.rewritten.length ? ` · ${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated` : ''
           notify(`Renamed → ${baseOf(res.rel)}${links}`)
         }
         return res.rel
       } finally {
+        landed(id) // no-op once resolved
+        renameInflightRef.current.delete(id)
         titleRenamingRef.current.delete(id)
       }
     },
@@ -975,7 +1016,10 @@ function Main(): React.JSX.Element {
     if (!path) return
     const title = titleFromMarkdown(markdown)
     const base = baseTitlesRef.current.get(id) ?? title
-    const target = autoRenameTarget(path, base, title)
+    const target = autoRenameTarget(path, base, title, {
+      inkfishNamed: titleNamedRef.current.has(path),
+      headingNamed: prefsRef.current.renameHeadingNamed
+    })
     if (!target) {
       // Name and title agree (typed back to it, or renamed to match): it follows from here on.
       if (title && matchesName(stemOf(path), sanitizeFileTitle(title))) baseTitlesRef.current.set(id, title)
@@ -1068,8 +1112,9 @@ function Main(): React.JSX.Element {
       cancelTitleSyncUnder(rel)
       window.api.files
         .rename(rel, name)
-        .then((newRel) => {
-          notify(`Renamed → ${newRel.split('/').pop()}`)
+        .then(({ rel: newRel, rewritten }) => {
+          const links = rewritten.length ? ` · ${rewritten.length} link${rewritten.length === 1 ? '' : 's'} updated` : ''
+          notify(`Renamed → ${newRel.split('/').pop()}${links}`)
           window.api.notes
             .list(null)
             .then((all) => {

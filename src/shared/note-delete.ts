@@ -69,11 +69,14 @@ export function renameCommit(rel: string, value: string): string | null {
 
 export type RowKeyAction = 'rename' | 'delete' | null
 
-/** Sidebar row keys (Finder-ish): F2 / Enter rename, ⌘⌫ (Ctrl+Backspace off-mac, or ⌘Delete) deletes. */
+/**
+ * Sidebar row keys: F2 renames (also the ✎ hover button), ⌘⌫ (Ctrl+Backspace off-mac, or ⌘Delete)
+ * deletes. Enter is NOT ours — it falls through to the row button and opens the note.
+ */
 export function rowKeyAction(e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): RowKeyAction {
   if (e.altKey) return null
   const mod = e.metaKey || e.ctrlKey
-  if (!mod && (e.key === 'F2' || (e.key === 'Enter' && !e.shiftKey))) return 'rename'
+  if (!mod && e.key === 'F2') return 'rename'
   if (mod && (e.key === 'Backspace' || e.key === 'Delete')) return 'delete'
   return null
 }

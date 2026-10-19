@@ -530,8 +530,8 @@ export default function SettingsView({
                 <div className="setting-label">
                   Name files from title
                   <span className="muted small setting-hint">
-                    Untitled notes, and notes still named after their first # heading, take their file name from it (links
-                    to them are updated), and editing the big title renames the file. Rename a file by hand and it keeps that name.
+                    Untitled notes take their file name from their first # heading and keep following it (links to them are
+                    updated), and editing the big title renames the file. Rename a file by hand and it keeps that name.
                   </span>
                 </div>
                 <button
@@ -540,6 +540,25 @@ export default function SettingsView({
                   className={`switch${prefs.nameFromTitle ? ' on' : ''}`}
                   onClick={() => set({ nameFromTitle: !prefs.nameFromTitle })}
                   aria-label="Name files from title"
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="setting-row inline">
+                <div className="setting-label">
+                  Also rename notes named after their heading
+                  <span className="muted small setting-hint">
+                    Off: notes you brought in (an Obsidian vault) keep their names even when the file matches its # heading.
+                    On: any note still named after its heading follows it when you edit the heading.
+                  </span>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={prefs.renameHeadingNamed}
+                  className={`switch${prefs.renameHeadingNamed ? ' on' : ''}`}
+                  disabled={!prefs.nameFromTitle}
+                  onClick={() => set({ renameHeadingNamed: !prefs.renameHeadingNamed })}
+                  aria-label="Also rename notes named after their heading"
                 >
                   <span className="knob" />
                 </button>
