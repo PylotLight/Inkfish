@@ -216,3 +216,88 @@ describe('live preview: plain click on a picture selects it without revealing th
     expect(m.selectedImageRef(s)).toEqual({ from: 0, to: doc.length })
   })
 })
+
+describe('live preview: caret left on a ref by paste/resize does not reveal its source', () => {
+  async function setup(doc: string, cursor: number) {
+    const m = await import('./imageEdit')
+    const { livePreview } = await import('./livePreview')
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(cursor),
+      extensions: [livePreview(opts)]
+    })
+    const replaced = (s: EditorState) => {
+      const out: boolean[] = []
+      buildDecorations(s, opts).between(0, s.doc.length, (f, t, d) => {
+        if (d.spec.widget instanceof ImageWidget) out.push(t > f)
+      })
+      return out
+    }
+    return { m, state, replaced }
+  }
+  const ref = '![](assets/2026/10/a-2026-10-18-622a47.png)'
+
+  test('pasted ref (caret right after it) stays hidden, through a resize too', async () => {
+    const { m, state, replaced } = await setup('hello\nbye', 5)
+    // insertImages(): ref on its own line, caret right after it, no userEvent.
+    const insert = `\n${ref}`
+    let s = state.update({ changes: { from: 5, insert }, selection: { anchor: 5 + insert.length } }).state
+    const from = 6
+    let to = from + ref.length
+    expect(s.selection.main.head).toBe(to)
+    expect(m.imageSourceRevealed(s, from, to)).toBe(false)
+    expect(replaced(s)).toEqual([true])
+
+    // Resize gesture: begin (frozen hidden), Chromium's native selection lands on
+    // the ref mid-drag, release writes |481 and puts the caret back.
+    s = s.update(m.beginImageGestureSpec(s, { from, to })).state
+    s = s.update({ selection: { anchor: from + 2 }, userEvent: 'select.pointer' }).state
+    expect(m.imageSourceRevealed(s, from, to)).toBe(false)
+    expect(replaced(s)).toEqual([true])
+    s = s.update(m.endImageGestureSpec(s, m.resizeImageSpec(s, from, 481))).state
+    to = from + ref.length + '|481'.length
+    expect(s.doc.sliceString(from, to)).toBe('![|481](assets/2026/10/a-2026-10-18-622a47.png)')
+    expect(s.selection.main.head).toBe(to)
+    expect(m.imageSourceRevealed(s, from, to)).toBe(false)
+    expect(replaced(s)).toEqual([true])
+
+    // Deliberately putting the caret on it (arrow key / click) reveals it as before.
+    const arrowed = s.update({ selection: { anchor: from }, userEvent: 'select' }).state
+    expect(m.imageSourceRevealed(arrowed, from, to)).toBe(true)
+    expect(replaced(arrowed)).toEqual([false])
+    // Typing next to it ends the concealment too (backspace back onto it reveals).
+    const typed = s.update({
+      changes: { from: to, insert: 'x' },
+      selection: { anchor: to + 1 },
+      userEvent: 'input.type'
+    }).state
+    expect(typed.field(m.concealedImageField)).toBeNull()
+    const back = typed.update({
+      changes: { from: to, to: to + 1 },
+      selection: { anchor: to },
+      userEvent: 'delete.backward'
+    }).state
+    expect(m.imageSourceRevealed(back, from, to)).toBe(true)
+  })
+
+  test('a ref typed by hand stays revealed while you type it', async () => {
+    const partial = ref.slice(0, -1)
+    const { m, state } = await setup(partial, partial.length)
+    const s = state.update({
+      changes: { from: partial.length, insert: ')' },
+      selection: { anchor: ref.length },
+      userEvent: 'input.type'
+    }).state
+    expect(m.imageSourceRevealed(s, 0, ref.length)).toBe(true)
+  })
+
+  test('a deliberately revealed ref stays revealed through a resize (no layout jump)', async () => {
+    const doc = `hello\n${ref}\nbye`
+    const from = doc.indexOf('![')
+    const { m, state } = await setup(doc, from + 3)
+    let s = state.update({ selection: { anchor: from + 3 }, userEvent: 'select' }).state
+    s = s.update(m.beginImageGestureSpec(s, { from, to: from + ref.length })).state
+    s = s.update(m.endImageGestureSpec(s, m.resizeImageSpec(s, from, 300))).state
+    expect(m.imageSourceRevealed(s, from, from + ref.length + 4)).toBe(true)
+  })
+})

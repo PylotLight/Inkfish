@@ -526,6 +526,24 @@ export default function SettingsView({
                   </button>
                 </div>
               </div>
+              <div className="setting-row inline">
+                <div className="setting-label">
+                  Name files from title
+                  <span className="muted small setting-hint">
+                    Untitled notes take their file name from the first # heading, and editing the big title renames the file.
+                    Rename a file by hand and it keeps that name.
+                  </span>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={prefs.nameFromTitle}
+                  className={`switch${prefs.nameFromTitle ? ' on' : ''}`}
+                  onClick={() => set({ nameFromTitle: !prefs.nameFromTitle })}
+                  aria-label="Name files from title"
+                >
+                  <span className="knob" />
+                </button>
+              </div>
             </section>
           )}
         </div>

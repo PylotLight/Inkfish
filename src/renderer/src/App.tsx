@@ -21,6 +21,7 @@ import PopOutIcon from './views/PopOutIcon'
 import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle, tabDragPhase } from '../../shared/mini-window-tear'
 import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
+import { autoRenameTarget, createTitleSync, isTitleSyncPath, isUntitledName, matchesName, sanitizeFileTitle, stemOf, titleFromMarkdown, type TitleSyncScheduler } from '../../shared/title-sync'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed, vaultLabel, vaultTooltip } from '../../shared/sidebar'
 import SettingsView from './views/Settings'
@@ -179,6 +180,20 @@ function Main(): React.JSX.Element {
     })
   }
   const autosave = autosaveRef.current
+
+  // --- filename follows title (Settings → Notes → Name files from title) ----------------------
+  const prefsRef = useRef(prefs)
+  prefsRef.current = prefs
+  /** Per note: the title its file name was last synced from (or its saved title when first edited). */
+  const baseTitlesRef = useRef(new Map<string, string>())
+  /** Notes with a title rename in flight. */
+  const titleRenamingRef = useRef(new Set<string>())
+  /** Edits the editor sends under the old id between a rename landing and it re-rendering. */
+  const renamedAliasRef = useRef<{ from: string; to: string; doc: NoteDoc | null } | null>(null)
+  const titleSyncRunRef = useRef<(id: string, markdown: string) => void>(() => undefined)
+  const titleSyncRef = useRef<TitleSyncScheduler | null>(null)
+  if (!titleSyncRef.current) titleSyncRef.current = createTitleSync({ run: (id, md) => titleSyncRunRef.current(id, md) })
+  const titleSync = titleSyncRef.current
   /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
   const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
 
@@ -335,7 +350,8 @@ function Main(): React.JSX.Element {
 
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
-      // Leaving a note (or re-opening one) writes everything pending first.
+      // Leaving a note (or re-opening one) writes everything pending first — title renames too.
+      titleSync.flush()
       void autosave.flushAll()
       setSel({ id, origin })
       if (origin === 'note') {
@@ -426,18 +442,31 @@ function Main(): React.JSX.Element {
 
   /** A local edit in this window's editor: lift it and autosave it. */
   const handleDraft = useCallback(
-    (id: string, markdown: string) => {
+    (rawId: string, markdown: string) => {
+      // A title rename just moved this note but the editor hasn't re-rendered yet: follow it.
+      const alias = renamedAliasRef.current
+      const id = alias && alias.from === rawId && docRef.current === alias.doc ? alias.to : rawId
       liftDraft(id, markdown)
       // Inbox captures are shown as their body only (no front matter) — writing that back
       // would strip the capture's metadata, so only vault notes autosave.
-      if (selRef.current?.origin === 'note') autosave.schedule(id, markdown)
+      if (selRef.current?.origin === 'note') {
+        autosave.schedule(id, markdown)
+        if (!baseTitlesRef.current.has(id)) {
+          const saved = docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : '')
+          baseTitlesRef.current.set(id, titleFromMarkdown(saved))
+        }
+        titleSync.schedule(id, markdown)
+      }
     },
-    [liftDraft, autosave]
+    [liftDraft, autosave, titleSync]
   )
 
   // Flush whenever the window stops being the place you type, and on quit/close.
   useEffect(() => {
-    const onBlur = (): void => void autosave.flushAll()
+    const onBlur = (): void => {
+      titleSync.flush()
+      void autosave.flushAll()
+    }
     const onHide = (): void => {
       if (document.visibilityState === 'hidden') void autosave.flushAll()
     }
@@ -456,7 +485,7 @@ function Main(): React.JSX.Element {
       window.removeEventListener('beforeunload', onUnload)
       offFlush()
     }
-  }, [autosave])
+  }, [autosave, titleSync])
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -741,8 +770,20 @@ function Main(): React.JSX.Element {
     })
   }, [openToday])
 
+  /** Set once renameNoteFile exists (it's declared further down, after followPathChange). */
+  const renameNoteFileRef = useRef<(id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }) => Promise<string>>(
+    async (_id, path) => path
+  )
   const renameNote = useCallback(
     (id: string, title: string) => {
+      // Name files from title: the header title IS the file name — rename the file.
+      const d = docRef.current
+      if (prefsRef.current.nameFromTitle && d && d.id === id && selRef.current?.origin === 'note' && isTitleSyncPath(d.path) && title.trim()) {
+        const text = draftsRef.current[id] ?? d.markdown
+        renameNoteFileRef.current(id, d.path, title.trim(), { baseAfter: titleFromMarkdown(text), toast: true })
+          .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
+        return
+      }
       window.api.notes
         .setTitle(id, title)
         .then((all) => {
@@ -862,6 +903,83 @@ function Main(): React.JSX.Element {
     }
   }, [autosave])
 
+  /**
+   * Rename note `id` (at `path`) in place to `title`'s file name — header inline title and the
+   * auto title→filename sync. Pending text is written first; tabs, the open note, drafts, mini
+   * windows and links into it follow. `baseAfter` = the title the new name counts as synced from.
+   * Resolves to the new path (same path = nothing to do).
+   */
+  const renameNoteFile = useCallback(
+    async (id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }): Promise<string> => {
+      if (titleRenamingRef.current.has(id)) return path
+      titleRenamingRef.current.add(id)
+      try {
+        await autosave.flush(id)
+        const openPath = selRef.current?.origin === 'note'
+          ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+          : null
+        const res = await window.api.files.renameToTitle(path, title)
+        if (res.rel === path) {
+          baseTitlesRef.current.set(id, opts.baseAfter)
+          return path
+        }
+        const all = await window.api.notes.list(null)
+        setAllNotes(all)
+        window.api.notes.titles().then(setTitles).catch(console.error)
+        const newId = all.find((n) => n.path === res.rel)?.id ?? res.rel
+        baseTitlesRef.current.delete(id)
+        baseTitlesRef.current.set(newId, opts.baseAfter)
+        titleSync.rename(id, newId)
+        if (openPath === path) renamedAliasRef.current = { from: id, to: newId, doc: docRef.current }
+        followPathChange(path, res.rel, all, openPath)
+        if (opts.toast || res.rewritten.length > 0) {
+          const links = res.rewritten.length ? ` · ${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated` : ''
+          notify(`Renamed → ${baseOf(res.rel)}${links}`)
+        }
+        return res.rel
+      } finally {
+        titleRenamingRef.current.delete(id)
+      }
+    },
+    [autosave, titleSync, followPathChange, notify]
+  )
+  renameNoteFileRef.current = renameNoteFile
+
+  // A note named `Untitled…` that got a custom header title before this setting existed (the old
+  // ✎ rename only stored a display title): give the file that name when it's opened.
+  const openDocId = sel?.origin === 'note' ? (doc?.id ?? null) : null
+  useEffect(() => {
+    const d = docRef.current
+    if (!prefs.nameFromTitle || !openDocId || !d || d.id !== openDocId) return
+    const override = titles[d.id]?.trim()
+    if (!override || !isTitleSyncPath(d.path) || !isUntitledName(stemOf(d.path))) return
+    renameNoteFile(d.id, d.path, override, { baseAfter: titleFromMarkdown(draftsRef.current[d.id] ?? d.markdown) })
+      .catch((err: unknown) => console.error('[title-sync] untitled migration failed:', err))
+  }, [openDocId, titles, prefs.nameFromTitle, renameNoteFile])
+
+  /** The debounced title→filename check (see shared/title-sync for the rule). */
+  titleSyncRunRef.current = (id: string, markdown: string): void => {
+    if (!prefsRef.current.nameFromTitle) return
+    if (titleRenamingRef.current.has(id)) {
+      // A rename is landing — look again once it has.
+      titleSync.schedule(id, markdown)
+      return
+    }
+    const path = allNotesRef.current.find((n) => n.id === id)?.path ?? (docRef.current?.id === id ? docRef.current.path : null)
+    if (!path) return
+    const title = titleFromMarkdown(markdown)
+    const base = baseTitlesRef.current.get(id) ?? title
+    const target = autoRenameTarget(path, base, title)
+    if (!target) {
+      // Name and title agree (typed back to it, or renamed to match): it follows from here on.
+      if (title && matchesName(stemOf(path), sanitizeFileTitle(title))) baseTitlesRef.current.set(id, title)
+      return
+    }
+    renameNoteFile(id, path, title, { baseAfter: title }).catch((err: unknown) =>
+      console.error('[title-sync] rename failed:', err)
+    )
+  }
+
   /** Move a note/folder into `destDir` ('' = vault root): drag & drop and the folder picker. */
   const doMove = useCallback(
     async (rel: string, kind: MoveKind, destDir: string) => {
@@ -927,9 +1045,21 @@ function Main(): React.JSX.Element {
       ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
       : null
 
-  /** Rename `rel` on disk to `name` and follow it everywhere (tabs, open note, titles). */
+  /** A hand rename wins over a pending title→filename sync (and ends it: name ≠ title now). */
+  const cancelTitleSyncUnder = useCallback(
+    (rel: string) => {
+      for (const n of allNotesRef.current) if (n.path === rel || n.path.startsWith(`${rel}/`)) titleSync.cancel(n.id)
+    },
+    [titleSync]
+  )
+
+  /**
+   * Rename `rel` on disk to `name` and follow it everywhere (tabs, open note, titles). Every hand
+   * rename (prompt + sidebar inline) lands here, so it always cancels a pending auto-rename.
+   */
   const applyRename = useCallback(
     (rel: string, name: string, openPath: string | null) => {
+      cancelTitleSyncUnder(rel)
       window.api.files
         .rename(rel, name)
         .then((newRel) => {
@@ -947,12 +1077,14 @@ function Main(): React.JSX.Element {
         })
         .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, followPathChange]
+    [notify, refreshInbox, refreshProjects, followPathChange, cancelTitleSyncUnder]
   )
 
   const doRename = useCallback(
     (rel: string, isDir: boolean) => {
       flushBeforeFileOp()
+      // Stop a pending auto-rename from moving the file while the prompt is open.
+      cancelTitleSyncUnder(rel)
       const current = rel.split('/').pop() ?? rel
       // Path of the open note before the rename (to follow it across).
       const openPath = openNotePath()
@@ -964,7 +1096,7 @@ function Main(): React.JSX.Element {
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applyRename]
+    [applyRename, cancelTitleSyncUnder]
   )
 
   /**
@@ -1119,15 +1251,16 @@ function Main(): React.JSX.Element {
   )
 
   /** Rename a note: inline in its sidebar row when it's visible, the dialog otherwise. */
-  const renameNoteFile = useCallback(
+  const startNoteRename = useCallback(
     (entry: NoteEntry) => {
       if (rowEl(entry.id)) {
         flushBeforeFileOp()
+        cancelTitleSyncUnder(entry.path)
         setTreeRename(entry.id)
       } else doRename(entry.path, false)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [doRename]
+    [doRename, cancelTitleSyncUnder]
   )
 
   const rowActions = useMemo<RowActions>(
@@ -1135,6 +1268,8 @@ function Main(): React.JSX.Element {
       renamingId: treeRename,
       startRename: (entry) => {
         flushBeforeFileOp()
+        // Same as the prompt: no auto-rename moving the file under the inline editor.
+        cancelTitleSyncUnder(entry.path)
         setTreeRename(entry.id)
       },
       endRename: (entry, value) => {
@@ -1147,7 +1282,7 @@ function Main(): React.JSX.Element {
       remove: (entry, anchor, skip) => void deleteNote(entry, anchor, skip)
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [treeRename, applyRename, deleteNote]
+    [treeRename, applyRename, deleteNote, cancelTitleSyncUnder]
   )
 
   /** Context menu items for a tree target, the open note, or a tab. */
@@ -1174,7 +1309,7 @@ function Main(): React.JSX.Element {
           { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
           { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
           { label: 'Move to…', action: () => openMovePicker(rel, 'file', name, menu?.x, menu?.y) },
-          { label: 'Rename…', action: () => renameNoteFile(doc) },
+          { label: 'Rename…', action: () => startNoteRename(doc) },
           { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
         ]
       }
@@ -1210,7 +1345,7 @@ function Main(): React.JSX.Element {
       const name = target.name
       const entry = allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
       return [
-        { label: 'Rename  F2', action: () => (entry ? renameNoteFile(entry) : doRename(target.rel, false)) },
+        { label: 'Rename  F2', action: () => (entry ? startNoteRename(entry) : doRename(target.rel, false)) },
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
         ...(entry ? [{ label: 'Open in Mini Window', action: () => popOut(entry.id) }] : []),
         { label: 'Move to…', action: () => openMovePicker(target.rel, 'file', name, menu?.x, menu?.y) },
@@ -1221,7 +1356,7 @@ function Main(): React.JSX.Element {
         }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, renameNoteFile, deleteNote, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
+    [doc, sel, titleOf, doCreateFile, doRename, doTrash, startNoteRename, deleteNote, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
   )
 
   // --- derived -------------------------------------------------------------------
@@ -1774,6 +1909,12 @@ function Main(): React.JSX.Element {
                   onRename={(t) => {
                     if (doc) renameNote(doc.id, t)
                   }}
+                  renameHint={
+                    prefs.nameFromTitle && sel?.origin === 'note' && doc && isTitleSyncPath(doc.path)
+                      ? 'Click to rename — renames the file'
+                      : 'Click to rename (display title only, file untouched)'
+                  }
+                  onEditorBlur={() => titleSync.flush()}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                   onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
                   popOutTitle={popTitle}

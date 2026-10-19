@@ -3700,6 +3700,27 @@ html[data-density='compact'] .note-stage {
   margin-right: 8px;
 }
 
+/* Inline-editable header title: looks like the heading, click in and type. */
+.ed-title h2.ed-inline-title {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 2ch;
+  margin: 0 0 0 -4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+.ed-title h2.ed-inline-title:hover {
+  background: var(--inset-soft);
+}
+.ed-title h2.ed-inline-title:focus {
+  background: var(--inset-soft);
+  box-shadow: 0 0 0 1px var(--accent, currentColor);
+}
+
 .ed-title .icon {
   vertical-align: middle;
 }
