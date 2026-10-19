@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14] - 2026-10-19
+
+### Added
+
+- **(sync)** Live progress + run history on phone and mac (header %, drawer bar, details sheet, popover, tray) (#84) ([d1b1bfb](https://github.com/PylotLight/Inkfish/commit/d1b1bfb835fc7b1d0771a6f38b509e5fa2dd6d13))
+- **(sync)** Resilient + resumable sync (retry/backoff, chunked resume, expect checks, mac lock, fsync) + fault-injection tests (#85) ([27b7f7b](https://github.com/PylotLight/Inkfish/commit/27b7f7b5904c63aa840c2dc02b6c783ea70fd03a))
+
+### Fixed
+
+- **(sync)** Stop the push loop (mac case-insensitive paths), repair sync, live refresh, collapse history (#82) ([006ef3d](https://github.com/PylotLight/Inkfish/commit/006ef3dcc92fefef27210788123beb41cca7bd44))
+
+### Performance
+
+- **(sync)** ~5-90x faster syncs (one concurrent walk, streamed transfers, no re-reads) + bench (#83) ([2946656](https://github.com/PylotLight/Inkfish/commit/2946656bffbb2093e1ea7a0e0fa6ae91dba6e407))
+
 ## [0.2.13] - 2026-10-19
 
 ### Added
@@ -267,6 +282,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.14]: https://github.com/PylotLight/Inkfish/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/PylotLight/Inkfish/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/PylotLight/Inkfish/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/PylotLight/Inkfish/compare/v0.2.10...v0.2.11
