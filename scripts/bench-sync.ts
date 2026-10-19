@@ -24,6 +24,13 @@ export interface BenchOpts {
   legacy: boolean
   /** Multiplies every simulated latency (0 = no sleeps; counts only). */
   scale: number
+  /** Print each scenario as it finishes. */
+  verbose?: boolean
+}
+
+export function fmt(r: ScenarioResult): string {
+  const k = r.counters
+  return `${r.name.padEnd(40)} ${String(r.ms).padStart(7)} ms  ↓${r.pulled} ↑${r.pushed}  stat=${k.stat} read=${k.read} write=${k.write} hash=${k.hash} textGet=${k.textGet} textPut=${k.textPut} req=${JSON.stringify(k.requests)}`
 }
 
 /** Simulated costs (ms). Rough Pixel 8 Pro + expo-file-system legacy + home Wi-Fi. */
@@ -334,6 +341,7 @@ export async function runBench(o: BenchOpts): Promise<ScenarioResult[]> {
     const ms = performance.now() - t0
     const { reset: _r, ...counters } = c
     out.push({ name, ms: Math.round(ms), pulled: r.pulled, pushed: r.pushed, counters: JSON.parse(JSON.stringify(counters)) })
+    if (o.verbose) console.log(fmt(out[out.length - 1]!))
   }
   await run('initial (fresh phone)')
   await run('idle (nothing changed)')
@@ -352,15 +360,8 @@ if (import.meta.main) {
     return i > 0 ? Number(process.argv[i + 1]) : d
   }
   const o: BenchOpts = { notes: arg('notes', 2000), images: arg('images', 60), legacy: process.argv.includes('--legacy'), scale: arg('scale', 1) }
-  const res = await runBench(o)
-  if (process.argv.includes('--json')) console.log(JSON.stringify({ opts: o, res }, null, 2))
-  else {
-    console.log(`notes=${o.notes} images=${o.images} walk=${o.legacy ? 'legacy' : 'new'} scale=${o.scale}`)
-    for (const r of res) {
-      const k = r.counters
-      console.log(
-        `${r.name.padEnd(40)} ${String(r.ms).padStart(7)} ms  ↓${r.pulled} ↑${r.pushed}  stat=${k.stat} read=${k.read} write=${k.write} hash=${k.hash} textGet=${k.textGet} textPut=${k.textPut} req=${JSON.stringify(k.requests)}`
-      )
-    }
-  }
+  const json = process.argv.includes('--json')
+  if (!json) console.log(`notes=${o.notes} images=${o.images} walk=${o.legacy ? 'legacy' : 'new'} scale=${o.scale}`)
+  const res = await runBench({ ...o, verbose: !json })
+  if (json) console.log(JSON.stringify({ opts: o, res }, null, 2))
 }
