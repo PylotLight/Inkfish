@@ -66,6 +66,12 @@ describe('compat matrix', () => {
     expect(compat(SELF_VERSION, peerVersion(undefined))).toBe('ok')
     expect(compat(v(3, 2), v(2, 1))).toBe('ok')
   })
+  test('app versions (betas included) never enter the handshake: only protocol ints do', () => {
+    // a v0.2.15-beta.1 Mac and an android-v0.2.8 phone from the same protocol talk fine;
+    // "update phone / Mac" comes only from protocol < minPeer, never from 0.2.15-beta.1 < 0.2.15.
+    expect(Number.isInteger(SELF_VERSION.protocol) && Number.isInteger(SELF_VERSION.minPeer)).toBe(true)
+    expect(compat(SELF_VERSION, peerVersion({ protocol: String(PROTOCOL), minPeer: String(MIN_PEER) }))).toBe('ok')
+  })
   test('peer older than we accept → update them', () => {
     expect(compat(v(2, 2), v(1, 1))).toBe('peer-outdated')
     expect(outdatedApp('mac', 'peer-outdated')).toBe('phone')

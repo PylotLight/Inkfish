@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BREW_UPGRADE_COMMAND, type UpdateState } from '../../../shared/update-feed'
+import { BREW_UPGRADE_COMMAND, isPrereleaseVersion, type UpdateState } from '../../../shared/update-feed'
 
 function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (v: boolean) => void }): React.JSX.Element {
   return (
@@ -82,13 +82,16 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
             <button className="btn mint sm" onClick={() => void window.api.updates.download()}>
               Download
             </button>
-            <button
-              className="btn ghost sm"
-              title="Copy the Homebrew command"
-              onClick={() => void window.api.updates.copyBrew().then(() => notify(`Copied: ${BREW_UPGRADE_COMMAND}`))}
-            >
-              Copy <code>{BREW_UPGRADE_COMMAND}</code>
-            </button>
+            {/* test builds never reach the Homebrew cask, so brew upgrade wouldn't get this one */}
+            {!isPrereleaseVersion(latest.version) && (
+              <button
+                className="btn ghost sm"
+                title="Copy the Homebrew command"
+                onClick={() => void window.api.updates.copyBrew().then(() => notify(`Copied: ${BREW_UPGRADE_COMMAND}`))}
+              >
+                Copy <code>{BREW_UPGRADE_COMMAND}</code>
+              </button>
+            )}
             <button className="btn ghost sm" onClick={() => void window.api.updates.openRelease()}>
               Release page
             </button>
@@ -111,10 +114,10 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
         <h4>Update feed</h4>
         <div className="setting-row inline">
           <span className="setting-label">
-            Include pre-releases
-            <span className="muted small setting-hint">Also tell me about beta tags like v0.3.0-beta.1.</span>
+            Beta updates
+            <span className="muted small setting-hint">Also offer test builds (pre-releases like v0.2.15-beta.1). Off: full releases only.</span>
           </span>
-          <Switch on={s?.betaChannel ?? false} label="Include pre-releases" onChange={(v) => saveSettings({ betaChannel: v })} />
+          <Switch on={s?.betaChannel ?? false} label="Beta updates" onChange={(v) => saveSettings({ betaChannel: v })} />
         </div>
         <div className="setting-row stacked">
           <span className="setting-label">Feed URL</span>

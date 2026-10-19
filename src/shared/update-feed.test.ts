@@ -120,3 +120,36 @@ describe('settings + feed URL', () => {
     )
   })
 })
+
+describe('pre-releases (release.ts --pre test builds)', () => {
+  const feed = [entry('0.2.15-beta.2'), entry('0.2.15-beta.1'), entry('0.2.14'), entry('0.2.13')]
+  const offered = (current: string, betaChannel: boolean): string | null => {
+    const best = pickLatestRelease(feed, { includePrereleases: betaChannel })
+    return decideUpdate(best?.version ?? null, current, prefs({ betaChannel }), NOW).updateAvailable ? best!.version : null
+  }
+  test('stable Macs are never offered a beta, and "latest" ignores them', () => {
+    expect(pickLatestRelease(feed, { includePrereleases: false })!.version).toBe('0.2.14')
+    expect(offered('0.2.13', false)).toBe('0.2.14')
+    expect(offered('0.2.14', false)).toBeNull()
+    expect(DEFAULT_UPDATE_PREFERENCES.betaChannel).toBe(false)
+  })
+  test('beta updates on: the newest beta', () => {
+    expect(offered('0.2.14', true)).toBe('0.2.15-beta.2')
+    expect(offered('0.2.15-beta.1', true)).toBe('0.2.15-beta.2')
+    expect(offered('0.2.15-beta.2', true)).toBeNull()
+  })
+  test('on a beta with beta updates off: no downgrade, then the final when it ships', () => {
+    expect(offered('0.2.15-beta.2', false)).toBeNull()
+    const shipped = [entry('0.2.15'), ...feed]
+    const best = pickLatestRelease(shipped, { includePrereleases: false })!
+    expect(best.version).toBe('0.2.15')
+    expect(decideUpdate(best.version, '0.2.15-beta.2', prefs(), NOW).updateAvailable).toBe(true)
+    expect(pickLatestRelease(shipped, { includePrereleases: true })!.version).toBe('0.2.15')
+  })
+  test('android test-build tags in the feed are not Mac releases', () => {
+    const xml = `<feed>${['android-v0.2.8-beta.1', 'v0.2.15-beta.1', 'v0.2.14']
+      .map((t) => `<entry><id>tag:github.com,2008:Repository/1/${t}</id><link rel="alternate" href="https://github.com/PylotLight/Inkfish/releases/tag/${t}"/><title>${t}</title></entry>`)
+      .join('')}</feed>`
+    expect(parseReleaseFeed(xml).map((e) => e.tag)).toEqual(['v0.2.15-beta.1', 'v0.2.14'])
+  })
+})
