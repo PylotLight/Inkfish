@@ -8,7 +8,10 @@
  * Kept free of electron/node imports so it's unit-tested with bun test.
  */
 
-export type SyncBadgeState = 'none' | 'offline' | 'syncing' | 'synced' | 'error'
+export type SyncBadgeState = 'none' | 'offline' | 'syncing' | 'synced' | 'error' | 'outdated'
+
+/** Which app needs updating before a phone can sync (protocol handshake, src/shared/sync/compat). */
+export type OutdatedApp = 'mac' | 'phone'
 
 /** Live per-phone activity tracked by src/main/sync around the request handler. */
 export interface PeerActivity {
@@ -20,6 +23,8 @@ export interface PeerActivity {
   sessionSince: number | null
   /** Newest failed request/apply from this phone. */
   lastError: { at: number; message: string } | null
+  /** Newest handshake refusal (426): which side is too old. Cleared by the next success. Optional so older callers still type-check. */
+  outdated?: { at: number; app: OutdatedApp } | null
 }
 
 export interface BadgePeerInput {
@@ -36,7 +41,7 @@ export interface BadgeInput {
   peers: BadgePeerInput[]
 }
 
-export type PeerBadgeState = 'syncing' | 'synced' | 'offline' | 'error'
+export type PeerBadgeState = 'syncing' | 'synced' | 'offline' | 'error' | 'outdated'
 
 export interface BadgePeerRow {
   id: string
@@ -46,6 +51,8 @@ export interface BadgePeerRow {
   lastSync: number | null
   inFlight: number
   error: string | null
+  /** Set when this phone can't sync until one side updates ("update phone" / "update Mac"). */
+  update: OutdatedApp | null
 }
 
 export interface SyncBadge {
@@ -68,7 +75,7 @@ export const SESSION_IDLE_MS = 20_000
 export const ERROR_MS = 30 * 60_000
 
 export function emptyActivity(): PeerActivity {
-  return { lastSeen: null, inFlight: 0, sessionSince: null, lastError: null }
+  return { lastSeen: null, inFlight: 0, sessionSince: null, lastError: null, outdated: null }
 }
 
 function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: number | null } {
@@ -77,8 +84,19 @@ function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: num
   const sessionLive = a.inFlight > 0 || (a.sessionSince !== null && a.lastSeen !== null && now - a.lastSeen < SESSION_IDLE_MS)
   const errLive = a.lastError !== null && now - a.lastError.at < ERROR_MS && a.lastError.at >= (p.lastSync ?? 0)
   const online = seen !== null && now - seen < ONLINE_MS
-  const state: PeerBadgeState = sessionLive ? 'syncing' : errLive ? 'error' : online && p.lastSync !== null ? 'synced' : 'offline'
+  const old = a.outdated ?? null
+  const outdatedLive = old !== null && now - old.at < ERROR_MS && old.at >= (p.lastSync ?? 0)
+  const state: PeerBadgeState = outdatedLive
+    ? 'outdated'
+    : sessionLive
+      ? 'syncing'
+      : errLive
+        ? 'error'
+        : online && p.lastSync !== null
+          ? 'synced'
+          : 'offline'
   const candidates: number[] = []
+  if (outdatedLive && old) candidates.push(old.at + ERROR_MS)
   if (a.inFlight === 0 && a.sessionSince !== null && a.lastSeen !== null && sessionLive) candidates.push(a.lastSeen + SESSION_IDLE_MS)
   if (errLive && a.lastError) candidates.push(a.lastError.at + ERROR_MS)
   if (online && seen !== null) candidates.push(seen + ONLINE_MS)
@@ -91,7 +109,8 @@ function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: num
       lastSeen: seen,
       lastSync: p.lastSync,
       inFlight: a.inFlight,
-      error: errLive ? (a.lastError?.message ?? null) : null
+      error: errLive ? (a.lastError?.message ?? null) : null,
+      update: outdatedLive && old ? old.app : null
     },
     next
   }
@@ -111,6 +130,17 @@ export function deriveSyncBadge(input: BadgeInput, now: number): SyncBadge {
   }
   if (input.error || !input.running) {
     return { ...base, state: 'error', label: input.error ? `Sync unavailable — ${input.error}` : 'Sync is not running' }
+  }
+  // A peer that can't sync until something is updated beats everything else: it fails every time, quietly otherwise.
+  const outdated = peers.filter((p) => p.state === 'outdated')
+  if (outdated.length) {
+    const app = outdated.some((p) => p.update === 'mac') ? 'mac' : 'phone'
+    const who = outdated.filter((p) => p.update === app)
+    return {
+      ...base,
+      state: 'outdated',
+      label: app === 'mac' ? `update Mac — ${names(who)} needs a newer Inkfish here to sync` : `update phone — ${names(who)} needs a newer Inkfish to sync`
+    }
   }
   const syncing = peers.filter((p) => p.state === 'syncing')
   if (syncing.length) return { ...base, state: 'syncing', label: `Syncing with ${names(syncing)}…` }
@@ -160,7 +190,7 @@ export function badgeChanged(a: SyncBadge | null, b: SyncBadge): boolean {
   if (a.state !== b.state || a.inFlight !== b.inFlight || a.lastSync !== b.lastSync || a.peers.length !== b.peers.length) return true
   return a.peers.some((p, i) => {
     const q = b.peers[i]
-    return !q || p.id !== q.id || p.state !== q.state || p.inFlight !== q.inFlight || p.lastSync !== q.lastSync || p.error !== q.error || p.name !== q.name
+    return !q || p.id !== q.id || p.state !== q.state || p.inFlight !== q.inFlight || p.lastSync !== q.lastSync || p.error !== q.error || p.name !== q.name || p.update !== q.update
   })
 }
 

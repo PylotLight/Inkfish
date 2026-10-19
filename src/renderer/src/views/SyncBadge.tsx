@@ -12,7 +12,8 @@ const PEER_LABEL: Record<BadgePeerRow['state'], string> = {
   syncing: 'syncing',
   synced: 'connected',
   offline: 'not seen recently',
-  error: 'error'
+  error: 'error',
+  outdated: 'can’t sync'
 }
 
 export default function SyncBadge({ onOpen }: { onOpen: () => void }): React.JSX.Element | null {
@@ -65,6 +66,7 @@ export default function SyncBadge({ onOpen }: { onOpen: () => void }): React.JSX
                 {p.inFlight > 0 ? ` · ${p.inFlight} in flight` : ''}
                 {' · '}seen {ago(p.lastSeen, now)} · synced {ago(p.lastSync, now)}
               </span>
+              {p.update && <span className="sync-pop-err">{p.update === 'mac' ? 'update Mac — this phone needs a newer Inkfish here' : 'update phone — its Inkfish is too old for this Mac'}</span>}
               {p.error && <span className="sync-pop-err">{p.error}</span>}
             </div>
           ))}

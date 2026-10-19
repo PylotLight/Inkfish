@@ -16,7 +16,8 @@ const GLYPH: Record<Exclude<IndicatorState, 'hidden'>, LucideIcon> = {
   idle: CloudCheck,
   offline: CloudOff,
   held: CloudAlert,
-  error: CloudAlert
+  error: CloudAlert,
+  outdated: CloudAlert
 };
 
 /** Derived indicator for the current sync loop state. */
@@ -29,10 +30,11 @@ export function useSyncIndicator(): Indicator {
         macName: sync.mac?.name ?? null,
         lastSync: sync.lastSync,
         error: sync.error,
-        heldCount: sync.held ? sync.held.local.length + sync.held.remote.length : 0
+        heldCount: sync.held ? sync.held.local.length + sync.held.remote.length : 0,
+        outdated: sync.outdated
       }),
     // lastSync / phase changes are what move it; `when()` text refreshes with them.
-    [sync.phase, sync.mac?.name, sync.lastSync, sync.error, sync.held]
+    [sync.phase, sync.mac?.name, sync.lastSync, sync.error, sync.held, sync.outdated]
   );
 }
 

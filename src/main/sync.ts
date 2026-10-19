@@ -22,6 +22,10 @@ import {
   appendCapped,
   PAIR_TTL_MS,
   PEER_HEADER,
+  PROTOCOL_HEADER,
+  MIN_PEER_HEADER,
+  INCOMPATIBLE_STATUS,
+  parseIncompatible,
   safeRel,
   toBase64,
   type Entry,
@@ -224,7 +228,13 @@ function trackRequest(peerId: string | null, path: string): (status: number, bod
     const now = Date.now()
     if (status === 200) {
       a.lastSeen = now
+      a.outdated = null
       if (path === '/v1/done') a.sessionSince = null
+    } else if (status === INCOMPATIBLE_STATUS && parseIncompatible(body)) {
+      // Handshake refusal: show "update phone" / "update Mac" instead of a generic error.
+      a.lastSeen = now
+      a.outdated = { at: now, app: parseIncompatible(body)! }
+      a.sessionSince = null
     } else if (status >= 400 && status !== 404) {
       a.lastError = { at: now, message: `${path.replace('/v1/', '')}: ${status} ${body}`.slice(0, 200) }
       a.sessionSince = null
@@ -490,7 +500,8 @@ export function startSync(): void {
       const peer = req.headers[PEER_HEADER]
       const peerId = typeof peer === 'string' ? peer : null
       const after = trackRequest(peerId, url)
-      handler(req.method ?? 'GET', url, peerId, Buffer.concat(chunks).toString('utf8'))
+      const meta = { protocol: req.headers[PROTOCOL_HEADER], minPeer: req.headers[MIN_PEER_HEADER] }
+      handler(req.method ?? 'GET', url, peerId, Buffer.concat(chunks).toString('utf8'), meta)
         .then((r) => {
           after(r.status, r.type === 'text/plain' && r.status !== 200 ? r.body : '')
           res.writeHead(r.status, { 'content-type': r.type, 'cache-control': 'no-store' })

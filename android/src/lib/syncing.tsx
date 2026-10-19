@@ -2,13 +2,15 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert, AppState, Platform } from 'react-native';
 import { useStore } from './store';
 import {
+  assertCompatible,
   decodePairUri,
-  findMac,
+  findMacHello,
   httpRemote,
   markDone,
   pairWithMac,
   runSync,
   SyncHeld,
+  SyncIncompatible,
   type BigDelete,
   type GuardChoice,
   type MacPeer,
@@ -19,7 +21,7 @@ import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog';
 import { shortError } from './sync';
 import { recordMoves } from './vault';
 
-export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error';
+export type SyncPhase = 'unpaired' | 'idle' | 'finding' | 'syncing' | 'offline' | 'held' | 'error' | 'outdated';
 
 interface SyncCtx {
   phase: SyncPhase;
@@ -27,6 +29,8 @@ interface SyncCtx {
   lastSync: number | null;
   lastReport: SyncReport | null;
   error: string | null;
+  /** Phase 'outdated': which app needs updating before sync works again. */
+  outdated: 'mac' | 'phone' | null;
   /** A big deletion waiting on the user (phase 'held'). */
   held: BigDelete | null;
   /** Newest-last session history (Settings › Sync › Recent). */
@@ -87,6 +91,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   const [mac, setMac] = useState<MacPeer | null>(null);
   const [phase, setPhase] = useState<SyncPhase>('unpaired');
   const [error, setError] = useState<string | null>(null);
+  const [outdated, setOutdated] = useState<'mac' | 'phone' | null>(null);
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
   const [held, setHeld] = useState<BigDelete | null>(null);
   const [log, setLog] = useState<SyncLogEntry[]>([]);
@@ -132,11 +137,15 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       do {
         again.current = false;
         setPhase('finding');
-        const host = await findMac(fetchFn, peer);
-        if (!host) {
+        const found = await findMacHello(fetchFn, peer);
+        if (!found) {
           setPhase('offline');
           return;
         }
+        // Handshake: an older/newer Mac we can't talk to → "update Mac" / "update phone", not a silent failure.
+        assertCompatible(found.hello);
+        setOutdated(null);
+        const host = found.host;
         setPhase('syncing');
         const remote = httpRemote(fetchFn, host, peer, id, random);
         const report = await runSync({
@@ -168,6 +177,13 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         setPhase('idle');
       } while (again.current);
     } catch (e) {
+      if (e instanceof SyncIncompatible) {
+        setOutdated(e.app);
+        setError(e.message);
+        setPhase('outdated');
+        await done({ at: Date.now(), peer: peer.name, kind: 'error', message: e.message });
+        return;
+      }
       if (e instanceof SyncHeld) {
         setHeld(e.pending);
         setPhase('held');
@@ -253,8 +269,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [id]);
 
   const value = useMemo(
-    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, held, log, pair, unpair, syncNow, nudge }),
-    [phase, mac, lastReport, error, held, log, pair, unpair, syncNow, nudge]
+    () => ({ phase, mac, lastSync: mac?.lastSync ?? null, lastReport, error, outdated, held, log, pair, unpair, syncNow, nudge }),
+    [phase, mac, lastReport, error, outdated, held, log, pair, unpair, syncNow, nudge]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
