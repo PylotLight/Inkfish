@@ -66,6 +66,7 @@ App.tsx                  tab shell + StoreProvider
 src/lib/format.ts        pure vault-format port (no RN imports — unit-testable)
 src/lib/vault.ts         expo-file-system I/O (files are source of truth)
 src/lib/store.tsx        React context: inbox/notes/projects + actions
+src/lib/notesave.ts      editor save rules: front matter kept verbatim, merge with sync changes (pure, tested in test/)
 src/components/Markdown.tsx  tiny dependency-free markdown renderer
 src/screens/            Capture / Inbox / Notes / Editor / Daily / Settings
 src/theme.ts            dark palette

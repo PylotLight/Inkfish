@@ -16,14 +16,19 @@ const AUTOSAVE_MS = 700;
  */
 export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () => void }): React.JSX.Element {
   const { ui, c } = useTheme();
-  const { openNote, saveNote } = useStore();
+  const { openNote, saveNote, notes } = useStore();
   const [doc, setDoc] = useState<NoteDoc | null>(null);
   const [text, setText] = useState('');
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<'clean' | 'dirty' | 'saving' | 'error'>('clean');
+  /** Body as last read from / written to disk: the merge base for the next save. */
   const saved = useRef('');
+  const docRef = useRef<NoteDoc | null>(null);
+  const textRef = useRef('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  docRef.current = doc;
+  textRef.current = text;
 
   useEffect(() => {
     let live = true;
@@ -42,13 +47,42 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     };
   }, [noteId, openNote]);
 
-  async function flush(next = text): Promise<void> {
-    if (!doc || next === saved.current) return;
+  // Reading view follows the file: when sync (or anything else) changes or
+  // moves the open note, reload it so the page never shows a stale copy.
+  useEffect(() => {
+    const d = docRef.current;
+    if (!d || mode !== 'view' || timer.current || textRef.current !== saved.current) return;
+    const e = notes.find((n) => n.id === d.id) ?? notes.find((n) => n.path === d.path);
+    if (!e || (e.updatedAt === d.updatedAt && e.path === d.path)) return;
+    let live = true;
+    void openNote(e.id).then((fresh) => {
+      if (!live || !fresh || textRef.current !== saved.current) return;
+      setDoc(fresh);
+      setText(fresh.markdown);
+      saved.current = fresh.markdown;
+    });
+    return () => {
+      live = false;
+    };
+  }, [notes, mode, openNote]);
+
+  async function flush(next = textRef.current): Promise<void> {
+    const d = docRef.current;
+    if (!d || next === saved.current) return;
     setState('saving');
     try {
-      await saveNote(doc.id, next);
-      saved.current = next;
-      setState('clean');
+      const r = await saveNote(d.id, next, { base: saved.current, path: d.path, head: d.head });
+      if (!r) {
+        setState('error');
+        return;
+      }
+      setDoc(r);
+      if (r.markdown.replace(/\s+$/, '') !== next.replace(/\s+$/, '')) {
+        // Merged with a change sync brought in while the note was open.
+        saved.current = r.markdown;
+        if (textRef.current === next) setText(r.markdown);
+      } else saved.current = next;
+      setState(textRef.current === next ? 'clean' : 'dirty');
     } catch {
       setState('error');
     }
@@ -58,11 +92,15 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     setText(next);
     setState('dirty');
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(next), AUTOSAVE_MS);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void flush(next);
+    }, AUTOSAVE_MS);
   }
 
   async function close(): Promise<void> {
     if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     await flush();
     onClose();
   }

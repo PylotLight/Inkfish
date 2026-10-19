@@ -30,6 +30,7 @@ import {
   type NoteStatus,
   type Project
 } from './format';
+import { bodyOf, frontmatterHead, planSave, relocate, withHead } from './notesave';
 
 const DOC = FileSystem.documentDirectory ?? '';
 const APP = `${DOC}inkfish/`;
@@ -676,45 +677,88 @@ export async function listNotes(projectId?: string | null): Promise<NoteEntry[]>
   return out;
 }
 
+function absForRel(rel: string): string {
+  return rel.startsWith('inbox/')
+    ? `${INBOX}${rel.slice('inbox/'.length)}`
+    : rel.startsWith('daily/')
+      ? `${DAILY}${rel.slice('daily/'.length)}`
+      : `${VAULT}${rel}`;
+}
+
+async function allNoteRels(): Promise<string[]> {
+  const rels: string[] = [];
+  await walkVault(VAULT, '', rels);
+  for (const f of await childFiles(INBOX)) rels.push(`inbox/${f}`);
+  for (const f of await childFiles(DAILY)) rels.push(`daily/${f}`);
+  return rels;
+}
+
 export async function getNote(id: string): Promise<NoteDoc | null> {
   await ensureTree();
   // Ids are `inbox:` refs or file ids — scan (V1 has no index; files are truth).
-  const rels: string[] = [];
-  await walkVault(VAULT, '', rels);
-  const inboxFiles = await childFiles(INBOX);
-  for (const f of inboxFiles) rels.push(`inbox/${f}`);
-  const dailyFiles = await childFiles(DAILY);
-  for (const f of dailyFiles) rels.push(`daily/${f}`);
-  for (const rel of rels) {
+  for (const rel of await allNoteRels()) {
     const e = await noteEntryForRel(rel);
     if (e && e.id === id) {
-      const abs = rel.startsWith('inbox/')
-        ? `${INBOX}${rel.slice('inbox/'.length)}`
-        : rel.startsWith('daily/')
-          ? `${DAILY}${rel.slice('daily/'.length)}`
-          : `${VAULT}${rel}`;
-      const { parseFrontmatter } = await import('./format');
-      const [, body] = parseFrontmatter(await readText(abs));
-      return { ...e, markdown: body };
+      const text = await readText(absForRel(rel));
+      return { ...e, markdown: bodyOf(text), head: frontmatterHead(text) };
     }
   }
   return null;
 }
 
-export async function saveNote(id: string, markdown: string): Promise<NoteDoc | null> {
-  const doc = await getNote(id);
+export interface SaveContext {
+  /** Body the editor opened / last saved (merge base, and how a moved note is found again). */
+  base?: string;
+  /** Path the editor opened the note at. */
+  path?: string;
+  /** Front matter the note had when opened (kept if the note has to be recreated). */
+  head?: string;
+}
+
+/**
+ * Save an editor body. Front matter stays byte-for-byte; a change sync made
+ * while the note was open is merged rather than overwritten; a note sync moved
+ * or deleted under the editor is found again (or recreated) instead of the
+ * edit being silently dropped. See `notesave.ts`.
+ */
+export async function saveNote(id: string, markdown: string, ctx: SaveContext = {}): Promise<NoteDoc | null> {
+  let doc = await getNote(id);
+  if (!doc && ctx.path !== undefined && ctx.base !== undefined) {
+    // Gone from under the editor: path-id notes (no front matter `id`) lose their id on a move.
+    const candidates: Array<{ path: string; body: string }> = [];
+    for (const rel of await allNoteRels()) {
+      try {
+        candidates.push({ path: rel, body: bodyOf(await readText(absForRel(rel))) });
+      } catch {
+        // unreadable — skip
+      }
+    }
+    const rel = relocate(candidates, ctx.base, ctx.path);
+    const abs = absForRel(rel);
+    const info = await FileSystem.getInfoAsync(abs);
+    if (!info.exists) {
+      await mkdir(abs.slice(0, abs.lastIndexOf('/') + 1));
+      await writeText(abs, withHead(ctx.head ?? '', markdown));
+    } else {
+      await writeText(abs, planSave({ path: rel, disk: await readText(abs), base: ctx.base, next: markdown }).file);
+    }
+    const e = await noteEntryForRel(rel);
+    if (!e) return null;
+    const text = await readText(abs);
+    return { ...e, markdown: bodyOf(text), head: frontmatterHead(text) };
+  }
   if (!doc) return null;
-  const abs = doc.path.startsWith('inbox/')
-    ? `${INBOX}${doc.path.slice('inbox/'.length)}`
-    : doc.path.startsWith('daily/')
-      ? `${DAILY}${doc.path.slice('daily/'.length)}`
-      : `${VAULT}${doc.path}`;
-  const { parseFrontmatter } = await import('./format');
-  const [fm] = parseFrontmatter(await readText(abs));
-  const flat: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(fm)) flat[k] = v;
-  await writeText(abs, `${stringifyFrontmatter(flat)}${markdown.replace(/\s+$/, '')}\n`);
-  return getNote(id);
+  const abs = absForRel(doc.path);
+  const disk = await readText(abs);
+  const plan = planSave({ path: doc.path, disk, base: ctx.base ?? bodyOf(disk), next: markdown });
+  await writeText(abs, plan.file);
+  if (plan.conflict) {
+    const cAbs = absForRel(plan.conflict.path);
+    await mkdir(cAbs.slice(0, cAbs.lastIndexOf('/') + 1));
+    await writeText(cAbs, plan.conflict.text);
+  }
+  doc = await getNote(doc.id);
+  return doc;
 }
 
 export function searchNotesSync(entries: NoteEntry[], query: string): NoteEntry[] {
