@@ -174,6 +174,62 @@ export function migrateTitles(oldRel: string, newRel: string): Record<string, st
   }
   return moved
 }
+// --- notes Inkfish named from their title (app data `title-named.json`) ------------
+// "Name files from title" follows Untitled notes and notes Inkfish itself renamed from their
+// title — not every imported note that happens to be named after its # heading (that's opt-in).
+// The mark is kept by vault rel and follows moves; a hand rename drops it.
+
+function titleNamedPath(): string | null {
+  if (!configDir) return null
+  return join(configDir, 'title-named.json')
+}
+
+export function loadTitleNamed(): string[] {
+  try {
+    const p = titleNamedPath()
+    if (!p || !existsSync(p)) return []
+    const data = JSON.parse(readFileSync(p, 'utf8')) as unknown
+    return Array.isArray(data) ? data.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function saveTitleNamed(list: string[]): string[] {
+  const p = titleNamedPath()
+  const out = [...new Set(list)].sort()
+  if (p) {
+    try {
+      mkdirSync(dirname(p), { recursive: true })
+      writeFileSync(p, JSON.stringify(out, null, 2))
+    } catch {
+      // best effort: worst case the note stops following its title
+    }
+  }
+  return out
+}
+
+/** Mark (or unmark) `rel` as named by Inkfish from its title. */
+export function markTitleNamed(rel: string, named: boolean, from?: string): string[] {
+  const list = loadTitleNamed().filter((r) => r !== rel && r !== from)
+  if (named) list.push(rel)
+  return saveTitleNamed(list)
+}
+
+/** Carry marks across a move (file or whole dir subtree); `drop` forgets them instead (hand rename of a file). */
+export function migrateTitleNamed(oldRel: string, newRel: string, drop = false): string[] {
+  const list = loadTitleNamed()
+  let changed = false
+  const out: string[] = []
+  for (const r of list) {
+    if (r === oldRel || r.startsWith(`${oldRel}/`)) {
+      changed = true
+      if (!drop) out.push(newRel + r.slice(oldRel.length))
+    } else out.push(r)
+  }
+  return changed ? saveTitleNamed(out) : list
+}
+
 export function envManaged(): boolean {
   return !!process.env['INKFISH_VAULT']?.trim()
 }
@@ -597,11 +653,19 @@ function freeName(abs: string): string {
  * the restored paths, relative to their root.
  */
 export function restoreTrash(ids: string[] | 'all', paths: VaultPaths = vaultPaths()): string[] {
+  return restoreTrashEntries(ids, paths).map((r) => r.rel)
+}
+
+/** `restoreTrash` with where each one went (scope + folder or file) — for a targeted reindex. */
+export function restoreTrashEntries(
+  ids: string[] | 'all',
+  paths: VaultPaths = vaultPaths()
+): Array<{ rel: string; scope: TrashScope; isDir: boolean }> {
   const dir = trashDir()
   if (!dir || !existsSync(dir)) return []
   const want = ids === 'all' ? null : new Set(ids)
   const keep: TrashEntry[] = []
-  const done: string[] = []
+  const done: Array<{ rel: string; scope: TrashScope; isDir: boolean }> = []
   for (const e of trashManifest(dir)) {
     const src = join(dir, e.id)
     if (want && !want.has(e.id)) {
@@ -619,7 +683,7 @@ export function restoreTrash(ids: string[] | 'all', paths: VaultPaths = vaultPat
       cpSync(src, dest, { recursive: true })
       rmSync(src, { recursive: true, force: true })
     }
-    done.push(relative(root, dest))
+    done.push({ rel: relative(root, dest), scope: entryScope(e), isDir: e.isDir })
   }
   writeManifest(dir, keep)
   return done

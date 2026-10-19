@@ -52,21 +52,30 @@ describe('auto-named rule', () => {
   test('Untitled follows the title', () => {
     expect(autoRenameTarget('personal/Untitled 3 2.md', '', 'Japan list')).toBe('Japan list')
   })
-  test('a file still named after its old title follows edits', () => {
-    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan trip')).toBe('Japan trip')
-    expect(autoRenameTarget('Japan 2.md', 'Japan', 'Japan trip')).toBe('Japan trip')
+  const named = { inkfishNamed: true }
+  test('a file Inkfish named from its title follows edits', () => {
+    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan trip', named)).toBe('Japan trip')
+    expect(autoRenameTarget('Japan 2.md', 'Japan', 'Japan trip', named)).toBe('Japan trip')
+  })
+  test('imported notes named after their heading are left alone by default', () => {
+    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan trip')).toBeNull()
+    expect(autoRenameTarget('japan.md', 'japan', 'Japan')).toBeNull()
+  })
+  test('opt-in: any heading-named note follows (Settings → also rename notes named after their heading)', () => {
+    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan trip', { headingNamed: true })).toBe('Japan trip')
+    expect(autoRenameTarget('Travel ideas.md', 'Japan', 'Japan trip', { headingNamed: true })).toBeNull()
   })
   test('hand-renamed file stops following', () => {
-    expect(autoRenameTarget('Travel ideas.md', 'Japan', 'Japan trip')).toBeNull()
+    expect(autoRenameTarget('Travel ideas.md', 'Japan', 'Japan trip', named)).toBeNull()
   })
   test('empty title keeps the name; already-matching is a no-op', () => {
     expect(autoRenameTarget('Untitled.md', '', '')).toBeNull()
     expect(autoRenameTarget('Untitled.md', '', ' / ')).toBeNull()
-    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan')).toBeNull()
-    expect(autoRenameTarget('Japan 2.md', 'Japan', 'Japan')).toBeNull()
+    expect(autoRenameTarget('Japan.md', 'Japan', 'Japan', named)).toBeNull()
+    expect(autoRenameTarget('Japan 2.md', 'Japan', 'Japan', named)).toBeNull()
   })
   test('case-only change renames', () => {
-    expect(autoRenameTarget('japan.md', 'japan', 'Japan')).toBe('Japan')
+    expect(autoRenameTarget('japan.md', 'japan', 'Japan', named)).toBe('Japan')
   })
   test('inbox and daily notes never sync', () => {
     expect(autoRenameTarget('inbox/abc.md', '', 'Title')).toBeNull()

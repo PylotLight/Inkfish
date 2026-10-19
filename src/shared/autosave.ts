@@ -37,7 +37,11 @@ export interface Autosave {
   cancel: (id: string) => void
   /** Record text known to be on disk for `id` (loaded or saved elsewhere). */
   noteSaved: (id: string, markdown: string) => void
-  /** A save moved the note: carry pending text and baseline to the new id. */
+  /**
+   * A save/rename moved the note: carry pending text and baseline to the new id. Pending text is
+   * always (re)scheduled there — text that missed its save while a rename was in flight (no timer
+   * left) must not sit unsaved until the next blur.
+   */
   rename: (from: string, to: string) => void
   /** Pending (unsaved) text for `id`, if any. */
   pending: (id: string) => string | undefined
@@ -128,15 +132,11 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
     rename(from, to) {
       if (from === to) return
       const text = pendingText.get(from)
-      const had = timers.has(from)
       cancel(from)
       const disk = onDisk.get(from)
       if (disk !== undefined) onDisk.set(to, disk)
       onDisk.delete(from)
-      if (text !== undefined) {
-        if (had) schedule(to, text)
-        else pendingText.set(to, text)
-      }
+      if (text !== undefined) schedule(to, text)
     },
     pending: (id) => pendingText.get(id),
     busy: () => pendingText.size > 0 || inflight.size > 0,

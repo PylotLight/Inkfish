@@ -162,7 +162,7 @@ interface Props {
   filters?: ReactNode
   /** Drag & drop: move a note/folder into `destDir` ('' = vault root). */
   onMove?: (rel: string, kind: MoveKind, destDir: string) => void
-  /** Note row actions (hover buttons, F2/Enter, ⌘⌫, ⌥-click). Absent = plain rows. */
+  /** Note row actions (hover buttons, F2 rename, ⌘⌫, ⌥-click; Enter opens). Absent = plain rows. */
   rowActions?: RowActions
 }
 

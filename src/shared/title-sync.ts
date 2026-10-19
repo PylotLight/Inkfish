@@ -6,8 +6,11 @@
  *  - The note's title is its first line when that line is a `# H1` (front matter `title:` wins
  *    when the text has front matter). No H1 → no title → the filename is left alone.
  *  - A file is "auto-named" while its name is `Untitled…` (`Untitled`, `Untitled 3`,
- *    `Untitled 3 2`) or still equals the sanitized title it was last synced from (a `" 2"`
- *    collision suffix still counts). Only auto-named files follow the title.
+ *    `Untitled 3 2`), or Inkfish named it from its title before and it still equals the sanitized
+ *    title it was last synced from (a `" 2"` collision suffix still counts). Only auto-named files
+ *    follow the title. Imported notes that merely happen to be named after their `# heading`
+ *    only follow when the user opts in (`headingNamed`, Settings → also rename notes named after
+ *    their heading) — so opening an Obsidian vault never renames its files behind your back.
  *  - Rename the file by hand to anything else and it stops following — nothing extra is stored,
  *    it simply no longer matches. Rename it back to the title and it follows again.
  *  - Renames happen ~2s after typing stops, and right away when you leave the note / editor.
@@ -103,16 +106,25 @@ export function stemOf(path: string): string {
   return base.toLowerCase().endsWith('.md') ? base.slice(0, -3) : base
 }
 
+export interface AutoRenameOptions {
+  /** Inkfish named this file from its title before (kept in app data, follows moves). */
+  inkfishNamed?: boolean
+  /** Opt-in: any note still named after its heading follows it (imported notes too). */
+  headingNamed?: boolean
+}
+
 /**
  * Should the note at `path` be renamed now? Returns the new file name (no `.md`, before collision
  * handling) or null. `baseTitle` = the title the filename was last synced from (or the saved
- * title when the note was opened); `title` = the title now.
+ * title when the note was opened); `title` = the title now. Only `Untitled…` notes and (per
+ * `opts`) notes Inkfish named / any heading-named note follow their title.
  */
-export function autoRenameTarget(path: string, baseTitle: string, title: string): string | null {
+export function autoRenameTarget(path: string, baseTitle: string, title: string, opts: AutoRenameOptions = {}): string | null {
   if (!isTitleSyncPath(path)) return null
   const next = sanitizeFileTitle(title)
   if (!next) return null // empty title keeps the current name
   const stem = stemOf(path)
+  if (!isUntitledName(stem) && !opts.inkfishNamed && !opts.headingNamed) return null
   if (stem === next || matchesName(stem, next)) {
     // Same name, or only a case change on its own suffix-free name.
     return stem !== next && stem.toLowerCase() === next.toLowerCase() ? next : null

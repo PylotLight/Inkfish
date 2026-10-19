@@ -60,9 +60,10 @@ describe('inline rename', () => {
 describe('row keys', () => {
   const k = (key: string, m: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>
     rowKeyAction({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...m })
-  test('F2 / Enter rename', () => {
+  test('F2 renames; Enter is left to the row (opens the note)', () => {
     expect(k('F2')).toBe('rename')
-    expect(k('Enter')).toBe('rename')
+    expect(k('F2', { metaKey: true })).toBeNull()
+    expect(k('Enter')).toBeNull()
     expect(k('Enter', { shiftKey: true })).toBeNull()
   })
   test('cmd+backspace deletes, plain backspace does not', () => {

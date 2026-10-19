@@ -223,6 +223,31 @@ describe('autosave', () => {
     expect(disk.writes).toEqual([['new.md', 'text']])
   })
 
+  test('rename re-schedules text whose save failed mid-rename (never parked until blur)', async () => {
+    const clock = fakeTimers()
+    const disk = fakeDisk({ 'new.md': '' })
+    let gone = true
+    const s = createAutosave({
+      // The old path is gone while the rename is in flight: that save is refused.
+      save: async (id: string, md: string) => (gone && id === 'old.md' ? null : disk.save(id, md)),
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer
+    })
+    s.schedule('old.md', 'typed during rename')
+    clock.advance(1000)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(s.pending('old.md')).toBe('typed during rename')
+    expect(clock.count()).toBe(0) // failed: no timer left
+    gone = false
+    s.rename('old.md', 'new.md')
+    expect(clock.count()).toBe(1) // back on a timer under the new id
+    clock.advance(1000)
+    await s.flushAll()
+    expect(disk.files['new.md']).toBe('typed during rename')
+    expect(s.pending('new.md')).toBeUndefined()
+  })
+
   test('drain hands back everything pending for a sync last-chance save', () => {
     const clock = fakeTimers()
     const s = createAutosave({ save: async () => null, setTimer: clock.setTimer, clearTimer: clock.clearTimer })

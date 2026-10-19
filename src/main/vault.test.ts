@@ -486,6 +486,44 @@ describe('file ops', () => {
     }
   })
 
+  test('title-named marks: set, follow moves, dropped by a hand rename', async () => {
+    const v = await vault()
+    const cfg = mkdtempSync(join(tmpdir(), 'inkfish-cfg-tn-'))
+    try {
+      v.setConfigDir(cfg)
+      expect(v.loadTitleNamed()).toEqual([])
+      v.markTitleNamed('work/Japan.md', true, 'work/Untitled.md')
+      v.markTitleNamed('Ideas.md', true)
+      expect(v.loadTitleNamed()).toEqual(['Ideas.md', 'work/Japan.md'])
+      // Title rename again: old mark replaced by the new path.
+      v.markTitleNamed('work/Japan trip.md', true, 'work/Japan.md')
+      expect(v.loadTitleNamed()).toEqual(['Ideas.md', 'work/Japan trip.md'])
+      // Folder rename / move keeps them.
+      expect(v.migrateTitleNamed('work', 'Work 2026')).toEqual(['Ideas.md', 'Work 2026/Japan trip.md'])
+      // Hand rename of the file drops it.
+      expect(v.migrateTitleNamed('Ideas.md', 'My ideas.md', true)).toEqual(['Work 2026/Japan trip.md'])
+    } finally {
+      rmSync(cfg, { recursive: true, force: true })
+    }
+  })
+
+  test('restoreTrashEntries says where each one went (for a targeted reindex)', async () => {
+    const v = await vault()
+    const { writeFileSync, mkdirSync } = await import('node:fs')
+    const paths = v.ensureVault(v.vaultPaths())
+    mkdirSync(join(dir, 'proj'), { recursive: true })
+    writeFileSync(join(dir, 'proj', 'a.md'), '# A\n')
+    writeFileSync(join(dir, 'b.md'), '# B\n')
+    const e1 = v.trashPath('proj', paths)
+    const e2 = v.trashPath('b.md', paths)
+    const done = v.restoreTrashEntries([e1.id, e2.id], paths)
+    expect(done.map((d) => [d.rel, d.scope, d.isDir]).sort()).toEqual([
+      ['b.md', 'vault', false],
+      ['proj', 'vault', true]
+    ])
+    expect(v.restoreTrash('all', paths)).toEqual([])
+  })
+
   test('metadata: size + mtime indexed from fs', async () => {
     const v = await vault()
     const db = await import('./db')
