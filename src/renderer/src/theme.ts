@@ -36,6 +36,8 @@ export interface Prefs {
   lineNumbers: boolean
   /** Note column width. `full` (default) uses the whole pane; `wide`/`readable` cap + centre it. */
   noteWidth: NoteWidthId
+  /** Untitled notes take their file name from the title (first `# H1`); the header title renames the file. */
+  nameFromTitle: boolean
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -52,7 +54,8 @@ export const DEFAULT_PREFS: Prefs = {
   quickZoom: true,
   blur: true,
   lineNumbers: false,
-  noteWidth: 'full'
+  noteWidth: 'full',
+  nameFromTitle: true
 }
 
 export interface ThemeDef {
@@ -197,7 +200,8 @@ export function loadPrefs(): Prefs {
     quickZoom: (base as Partial<Prefs>).quickZoom !== false,
     blur: base.blur !== false,
     lineNumbers: (base as Partial<Prefs>).lineNumbers === true,
-    noteWidth: noteWidthFrom(base as Record<string, unknown>)
+    noteWidth: noteWidthFrom(base as Record<string, unknown>),
+    nameFromTitle: (base as Partial<Prefs>).nameFromTitle !== false
   }
 }
 

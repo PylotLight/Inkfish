@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { baseOf, hasMarkdownLink, isWithin, remapPath, rewriteLinks } from '../shared/note-move'
+import { baseOf, dirOf, hasMarkdownLink, isWithin, joinRel, remapPath, rewriteLinks, uniqueName } from '../shared/note-move'
+import { rewriteWikiLinks, sanitizeFileTitle, stemOf } from '../shared/title-sync'
 import { movePath, type VaultPaths } from './vault'
 
 export interface MoveEntryResult {
@@ -95,4 +96,64 @@ export function moveEntry(rel: string, destDirRel: string, paths: VaultPaths): M
     rewrite(other, other)
   }
   return result
+}
+
+export interface TitleRenameResult {
+  /** New vault rel (same as input when the name already fit). */
+  rel: string
+  /** Notes whose links were rewritten (relative markdown links and [[wikilinks]]). */
+  rewritten: string[]
+}
+
+/**
+ * Rename note `rel` (in place, same folder) to the file name for `title`: sanitized, `.md` kept, a
+ * taken name becomes `Title 2.md` (case-insensitive, like APFS — but a case-only change of the
+ * note's own name is allowed). Then every other note's relative links and `[[wikilinks]]` into it
+ * are pointed at the new name. Empty / unusable title → no-op.
+ */
+export function renameToTitle(rel: string, title: string, paths: VaultPaths): TitleRenameResult {
+  const root = paths.root
+  const stem = sanitizeFileTitle(title)
+  const res: TitleRenameResult = { rel, rewritten: [] }
+  if (!stem || !rel.toLowerCase().endsWith('.md')) return res
+  const abs = join(root, rel)
+  if (!existsSync(abs) || !statSync(abs).isFile()) throw new Error(`${rel} not found`)
+  const dir = dirOf(rel)
+  const own = baseOf(rel).toLowerCase()
+  const want = `${stem}.md`
+  if (want === baseOf(rel)) return res
+  const taken = new Set(readdirSync(join(root, dir)).map((n) => n.toLowerCase()).filter((n) => n !== own))
+  const name = uniqueName(want, (n) => taken.has(n.toLowerCase()))
+  if (name === baseOf(rel)) return res
+  const next = joinRel(dir, name)
+  // Never overwrite: re-check right before the atomic rename (case-only renames hit the same inode).
+  if (name.toLowerCase() !== own && existsSync(join(root, next))) throw new Error(`${name} already exists`)
+  renameSync(abs, join(root, next))
+  res.rel = next
+
+  const remap = (p: string): string | null => remapPath(p, rel, next)
+  const exists = (p: string): boolean => existsSync(join(root, p))
+  const all = listMarkdown(root)
+  const oldStem = stemOf(rel).toLowerCase()
+  // Bare [[Old]] only when no other note shares the old name (else it may mean that one).
+  const bareUnique = !all.some((p) => p !== next && stemOf(p).toLowerCase() === oldStem)
+  const needles = [baseOf(rel), encodeURIComponent(baseOf(rel)), baseOf(rel).replace(/ /g, '%20'), stemOf(rel)]
+  for (const other of all) {
+    if (other === next) continue
+    let text: string
+    try {
+      text = readFileSync(join(root, other), 'utf8')
+    } catch {
+      continue
+    }
+    if (!needles.some((n) => text.includes(n))) continue
+    let out = text
+    if (hasMarkdownLink(out)) out = rewriteLinks(out, { oldNotePath: other, newNotePath: other, remap, exists }).text
+    out = rewriteWikiLinks(out, rel, next, bareUnique).text
+    if (out !== text) {
+      writeFileSync(join(root, other), out, 'utf8')
+      res.rewritten.push(other)
+    }
+  }
+  return res
 }
