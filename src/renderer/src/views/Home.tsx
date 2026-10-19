@@ -219,7 +219,7 @@ function TodaySection({
       </div>
       {sections.length === 0 && (
         <p className="muted small hsec-empty">
-          'Nothing logged yet — jot the first line below.'
+          Nothing logged yet — jot the first line below.
         </p>
       )}
       {sections.length > 0 && (
@@ -303,7 +303,9 @@ function DailySection({
                     </span>
                   ))
                 ) : (
-                  <span className="hday-line muted">{sum.text || (body !== undefined ? 'Empty' : ' ')}</span>
+                  <span className="hday-line muted">
+                    <span className="hday-text">{sum.text || (body !== undefined ? 'Empty' : ' ')}</span>
+                  </span>
                 )}
               </button>
             )

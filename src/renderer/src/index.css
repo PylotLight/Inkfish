@@ -5651,8 +5651,13 @@ input[type='password'].text-input {
 
 .hdaily-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  /* One row: as many cards as fit the width, the rest drop out (no orphan second row). */
+  grid-template-rows: auto;
+  grid-auto-rows: 0;
+  row-gap: 0;
+  column-gap: 10px;
+  overflow: hidden;
 }
 
 .hday {
@@ -5811,7 +5816,7 @@ input[type='password'].text-input {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
   border-bottom: 1px solid var(--border);
 }
 
@@ -5840,8 +5845,25 @@ input[type='password'].text-input {
   transition: background 0.12s ease;
 }
 
-.jday + .jday {
+.jday {
+  position: relative;
+}
+
+/* Hairline between days, inset so it doesn't bend round the hover radius. */
+.jday + .jday::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10px;
+  right: 10px;
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.jday.sel::before,
+.jday.sel + .jday::before,
+.jday:hover::before,
+.jday:hover + .jday::before {
+  border-top-color: transparent;
 }
 
 .jday:hover {
@@ -6179,5 +6201,5 @@ input[type='password'].text-input {
 }
 
 html[data-theme='paper'] .jmonth {
-  background: color-mix(in srgb, #f4f0e8 88%, transparent);
+  background: color-mix(in srgb, #f1ece2 97%, transparent);
 }
