@@ -66,6 +66,7 @@ async function writeJson(uri: string, v: unknown): Promise<void> {
 
 // --- hash cache: path → size/mtime/hash, so unchanged files aren't re-read ---
 const CACHE_URI = `${SYNC_DIR}hashes.json`;
+const partialUri = (key: string): string => `${SYNC_DIR}partial/${key.replace(/[^A-Za-z0-9]/g, '').slice(0, 80)}/`;
 /** Hashes of files sync just wrote (the engine knows them): folded into the cache on the next walk. */
 let known: HashCache = {};
 
@@ -155,6 +156,58 @@ export const androidFs: SyncFs = {
     await mkdirp(parentOf(dest));
     await FileSystem.moveAsync({ from: uri, to: dest });
     await pruneEmptyParents(uri);
+  },
+  async stat(rel) {
+    try {
+      const info = await FileSystem.getInfoAsync(uriFor(rel));
+      if (!info.exists || info.isDirectory) return null;
+      return { size: info.size ?? 0, mtime: (info.modificationTime ?? 0) * 1000 };
+    } catch {
+      return null;
+    }
+  },
+  partial: {
+    // Big downloads accumulate as numbered chunk files (expo-file-system has no append);
+    // they survive the app being killed, so the next sync continues where this one stopped.
+    async size(key) {
+      const dir = partialUri(key);
+      try {
+        let n = 0;
+        for (const f of await FileSystem.readDirectoryAsync(dir)) {
+          if (!/^\d+$/.test(f)) continue;
+          const info = await FileSystem.getInfoAsync(`${dir}${f}`);
+          if (info.exists && !info.isDirectory) n += info.size ?? 0;
+        }
+        return n;
+      } catch {
+        return 0;
+      }
+    },
+    async append(key, data) {
+      const dir = partialUri(key);
+      await mkdirp(dir);
+      const n = (await FileSystem.readDirectoryAsync(dir)).filter((x) => /^\d+$/.test(x)).length;
+      const tmp = `${dir}.${n}.tmp`;
+      await FileSystem.writeAsStringAsync(tmp, toBase64(data), B64);
+      await FileSystem.moveAsync({ from: tmp, to: `${dir}${String(n).padStart(5, '0')}` });
+    },
+    async read(key) {
+      const dir = partialUri(key);
+      const parts: Uint8Array[] = [];
+      for (const f of (await FileSystem.readDirectoryAsync(dir)).filter((x) => /^\d+$/.test(x)).sort()) {
+        parts.push(fromBase64(await FileSystem.readAsStringAsync(`${dir}${f}`, B64)));
+      }
+      const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+      let o = 0;
+      for (const p of parts) {
+        out.set(p, o);
+        o += p.length;
+      }
+      return out;
+    },
+    async drop(key) {
+      await FileSystem.deleteAsync(partialUri(key), { idempotent: true });
+    }
   },
   async move(from, to) {
     const a = uriFor(from);
