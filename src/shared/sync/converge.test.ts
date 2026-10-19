@@ -184,11 +184,13 @@ describe('conflict copies', () => {
     await phone.write('Work/a.md', utf8Encode('phone\n'))
     const r1 = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 1) })
     expect(r1.conflicts.length).toBe(1)
-    // Same divergence comes back (Mac reverted to its version): the copy with "mac" already exists.
+    // Same divergence comes back (Mac back on its version, phone edits again): a copy with "mac" already exists.
     await mac.write('Work/a.md', utf8Encode('mac\n'))
+    await phone.write('Work/a.md', utf8Encode('phone again\n'))
     const r2 = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 2) })
     expect(r2.conflicts.length).toBe(0)
     expect(mac.paths().filter((p) => p.includes('conflict')).length).toBe(1)
+    expect(mac.text('Work/a.md')).toBe('phone again\n')
     await expectConverged(phone, mac)
   })
 })
@@ -198,8 +200,9 @@ describe('repair', () => {
     const mac = new CiFs({ 'Work/a.md': 'a\n', 'Work/b.md': 'b\n', 'assets/p.png': png(1) })
     const phone = new MemFs({ 'Work/c.md': 'c\n' })
     const state = new MemState()
-    // Corrupt base: claims everything was synced, so a normal run would delete on the Mac / skip pulls.
-    state.base = { 'Work/a.md': mac.text('Work/a.md') ? 'x' : '', 'Work/b.md': 'y', 'assets/p.png': 'z', 'Work/c.md': 'w' }
+    // Corrupt base: claims the Mac files were synced (and since deleted here), so a normal run would trash them on the Mac.
+    const m = await mac.list()
+    state.base = { 'Work/a.md': m['Work/a.md']!.hash, 'Work/b.md': m['Work/b.md']!.hash, 'assets/p.png': m['assets/p.png']!.hash }
     const { remote } = wired(mac)
     const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac', repair: true })
     expect(r.deleted).toBe(0)
