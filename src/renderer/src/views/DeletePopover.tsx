@@ -24,6 +24,15 @@ export function popoverPos(a: Anchor, vw: number, vh: number, h = 240): { left: 
 }
 
 /**
+ * Enter while a button inside the glance other than Delete has focus (Tab → Cancel, then Enter) must
+ * press THAT button, not delete the note: 'native' leaves the key to the browser.
+ */
+export function popoverKeyAction(e: { key: string }, active: Element | null, pop: Element | null): 'native' | 'ours' {
+  if (e.key !== 'Enter' || !active || !pop || !pop.contains(active)) return 'ours'
+  return active.tagName === 'BUTTON' && !active.classList.contains('danger') ? 'native' : 'ours'
+}
+
+/**
  * Delete confirm for a note with real content: title, a few lines, size + edited time.
  * Enter / ⌘⌫ (again) confirms, Esc or click-away cancels.
  */
@@ -42,6 +51,8 @@ export function DeletePopover({ anchor, title, path, lines, size, updatedAt, onC
   act.current = { onConfirm, onCancel }
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // Tab → Cancel, Enter: press Cancel (the browser does), don't delete.
+      if (popoverKeyAction(e, document.activeElement, ref.current) === 'native') return
       const confirm = e.key === 'Enter' || ((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete'))
       if (confirm) {
         e.preventDefault()

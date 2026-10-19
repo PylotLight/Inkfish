@@ -147,3 +147,14 @@ describe('createTitleSync', () => {
     expect(f.run).toEqual([['Japan.md', '# Japan trip']])
   })
 })
+
+describe('review fixes', () => {
+  test('sanitize drops the characters that break [[wikilinks]]', () => {
+    expect(sanitizeFileTitle('Japan #travel')).toBe('Japan travel')
+    expect(sanitizeFileTitle('[draft] notes ^1')).toBe('draft notes 1')
+  })
+  test('rewriteWikiLinks: ambiguous new name gets the folder path', () => {
+    expect(rewriteWikiLinks('[[Untitled]] [[Untitled|u]]', 'a/Untitled.md', 'a/Ideas.md', true, true).text).toBe('[[a/Ideas]] [[a/Ideas|u]]')
+    expect(rewriteWikiLinks('[[Untitled]]', 'a/Untitled.md', 'a/Ideas.md', true, false).text).toBe('[[Ideas]]')
+  })
+})

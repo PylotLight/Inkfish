@@ -285,7 +285,13 @@ export function renamePath(rel: string, newName: string, paths: VaultPaths = vau
     : extname(clean) ? clean : `${clean}.md`
   const dest = join(dirname(abs), target)
   assertInside(paths.root, dest, target)
-  if (existsSync(dest)) throw new Error(`${target} already exists`)
+  if (existsSync(dest)) {
+    // A case-only change (`japan` → `Japan`, easy now with inline rename) on a case-insensitive
+    // disk (APFS default) finds the file itself under the new spelling: a rename, not a collision.
+    const d = statSync(dest)
+    const caseOnly = basename(dest) !== basename(abs) && basename(dest).toLowerCase() === basename(abs).toLowerCase()
+    if (!(caseOnly && d.ino === st.ino && d.dev === st.dev)) throw new Error(`${target} already exists`)
+  }
   renameSync(abs, dest)
   return relative(paths.root, dest)
 }

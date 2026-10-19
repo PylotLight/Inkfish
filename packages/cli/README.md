@@ -99,7 +99,9 @@ bunx @pylotlight/inkfish --uninstall --all    # asks y/N first; add --yes to ski
 bunx @pylotlight/inkfish --purge --yes        # same thing, shorter
 ```
 
-It only removes those exact paths (plus `defaults delete com.pylotlight.inkfish` and the keychain item), never anything else.
+It only removes those exact paths (plus `defaults delete com.pylotlight.inkfish` and the keychain item), never anything else. Note that Application Support holds inbox captures that haven't been filed into a note yet and Inkfish's Trash (deleted notes you could still restore): file or restore anything you want to keep first.
+
+The cache removal only deletes what the launcher put there (version folders and partial downloads). If `INKFISH_CLI_CACHE_DIR` points at a folder with other things in it, those are left alone.
 
 Left for you:
 

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { baseOf, dirOf, hasMarkdownLink, isWithin, joinRel, remapPath, rewriteLinks, uniqueName } from '../shared/note-move'
-import { rewriteWikiLinks, sanitizeFileTitle, stemOf } from '../shared/title-sync'
+import { baseOf, dirOf, hasMarkdownLink, isWithin, joinRel, normalizeRel, remapPath, rewriteLinks, uniqueName } from '../shared/note-move'
+import { isTitleSyncPath, rewriteWikiLinks, sanitizeFileTitle, stemOf } from '../shared/title-sync'
 import { movePath, type VaultPaths } from './vault'
 
 export interface MoveEntryResult {
@@ -115,29 +115,43 @@ export function renameToTitle(rel: string, title: string, paths: VaultPaths): Ti
   const root = paths.root
   const stem = sanitizeFileTitle(title)
   const res: TitleRenameResult = { rel, rewritten: [] }
-  if (!stem || !rel.toLowerCase().endsWith('.md')) return res
+  // Vault notes only: inbox/ and daily/ live in staging (not under root), and nothing may climb out.
+  if (normalizeRel(rel) !== rel || !isTitleSyncPath(rel)) throw new Error(`can't rename ${rel} to its title`)
+  if (!stem) return res
   const abs = join(root, rel)
   if (!existsSync(abs) || !statSync(abs).isFile()) throw new Error(`${rel} not found`)
   const dir = dirOf(rel)
-  const own = baseOf(rel).toLowerCase()
+  const ownName = baseOf(rel)
+  const fold = (n: string): string => n.normalize('NFC').toLowerCase()
   const want = `${stem}.md`
-  if (want === baseOf(rel)) return res
-  const taken = new Set(readdirSync(join(root, dir)).map((n) => n.toLowerCase()).filter((n) => n !== own))
-  const name = uniqueName(want, (n) => taken.has(n.toLowerCase()))
-  if (name === baseOf(rel)) return res
+  if (want.normalize('NFC') === ownName.normalize('NFC')) return res
+  // Every OTHER entry in the folder is taken, compared case- and normalization-insensitively (APFS).
+  // Only this file's own exact name is excluded: on a case-sensitive disk (Linux, a case-sensitive
+  // APFS volume) a `Foo.md` beside our `foo.md` is a different file and must never be overwritten.
+  const taken = new Set(readdirSync(join(root, dir)).filter((n) => n !== ownName).map(fold))
+  const name = uniqueName(want, (n) => taken.has(fold(n)))
+  if (name.normalize('NFC') === ownName.normalize('NFC')) return res
   const next = joinRel(dir, name)
-  // Never overwrite: re-check right before the atomic rename (case-only renames hit the same inode).
-  if (name.toLowerCase() !== own && existsSync(join(root, next))) throw new Error(`${name} already exists`)
-  renameSync(abs, join(root, next))
+  // Never overwrite: re-check right before the rename. A case/normalization-only change of our own
+  // name resolves to this same file on a case-insensitive disk, so only that is let through.
+  const nextAbs = join(root, next)
+  if (existsSync(nextAbs) && !(fold(name) === fold(ownName) && sameInode(abs, nextAbs))) {
+    throw new Error(`${name} already exists`)
+  }
+  renameSync(abs, nextAbs)
   res.rel = next
 
   const remap = (p: string): string | null => remapPath(p, rel, next)
   const exists = (p: string): boolean => existsSync(join(root, p))
   const all = listMarkdown(root)
   const oldStem = stemOf(rel).toLowerCase()
+  const newStem = stemOf(next).toLowerCase()
   // Bare [[Old]] only when no other note shares the old name (else it may mean that one).
   const bareUnique = !all.some((p) => p !== next && stemOf(p).toLowerCase() === oldStem)
-  const needles = [baseOf(rel), encodeURIComponent(baseOf(rel)), baseOf(rel).replace(/ /g, '%20'), stemOf(rel)]
+  // Another note already has the NEW name: a bare [[New]] would be ambiguous (Obsidian may resolve
+  // it to that note), so rewritten bare links get the folder path instead.
+  const newAmbiguous = all.some((p) => p !== next && stemOf(p).toLowerCase() === newStem)
+  const needles = [ownName, encodeURIComponent(ownName), ownName.replace(/ /g, '%20'), stemOf(rel)].map((n) => n.toLowerCase())
   for (const other of all) {
     if (other === next) continue
     let text: string
@@ -146,14 +160,27 @@ export function renameToTitle(rel: string, title: string, paths: VaultPaths): Ti
     } catch {
       continue
     }
-    if (!needles.some((n) => text.includes(n))) continue
+    // Cheap prefilter, case-insensitive like the wikilink match ([[FOO]] points at foo.md).
+    const lower = text.toLowerCase()
+    if (!needles.some((n) => lower.includes(n))) continue
     let out = text
     if (hasMarkdownLink(out)) out = rewriteLinks(out, { oldNotePath: other, newNotePath: other, remap, exists }).text
-    out = rewriteWikiLinks(out, rel, next, bareUnique).text
+    out = rewriteWikiLinks(out, rel, next, bareUnique, newAmbiguous).text
     if (out !== text) {
       writeFileSync(join(root, other), out, 'utf8')
       res.rewritten.push(other)
     }
   }
   return res
+}
+
+/** Same file on disk (a case-only rename on a case-insensitive volume resolves both names to it). */
+function sameInode(a: string, b: string): boolean {
+  try {
+    const sa = statSync(a)
+    const sb = statSync(b)
+    return sa.ino === sb.ino && sa.dev === sb.dev
+  } catch {
+    return false
+  }
 }

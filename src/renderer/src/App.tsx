@@ -781,7 +781,10 @@ function Main(): React.JSX.Element {
       if (prefsRef.current.nameFromTitle && d && d.id === id && selRef.current?.origin === 'note' && isTitleSyncPath(d.path) && title.trim()) {
         const text = draftsRef.current[id] ?? d.markdown
         renameNoteFileRef.current(id, d.path, title.trim(), { baseAfter: titleFromMarkdown(text), toast: true })
-          .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
+          .catch((err: unknown) => {
+          notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`)
+          window.api.notes.titles().then(setTitles).catch(console.error)
+        })
         return
       }
       window.api.notes
@@ -921,6 +924,9 @@ function Main(): React.JSX.Element {
         const res = await window.api.files.renameToTitle(path, title)
         if (res.rel === path) {
           baseTitlesRef.current.set(id, opts.baseAfter)
+          // Main may have cleared a display-title override; this also re-renders the header so an
+          // inline title that didn't change the name snaps back to it.
+          window.api.notes.titles().then(setTitles).catch(console.error)
           return path
         }
         const all = await window.api.notes.list(null)
@@ -1105,6 +1111,8 @@ function Main(): React.JSX.Element {
    */
   const performTrash = useCallback(
     async (rel: string): Promise<{ id: string; wasOpen: boolean } | null> => {
+      // A pending title→filename sync would otherwise try to rename the trashed (or Undo-restored) file.
+      cancelTitleSyncUnder(rel)
       await autosave.flushAll()
       const active = selRef.current
       const wasOpen = active?.origin === 'note' && (() => {
@@ -1155,7 +1163,7 @@ function Main(): React.JSX.Element {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [autosave, notify, refreshInbox, refreshProjects, openEntry]
+    [autosave, notify, refreshInbox, refreshProjects, openEntry, cancelTitleSyncUnder]
   )
 
   /** Trash + Undo toast (every delete path ends here). */

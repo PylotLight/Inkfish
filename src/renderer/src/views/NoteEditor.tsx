@@ -520,12 +520,15 @@ function InlineTitle({ title, hint, onCommit, onDone }: { title: string; hint?: 
   const ref = useRef<HTMLHeadingElement>(null)
   const editing = useRef(false)
   const cancelled = useRef(false)
-  // Show the current title whenever we're not mid-edit (rename landed, note switched).
-  // Text is set here, never as React children — the browser owns the node while you type.
+  // Show the current title whenever we're not mid-edit: rename landed, note switched, or a commit
+  // that left `title` unchanged (rename failed, or the text sanitized back to the same file name).
+  // No deps on purpose, so that last case snaps back on the next render instead of showing text
+  // the file isn't called. Text is set here, never as React children — the browser owns the node
+  // while you type.
   useLayoutEffect(() => {
     const el = ref.current
     if (el && !editing.current && el.textContent !== title) el.textContent = title
-  }, [title])
+  })
   const read = (): string => (ref.current?.textContent ?? '').replace(/\s+/g, ' ').trim()
   return (
     <h2

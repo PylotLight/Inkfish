@@ -78,7 +78,7 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 
 ## Your data
 
-- **Notes:** a plain folder of `.md` files, `~/Inkfish` by default (you pick it on first launch, and an existing Obsidian vault works). Inkfish only writes finished notes and `assets/` there. Change it in Settings (Notes home).
+- **Notes:** a plain folder of `.md` files, `~/Inkfish` by default (you pick it on first launch, and an existing Obsidian vault works). Inkfish only writes finished notes and `assets/` there; with Settings → Notes → Name files from title on (the default) it also renames notes that follow their `# title` and updates links to them in other notes. Change it in Settings (Notes home).
 - **App data:** `~/Library/Application Support/Inkfish` holds settings, the search index (a cache, rebuilt from your files by Rescan), raw inbox captures, the daily-log scratch and trash.
 - Your AI API key and phone pairing keys are encrypted with the macOS keychain. With no AI provider connected, notes only go to a phone you paired. With one, note text also goes to the provider you configured.
 

@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -100,5 +100,19 @@ describe('launcher', () => {
     expect(code).toBe(0)
     expect(existsSync(cacheDir)).toBe(false)
     expect(err.text()).toContain('ok: cleared')
+  })
+
+  test('--clear-cache only deletes what the launcher put there (CACHE_DIR is used verbatim)', async () => {
+    const cacheDir = join(work, 'my-inkfish-stuff')
+    mkdirSync(join(cacheDir, '0.2.10', 'Inkfish.app'), { recursive: true })
+    writeFileSync(join(cacheDir, '.download-1-ab.zip'), 'partial')
+    mkdirSync(join(cacheDir, 'notes'), { recursive: true })
+    writeFileSync(join(cacheDir, 'notes', 'keep.md'), 'mine')
+    const err = sink()
+    const code = await run(config, { argv: ['--clear-cache'], packageVersion: '0.2.10', env: { INKFISH_CLI_CACHE_DIR: cacheDir }, ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    expect(code).toBe(0)
+    expect(readdirSync(cacheDir)).toEqual(['notes'])
+    expect(readFileSync(join(cacheDir, 'notes', 'keep.md'), 'utf8')).toBe('mine')
+    expect(err.text()).toContain("didn't put there")
   })
 })
