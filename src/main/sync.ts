@@ -406,6 +406,60 @@ const macFs: SyncFs = {
   }
 }
 
+// --- applied changes: debounced reindex + log ------------------------------------
+
+const pendingChanged = new Map<string, Set<string>>() // peer id ('' = unknown) → rels
+let changedTimer: ReturnType<typeof setTimeout> | null = null
+const CHANGED_DEBOUNCE_MS = 300
+
+function queueChanged(rels: string[], peerId?: string): void {
+  const key = peerId ?? ''
+  const set = pendingChanged.get(key) ?? new Set<string>()
+  for (const r of rels) set.add(r)
+  pendingChanged.set(key, set)
+  if (changedTimer) clearTimeout(changedTimer)
+  changedTimer = setTimeout(flushChanged, CHANGED_DEBOUNCE_MS)
+  changedTimer.unref?.()
+}
+
+function flushChanged(): void {
+  changedTimer = null
+  const batches = [...pendingChanged]
+  pendingChanged.clear()
+  if (!batches.length) return
+  // A synced drop can introduce a case-variant dir (Personal vs personal) —
+  // fold it before indexing so both sides converge.
+  let merged = { dirs: 0, files: 0 }
+  try {
+    merged = mergeCaseDuplicates(vaultPaths().root)
+  } catch (err) {
+    console.warn('[sync] case-merge failed', err instanceof Error ? err.message : String(err))
+  }
+  if (merged.dirs > 0 || merged.files > 0) {
+    appendSyncLog({
+      at: Date.now(),
+      peer: '',
+      kind: 'heal',
+      message: `merged ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`
+    })
+  }
+  for (const [peerId, rels] of batches) {
+    for (const rel of rels) {
+      if (!rel.endsWith('.md')) continue
+      try {
+        indexFile(resolveNoteAbs(rel), rel)
+      } catch (err) {
+        console.warn('[sync] reindex failed', rel, err)
+      }
+    }
+    const name = peerId ? peerName(peerId) : 'phone'
+    // One row per burst; back-to-back bursts from this phone fold together in the log too.
+    appendSyncLog({ at: Date.now(), peer: name, kind: 'apply', files: rels.size, message: `${rels.size} file change(s) from ${name}` })
+  }
+  broadcastChanged()
+  broadcastStatus()
+}
+
 // --- server -------------------------------------------------------------------
 
 const handler = createHandler({
@@ -442,44 +496,9 @@ const handler = createHandler({
     save()
     broadcastStatus()
   },
-  changed: (rels, peerId) => {
-    // A synced drop can introduce a case-variant dir (Personal vs personal) —
-    // fold it before indexing so both sides converge.
-    let merged = { dirs: 0, files: 0 }
-    try {
-      merged = mergeCaseDuplicates(vaultPaths().root)
-    } catch (err) {
-      console.warn('[sync] case-merge failed', err instanceof Error ? err.message : String(err))
-    }
-    for (const rel of new Set(rels)) {
-      if (!rel.endsWith('.md')) continue
-      try {
-        indexFile(resolveNoteAbs(rel), rel)
-      } catch (err) {
-        console.warn('[sync] reindex failed', rel, err)
-      }
-    }
-    const name = peerId ? peerName(peerId) : 'phone'
-    if (merged.dirs > 0 || merged.files > 0) {
-      appendSyncLog({
-        at: Date.now(),
-        peer: '',
-        kind: 'heal',
-        message: `merged ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`
-      })
-    }
-    // One row per burst, not per request: back-to-back applies from this phone fold together.
-    const files = new Set(rels).size
-    appendSyncLog({
-      at: Date.now(),
-      peer: name,
-      kind: 'apply',
-      files,
-      message: `${files} file change(s) from ${name}`
-    })
-    broadcastChanged()
-    broadcastStatus()
-  },
+  // Off the request path: the phone's next batch shouldn't wait for re-indexing.
+  // Bursts (several apply batches in one sync) become one reindex + one log row.
+  changed: (rels, peerId) => queueChanged(rels, peerId),
   note: (msg) => {
     appendSyncLog({ at: Date.now(), peer: '', kind: 'error', message: msg })
     broadcastStatus()
@@ -544,6 +563,10 @@ export function startSync(): void {
 }
 
 export function stopSync(): void {
+  if (changedTimer) {
+    clearTimeout(changedTimer)
+    flushChanged()
+  }
   server?.close()
   server = null
   if (badgeTimer) clearTimeout(badgeTimer)

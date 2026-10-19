@@ -2,6 +2,8 @@ import { utf8Decode, utf8Encode, fromBase64, toBase64 } from './bytes'
 import { plan, resolveMerge, type Base, type Manifest, type Op } from './plan'
 import { applyRenames, matchRenames, renameCandidates } from './renames'
 import { caseAdoptions, copyExists, rebaseCase, redundantCopies, renameEntries } from './paths'
+import { sha256 } from './hash'
+import { mapLimit } from './walk'
 import type { ApplyReq } from './protocol'
 
 /**
@@ -18,8 +20,12 @@ export interface SyncFs {
    */
   list(opts?: { fresh?: boolean }): Promise<Manifest>
   read(path: string): Promise<Uint8Array>
-  /** Atomic write (temp + rename), creating parent dirs. */
-  write(path: string, data: Uint8Array): Promise<void>
+  /**
+   * Atomic write (temp + rename), creating parent dirs. `hash` is the sha256
+   * of `data` when the engine already knows it, so a hash cache can record
+   * it instead of re-reading the file on the next walk.
+   */
+  write(path: string, data: Uint8Array, hash?: string): Promise<void>
   /** Remove (implementations may move to a local trash instead). */
   remove(path: string): Promise<void>
   move(from: string, to: string): Promise<void>
@@ -56,6 +62,81 @@ export interface SyncReport {
   adopted?: number
   /** Redundant conflict copies (identical to what's kept) moved to trash. */
   cleaned?: number
+  /** Pulls skipped because the file changed (or arrived damaged) since the manifest; next run retries. */
+  skipped?: number
+  /** Wall time of the run (ms). */
+  ms?: number
+}
+
+/** Where a running sync is. `finding` is the platform's (discovery), the engine starts at `comparing`. */
+export type SyncStage = 'finding' | 'comparing' | 'downloading' | 'applying' | 'uploading' | 'done'
+
+export interface SyncProgress {
+  stage: SyncStage
+  /** Files done / total in this stage (downloading, uploading). */
+  done: number
+  total: number
+  bytesDone: number
+  bytesTotal: number
+  /** File being transferred, if any. */
+  current?: string
+  /** When the run started (epoch ms). */
+  startedAt: number
+}
+
+/** Progress callbacks fire at most this often (plus once per stage change and at the end). */
+export const PROGRESS_THROTTLE_MS = 250
+
+class Progress {
+  private p: SyncProgress
+  private last = 0
+  private timer: ReturnType<typeof setTimeout> | null = null
+  constructor(
+    private readonly cb: ((p: SyncProgress) => void) | undefined,
+    private readonly clock: () => number
+  ) {
+    this.p = { stage: 'comparing', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: clock() }
+    this.emit(true)
+  }
+  phase(stage: SyncStage): void {
+    if (this.p.stage === stage) return
+    this.p = { ...this.p, stage, done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: undefined }
+    this.emit(true)
+  }
+  total(files: number, bytes: number): void {
+    this.p = { ...this.p, total: files, bytesTotal: bytes }
+    this.emit(true)
+  }
+  step(current: string, bytes: number): void {
+    this.p = { ...this.p, done: this.p.done + 1, bytesDone: this.p.bytesDone + bytes, current }
+    this.emit(false)
+  }
+  startedAt(): number {
+    return this.p.startedAt
+  }
+  finish(): void {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    this.p = { ...this.p, stage: 'done', current: undefined }
+    this.emit(true)
+  }
+  private emit(force: boolean): void {
+    if (!this.cb) return
+    const t = this.clock()
+    if (force || t - this.last >= PROGRESS_THROTTLE_MS) {
+      if (this.timer) clearTimeout(this.timer)
+      this.timer = null
+      this.last = t
+      try {
+        this.cb({ ...this.p })
+      } catch {
+        // a UI callback never breaks sync
+      }
+    } else if (!this.timer) {
+      // Trailing update so the last step of a burst isn't lost.
+      this.timer = setTimeout(() => this.emit(true), PROGRESS_THROTTLE_MS - (t - this.last))
+    }
+  }
 }
 
 /** A sync that would delete this many files on one side, and this share of what's synced, asks first. */
@@ -94,8 +175,57 @@ export function bigDeletion(ops: Op[], base: Base): BigDelete | null {
   return big(local.length) || big(remote.length) ? { local, remote, total } : null
 }
 
-/** Keep each `get`/`apply` request under ~6 MB of content. */
-const BATCH_BYTES = 6 * 1024 * 1024
+/** Keep each `get`/`apply` request under ~4 MB of content (sealed + base64 ≈ 5.4 MB on the wire). */
+const BATCH_BYTES = 4 * 1024 * 1024
+/** …and under this many files, so one batch of notes doesn't hold everything up. */
+const BATCH_FILES = 200
+/** `get` batches in flight at once. */
+const GET_CONCURRENCY = 3
+/** Write-only `apply` batches in flight at once (moves go first, deletes last, alone). */
+const APPLY_CONCURRENCY = 2
+/** Local writes in flight at once, per `get` batch. */
+const WRITE_CONCURRENCY = 4
+/** Local reads in flight at once. */
+const READ_CONCURRENCY = 6
+
+/** Notes first (small, what you're looking at), then everything else smallest-first. */
+export function transferOrder(paths: string[], sizes: Manifest): string[] {
+  const rank = (p: string): number => (isText(p) ? 0 : 1)
+  return [...paths].sort((a, b) => rank(a) - rank(b) || (sizes[a]?.size ?? 0) - (sizes[b]?.size ?? 0) || (a < b ? -1 : 1))
+}
+
+export function batchPaths(paths: string[], sizes: Manifest): string[][] {
+  const out: string[][] = []
+  let cur: string[] = []
+  let bytes = 0
+  for (const p of paths) {
+    const s = sizes[p]?.size ?? 0
+    if (cur.length && (bytes + s > BATCH_BYTES || cur.length >= BATCH_FILES)) {
+      out.push(cur)
+      cur = []
+      bytes = 0
+    }
+    cur.push(p)
+    bytes += s
+  }
+  if (cur.length) out.push(cur)
+  return out
+}
+
+function batchWrites<T extends { data: Uint8Array }>(writes: T[]): T[][] {
+  const out: T[][] = [[]]
+  let bytes = 0
+  for (const w of writes) {
+    const cur = out[out.length - 1]!
+    if (cur.length && (bytes + w.data.length > BATCH_BYTES || cur.length >= BATCH_FILES)) {
+      out.push([])
+      bytes = 0
+    }
+    out[out.length - 1]!.push(w)
+    bytes += w.data.length
+  }
+  return out
+}
 
 function isText(path: string): boolean {
   return /\.(md|markdown|txt)$/i.test(path)
@@ -139,7 +269,26 @@ export async function runSync(opts: {
    * bumps identical to `name.md`.
    */
   repair?: boolean
+  /** Live progress (throttled to PROGRESS_THROTTLE_MS; never per file). */
+  onProgress?: (p: SyncProgress) => void
+  /** Clock (tests). */
+  clock?: () => number
 }): Promise<SyncReport> {
+  const clock = opts.clock ?? Date.now
+  const progress = new Progress(opts.onProgress, clock)
+  try {
+    const report = await runSyncInner(opts, progress)
+    report.ms = clock() - progress.startedAt()
+    return report
+  } finally {
+    progress.finish()
+  }
+}
+
+async function runSyncInner(
+  opts: Parameters<typeof runSync>[0],
+  progress: Progress
+): Promise<SyncReport> {
   const { fs, remote, state } = opts
   const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [], movedLocal: [], adopted: 0, cleaned: 0 }
   const [local, remoteMan, savedBase] = await Promise.all([fs.list(opts.repair ? { fresh: true } : undefined), remote.manifest(), state.loadBase()])
@@ -182,30 +331,67 @@ export async function runSync(opts: {
     }
   }
 
-  const want = ops.flatMap((o) => (o.op === 'pull' ? [o.path] : o.op === 'merge' ? [o.remoteFrom ?? o.path] : []))
+  progress.phase('downloading')
+  // Pulls stream in: notes first (small, what you look at), then assets
+  // smallest-first; a few size-bounded batches in flight; each file's hash
+  // is checked before it's written, and it's written as soon as it lands.
+  const localNow: Manifest = { ...local }
+  const bytesOf = new Map<string, Uint8Array>() // note bytes kept for the base-text cache
+  const pullSet = new Set(ops.flatMap((o) => (o.op === 'pull' ? [o.path] : [])))
+  const mergeFrom = new Set(ops.flatMap((o) => (o.op === 'merge' ? [o.remoteFrom ?? o.path] : [])))
   const fetched: Record<string, Uint8Array> = { ...prefetched }
-  Object.assign(fetched, await fetchAll(remote, [...new Set(want)].filter((p) => !(p in prefetched)), remoteMan))
+  const written = new Set<string>()
+  const toFetch = transferOrder([...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)), remoteMan)
+  progress.total(toFetch.length, toFetch.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
+  await mapLimit(batchPaths(toFetch, remoteMan), GET_CONCURRENCY, async (batch) => {
+    const got = await remote.get(batch)
+    await mapLimit(batch, WRITE_CONCURRENCY, async (p) => {
+      const data = got[p]
+      const want = remoteMan[p]?.hash
+      progress.step(p, remoteMan[p]?.size ?? 0)
+      // Missing (deleted since the manifest) or different bytes (changed since, or damaged in
+      // transit): skip it — nothing half-right is ever written; the next run re-plans.
+      if (!data || !want || sha256(data) !== want) {
+        report.skipped = (report.skipped ?? 0) + 1
+        return
+      }
+      if (mergeFrom.has(p)) fetched[p] = data
+      if (pullSet.has(p)) {
+        await fs.write(p, data, want)
+        written.add(p)
+        localNow[p] = { hash: want, size: data.length, mtime: Date.now() }
+        if (isText(p)) bytesOf.set(p, data)
+        report.pulled++
+        report.changedLocal.push(p)
+      }
+    })
+  })
 
   const moves: ApplyReq['moves'] = []
   const writes: Array<{ path: string; data: Uint8Array }> = []
   const deletes: string[] = []
+  const pushPaths: string[] = []
 
+  progress.phase('applying')
   for (const o of ops as Op[]) {
     switch (o.op) {
       case 'pull': {
-        const data = fetched[o.path]
-        if (!data) break // vanished remotely mid-sync; next run sorts it out
-        await fs.write(o.path, data)
+        if (written.has(o.path)) break
+        const data = prefetched[o.path]
+        if (!data || sha256(data) !== o.hash) break // vanished / changed remotely mid-sync; next run sorts it out
+        await fs.write(o.path, data, o.hash)
+        localNow[o.path] = { hash: o.hash, size: data.length, mtime: Date.now() }
+        if (isText(o.path)) bytesOf.set(o.path, data)
         report.pulled++
         report.changedLocal.push(o.path)
         break
       }
       case 'push':
-        writes.push({ path: o.path, data: await fs.read(o.path) })
-        report.pushed++
+        pushPaths.push(o.path)
         break
       case 'deleteLocal':
         await fs.remove(o.path)
+        delete localNow[o.path]
         report.deleted++
         report.changedLocal.push(o.path)
         break
@@ -215,6 +401,7 @@ export async function runSync(opts: {
         break
       case 'moveLocal':
         await fs.move(o.from, o.to)
+        renameEntries(localNow, [{ from: o.from, to: o.to }])
         report.moved++
         report.changedLocal.push(o.from, o.to)
         report.movedLocal.push({ from: o.from, to: o.to })
@@ -241,9 +428,12 @@ export async function runSync(opts: {
         for (const w of result) {
           const data = w.text !== undefined ? utf8Encode(w.text) : w.from === 'local' ? ours : theirs
           if (w.path !== o.path || w.text !== undefined) {
-            await fs.write(w.path, data)
+            const h = sha256(data)
+            await fs.write(w.path, data, h)
+            localNow[w.path] = { hash: h, size: data.length, mtime: Date.now() }
             report.changedLocal.push(w.path)
           }
+          if (isText(w.path)) bytesOf.set(w.path, data)
           writes.push({ path: w.path, data })
         }
         if (result.length > 1) report.conflicts.push(result[1]!.path)
@@ -253,43 +443,67 @@ export async function runSync(opts: {
     }
   }
 
-  // Push in size-bounded batches: moves first, deletes with the last batch.
+  // Read what we push a few at a time (each read is a bridge round trip on the phone).
+  const pushed = await mapLimit(pushPaths, READ_CONCURRENCY, async (p) => {
+    try {
+      return { path: p, data: await fs.read(p) }
+    } catch {
+      return null // gone since the manifest; next run re-plans
+    }
+  })
+  for (const w of pushed) {
+    if (!w) continue
+    // Changed since we listed it? Send what's there now and record that hash.
+    const h = sha256(w.data)
+    if (localNow[w.path]?.hash !== h) localNow[w.path] = { hash: h, size: w.data.length, mtime: Date.now() }
+    if (isText(w.path)) bytesOf.set(w.path, w.data)
+    writes.push(w)
+    report.pushed++
+  }
+
+  // Push in size-bounded batches: moves ride the first, deletes the last;
+  // the ones in between go a couple at a time.
   let remoteAfter: Manifest = remoteMan
   if (moves.length || writes.length || deletes.length) {
-    const batches: Array<typeof writes> = [[]]
-    let bytes = 0
-    for (const w of writes) {
-      if (batches[batches.length - 1]!.length && bytes + w.data.length > BATCH_BYTES) {
-        batches.push([])
-        bytes = 0
-      }
-      batches[batches.length - 1]!.push(w)
-      bytes += w.data.length
+    progress.phase('uploading')
+    progress.total(writes.length, writes.reduce((n, w) => n + w.data.length, 0))
+    const batches = batchWrites(writes)
+    const send = async (b: typeof writes, extra: { moves?: ApplyReq['moves']; deletes?: string[] }): Promise<Manifest> => {
+      const m = await remote.apply({ moves: extra.moves ?? [], writes: b, deletes: extra.deletes ?? [] })
+      for (const w of b) progress.step(w.path, w.data.length)
+      return m
     }
-    for (let i = 0; i < batches.length; i++) {
-      const last = i === batches.length - 1
-      remoteAfter = await remote.apply({ moves: i === 0 ? moves : [], writes: batches[i]!, deletes: last ? deletes : [] })
+    if (batches.length === 1) remoteAfter = await send(batches[0]!, { moves, deletes })
+    else {
+      await send(batches[0]!, { moves })
+      await mapLimit(batches.slice(1, -1), APPLY_CONCURRENCY, (b) => send(b, {}))
+      remoteAfter = await send(batches[batches.length - 1]!, { deletes })
     }
   }
 
-  // New base = every path both sides now hold identically.
-  const localAfter = await fs.list()
   // Pushed `work/x.md`, the Mac stored it as `Work/x.md`: follow its spelling now, not next run.
-  await adoptCase(fs, localAfter, remoteAfter, report)
+  await adoptCase(fs, localNow, remoteAfter, report)
+  // New base = every path both sides now hold identically. (No second walk of
+  // the vault: localNow already reflects every change this run made.)
   const next: Base = {}
-  for (const [p, e] of Object.entries(localAfter)) if (remoteAfter[p]?.hash === e.hash) next[p] = e.hash
+  for (const [p, e] of Object.entries(localNow)) if (remoteAfter[p]?.hash === e.hash) next[p] = e.hash
   // Cache base texts for notes so the next concurrent edit can three-way merge.
   const keep = new Set<string>()
+  const toCache: Array<[string, string]> = []
   for (const [p, h] of Object.entries(next)) {
     if (!isText(p)) continue
     keep.add(h)
-    if (base[p] === h && (await state.getText(h)) !== null) continue
+    if (base[p] === h) continue
+    toCache.push([p, h])
+  }
+  await mapLimit(toCache, READ_CONCURRENCY, async ([p, h]) => {
     try {
-      await state.putText(h, utf8Decode(await fs.read(p)))
+      const data = bytesOf.get(p) ?? (await fs.read(p))
+      await state.putText(h, utf8Decode(data))
     } catch {
       // unreadable now; the merge will fall back to a conflict copy
     }
-  }
+  })
   await state.saveBase(next)
   await state.pruneTexts(keep)
   return report
