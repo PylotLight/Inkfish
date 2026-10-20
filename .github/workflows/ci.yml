@@ -36,6 +36,7 @@ permissions:
 jobs:
   # Which parts of the repo changed, so the Android and macOS jobs only run when they matter.
   changes:
+    name: "Inkfish · CI · detect changes · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
@@ -70,7 +71,7 @@ jobs:
   # test + typecheck + build in one job: together they take ~5 s, far less than the setup a
   # second job would repeat, so splitting or sharding bun test (79 tests, <1 s) would be slower.
   verify:
-    name: test + typecheck + build
+    name: "Inkfish · CI · test + typecheck + build · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
@@ -99,7 +100,7 @@ jobs:
   # job: no bun install, no Electron. Unit tests (also part of `bun test` above), a smoke of the bin
   # under Bun and Node, and the release job's stamp + `npm pack --dry-run` against the latest release.
   cli:
-    name: cli (bunx launcher)
+    name: "Inkfish · CI · cli launcher · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
@@ -134,6 +135,7 @@ jobs:
           if grep -q 'test/' pack.txt; then echo "::error::tests leaked into the pack"; exit 1; fi
 
   typecheck-android:
+    name: "Inkfish · CI · android typecheck · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
@@ -173,7 +175,7 @@ jobs:
   # so a broken helper shows up on the PR instead of at release time. On main it also seeds the
   # SwiftPM build cache that release.yml (tag builds can read main's caches) restores.
   mac-stt:
-    name: macos stt helper
+    name: "Inkfish · CI · mac stt helper · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     needs: changes
     if: needs.changes.outputs.stt == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_MAC_RUNNER == '')
     runs-on: ${{ vars.INKFISH_MAC_RUNNER || 'macos-15' }}

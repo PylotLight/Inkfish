@@ -30,6 +30,7 @@ concurrency:
 
 jobs:
   apk:
+    name: "Inkfish · Android release · apk · ${{ github.event.inputs.version && format('android-v{0} (manual)', github.event.inputs.version) || github.ref_name }}"
     # Repo variable INKFISH_ANDROID_RUNNER points this at a self-hosted Linux runner
     # (needs ~8 GB RAM for gradle). Default ubuntu-latest.
     runs-on: ${{ vars.INKFISH_ANDROID_RUNNER || 'ubuntu-latest' }}

@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    name: build (${{ matrix.name }})
+    name: "Inkfish · Release · build ${{ matrix.name }} · ${{ github.ref_name }}"
     strategy:
       fail-fast: false
       matrix:
@@ -107,7 +107,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: github release
+    name: "Inkfish · Release · github release · ${{ github.ref_name }}"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -174,7 +174,7 @@ jobs:
   # Casks/inkfish.rb on main with the built-in GITHUB_TOKEN — no extra
   # secrets. Token pushes don't re-trigger workflows, so no loop.
   homebrew:
-    name: homebrew cask
+    name: "Inkfish · Release · homebrew cask · ${{ github.ref_name }}"
     needs: release
     # stable releases only: brew users never get a test build
     if: ${{ !contains(github.ref_name, '-') }}
@@ -232,7 +232,7 @@ jobs:
   # dist-tag would move `latest` for every bunx user, while testers get the Mac build from the GitHub
   # pre-release anyway. (The `next` dist-tag below stays as a backstop.)
   npm:
-    name: npm launcher
+    name: "Inkfish · Release · npm launcher · ${{ github.ref_name }}"
     needs: homebrew
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
