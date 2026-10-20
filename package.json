@@ -42,6 +42,7 @@
     "files": [
       "out/**/*",
       "build/icon.png",
+      "assets/tray*.png",
       "package.json"
     ],
     "mac": {
