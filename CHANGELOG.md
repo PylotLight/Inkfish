@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.15] - 2026-10-20
+
+### Added
+
+- **(daily)** Clean daily notes — friendly title, empty start, compact '- HH:MM' entries, _italic_ fix, prev/next day (#89) ([91bb131](https://github.com/PylotLight/Inkfish/commit/91bb131448e661bbaf50e0e579df12fdf98522e1))
+- **(release)** Prerelease test builds for desktop + android (--pre, beta updates toggle) (#88) ([f932066](https://github.com/PylotLight/Inkfish/commit/f93206698f6d7460b28f871af42dffade08b8425))
+- **(journal)** Daily section on home + journal timeline (desktop + android) (#90) ([99fd5e3](https://github.com/PylotLight/Inkfish/commit/99fd5e3cb5e1c042dca431f3374b66ef55411970))
+
+### Fixed
+
+- **(sync)** Keep sidebar sync popover inside the sidebar/window (collision-aware placement, wrap long lines) (#87) ([280e6db](https://github.com/PylotLight/Inkfish/commit/280e6dbeb0b852e66613bc29a0442a8d1bc6e1a0))
+
+### Performance
+
+- **(android)** Instant startup + o(1) note open (saved index, no startup vault walks, fix dropped folders) (#86) ([16bd8fa](https://github.com/PylotLight/Inkfish/commit/16bd8fab68908835d5ae2157d69d6c1b039efe74))
+
 ## [0.2.14] - 2026-10-19
 
 ### Added
@@ -282,6 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.15]: https://github.com/PylotLight/Inkfish/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/PylotLight/Inkfish/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/PylotLight/Inkfish/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/PylotLight/Inkfish/compare/v0.2.11...v0.2.12
