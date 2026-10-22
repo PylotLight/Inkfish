@@ -70,3 +70,43 @@ export function fitBoundsToDisplays(bounds: Rect, workAreas: Rect[], minimum: { 
   const y = clamp(bounds.y, best.y, best.y + best.height - height)
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }
 }
+
+/**
+ * Bounds to show an already-open main window at. Unchanged when it's on a display; fitted back on
+ * when it mostly is; centred on `fallback` (the primary work area) when it's off every display or
+ * has collapsed to a zero/garbage size — e.g. a monitor was unplugged while the app kept running,
+ * or a stale window-state put it somewhere you can't see, so "Show" looked like it did nothing.
+ */
+export function boundsToShow(
+  bounds: Rect,
+  workAreas: Rect[],
+  minimum: { width: number; height: number },
+  fallback: Rect
+): Rect {
+  const sane = [bounds.x, bounds.y, bounds.width, bounds.height].every(finite) && bounds.width > 0 && bounds.height > 0
+  if (sane) {
+    const fitted = fitBoundsToDisplays(bounds, workAreas, minimum)
+    if (fitted) return fitted
+  }
+  const width = clamp(sane ? bounds.width : minimum.width, Math.min(minimum.width, fallback.width), fallback.width)
+  const height = clamp(sane ? bounds.height : minimum.height, Math.min(minimum.height, fallback.height), fallback.height)
+  return {
+    x: Math.round(fallback.x + (fallback.width - width) / 2),
+    y: Math.round(fallback.y + (fallback.height - height) / 2),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+export function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/** What the main-window getter does with what it holds: make a new one, reload a dead renderer, or reuse it. */
+export type MainWindowPlan = 'create' | 'reload' | 'reuse'
+
+export function planMainWindow(state: { exists: boolean; destroyed: boolean; crashed: boolean }): MainWindowPlan {
+  if (!state.exists || state.destroyed) return 'create'
+  if (state.crashed) return 'reload'
+  return 'reuse'
+}

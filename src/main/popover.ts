@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
@@ -9,6 +9,21 @@ const isMac = process.platform === 'darwin'
 
 let popover: BrowserWindow | null = null
 
+/**
+ * macOS: the popover is a non-activating NSPanel (`type: 'panel'`, Spotlight-style). A plain
+ * BrowserWindow's show()/focus() calls [NSApp activateIgnoringOtherApps:YES], which activates
+ * Inkfish and raises EVERY Inkfish window — so the main window jumped in front of whatever you
+ * were in, and when Esc hid the popover the main window was left sitting there ("Esc shows the
+ * main app"). A panel takes key focus without activating the app, and Electron's panel also joins
+ * all Spaces + full-screen apps, so the shortcut no longer drags you to the Space the main window
+ * lives on. INKFISH_POPOVER_PANEL=0 falls back to the old window (plus the app.hide() handback below).
+ */
+const USE_PANEL = isMac && process.env['INKFISH_POPOVER_PANEL'] !== '0'
+/** Was some Inkfish window focused when the popover opened? (i.e. was Inkfish the active app) */
+let inkfishWasActive = true
+let revealedAt = 0
+const EARLY_BLUR_GRACE_MS = 200
+
 function resolvePreload(): string {
   const base = join(__dirname, '../preload/index')
   if (existsSync(`${base}.js`)) return `${base}.js`
@@ -17,7 +32,7 @@ function resolvePreload(): string {
 
 /** 380×300 capture popover: vibrancy `popover`, frameless, floats, hides on blur. */
 export function createPopover(): BrowserWindow {
-  if (popover) return popover
+  if (popover && !popover.isDestroyed()) return popover
   const win = new BrowserWindow({
     width: 380,
     height: 300,
@@ -32,6 +47,7 @@ export function createPopover(): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
+    ...(USE_PANEL ? { type: 'panel' } : {}),
     skipTaskbar: true,
     hiddenInMissionControl: true,
     titleBarStyle: isMac ? 'customButtonsOnHover' : 'default',
@@ -60,6 +76,12 @@ export function createPopover(): BrowserWindow {
   // Clicking away dismisses — popover semantics, input already saved via Cmd-Enter.
   win.on('blur', () => {
     if (win.webContents.isDevToolsOpened()) return
+    // Early blur right after a show (seen with macOS panels when the shortcut fires while another
+    // app is mid-activation): take focus back instead of vanishing the moment it appeared.
+    if (Date.now() - revealedAt < EARLY_BLUR_GRACE_MS) {
+      if (win.isVisible()) win.focus()
+      return
+    }
     win.hide()
   })
   win.on('closed', () => {
@@ -71,7 +93,33 @@ export function createPopover(): BrowserWindow {
 }
 
 export function getPopover(): BrowserWindow | null {
+  if (popover && popover.isDestroyed()) popover = null
   return popover
+}
+
+function popoverWindow(): BrowserWindow {
+  return getPopover() ?? createPopover()
+}
+
+/** Show + focus the popover, remembering whether Inkfish was the active app beforehand. */
+function revealPopover(win: BrowserWindow): void {
+  const focused = BrowserWindow.getFocusedWindow()
+  inkfishWasActive = focused !== null && focused !== win
+  revealedAt = Date.now()
+  win.show()
+  win.focus()
+}
+
+/**
+ * Dismiss (Esc, toggle shortcut, after save). Only hides the popover: never shows or focuses the
+ * main window. On the non-panel fallback, showing it activated Inkfish, so hand focus back to the
+ * app you came from (app.hide) instead of leaving the main window in front.
+ */
+function dismissPopover(win: BrowserWindow): void {
+  if (win.isDestroyed() || !win.isVisible()) return
+  const wasKey = win.isFocused()
+  win.hide()
+  if (isMac && !USE_PANEL && wasKey && !inkfishWasActive) app.hide()
 }
 
 /** Toggle near the tray icon (left-click): just under the menu bar. */
@@ -80,9 +128,9 @@ export function togglePopoverAtTray(x?: number, y?: number, w?: number, h?: numb
 }
 
 function showPopoverAt(x?: number, y?: number, w?: number, h?: number, hash = 'capture'): void {
-  const win = popover ?? createPopover()
+  const win = popoverWindow()
   if (win.isVisible()) {
-    win.hide()
+    dismissPopover(win)
     return
   }
   if (x !== undefined && y !== undefined) {
@@ -98,8 +146,7 @@ function showPopoverAt(x?: number, y?: number, w?: number, h?: number, hash = 'c
     }
   }
   void setPopoverHash(win, hash)
-  win.show()
-  win.focus()
+  revealPopover(win)
 }
 
 function setPopoverHash(win: BrowserWindow, hash: string): Promise<void> {
@@ -116,9 +163,9 @@ export function toggleDailyAtTray(x?: number, y?: number, w?: number, h?: number
 
 /** Append-to-today near the cursor (Shift+Alt+Space). */
 export function toggleDaily(): void {
-  const win = popover ?? createPopover()
+  const win = popoverWindow()
   if (win.isVisible()) {
-    win.hide()
+    dismissPopover(win)
     return
   }
   try {
@@ -132,15 +179,14 @@ export function toggleDaily(): void {
     // headless / no screen module — just show where it was
   }
   void setPopoverHash(win, 'capture-daily')
-  win.show()
-  win.focus()
+  revealPopover(win)
 }
 
 /** Toggle near the cursor (Opt-Space): show centered on the active display. */
 export function togglePopover(): void {
-  const win = popover ?? createPopover()
+  const win = popoverWindow()
   if (win.isVisible()) {
-    win.hide()
+    dismissPopover(win)
     return
   }
   try {
@@ -154,16 +200,14 @@ export function togglePopover(): void {
   } catch {
     // headless / no screen module — just show where it was
   }
-  win.show()
-  win.focus()
+  revealPopover(win)
 }
 
 export function showPopover(): void {
-  const win = popover ?? createPopover()
-  win.show()
-  win.focus()
+  revealPopover(popoverWindow())
 }
 
 export function hidePopover(): void {
-  popover?.hide()
+  const win = getPopover()
+  if (win) dismissPopover(win)
 }

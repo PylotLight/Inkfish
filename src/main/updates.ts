@@ -26,7 +26,7 @@ import {
   type UpdateState
 } from '../shared/update-feed'
 import { APP_NAME } from '../shared/config'
-import { getMainWindow, showWindow } from './window'
+import { getMainWindow, sendToMain, showWindow } from './window'
 
 /**
  * Update notifications from the GitHub releases Atom feed (ported from Surffish #64).
@@ -101,8 +101,8 @@ function publish(): UpdateState {
 /** Bring the main window up on Settings → About & updates. */
 export function revealUpdateSettings(): void {
   showWindow()
-  // Let a freshly created window mount before asking it to navigate.
-  setTimeout(() => getMainWindow()?.webContents.send('updates:reveal'), 150)
+  // Let a freshly created window load (and mount) before asking it to navigate.
+  sendToMain('updates:reveal')
 }
 
 function showUpdateNotification(release: UpdateReleaseInfo): void {

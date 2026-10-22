@@ -1,7 +1,7 @@
 // Must be first: picks the app profile (dev runs → "Inkfish Dev") and moves userData before
 // anything reads it or takes the single-instance lock.
 import { profile } from './profile'
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, protocol, session, systemPreferences, webContents } from 'electron'
+import { app, desktopCapturer, dialog, globalShortcut, ipcMain, protocol, session, systemPreferences, webContents } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 // Crash guard before the app's own modules: catches errors thrown while they load.
 import './crash-guard'
@@ -12,7 +12,7 @@ import { initAiApi } from './ai-api'
 import { registerSysTap, stopSysTap } from './systap'
 import { destroyTray } from './tray'
 import { startMenuBar } from './menubar'
-import { createWindow, getMainWindow, showWindow } from './window'
+import { createWindow, getMainWindow, sendToMain, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
 import { closeAllMinis, registerMiniWindow } from './mini-window'
@@ -151,7 +151,7 @@ app.whenReady().then(async () => {
     onDailyAt: (x, y, w, h) => toggleDailyAtTray(x, y, w, h),
     onOpenToday: () => {
       showWindow()
-      getMainWindow()?.webContents.send('inkfish:open-today')
+      sendToMain('inkfish:open-today')
     },
     onQuit: () => app.quit()
   })
@@ -174,8 +174,16 @@ app.whenReady().then(async () => {
     if (!ok) console.warn(`[inkfish] ${accel} already taken — ${what} via tray menu`)
   }
 
+  // Dock click / relaunch from Finder (macOS). This used to be "no windows at all → create one",
+  // but the hidden capture popover (and any minis) always count as windows, so after the main
+  // window was closed (⌘W / red button destroys it) or hidden, clicking the Dock did nothing and
+  // only a restart brought it back. Now: if the main window isn't up, show it (recreating if gone).
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    const win = getMainWindow()
+    // Launch: the first window is still loading and shows itself on ready-to-show.
+    if (win && !win.isVisible() && win.webContents.isLoading()) return
+    if (win?.isVisible() && !win.isMinimized()) return
+    showWindow()
   })
 }).catch((error: unknown) => {
   dialog.showErrorBox('Inkfish could not start safely', error instanceof Error ? error.message : String(error))
