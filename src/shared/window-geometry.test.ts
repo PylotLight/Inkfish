@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { fitBoundsToDisplays, parseSavedWindowState } from './window-geometry'
+import { boundsToShow, fitBoundsToDisplays, parseSavedWindowState, planMainWindow } from './window-geometry'
 
 const MIN = { width: 980, height: 640 }
 const laptop = { x: 0, y: 25, width: 1512, height: 920 }
@@ -35,5 +35,45 @@ describe('fitBoundsToDisplays', () => {
       width: 1400,
       height: 920
     })
+  })
+})
+
+describe('boundsToShow', () => {
+  test('leaves on-screen bounds alone', () => {
+    const b = { x: 100, y: 100, width: 1200, height: 800 }
+    expect(boundsToShow(b, [laptop, external], MIN, laptop)).toEqual(b)
+  })
+  test('centres on the fallback when the display it was on is gone', () => {
+    expect(boundsToShow({ x: 1700, y: 100, width: 1300, height: 900 }, [laptop], MIN, laptop)).toEqual({
+      x: 106,
+      y: 35,
+      width: 1300,
+      height: 900
+    })
+  })
+  test('centres a zero-size or junk window at the minimum size', () => {
+    expect(boundsToShow({ x: 0, y: 0, width: 0, height: 0 }, [laptop], MIN, laptop)).toEqual({
+      x: 266,
+      y: 165,
+      width: 980,
+      height: 640
+    })
+    expect(boundsToShow({ x: Number.NaN, y: 0, width: 1200, height: 800 }, [laptop], MIN, laptop).width).toBe(980)
+  })
+  test('way offscreen (negative coords) comes back', () => {
+    const r = boundsToShow({ x: -30000, y: -30000, width: 1200, height: 800 }, [laptop, external], MIN, laptop)
+    expect(r.x).toBeGreaterThanOrEqual(laptop.x)
+    expect(r.y).toBeGreaterThanOrEqual(laptop.y)
+  })
+})
+
+describe('planMainWindow', () => {
+  test('missing or destroyed → create', () => {
+    expect(planMainWindow({ exists: false, destroyed: false, crashed: false })).toBe('create')
+    expect(planMainWindow({ exists: true, destroyed: true, crashed: false })).toBe('create')
+  })
+  test('crashed renderer → reload, healthy → reuse', () => {
+    expect(planMainWindow({ exists: true, destroyed: false, crashed: true })).toBe('reload')
+    expect(planMainWindow({ exists: true, destroyed: false, crashed: false })).toBe('reuse')
   })
 })

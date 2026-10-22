@@ -52,13 +52,13 @@ Any unpackaged run (`bun run dev`, `bun run start`, `electron .`) is **Inkfish D
 | Notes folder default | `~/Inkfish` | `~/Inkfish Dev` (never adopts `~/Inkfish` on its own) |
 | Settings, AI keys, menu bar, mini windows, onboarding | its own | its own, starts fresh |
 | LAN sync | `:47821`, its own pairing + device id | `:47822`, separate pairing, device named `<host> (Inkfish Dev)` |
-| Capture shortcuts | `⌥Space` / `⇧⌥Space` | `⌃⌥Space` / `⇧⌃⌥Space` |
+| Capture shortcuts (defaults, change in Settings → Shortcuts) | `⌥Space` / `⇧⌥Space` | `⌃⌥Space` / `⇧⌃⌥Space` |
 | Mini window toggle | `⌃⌥M` | off until you set one |
 | Tell-apart | | `DEV` pill by the logo, window title, Dock badge `dev`, tray title `dev` (mac) / tooltip |
 
 - You *can* point dev at your real notes by picking `~/Inkfish` in onboarding or Settings, but it has to be an explicit pick, and then both apps write to it.
 - `INKFISH_PROFILE=<name> bun run dev` gives another isolated profile (`Inkfish <name>`), e.g. a second dev instance or a clean QA run. It works on a packaged app too.
-- `INKFISH_SHORTCUTS=off` registers no global shortcuts for that run.
+- `INKFISH_SHORTCUTS=off` registers no global shortcuts for that run (a shortcut changed in Settings is still saved, just not registered).
 - An explicit `--user-data-dir` (smoke tests) is left alone.
 - `INKFISH_VAULT=/tmp/notes INKFISH_DATA=/tmp/appdata bun run dev` overrides the notes folder / app data dir.
 

@@ -139,6 +139,8 @@ export interface TreeTarget {
 }
 
 interface Props {
+  /** The quick capture shortcut as shown ("⌥Space"), '' when off. */
+  captureKey?: string
   notes: NoteEntry[]
   kind: KindFilter
   titleOf: (n: NoteEntry) => string
@@ -254,7 +256,7 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
   notes, kind, titleOf, selectedId, selectedPath, results, revealDir,
-  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove, rowActions
+  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove, rowActions, captureKey = '⌥Space'
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const [sort, setSort] = useState<TreeSort>(loadSort)
@@ -531,7 +533,7 @@ function FolderTree({
         </div>
       )}
       {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
-        <p className="muted small pad">Nothing here yet — ⌥Space to capture.</p>
+        <p className="muted small pad">Nothing here yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}</p>
       )}
     </div>
     </>

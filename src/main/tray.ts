@@ -2,6 +2,7 @@ import { Tray, Menu, Notification, nativeImage, type MenuItemConstructorOptions,
 import { join } from 'node:path'
 import { profile } from './profile'
 import { shortcutLabel } from '../shared/profile'
+import { shortcutFor } from './shortcuts'
 
 export interface TrayCallbacks {
   onShow(): void
@@ -59,8 +60,8 @@ export function createAppTray(cb: TrayCallbacks): void {
   const hint = (accel: string): string => (accel ? `  (${shortcutLabel(accel, isMac)})` : '')
   const buildMenu = (): Menu =>
     Menu.buildFromTemplate([
-      { label: `New note${hint(profile.captureShortcut)}`, click: cb.onCapture },
-      { label: `Add to today's note${hint(profile.dailyShortcut)}`, click: () => cb.onDailyAt(...atTray()) },
+      { label: `New note${hint(shortcutFor('capture'))}`, click: cb.onCapture },
+      { label: `Add to today's note${hint(shortcutFor('daily'))}`, click: () => cb.onDailyAt(...atTray()) },
       { label: "Open today's note", click: cb.onOpenToday },
       { label: `Show ${profile.name}`, click: cb.onShow },
       { type: 'separator' },
@@ -76,7 +77,7 @@ export function createAppTray(cb: TrayCallbacks): void {
       { type: 'separator' },
       { label: 'Quit', click: cb.onQuit }
     ])
-  // Left-click pops the capture window (same as Opt-Space); right-click gets
+  // Left-click pops the capture window (same as the capture shortcut); right-click gets
   // the menu — never both at once.
   tray.on('click', () => {
     const b = tray?.getBounds()

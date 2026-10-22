@@ -7,6 +7,7 @@ import {
   shortcutClash,
   type MiniWindowSettings as Settings
 } from '../../../shared/mini-window'
+import { knownShortcutsWith, type ShortcutSettings } from '../../../shared/shortcuts'
 
 const IS_MAC = navigator.platform.toUpperCase().includes('MAC')
 const IS_LINUX = navigator.platform.toUpperCase().includes('LINUX')
@@ -31,9 +32,14 @@ export default function MiniWindowSettings(): React.JSX.Element {
   const [recording, setRecording] = useState(false)
   const [pending, setPending] = useState<string | null>(null)
 
+  // The capture shortcuts as configured, so a clash warning names the keys actually in use.
+  const [capture, setCapture] = useState<ShortcutSettings | null>(null)
+
   useEffect(() => {
     window.api.mini.settings().then(setState).catch(console.error)
+    window.api.shortcuts.get().then((s) => setCapture(s.settings)).catch(console.error)
   }, [])
+  const known = capture ? knownShortcutsWith(capture) : undefined
 
   const update = (patch: Partial<Settings>): void => {
     window.api.mini.setSettings(patch).then(setState).catch(console.error)
@@ -42,7 +48,7 @@ export default function MiniWindowSettings(): React.JSX.Element {
   const s = state?.settings
   const popKey = IS_MAC ? '⌘⇧M' : 'Ctrl+Shift+M'
   const shortcutLabel = s ? formatAccelerator(s.shortcut, IS_MAC) : '…'
-  const pendingClash = pending ? shortcutClash(pending, IS_MAC) : null
+  const pendingClash = pending ? shortcutClash(pending, IS_MAC, known) : null
   const status = !s?.shortcut
     ? 'Off'
     : state?.registered
@@ -51,7 +57,7 @@ export default function MiniWindowSettings(): React.JSX.Element {
 
   const record = (accelerator: string): void => {
     // A known clash (1Password's ⌘⇧Space, Spotlight…) asks first instead of silently stealing it.
-    if (shortcutClash(accelerator, IS_MAC)) {
+    if (shortcutClash(accelerator, IS_MAC, known)) {
       setPending(accelerator)
       return
     }

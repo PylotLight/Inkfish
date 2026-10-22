@@ -29,6 +29,7 @@
     "stt:build": "bun scripts/build-stt.ts",
     "bench:stt": "bun scripts/bench-stt.ts",
     "test:electron-ai": "electron scripts/electron-ai-smoke.mjs",
+    "test:electron-window": "bun scripts/electron-window-smoke.mjs",
     "test:cli": "bun test ./packages/cli/test"
   },
   "build": {

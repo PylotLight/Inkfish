@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import type { MenuBarClick, MenuBarSettings as Settings } from '../../../shared/menubar'
 
 const CLICKS: Array<{ id: MenuBarClick; label: string; hint: string }> = [
-  { id: 'capture', label: 'Quick capture', hint: 'The capture popover drops out under the icon (same as ⌥Space).' },
-  { id: 'today', label: "Add to today's note", hint: 'The capture popover, set to append to today’s note (same as ⇧⌥Space).' },
+  { id: 'capture', label: 'Quick capture', hint: 'The capture popover drops out under the icon (same as the quick capture shortcut).' },
+  { id: 'today', label: "Add to today's note", hint: 'The capture popover, set to append to today’s note (same as its shortcut).' },
   { id: 'window', label: 'Inkfish window', hint: 'Shows the main window; click again while it’s in front to hide it.' }
 ]
 
@@ -57,7 +57,7 @@ export default function MenuBarSettings(): React.JSX.Element {
         <span className="setting-label">
           Show {where} icon
           <span className="muted small setting-hint">
-            Off: reach Inkfish with ⌥Space / ⇧⌥Space{isMac ? ' and the Dock' : ''} only.
+            Off: reach Inkfish with its global shortcuts (Settings › Shortcuts){isMac ? ' and the Dock' : ''} only.
           </span>
         </span>
         <Switch on={s?.showIcon ?? true} label={`Show ${where} icon`} disabled={!s} onChange={(v) => update({ showIcon: v })} />

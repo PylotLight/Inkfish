@@ -10,7 +10,10 @@ renderer (React, browser) ──invoke───────┘
 
 - `src/main/index.ts` — app lifecycle only: single-instance lock, vault init
   (`ensureVault` + seed projects + `openDb` + re-scan), `whenReady` wiring,
-  `Alt+Space` global shortcut, quit handling. No business logic.
+  global capture shortcuts (via `main/shortcuts.ts`), quit handling. No business logic.
+- `src/main/shortcuts.ts` — configurable capture / append-to-today global shortcuts
+  (`userData/shortcuts.json`, Settings → Shortcuts): live re-register, keeps the old one when
+  the new one is refused (invalid, taken by another app, already an Inkfish shortcut).
 - `src/main/window.ts` — main `BrowserWindow` creation, `showWindow`/`hideWindow`, vibrancy state.
 - `src/main/popover.ts` — 380×520 capture popover (`vibrancy: popover`,
   frameless, always-on-top, hides on blur), `togglePopover()` near the cursor.

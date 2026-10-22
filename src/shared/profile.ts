@@ -48,10 +48,15 @@ export interface ProfileInput {
   shortcutsEnv?: string
 }
 
+/** INKFISH_SHORTCUTS=off|0|false|no|none: register no global shortcuts in this run. */
+export function shortcutsDisabled(shortcutsEnv: string | undefined): boolean {
+  return /^(off|0|false|no|none)$/i.test((shortcutsEnv ?? '').trim())
+}
+
 export function resolveProfile({ isPackaged, profileEnv, shortcutsEnv }: ProfileInput): AppProfile {
   const custom = cleanProfileName(profileEnv)
   const kind: ProfileKind = custom ? 'custom' : isPackaged ? 'release' : 'dev'
-  const shortcutsOff = /^(off|0|false|no|none)$/i.test((shortcutsEnv ?? '').trim())
+  const shortcutsOff = shortcutsDisabled(shortcutsEnv)
   if (kind === 'release') {
     return {
       kind,
