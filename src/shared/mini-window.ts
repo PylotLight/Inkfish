@@ -158,11 +158,19 @@ export function shortcutClash(accelerator: string, isMac: boolean, known = KNOWN
   return hit?.owner ?? null
 }
 
+export interface ShortcutKeyEvent { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }
+
 /** A key press in Settings' shortcut field as an accelerator ("Command+Shift+Space"), or null while only modifiers are down. */
-export function acceleratorFromKeyEvent(
-  event: { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean },
-  isMac: boolean
-): string | null {
+export function acceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boolean): string | null {
+  const raw = rawAcceleratorFromKeyEvent(event, isMac)
+  return raw ? normalizeAccelerator(raw) : null
+}
+
+/**
+ * The key press spelled as an accelerator WITHOUT validating it ("Space", "Shift+K"), or null while
+ * only modifiers are down / the key has no accelerator name. Lets Settings say why a combo is refused.
+ */
+export function rawAcceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boolean): string | null {
   let key: string | null = null
   if (event.code === 'Space') key = 'Space'
   else if (/^Key[A-Z]$/.test(event.code)) key = event.code.slice(3)
@@ -187,7 +195,7 @@ export function acceleratorFromKeyEvent(
   }
   if (event.altKey) parts.push('Alt')
   if (event.shiftKey) parts.push('Shift')
-  return normalizeAccelerator([...parts, key].join('+'))
+  return [...parts, key].join('+')
 }
 
 /** How an accelerator reads in Settings and menus ("⌃⌥M" on macOS, "Ctrl+Alt+M" elsewhere). */

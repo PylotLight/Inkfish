@@ -155,7 +155,8 @@ export default function Onboarding({ step, setStep, vault, profile, onVaultReady
             </h3>
             <p className="muted">
               The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the
-              inbox — the worker routes it, raw is never deleted.
+              inbox — the worker routes it, raw is never deleted. Change the shortcut any time in
+              Settings › Shortcuts.
             </p>
             <div className="row end">
               <button className="btn ghost" onClick={() => setStep(1)}>

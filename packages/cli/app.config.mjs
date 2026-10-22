@@ -71,7 +71,7 @@ export default {
   },
   // Rotated under the progress bar while downloading, between the "what's happening" lines.
   tips: [
-    'Inkfish lives in the menu bar: ⌥Space from anywhere captures a thought',
+    'Inkfish lives in the menu bar: ⌥Space from anywhere captures a thought (change it in Settings → Shortcuts)',
     'Everything lands in the inbox first, then AI files it into the right project note',
     'Notes are plain markdown in a folder you own (~/Inkfish by default)',
     'Voice notes transcribe on-device with Apple\'s speech engine or Parakeet models',

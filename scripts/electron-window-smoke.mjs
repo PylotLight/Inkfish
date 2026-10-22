@@ -6,6 +6,7 @@
 //      (the old handler only made one when there were zero windows, and the popover always counts)
 //   3. main window dragged far off screen + hidden → `activate` → it comes back on a display
 //   4. closed again → second launch (`second-instance`) → back again
+//   5. Settings › Shortcuts IPC: bare key refused, capture saved to shortcuts.json, daily on the same keys refused, '' turns off
 //   bun run build && bun run test:electron-window      (Linux runs it with --ozone-platform=headless)
 // Linux can't show the macOS half of the bug (app activation raising every window) — that needs a Mac check.
 import { spawn } from 'node:child_process'
@@ -152,6 +153,25 @@ const second = await main(`
   E.app.emit('second-instance', {}, [], process.cwd())
   return !!(await __smoke.wait(() => { const w = __smoke.main(); return w && w !== m && w.isVisible() ? w : null }))`)
 if (!second) fail('second-instance did not recreate the main window')
+
+step('Settings › Shortcuts: validation, own-key conflict, save + off (INKFISH_SHORTCUTS=off: no OS registration)')
+const sc = await main(`
+  const fs = require('fs'), path = require('path') // command-line require is gone after the first await
+  const w = __smoke.main()
+  await __smoke.wait(() => !w.webContents.isLoading())
+  const call = (id, acc) => w.webContents.executeJavaScript('window.api.shortcuts.set(' + JSON.stringify(id) + ',' + JSON.stringify(acc) + ')')
+  const bare = await call('capture', 'Space')
+  const set = await call('capture', 'Control+Alt+N')
+  const clash = await call('daily', 'Alt+Control+N')
+  const file = JSON.parse(fs.readFileSync(path.join(E.app.getPath('userData'), 'shortcuts.json'), 'utf8'))
+  const off = await call('daily', '')
+  return { bare: bare.error, set: set.error, capture: set.settings.capture, clash: clash.error, keptDaily: clash.settings.daily, file, offDaily: off.settings.daily, disabled: off.disabled }`)
+if (!sc.bare || !/modifier|⌘|Ctrl/.test(sc.bare)) fail(`bare Space was not refused: ${JSON.stringify(sc)}`)
+if (sc.set !== null || sc.capture !== 'Control+Alt+N') fail(`capture shortcut not saved: ${JSON.stringify(sc)}`)
+if (!sc.clash || !sc.clash.includes('quick capture')) fail(`daily = capture keys not refused: ${JSON.stringify(sc)}`)
+if (sc.keptDaily === 'Control+Alt+N') fail('refused change still replaced the daily shortcut')
+if (sc.file.capture !== 'Control+Alt+N') fail(`shortcuts.json not written: ${JSON.stringify(sc.file)}`)
+if (sc.offDaily !== '' || !sc.disabled) fail(`clearing daily / disabled flag wrong: ${JSON.stringify(sc)}`)
 
 clearTimeout(timer)
 console.log('WINDOW SMOKE OK')

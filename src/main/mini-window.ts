@@ -63,6 +63,8 @@ import { motion, placeWindow } from './mini-window-motion'
 import { MINI_WINDOW_HANDLE_HTML } from './mini-window-handle-page'
 import { getMainWindow, showWindow } from './window'
 import { profile } from './profile'
+import { getShortcutSettings } from './shortcuts'
+import { knownShortcutsWith } from '../shared/shortcuts'
 
 /**
  * Mini windows (shared/mini-window.ts): one note per small frameless window that floats over every
@@ -827,7 +829,7 @@ function settingsState(): MiniSettingsState {
     defaults: profileDefaults,
     registered: registeredShortcut !== null && globalShortcut.isRegistered(registeredShortcut),
     error: shortcutError,
-    clash: s.shortcut ? shortcutClash(s.shortcut, IS_MAC) : null,
+    clash: s.shortcut ? shortcutClash(s.shortcut, IS_MAC, knownShortcutsWith(getShortcutSettings())) : null,
     open: minis.filter(alive).length
   }
 }

@@ -10,6 +10,7 @@ import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
 import MiniWindowSettings from './MiniWindowSettings'
+import ShortcutSettings from './ShortcutSettings'
 import UpdateSettings from './UpdateSettings'
 import { NetworkSettings } from './NetworkSettings'
 
@@ -132,11 +133,12 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'network' | 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
+type SettingsTab = 'network' | 'appearance' | 'shortcuts' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
   { id: 'appearance', label: 'Appearance', icon: '◐', group: 'Configure' },
+  { id: 'shortcuts', label: 'Shortcuts', icon: '⌥', group: 'Configure' },
   { id: 'mini-window', label: 'Mini window', icon: '⧉', group: 'Configure' },
   { id: 'notes', label: 'Notes', icon: '▤', group: 'Configure' },
   { id: 'network', label: 'Network', icon: '⇄', group: 'Configure' },
@@ -498,6 +500,7 @@ export default function SettingsView({
             </>
           )}
 
+          {tab === 'shortcuts' && <ShortcutSettings />}
           {tab === 'mini-window' && <MiniWindowSettings />}
           {tab === 'network' && <NetworkSettings />}
           {tab === 'audio' && <AudioSettings />}

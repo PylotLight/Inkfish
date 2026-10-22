@@ -8,6 +8,7 @@ import type { AiApi, DiscoveryResult } from '../shared/ai-models'
 import type { ProcessedEntry } from '../shared/ai-process'
 import type { MenuBarSettings } from '../shared/menubar'
 import type { AppProfileInfo } from '../shared/profile'
+import type { ShortcutId, ShortcutSetResult, ShortcutState } from '../shared/shortcuts'
 import type {
   ClassifyResult,
   GlassState,
@@ -411,6 +412,19 @@ const api = {
       const fn = (_e: unknown, s: MenuBarSettings): void => cb(s)
       ipcRenderer.on('menubar:changed', fn)
       return () => ipcRenderer.removeListener('menubar:changed', fn)
+    }
+  },
+  /** Global capture shortcuts (Settings › Shortcuts, main/shortcuts.ts). */
+  shortcuts: {
+    get: (): Promise<ShortcutState> => ipcRenderer.invoke('shortcuts:get'),
+    /** Set one ('' = off). Refused (invalid / taken by another app) → `error` set, old one kept. */
+    set: (id: ShortcutId, accelerator: string): Promise<ShortcutSetResult> => ipcRenderer.invoke('shortcuts:set', id, accelerator),
+    /** A recorder field has focus: release Inkfish's capture shortcuts so they can be recorded. */
+    recording: (on: boolean): void => ipcRenderer.send('shortcuts:recording', on),
+    onChanged: (cb: (s: ShortcutState) => void): (() => void) => {
+      const fn = (_e: unknown, s: ShortcutState): void => cb(s)
+      ipcRenderer.on('shortcuts:changed', fn)
+      return () => ipcRenderer.removeListener('shortcuts:changed', fn)
     }
   },
   meeting: {

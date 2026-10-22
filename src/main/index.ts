@@ -15,7 +15,8 @@ import { startMenuBar } from './menubar'
 import { createWindow, getMainWindow, sendToMain, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
-import { closeAllMinis, registerMiniWindow } from './mini-window'
+import { closeAllMinis, getMiniSettings, registerMiniWindow } from './mini-window'
+import { registerCaptureShortcuts, registerShortcutIpc } from './shortcuts'
 import { openDb, reindexStaging, reindexVault } from './db'
 import { ensureSeedProjects, ensureVault, mergeCaseDuplicates, setConfigDir, setDefaultVaultName, vaultConfigured } from './vault'
 import { profileBadgeText } from '../shared/profile'
@@ -131,6 +132,7 @@ app.whenReady().then(async () => {
     console.log('[inkfish] first run — waiting for vault selection')
   }
   registerIpc()
+  registerShortcutIpc()
   // Settings › AI: Electron 45 local AI handler for the Prompt API (off until a provider is connected).
   initAiApi()
   registerUpdateIpc()
@@ -156,23 +158,12 @@ app.whenReady().then(async () => {
     onQuit: () => app.quit()
   })
 
-  // Global capture shortcuts: ⌥Space / ⇧⌥Space in the release app; a dev profile uses
-  // ⌃⌥Space / ⇧⌃⌥Space so both apps keep working side by side (INKFISH_SHORTCUTS=off: none).
-  // A shortcut another app holds is skipped with a warning. Unregisters automatically on quit.
-  const shortcuts: Array<[string, () => void, string]> = [
-    [profile.captureShortcut, togglePopover, 'capture'],
-    [profile.dailyShortcut, toggleDaily, 'append']
-  ]
-  for (const [accel, fn, what] of shortcuts) {
-    if (!accel) continue
-    let ok = false
-    try {
-      ok = globalShortcut.register(accel, fn)
-    } catch (err) {
-      console.warn(`[inkfish] ${accel} rejected:`, err)
-    }
-    if (!ok) console.warn(`[inkfish] ${accel} already taken — ${what} via tray menu`)
-  }
+  // Global capture shortcuts: ⌥Space / ⇧⌥Space by default in the release app, ⌃⌥Space / ⇧⌃⌥Space
+  // in a dev profile (INKFISH_SHORTCUTS=off: none). Configurable in Settings › Shortcuts
+  // (main/shortcuts.ts re-registers live). A shortcut another app holds is skipped with a warning.
+  registerCaptureShortcuts({ capture: togglePopover, daily: toggleDaily }, () => ({
+    'mini window show/hide': getMiniSettings().shortcut
+  }))
 
   // Dock click / relaunch from Finder (macOS). This used to be "no windows at all → create one",
   // but the hidden capture popover (and any minis) always count as windows, so after the main

@@ -101,6 +101,7 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
+import { shortcutFor } from './shortcuts'
 import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
 import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
 import {
@@ -278,8 +279,8 @@ export function registerIpc(): void {
     kind: profile.kind,
     name: profile.name,
     badge: profile.badge,
-    captureShortcut: profile.captureShortcut,
-    dailyShortcut: profile.dailyShortcut,
+    captureShortcut: shortcutFor('capture'),
+    dailyShortcut: shortcutFor('daily'),
     defaultVaultRoot: defaultVaultRoot()
   }))
 

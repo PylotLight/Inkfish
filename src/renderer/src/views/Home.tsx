@@ -6,6 +6,8 @@ import { entryCountLabel, summarizeDay, type DayRef } from '../../../shared/jour
 import { cachedBody, loadBody, useBodiesVersion } from '../dayBodies'
 
 interface Props {
+  /** The quick capture shortcut as shown ("⌥Space"), '' when off. */
+  captureKey?: string
   notes: NoteEntry[]
   inbox: InboxItem[]
   /** Today's day-log index entry, if one exists yet (lives in staging, not the tree). */
@@ -35,7 +37,7 @@ function dirOf(path: string): string {
  * Accent is reserved for state: pending inbox count, hover affordances.
  */
 export default function Home({
-  notes, inbox, today, days, onOpenJournal, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify
+  notes, inbox, today, days, onOpenJournal, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify, captureKey = '⌥Space'
 }: Props): React.JSX.Element {
   const latest = useMemo(
     () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12),
@@ -99,7 +101,7 @@ export default function Home({
       <div className="home-grid">
         <section className="hsec" aria-label="Latest notes">
           <h3 className="hsec-title">Latest</h3>
-          {latest.length === 0 && <p className="muted small">Nothing yet — ⌥Space to capture.</p>}
+          {latest.length === 0 && <p className="muted small">Nothing yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}</p>}
           <ul className="hrows">
             {latest.map((n) => (
               <li key={n.id}>

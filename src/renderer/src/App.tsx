@@ -307,6 +307,10 @@ function Main(): React.JSX.Element {
         document.title = p.name
       })
       .catch(console.error)
+    // Settings › Shortcuts changed: keep the hints in step.
+    return window.api.shortcuts.onChanged((s) =>
+      setProfile((p) => (p ? { ...p, captureShortcut: s.disabled ? '' : s.settings.capture, dailyShortcut: s.disabled ? '' : s.settings.daily } : p))
+    )
   }, [])
   const isMacUi = sys?.platform === 'darwin'
   const captureKey = profile ? shortcutLabel(profile.captureShortcut, isMacUi) : '⌥Space'
@@ -1873,6 +1877,7 @@ function Main(): React.JSX.Element {
         ) : (
           <div className="side-scroll">
             <FolderTree
+              captureKey={captureKey}
               notes={finalNotes}
               kind={kind}
               titleOf={titleOf}
@@ -1997,6 +2002,7 @@ function Main(): React.JSX.Element {
             {scope === 'home' ? (
               <main className="view-scroll" aria-label="Home">
                 <Home
+                  captureKey={captureKey}
                   notes={finalNotes}
                   inbox={inbox}
                   today={todayEntry}
