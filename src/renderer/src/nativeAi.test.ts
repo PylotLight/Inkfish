@@ -29,7 +29,11 @@ function recorder(reply: (user: string) => string): Call[] {
   g.LanguageModel = {
     availability: async () => 'available',
     create: async (opts: { initialPrompts: Array<{ content: string }>; expectedInputs?: unknown }) => {
-      const call: Call = { system: opts.initialPrompts[0]?.content ?? '', input: null, expectedInputs: opts.expectedInputs }
+      const call: Call = {
+        system: opts.initialPrompts[0]?.content ?? '',
+        input: null,
+        expectedInputs: opts.expectedInputs
+      }
       calls.push(call)
       return {
         promptStreaming: (input: unknown) => {
@@ -85,7 +89,11 @@ describe('Prompt API path (renderer)', () => {
       }
     }
     const chunks: string[] = []
-    const r = await runAiProcess({ action: 'tidy', text: '---\na: 1\n---\n# hi\n* item', onChunk: (c) => chunks.push(c) })
+    const r = await runAiProcess({
+      action: 'tidy',
+      text: '---\na: 1\n---\n# hi\n* item',
+      onChunk: (c) => chunks.push(c)
+    })
     expect(r.text).toBe('---\na: 1\n---\n# Hi\n\n- item\n')
     expect(chunks).toEqual(['# Hi\n\n', '# Hi\n\n- item'])
     expect((initial as Array<{ role: string }>)[0]?.role).toBe('system')
@@ -99,7 +107,10 @@ describe('Prompt API path (renderer)', () => {
   })
 
   test('per-action model: the run is tagged with that model id (the handler strips the tag)', async () => {
-    setStatus(true, parseAiSettings({ model: 'big', models: [{ id: 'big' }, { id: 'small' }], actionModels: { typos: 'small' } }))
+    setStatus(
+      true,
+      parseAiSettings({ model: 'big', models: [{ id: 'big' }, { id: 'small' }], actionModels: { typos: 'small' } })
+    )
     const calls = recorder((u) => u)
     await runAiProcess({ action: 'typos', text: 'teh cat' })
     await runAiProcess({ action: 'tidy', text: 'teh cat' })
@@ -109,7 +120,10 @@ describe('Prompt API path (renderer)', () => {
   })
 
   test('model limits drive chunking: a long note is processed in parts and a notice says so', async () => {
-    setStatus(true, parseAiSettings({ model: 'tiny', models: [{ id: 'tiny', contextWindow: 2000, maxOutputTokens: 600 }] }))
+    setStatus(
+      true,
+      parseAiSettings({ model: 'tiny', models: [{ id: 'tiny', contextWindow: 2000, maxOutputTokens: 600 }] })
+    )
     const calls = recorder((u) => u.toUpperCase())
     const para = 'word '.repeat(100).trim()
     const text = Array.from({ length: 12 }, (_, i) => `${para} ${i}`).join('\n\n')
@@ -192,7 +206,9 @@ describe('Prompt API errors (renderer)', () => {
     }
     g.LanguageModel = lm
     const chunks: string[] = []
-    const err = await runAiProcess({ action: 'tidy', text: '# hi', onChunk: (c) => chunks.push(c) }).catch((e: unknown) => e)
+    const err = await runAiProcess({ action: 'tidy', text: '# hi', onChunk: (c) => chunks.push(c) }).catch(
+      (e: unknown) => e
+    )
     expect(err).toBeInstanceOf(AiRunError)
     expect((err as Error).message).toBe(
       'OpenAI 400: This model is only supported in v1/responses and not in v1/chat/completions. (POST /chat/completions, openai.gpt-6-luna)'
@@ -223,7 +239,11 @@ describe('Prompt API errors (renderer)', () => {
   })
 
   test('kErrorUnknown and nothing in main: says so instead of the raw Chromium text', async () => {
-    g.window = { api: { aiApi: { status: async () => ({ connected: true, settings: DEFAULT_AI_SETTINGS }), lastError: async () => null } } }
+    g.window = {
+      api: {
+        aiApi: { status: async () => ({ connected: true, settings: DEFAULT_AI_SETTINGS }), lastError: async () => null }
+      }
+    }
     g.LanguageModel = streaming(() => {
       throw new Error('unreachable')
     })

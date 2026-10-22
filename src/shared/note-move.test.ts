@@ -1,7 +1,20 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  baseOf, breadcrumb, canDropInto, cleanFolderPath, dirOf, foldersOf, isWithin, joinRel, normalizeRel,
-  rankFolders, relativeRel, remapPath, rewriteLinks, uniqueName, type LinkRewriteContext
+  baseOf,
+  breadcrumb,
+  canDropInto,
+  cleanFolderPath,
+  dirOf,
+  foldersOf,
+  isWithin,
+  joinRel,
+  normalizeRel,
+  rankFolders,
+  relativeRel,
+  remapPath,
+  rewriteLinks,
+  uniqueName,
+  type LinkRewriteContext
 } from './note-move'
 
 describe('path helpers', () => {
@@ -31,7 +44,10 @@ describe('path helpers', () => {
     expect(remapPath('ab/x.md', 'a', 'b/a')).toBeNull()
   })
   test('breadcrumb', () => {
-    expect(breadcrumb('Work/Images/n.md')).toEqual([{ name: 'Work', rel: 'Work' }, { name: 'Images', rel: 'Work/Images' }])
+    expect(breadcrumb('Work/Images/n.md')).toEqual([
+      { name: 'Work', rel: 'Work' },
+      { name: 'Images', rel: 'Work/Images' }
+    ])
     expect(breadcrumb('n.md')).toEqual([])
   })
 })
@@ -84,7 +100,14 @@ describe('folders', () => {
 })
 
 describe('rewriteLinks', () => {
-  const files = new Set(['assets/2026/10/a.png', 'Work/pic.png', 'Work/other.md', 'Notes/n.md', 'Notes/sub/deep.md', 'top.md'])
+  const files = new Set([
+    'assets/2026/10/a.png',
+    'Work/pic.png',
+    'Work/other.md',
+    'Notes/n.md',
+    'Notes/sub/deep.md',
+    'top.md'
+  ])
   const ctx = (oldNotePath: string, newNotePath: string, moves: Record<string, string> = {}): LinkRewriteContext => ({
     oldNotePath,
     newNotePath,
@@ -94,7 +117,10 @@ describe('rewriteLinks', () => {
 
   test('vault-root asset paths are untouched', () => {
     const md = '![](assets/2026/10/a.png)'
-    expect(rewriteLinks(md, ctx('Work/n.md', 'Archive/n.md', { 'Work/n.md': 'Archive/n.md' }))).toEqual({ text: md, changed: 0 })
+    expect(rewriteLinks(md, ctx('Work/n.md', 'Archive/n.md', { 'Work/n.md': 'Archive/n.md' }))).toEqual({
+      text: md,
+      changed: 0
+    })
   })
   test('note-relative image follows the move', () => {
     const md = 'x ![cat|300](./pic.png) y'
@@ -128,7 +154,12 @@ describe('rewriteLinks', () => {
   })
   test('spaces: encoded and angle-bracket destinations', () => {
     const local = new Set(['My Folder/my pic.png'])
-    const c: LinkRewriteContext = { oldNotePath: 'My Folder/n.md', newNotePath: 'n.md', remap: () => null, exists: (r) => local.has(r) }
+    const c: LinkRewriteContext = {
+      oldNotePath: 'My Folder/n.md',
+      newNotePath: 'n.md',
+      remap: () => null,
+      exists: (r) => local.has(r)
+    }
     expect(rewriteLinks('![](my%20pic.png)', c).text).toBe('![](My%20Folder/my%20pic.png)')
     expect(rewriteLinks('![](<my pic.png>)', c).text).toBe('![](<My Folder/my pic.png>)')
   })

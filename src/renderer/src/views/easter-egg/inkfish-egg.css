@@ -17,8 +17,14 @@
   animation: inkfish-egg-in 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
 }
 @keyframes inkfish-egg-in {
-  from { opacity: 0; transform: scale(1.03); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .inkfish-egg-water,
@@ -40,9 +46,17 @@
   animation: inkfish-egg-bloom 6s ease-out infinite;
 }
 @keyframes inkfish-egg-bloom {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
-  15% { opacity: 0.95; }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6) rotate(40deg); }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+  }
+  15% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6) rotate(40deg);
+  }
 }
 
 /* Ink drops: fall from the top, land as a spreading ring. */
@@ -79,15 +93,37 @@
   animation-delay: inherit;
 }
 @keyframes inkfish-egg-fall {
-  0% { transform: translateY(0); opacity: 0; }
-  5% { opacity: 1; }
-  44% { transform: translateY(78cqh); opacity: 1; }
-  45%, 100% { transform: translateY(78cqh); opacity: 0; }
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  44% {
+    transform: translateY(78cqh);
+    opacity: 1;
+  }
+  45%,
+  100% {
+    transform: translateY(78cqh);
+    opacity: 0;
+  }
 }
 @keyframes inkfish-egg-ring {
-  0%, 44% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-  46% { opacity: 0.9; }
-  80%, 100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+  0%,
+  44% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  46% {
+    opacity: 0.9;
+  }
+  80%,
+  100% {
+    transform: translate(-50%, -50%) scale(2.4);
+    opacity: 0;
+  }
 }
 
 .inkfish-egg-stage {
@@ -111,8 +147,15 @@
   animation: inkfish-egg-pulse 4.5s ease-in-out infinite;
 }
 @keyframes inkfish-egg-pulse {
-  0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.92); }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
 }
 .inkfish-egg-swim {
   position: absolute;
@@ -174,16 +217,32 @@
   animation: inkfish-egg-shine 5.5s ease-in-out infinite;
 }
 @keyframes inkfish-egg-bob {
-  0%, 100% { transform: translate(-50%, -52%); }
-  50% { transform: translate(-50%, -47%); }
+  0%,
+  100% {
+    transform: translate(-50%, -52%);
+  }
+  50% {
+    transform: translate(-50%, -47%);
+  }
 }
 @keyframes inkfish-egg-tilt {
-  0%, 100% { transform: rotateY(-10deg) rotateX(4deg); }
-  50% { transform: rotateY(10deg) rotateX(-4deg); }
+  0%,
+  100% {
+    transform: rotateY(-10deg) rotateX(4deg);
+  }
+  50% {
+    transform: rotateY(10deg) rotateX(-4deg);
+  }
 }
 @keyframes inkfish-egg-shine {
-  0%, 55% { left: -60%; }
-  85%, 100% { left: 130%; }
+  0%,
+  55% {
+    left: -60%;
+  }
+  85%,
+  100% {
+    left: 130%;
+  }
 }
 
 .inkfish-egg-bubble {
@@ -196,11 +255,23 @@
   opacity: 0;
 }
 @keyframes inkfish-egg-rise {
-  0% { opacity: 0; transform: translate(0, 0); }
-  10% { opacity: 0.9; }
-  50% { transform: translate(14px, -45cqh); }
-  90% { opacity: 0.7; }
-  100% { opacity: 0; transform: translate(-10px, -90cqh); }
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  10% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(14px, -45cqh);
+  }
+  90% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -90cqh);
+  }
 }
 
 .inkfish-egg-caption {
@@ -232,7 +303,9 @@
   font-size: 13px;
 }
 @keyframes inkfish-egg-shimmer {
-  to { background-position: 300% 0; }
+  to {
+    background-position: 300% 0;
+  }
 }
 
 /* Same scene, still: a couple of ink clouds and bubbles frozen mid-bloom. */
@@ -240,15 +313,31 @@
 .inkfish-egg.is-still * {
   animation: none !important;
 }
-.inkfish-egg.is-still .inkfish-egg-puff { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
-.inkfish-egg.is-still .inkfish-egg-bubble { opacity: 0.5; bottom: 30%; }
-.inkfish-egg.is-still .inkfish-egg-drop { display: none; }
+.inkfish-egg.is-still .inkfish-egg-puff {
+  opacity: 0.6;
+  transform: translate(-50%, -50%) scale(1);
+}
+.inkfish-egg.is-still .inkfish-egg-bubble {
+  opacity: 0.5;
+  bottom: 30%;
+}
+.inkfish-egg.is-still .inkfish-egg-drop {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .inkfish-egg,
   .inkfish-egg * {
     animation: none !important;
   }
-  .inkfish-egg-puff { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
-  .inkfish-egg-bubble { opacity: 0.5; bottom: 30%; }
-  .inkfish-egg-drop { display: none; }
+  .inkfish-egg-puff {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .inkfish-egg-bubble {
+    opacity: 0.5;
+    bottom: 30%;
+  }
+  .inkfish-egg-drop {
+    display: none;
+  }
 }

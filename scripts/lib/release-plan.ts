@@ -88,7 +88,10 @@ export function isPrerelease(v: string): boolean {
 function preParts(v: string): Array<string | number> {
   const i = v.indexOf('-')
   if (i < 0) return []
-  return v.slice(i + 1).split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+  return v
+    .slice(i + 1)
+    .split('.')
+    .map((p) => (/^\d+$/.test(p) ? Number(p) : p))
 }
 
 /** SemVer 2.0 precedence (build metadata not supported): 0.2.15-beta.1 < 0.2.15-beta.2 < 0.2.15 < 0.2.16. */
@@ -170,7 +173,13 @@ export interface NextVersionOptions {
  *  - a normal release finishes it: 0.2.15-beta.2 → 0.2.15
  * unless the requested bump goes past it (beta of 0.2.15 open, `minor` → 0.3.0 / 0.3.0-beta.1).
  */
-export function nextVersion(app: App, lastTag: string | null, bump: Bump | string, fallback = '0.0.0', opts: NextVersionOptions = {}): string {
+export function nextVersion(
+  app: App,
+  lastTag: string | null,
+  bump: Bump | string,
+  fallback = '0.0.0',
+  opts: NextVersionOptions = {}
+): string {
   const tags = opts.tags ?? []
   const pre = opts.pre ?? null
   let base: string
@@ -232,7 +241,15 @@ export interface ReleaseArgs {
 }
 
 export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string } {
-  const out: ReleaseArgs = { version: 'patch', app: null, push: false, dryRun: false, yes: false, help: false, pre: null }
+  const out: ReleaseArgs = {
+    version: 'patch',
+    app: null,
+    push: false,
+    dryRun: false,
+    yes: false,
+    help: false,
+    pre: null
+  }
   let sawVersion = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
@@ -243,10 +260,10 @@ export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string 
     else if (a === '--pre' || a === '--prerelease' || a === '--beta') out.pre = DEFAULT_PRE_ID
     else if (a.startsWith('--pre=') || a.startsWith('--prerelease=')) {
       const id = a.slice(a.indexOf('=') + 1)
-      if (!/^[A-Za-z][0-9A-Za-z-]*$/.test(id)) return { error: `--pre wants an identifier like beta or rc, got '${id}'` }
+      if (!/^[A-Za-z][0-9A-Za-z-]*$/.test(id))
+        return { error: `--pre wants an identifier like beta or rc, got '${id}'` }
       out.pre = id
-    }
-    else if (a === '--app' || a.startsWith('--app=')) {
+    } else if (a === '--app' || a.startsWith('--app=')) {
       const raw = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]
       const c = parseAppChoice(raw)
       if (!c) return { error: `--app wants desktop | android | both, got '${raw ?? ''}'` }
@@ -266,7 +283,8 @@ export function parseReleaseArgs(argv: string[]): ReleaseArgs | { error: string 
     return { error: 'an explicit x.y.z needs a single --app (desktop and android are versioned separately)' }
   }
   if (out.app === 'android' && out.version === 'auto') return { error: "'auto' (git-cliff) is desktop only" }
-  if (out.pre && isPrerelease(out.version)) return { error: `${out.version} is already a pre-release version; drop --pre` }
+  if (out.pre && isPrerelease(out.version))
+    return { error: `${out.version} is already a pre-release version; drop --pre` }
   return out
 }
 
@@ -275,7 +293,9 @@ export function formatSummary(changes: AppChanges[], suggestion: App[], maxFiles
   const lines: string[] = []
   for (const c of changes) {
     const since = c.lastTag ?? '(never released)'
-    lines.push(`${c.app.padEnd(7)} since ${since}: ${c.files.length} file(s)${c.sync ? ' — touches src/shared/sync' : ''}`)
+    lines.push(
+      `${c.app.padEnd(7)} since ${since}: ${c.files.length} file(s)${c.sync ? ' — touches src/shared/sync' : ''}`
+    )
     for (const f of c.files.slice(0, maxFiles)) lines.push(`    ${f}`)
     if (c.files.length > maxFiles) lines.push(`    … +${c.files.length - maxFiles} more`)
   }

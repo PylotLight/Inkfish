@@ -25,14 +25,13 @@ export default {
   supported: ['darwin-arm64'],
   // Friendly messages for everything else. `default` covers any key not listed.
   unsupported: {
-    'darwin-x64':
-      'Inkfish only ships for Apple silicon (M-series) Macs. Intel Macs are not supported yet.',
+    'darwin-x64': 'Inkfish only ships for Apple silicon (M-series) Macs. Intel Macs are not supported yet.',
     'win32-x64': 'There is no Windows build of Inkfish yet.',
     'win32-arm64': 'There is no Windows build of Inkfish yet.',
     linux:
       'There is no Linux build of Inkfish. It runs from source for development:\n' +
       'https://github.com/PylotLight/Inkfish/blob/main/DEVELOPING.md',
-    default: 'Inkfish only ships for macOS on Apple silicon for now.',
+    default: 'Inkfish only ships for macOS on Apple silicon for now.'
   },
   // Printed after launching from a fresh download.
   firstRunNote:
@@ -48,13 +47,16 @@ export default {
     // package.json build.appId
     bundleId: 'com.pylotlight.inkfish',
     userData: [
-      { path: '~/Library/Application Support/Inkfish', what: 'config, note index, inbox staging, trash, AI + sync settings, window state' },
+      {
+        path: '~/Library/Application Support/Inkfish',
+        what: 'config, note index, inbox staging, trash, AI + sync settings, window state'
+      },
       { path: '~/Library/Caches/Inkfish', what: 'Electron caches' },
       { path: '~/Library/Caches/com.pylotlight.inkfish', what: 'macOS cache' },
       { path: '~/Library/HTTPStorages/com.pylotlight.inkfish', what: 'macOS network storage' },
       { path: '~/Library/Preferences/com.pylotlight.inkfish.plist', what: 'macOS preferences' },
       { path: '~/Library/Saved Application State/com.pylotlight.inkfish.savedState', what: 'window restore state' },
-      { path: '~/Library/Logs/Inkfish', what: 'logs' },
+      { path: '~/Library/Logs/Inkfish', what: 'logs' }
     ],
     // For the prompts: "Inkfish's own data is still here (…)". Notes are never part of it.
     dataSummary: 'settings, note index, inbox captures, trash, AI and sync keys',
@@ -66,16 +68,16 @@ export default {
       'Downloaded transcription models live in ~/Library/Application Support/FluidAudio/Models (shared',
       'with other FluidAudio apps), so they are left alone; remove them in Settings first if you want.',
       'Dev builds use their own profiles (~/Library/Application Support/Inkfish Dev, "Inkfish <name>"); those are not touched.',
-      'Installed with Homebrew too? brew uninstall --cask inkfish',
-    ],
+      'Installed with Homebrew too? brew uninstall --cask inkfish'
+    ]
   },
   // Rotated under the progress bar while downloading, between the "what's happening" lines.
   tips: [
     'Inkfish lives in the menu bar: ⌥Space from anywhere captures a thought (change it in Settings → Shortcuts)',
     'Everything lands in the inbox first, then AI files it into the right project note',
     'Notes are plain markdown in a folder you own (~/Inkfish by default)',
-    'Voice notes transcribe on-device with Apple\'s speech engine or Parakeet models',
+    "Voice notes transcribe on-device with Apple's speech engine or Parakeet models",
     'Pair the Android app with a QR code (Settings → Sync) to sync notes over your LAN, no server',
-    'Bring your own AI: Anthropic or any OpenAI-compatible server (Ollama, LM Studio, LiteLLM)',
-  ],
+    'Bring your own AI: Anthropic or any OpenAI-compatible server (Ollama, LM Studio, LiteLLM)'
+  ]
 }

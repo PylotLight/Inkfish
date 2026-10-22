@@ -59,11 +59,23 @@ export interface ApplyWrite {
 export interface Remote {
   manifest(): Promise<Manifest>
   get(paths: string[]): Promise<Record<string, Uint8Array>>
-  apply(req: { moves: ApplyReq['moves']; writes: ApplyWrite[]; deletes: string[]; deleteExpect?: Record<string, string> }): Promise<Manifest>
+  apply(req: {
+    moves: ApplyReq['moves']
+    writes: ApplyWrite[]
+    deletes: string[]
+    deleteExpect?: Record<string, string>
+  }): Promise<Manifest>
   /** Optional (Mac feature `chunks`): a byte range of one file. null = gone. */
   chunk?(path: string, offset: number, length: number): Promise<{ data: Uint8Array; size: number } | null>
   /** Optional (Mac feature `chunks`): resumable upload of one big file. `offset: -1` asks how much the Mac already has. */
-  put?(req: { path: string; hash: string; size: number; offset: number; data?: Uint8Array; expect?: string | null }): Promise<{ have: number; done: boolean; deferred?: boolean }>
+  put?(req: {
+    path: string
+    hash: string
+    size: number
+    offset: number
+    data?: Uint8Array
+    expect?: string | null
+  }): Promise<{ have: number; done: boolean; deferred?: boolean }>
 }
 
 /** Files at least this big go in resumable chunks when both sides support it. */
@@ -147,7 +159,16 @@ class Progress {
   }
   phase(stage: SyncStage): void {
     if (this.p.stage === stage) return
-    this.p = { ...this.p, stage, done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: undefined, stageAt: this.clock() }
+    this.p = {
+      ...this.p,
+      stage,
+      done: 0,
+      total: 0,
+      bytesDone: 0,
+      bytesTotal: 0,
+      current: undefined,
+      stageAt: this.clock()
+    }
     this.emit(true)
   }
   total(files: number, bytes: number): void {
@@ -242,7 +263,9 @@ const READ_CONCURRENCY = 6
 /** Notes first (small, what you're looking at), then everything else smallest-first. */
 export function transferOrder(paths: string[], sizes: Manifest): string[] {
   const rank = (p: string): number => (isText(p) ? 0 : 1)
-  return [...paths].sort((a, b) => rank(a) - rank(b) || (sizes[a]?.size ?? 0) - (sizes[b]?.size ?? 0) || (a < b ? -1 : 1))
+  return [...paths].sort(
+    (a, b) => rank(a) - rank(b) || (sizes[a]?.size ?? 0) - (sizes[b]?.size ?? 0) || (a < b ? -1 : 1)
+  )
 }
 
 export function batchPaths(paths: string[], sizes: Manifest): string[][] {
@@ -340,13 +363,25 @@ export async function runSync(opts: {
   }
 }
 
-async function runSyncInner(
-  opts: Parameters<typeof runSync>[0],
-  progress: Progress
-): Promise<SyncReport> {
+async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progress): Promise<SyncReport> {
   const { fs, remote, state } = opts
-  const report: SyncReport = { pulled: 0, pushed: 0, merged: 0, conflicts: [], deleted: 0, moved: 0, changedLocal: [], movedLocal: [], adopted: 0, cleaned: 0 }
-  const [local, remoteMan, savedBase] = await Promise.all([fs.list(opts.repair ? { fresh: true } : undefined), remote.manifest(), state.loadBase()])
+  const report: SyncReport = {
+    pulled: 0,
+    pushed: 0,
+    merged: 0,
+    conflicts: [],
+    deleted: 0,
+    moved: 0,
+    changedLocal: [],
+    movedLocal: [],
+    adopted: 0,
+    cleaned: 0
+  }
+  const [local, remoteMan, savedBase] = await Promise.all([
+    fs.list(opts.repair ? { fresh: true } : undefined),
+    remote.manifest(),
+    state.loadBase()
+  ])
   // Same file, different spelling (APFS is case-insensitive, Android isn't): take the Mac's.
   await adoptCase(fs, local, remoteMan, report)
   let base = rebaseCase(savedBase, remoteMan)
@@ -415,13 +450,19 @@ async function runSyncInner(
   const defer = (): void => {
     report.deferred = (report.deferred ?? 0) + 1
   }
-  const all = transferOrder([...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)), remoteMan)
+  const all = transferOrder(
+    [...new Set([...pullSet, ...mergeFrom])].filter((p) => !(p in prefetched)),
+    remoteMan
+  )
   const chunkMin = opts.chunk?.min ?? CHUNK_MIN
   const chunkSize = opts.chunk?.size ?? CHUNK_SIZE
   const chunked = (p: string): boolean => !!remote.chunk && !!fs.partial && (remoteMan[p]?.size ?? 0) >= chunkMin
   const toFetch = all.filter((p) => !chunked(p))
   const bigFiles = all.filter(chunked)
-  progress.total(all.length, all.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0))
+  progress.total(
+    all.length,
+    all.reduce((n, p) => n + (remoteMan[p]?.size ?? 0), 0)
+  )
   const land = async (p: string, data: Uint8Array): Promise<void> => {
     const want = remoteMan[p]!.hash
     if (mergeFrom.has(p)) fetched[p] = data
@@ -611,13 +652,19 @@ async function runSyncInner(
   let remoteAfter: Manifest = remoteMan
   if (moves.length || writes.length || deletes.length) {
     progress.phase('uploading')
-    progress.total(writes.length, writes.reduce((n, w) => n + w.data.length, 0))
+    progress.total(
+      writes.length,
+      writes.reduce((n, w) => n + w.data.length, 0)
+    )
     // Every write says what it is (hash, verified by the Mac) and what it replaces
     // (expect: if the Mac's copy changed since we planned, it's left for next run).
     const sealed = (w: { path: string; data: Uint8Array }): ApplyWrite => ({
       path: w.path,
       data: w.data,
-      hash: localNow[w.path]?.hash === undefined || localNow[w.path]!.size !== w.data.length ? sha256(w.data) : localNow[w.path]!.hash,
+      hash:
+        localNow[w.path]?.hash === undefined || localNow[w.path]!.size !== w.data.length
+          ? sha256(w.data)
+          : localNow[w.path]!.hash,
       expect: remoteMan[w.path]?.hash ?? null
     })
     const deleteExpect: Record<string, string> = {}
@@ -638,14 +685,24 @@ async function runSyncInner(
         cancelled()
         const from = st.have
         const part = w.data.subarray(from, Math.min(w.data.length, from + chunkSize))
-        st = await remote.put({ path: s.path, hash: s.hash!, size: w.data.length, offset: from, data: part, expect: s.expect })
+        st = await remote.put({
+          path: s.path,
+          hash: s.hash!,
+          size: w.data.length,
+          offset: from,
+          data: part,
+          expect: s.expect
+        })
         progress.bytes(w.path, Math.max(0, st.have - from))
       }
       progress.step(w.path, 0)
       if (st.deferred) defer()
     }
     const batches = batchWrites(small)
-    const send = async (b: typeof writes, extra: { moves?: ApplyReq['moves']; deletes?: string[] }): Promise<Manifest> => {
+    const send = async (
+      b: typeof writes,
+      extra: { moves?: ApplyReq['moves']; deletes?: string[] }
+    ): Promise<Manifest> => {
       cancelled()
       const m = await remote.apply({
         moves: extra.moves ?? [],
@@ -665,7 +722,13 @@ async function runSyncInner(
   }
 
   // Writes / deletes the Mac left alone because its copy changed while we ran.
-  for (const w of writes) if (remoteAfter[w.path] && remoteAfter[w.path]!.hash !== localNow[w.path]?.hash && remoteAfter[w.path]!.hash !== remoteMan[w.path]?.hash) defer()
+  for (const w of writes)
+    if (
+      remoteAfter[w.path] &&
+      remoteAfter[w.path]!.hash !== localNow[w.path]?.hash &&
+      remoteAfter[w.path]!.hash !== remoteMan[w.path]?.hash
+    )
+      defer()
   for (const d of deletes) if (remoteAfter[d] && remoteAfter[d]!.hash !== remoteMan[d]?.hash) defer()
 
   // Pushed `work/x.md`, the Mac stored it as `Work/x.md`: follow its spelling now, not next run.

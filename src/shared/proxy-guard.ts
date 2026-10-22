@@ -18,7 +18,15 @@ export interface ProxyEndpoint {
  * Chromium bypass entries for the local network: private IPv4 (RFC 1918), link-local, IPv6 unique
  * local / link-local, and mDNS `.local` names. IP ranges only match IP literals (no DNS lookup).
  */
-export const LOCAL_NETWORK_BYPASS_RULES = ['*.local', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', 'fc00::/7', 'fe80::/10'] as const
+export const LOCAL_NETWORK_BYPASS_RULES = [
+  '*.local',
+  '10.0.0.0/8',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '169.254.0.0/16',
+  'fc00::/7',
+  'fe80::/10'
+] as const
 
 export function bypassesLocalNetwork(settings: Pick<ProxyEndpoint, 'bypassLocalNetwork'>): boolean {
   return settings.bypassLocalNetwork !== false
@@ -46,7 +54,13 @@ export function proxyRulesHaveDirectFallback(rules: string | undefined): boolean
 }
 
 /** Errors that can mean the proxy itself is gone. SOCKS errors can also be the far side; a probe confirms. */
-const PROXY_ERRORS = new Set(['ERR_PROXY_CONNECTION_FAILED', 'ERR_SOCKS_CONNECTION_FAILED', 'ERR_TUNNEL_CONNECTION_FAILED', 'ERR_NO_SUPPORTED_PROXIES', 'ERR_MANDATORY_PROXY_CONFIGURATION_FAILED'])
+const PROXY_ERRORS = new Set([
+  'ERR_PROXY_CONNECTION_FAILED',
+  'ERR_SOCKS_CONNECTION_FAILED',
+  'ERR_TUNNEL_CONNECTION_FAILED',
+  'ERR_NO_SUPPORTED_PROXIES',
+  'ERR_MANDATORY_PROXY_CONFIGURATION_FAILED'
+])
 
 export function isProxyConnectionError(error: string): boolean {
   return PROXY_ERRORS.has(error.trim().replace(/^net::/, ''))
@@ -62,10 +76,7 @@ export interface ProxyHealth {
 }
 
 export type ProxyHealthEvent =
-  | { type: 'arm' }
-  | { type: 'disarm' }
-  | { type: 'probe'; ok: boolean }
-  | { type: 'proxy-error' }
+  { type: 'arm' } | { type: 'disarm' } | { type: 'probe'; ok: boolean } | { type: 'proxy-error' }
 
 /** Failed probes in a row before a proxy that was working is declared down (rides out one blip). */
 export const FAILURES_BEFORE_DOWN = 2
@@ -98,7 +109,8 @@ export function nextProxyHealth(health: ProxyHealth, event: ProxyHealthEvent): P
       const consecutiveFailures = health.consecutiveFailures + 1
       // Never reached it since arming (proxy not started yet): block straight away.
       const threshold = health.everUp ? FAILURES_BEFORE_DOWN : 1
-      if (health.state === 'down' || consecutiveFailures >= threshold) return { health: { ...health, state: 'down', consecutiveFailures }, probeNow: false }
+      if (health.state === 'down' || consecutiveFailures >= threshold)
+        return { health: { ...health, state: 'down', consecutiveFailures }, probeNow: false }
       return { health: { ...health, consecutiveFailures }, probeNow: true }
     }
   }

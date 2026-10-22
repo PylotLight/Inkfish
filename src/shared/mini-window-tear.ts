@@ -14,8 +14,16 @@ export const TAB_TEAR_DISTANCE = 48
 /** Where the pointer sits on the torn-out window: near its top-left, on the (hidden) header. */
 export const TEAR_GRAB_OFFSET = { x: 60, y: 14 }
 
-export interface TearPoint { x: number; y: number }
-export interface TearRect { left: number; top: number; right: number; bottom: number }
+export interface TearPoint {
+  x: number
+  y: number
+}
+export interface TearRect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
 
 export type TabDragPhase = 'press' | 'drag' | 'tear'
 
@@ -24,7 +32,12 @@ export type TabDragPhase = 'press' | 'drag' | 'tear'
  * rect and `viewport` the window's inner size. Out of the window, or TAB_TEAR_DISTANCE clear of
  * the strip vertically, is a tear; sideways along the strip is just a drag (no reordering yet).
  */
-export function tabDragPhase(start: TearPoint, current: TearPoint, bar: TearRect, viewport: { width: number; height: number }): TabDragPhase {
+export function tabDragPhase(
+  start: TearPoint,
+  current: TearPoint,
+  bar: TearRect,
+  viewport: { width: number; height: number }
+): TabDragPhase {
   const moved = Math.hypot(current.x - start.x, current.y - start.y)
   if (moved < TAB_DRAG_START) return 'press'
   const outside = current.x < 0 || current.y < 0 || current.x >= viewport.width || current.y >= viewport.height
@@ -39,7 +52,12 @@ export function tabDragPhase(start: TearPoint, current: TearPoint, bar: TearRect
  */
 export function tearOutBounds(at: TearPoint, size: { width: number; height: number }, workArea: MiniRect): MiniRect {
   return clampMiniBounds(
-    { x: Math.round(at.x - TEAR_GRAB_OFFSET.x), y: Math.round(at.y - TEAR_GRAB_OFFSET.y), width: size.width, height: size.height },
+    {
+      x: Math.round(at.x - TEAR_GRAB_OFFSET.x),
+      y: Math.round(at.y - TEAR_GRAB_OFFSET.y),
+      width: size.width,
+      height: size.height
+    },
     workArea
   )
 }

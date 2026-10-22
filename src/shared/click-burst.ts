@@ -20,7 +20,11 @@ export interface ClickBurstOptions {
 export const TRIPLE_CLICK: ClickBurstOptions = { count: 3, gapMs: 450 }
 
 /** Add a click at `now`. `fired` is true on the click that completes a burst, which then starts over. */
-export function registerClick(burst: ClickBurst, now: number, options: ClickBurstOptions = TRIPLE_CLICK): { burst: ClickBurst; fired: boolean } {
+export function registerClick(
+  burst: ClickBurst,
+  now: number,
+  options: ClickBurstOptions = TRIPLE_CLICK
+): { burst: ClickBurst; fired: boolean } {
   const continues = Number.isFinite(burst.lastAt) && now >= burst.lastAt && now - burst.lastAt <= options.gapMs
   const clicks = continues ? burst.clicks + 1 : 1
   if (clicks >= options.count) return { burst: EMPTY_CLICK_BURST, fired: true }

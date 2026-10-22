@@ -9,8 +9,13 @@ function fakeSafeStorage(available = true): AsyncSafeStorage & { encrypts: numbe
   const xor = (b: Buffer): Buffer => Buffer.from(b.map((x) => x ^ 0x5a))
   return {
     encrypts: 0,
-    async isAsyncEncryptionAvailable() { return available },
-    async encryptStringAsync(t) { this.encrypts++; return Buffer.concat([Buffer.from('v11:'), xor(Buffer.from(t))]) },
+    async isAsyncEncryptionAvailable() {
+      return available
+    },
+    async encryptStringAsync(t) {
+      this.encrypts++
+      return Buffer.concat([Buffer.from('v11:'), xor(Buffer.from(t))])
+    },
     async decryptStringAsync(b) {
       const tag = b.subarray(0, 4).toString()
       if (tag !== 'v10:' && tag !== 'v11:') throw new Error('bad ciphertext')
@@ -18,9 +23,16 @@ function fakeSafeStorage(available = true): AsyncSafeStorage & { encrypts: numbe
     }
   }
 }
-const legacySeal = (t: string): string => Buffer.concat([Buffer.from('v10:'), Buffer.from(Buffer.from(t).map((x) => x ^ 0x5a))]).toString('base64')
+const legacySeal = (t: string): string =>
+  Buffer.concat([Buffer.from('v10:'), Buffer.from(Buffer.from(t).map((x) => x ^ 0x5a))]).toString('base64')
 const KEY = Buffer.alloc(32, 7).toString('base64')
-const peer = (over: Partial<StoredPeer> = {}): StoredPeer => ({ id: 'phone-abcdefgh', name: 'Pixel', key: KEY, pairedAt: 1, ...over })
+const peer = (over: Partial<StoredPeer> = {}): StoredPeer => ({
+  id: 'phone-abcdefgh',
+  name: 'Pixel',
+  key: KEY,
+  pairedAt: 1,
+  ...over
+})
 
 describe('peer keys on async safeStorage', () => {
   test('seal → open round-trips and never stores plaintext', async () => {
@@ -75,7 +87,9 @@ describe('peer keys on async safeStorage', () => {
 
   test('re-encrypt failure keeps old ciphertext readable', async () => {
     const ss = fakeSafeStorage()
-    ss.encryptStringAsync = async () => { throw new Error('keychain locked') }
+    ss.encryptStringAsync = async () => {
+      throw new Error('keychain locked')
+    }
     const s = peer({ key: legacySeal(KEY), enc: true })
     const before = s.key
     let saves = 0

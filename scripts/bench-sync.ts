@@ -275,7 +275,8 @@ function bytes(n: number, seed: number): Uint8Array {
 function note(i: number, rev = 0): Uint8Array {
   const words = 'the quick brown fox jumps over a lazy dog while notes sync between devices'.split(' ')
   const lines = [`# Note ${i}`, '', `tags: #t${i % 13}`, '']
-  for (let k = 0; k < 20 + (i % 40); k++) lines.push(Array.from({ length: 12 }, (_, j) => words[(i + k + j) % words.length]).join(' '))
+  for (let k = 0; k < 20 + (i % 40); k++)
+    lines.push(Array.from({ length: 12 }, (_, j) => words[(i + k + j) % words.length]).join(' '))
   if (rev) lines.push('', `edit ${rev}`)
   return utf8Encode(`${lines.join('\n')}\n`)
 }
@@ -286,7 +287,10 @@ export function buildMacVault(o: BenchOpts): MacFs {
   for (let i = 0; i < o.notes; i++) mac.files.set(`${folders[i % folders.length]}/note ${i}.md`, note(i))
   for (let i = 0; i < o.images; i++) {
     const size = i % 10 === 0 ? 2_000_000 : 60_000 + ((i * 7919) % 400_000)
-    mac.files.set(`assets/2026/${String((i % 12) + 1).padStart(2, '0')}/img-${i}.${i % 3 ? 'jpg' : 'png'}`, bytes(size, i + 1))
+    mac.files.set(
+      `assets/2026/${String((i % 12) + 1).padStart(2, '0')}/img-${i}.${i % 3 ? 'jpg' : 'png'}`,
+      bytes(size, i + 1)
+    )
   }
   return mac
 }
@@ -340,7 +344,13 @@ export async function runBench(o: BenchOpts): Promise<ScenarioResult[]> {
     const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
     const ms = performance.now() - t0
     const { reset: _r, ...counters } = c
-    out.push({ name, ms: Math.round(ms), pulled: r.pulled, pushed: r.pushed, counters: JSON.parse(JSON.stringify(counters)) })
+    out.push({
+      name,
+      ms: Math.round(ms),
+      pulled: r.pulled,
+      pushed: r.pushed,
+      counters: JSON.parse(JSON.stringify(counters))
+    })
     if (o.verbose) console.log(fmt(out[out.length - 1]!))
   }
   await run('initial (fresh phone)')
@@ -359,7 +369,12 @@ if (import.meta.main) {
     const i = process.argv.indexOf(`--${k}`)
     return i > 0 ? Number(process.argv[i + 1]) : d
   }
-  const o: BenchOpts = { notes: arg('notes', 2000), images: arg('images', 60), legacy: process.argv.includes('--legacy'), scale: arg('scale', 1) }
+  const o: BenchOpts = {
+    notes: arg('notes', 2000),
+    images: arg('images', 60),
+    legacy: process.argv.includes('--legacy'),
+    scale: arg('scale', 1)
+  }
   const json = process.argv.includes('--json')
   if (!json) console.log(`notes=${o.notes} images=${o.images} walk=${o.legacy ? 'legacy' : 'new'} scale=${o.scale}`)
   const res = await runBench({ ...o, verbose: !json })

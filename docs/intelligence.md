@@ -11,7 +11,7 @@ past transcription (like FluidVoice's Fluid Intelligence). Nothing leaves the Ma
   - `inkfish-stt ai status` returns availability: `available`, `appleIntelligenceNotEnabled`,
     `modelNotReady`, `deviceNotEligible`, `osTooOld` or `sdkMissing`.
   - `inkfish-stt ai run` takes a JSON request on stdin (`{task: cleanup|organize|summarize, text,
-    projects, style, instructions, temperature, cleanup}`) and returns JSON.
+projects, style, instructions, temperature, cleanup}`) and returns JSON.
 - **Guided generation:** `@Generable` structs (`CleanedNote`, `OrganisedNote`, `OrganisedCleanNote`,
   `NoteSummary`) return typed fields, so there's no preamble and no JSON parsing of free text.
 - **Context window:** about 4k tokens. Cleanup splits long notes into ~2.4k-character chunks, each in a

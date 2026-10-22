@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
-import { CloudAlert, CloudCheck, CloudOff, RefreshCw, type LucideIcon } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { useSync } from '../lib/syncing';
-import { syncIndicator, type IndicatorState, type SyncIndicator as Indicator } from '../lib/syncstatus';
-import { Icon } from './Icon';
+import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import { Animated, Easing, Pressable, Text, View } from 'react-native'
+import { CloudAlert, CloudCheck, CloudOff, RefreshCw, type LucideIcon } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { useSync } from '../lib/syncing'
+import { syncIndicator, type IndicatorState, type SyncIndicator as Indicator } from '../lib/syncstatus'
+import { Icon } from './Icon'
 
 /** Opens the sync screen (Settings tab). Provided by the app shell. */
-export const OpenSyncContext = createContext<(() => void) | null>(null);
+export const OpenSyncContext = createContext<(() => void) | null>(null)
 
 const GLYPH: Record<Exclude<IndicatorState, 'hidden'>, LucideIcon> = {
   connecting: RefreshCw,
@@ -18,11 +18,11 @@ const GLYPH: Record<Exclude<IndicatorState, 'hidden'>, LucideIcon> = {
   held: CloudAlert,
   error: CloudAlert,
   outdated: CloudAlert
-};
+}
 
 /** Derived indicator for the current sync loop state. */
 export function useSyncIndicator(): Indicator {
-  const sync = useSync();
+  const sync = useSync()
   return useMemo(
     () =>
       syncIndicator({
@@ -36,45 +36,47 @@ export function useSyncIndicator(): Indicator {
       }),
     // lastSync / phase / progress changes are what move it; `when()` text refreshes with them.
     [sync.phase, sync.mac?.name, sync.lastSync, sync.error, sync.held, sync.outdated, sync.progress]
-  );
+  )
 }
 
 function useTap(ind: Indicator): { onPress: () => void; onLongPress: () => void } {
-  const sync = useSync();
-  const open = useContext(OpenSyncContext);
+  const sync = useSync()
+  const open = useContext(OpenSyncContext)
   return {
     onPress: () => {
-      if (ind.tap === 'sync') void sync.syncNow();
-      else if (ind.tap === 'open') open?.();
+      if (ind.tap === 'sync') void sync.syncNow()
+      else if (ind.tap === 'open') open?.()
     },
     onLongPress: () => open?.()
-  };
+  }
 }
 
 function Spinner({ spinning, children }: { spinning: boolean; children: React.ReactNode }): React.JSX.Element {
-  const v = useRef(new Animated.Value(0)).current;
+  const v = useRef(new Animated.Value(0)).current
   useEffect(() => {
     if (!spinning) {
-      v.stopAnimation();
-      v.setValue(0);
-      return;
+      v.stopAnimation()
+      v.setValue(0)
+      return
     }
     // Native-driver loop only while a sync is actually running.
-    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true }));
-    loop.start();
-    return () => loop.stop();
-  }, [spinning, v]);
-  const rotate = v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  return <Animated.View style={spinning ? { transform: [{ rotate }] } : undefined}>{children}</Animated.View>;
+    const loop = Animated.loop(
+      Animated.timing(v, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true })
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [spinning, v])
+  const rotate = v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+  return <Animated.View style={spinning ? { transform: [{ rotate }] } : undefined}>{children}</Animated.View>
 }
 
 /** Compact header badge: glyph + a few chars. Tap = sync now (or review), long-press = sync settings. Hidden until paired. */
 export function SyncBadge(): React.JSX.Element | null {
-  const { ui, c } = useTheme();
-  const ind = useSyncIndicator();
-  const tap = useTap(ind);
-  if (ind.state === 'hidden') return null;
-  const color = c[ind.tone];
+  const { ui, c } = useTheme()
+  const ind = useSyncIndicator()
+  const tap = useTap(ind)
+  if (ind.state === 'hidden') return null
+  const color = c[ind.tone]
   return (
     <Pressable
       {...tap}
@@ -93,15 +95,15 @@ export function SyncBadge(): React.JSX.Element | null {
         </Text>
       )}
     </Pressable>
-  );
+  )
 }
 
 /** Full-sentence row for the file drawer. */
 export function SyncRow(): React.JSX.Element | null {
-  const { ui, c } = useTheme();
-  const ind = useSyncIndicator();
-  const tap = useTap(ind);
-  if (ind.state === 'hidden') return null;
+  const { ui, c } = useTheme()
+  const ind = useSyncIndicator()
+  const tap = useTap(ind)
+  if (ind.state === 'hidden') return null
   return (
     <Pressable
       {...tap}
@@ -124,5 +126,5 @@ export function SyncRow(): React.JSX.Element | null {
         )}
       </View>
     </Pressable>
-  );
+  )
 }

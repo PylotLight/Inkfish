@@ -29,7 +29,15 @@ import {
 import { cleanProgress, cleanRun, type LiveProgress, type PeerRun } from './progress'
 import { sha256 } from './hash'
 import type { PartialStore } from './engine'
-import { compat, incompatibleBody, INCOMPATIBLE_STATUS, outdatedApp, peerVersion, SELF_VERSION, type PeerVersion } from './compat'
+import {
+  compat,
+  incompatibleBody,
+  INCOMPATIBLE_STATUS,
+  outdatedApp,
+  peerVersion,
+  SELF_VERSION,
+  type PeerVersion
+} from './compat'
 
 /**
  * The Mac side of the protocol, transport-agnostic: feed it a method, path,
@@ -159,7 +167,12 @@ export function createHandler(
       } catch {
         return fail(401, 'bad pairing key')
       }
-      await host.addPeer({ id: peerId, name: String(req.name || 'Phone').slice(0, 60), key: toBase64(p.key), pairedAt: now() })
+      await host.addPeer({
+        id: peerId,
+        name: String(req.name || 'Phone').slice(0, 60),
+        key: toBase64(p.key),
+        pairedAt: now()
+      })
       const res: PairRes = { id: host.device.id, name: host.device.name }
       return ok(p.key, path, peerId, res)
     }
@@ -211,13 +224,20 @@ export function createHandler(
       case '/v1/put': {
         const r = (req ?? {}) as PutReq
         if (typeof r.path !== 'string' || !safeRel(r.path) || ignored(r.path)) return fail(400, 'bad path')
-        if (typeof r.hash !== 'string' || !/^[0-9a-f]{64}$/.test(r.hash) || !(r.size >= 0) || r.size > 512 * 1024 * 1024) return fail(400, 'bad put')
+        if (
+          typeof r.hash !== 'string' ||
+          !/^[0-9a-f]{64}$/.test(r.hash) ||
+          !(r.size >= 0) ||
+          r.size > 512 * 1024 * 1024
+        )
+          return fail(400, 'bad put')
         return exclusive(async () => {
           const pk = sha256(`${peerId}\0${r.path}\0${r.hash}`).slice(0, 40)
           let have = await partials.size(pk).catch(() => 0)
           if (r.offset === -1 || r.offset !== have || !r.data) {
             // Already there (a finished put whose reply got lost)? Say so.
-            if (have === 0 && (await currentHash(r.path)) === r.hash) return ok(key, path, peerId, { have: r.size, done: true } satisfies PutRes)
+            if (have === 0 && (await currentHash(r.path)) === r.hash)
+              return ok(key, path, peerId, { have: r.size, done: true } satisfies PutRes)
             return ok(key, path, peerId, { have, done: false } satisfies PutRes)
           }
           const bytes = fromBase64(r.data)
@@ -230,7 +250,8 @@ export function createHandler(
           if (sha256(all) !== r.hash) return fail(422, 'upload damaged — starting over')
           if (r.expect !== undefined) {
             const cur = await currentHash(r.path)
-            if (cur !== r.expect && cur !== r.hash) return ok(key, path, peerId, { have, done: true, deferred: true } satisfies PutRes)
+            if (cur !== r.expect && cur !== r.hash)
+              return ok(key, path, peerId, { have, done: true, deferred: true } satisfies PutRes)
           }
           await host.fs.write(r.path, all)
           host.touchPeer(peerId, now())
@@ -270,7 +291,11 @@ export function createHandler(
   }
 
   async function apply(r: ApplyReq, key: Uint8Array, path: string, peerId: string): Promise<HttpResult> {
-    const all = [...(r.moves ?? []).flatMap((m) => [m.from, m.to]), ...(r.writes ?? []).map((w) => w.path), ...(r.deletes ?? [])]
+    const all = [
+      ...(r.moves ?? []).flatMap((m) => [m.from, m.to]),
+      ...(r.writes ?? []).map((w) => w.path),
+      ...(r.deletes ?? [])
+    ]
     if (all.some((p) => typeof p !== 'string' || !safeRel(p) || ignored(p))) return fail(400, 'bad path')
     // Per-op errors must not abort the rest — apply what's possible and
     // report the failures so the client logs them and retries next run.
@@ -333,7 +358,10 @@ export function createHandler(
       }
       return fail(500, `apply: ${errors.length} op(s) failed — ${errors[0]}`)
     }
-    return ok(key, path, peerId, { manifest: await host.fs.list(), ...(deferred.length ? { deferred } : {}) } satisfies ApplyRes)
+    return ok(key, path, peerId, {
+      manifest: await host.fs.list(),
+      ...(deferred.length ? { deferred } : {})
+    } satisfies ApplyRes)
   }
 
   function ok(key: Uint8Array, path: string, peerId: string, res: unknown): HttpResult {
@@ -377,4 +405,3 @@ export function parseHello(text: string): Hello | null {
     return null
   }
 }
-

@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  listDevices,
-  loadAudioPrefs,
-  openMic,
-  routeOutput,
-  saveAudioPrefs,
-  type AudioPrefs
-} from '../audio'
+import { listDevices, loadAudioPrefs, openMic, routeOutput, saveAudioPrefs, type AudioPrefs } from '../audio'
 
 type TestState = 'idle' | 'recording'
 
@@ -58,7 +51,10 @@ export default function AudioSettings(): React.JSX.Element {
       s.getTracks().forEach((t) => t.stop())
       await refresh()
     } catch {
-      setResult({ ok: false, text: 'Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.' })
+      setResult({
+        ok: false,
+        text: 'Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.'
+      })
     }
   }
 
@@ -103,7 +99,10 @@ export default function AudioSettings(): React.JSX.Element {
     try {
       stream = await openMic()
     } catch {
-      setResult({ ok: false, text: 'Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.' })
+      setResult({
+        ok: false,
+        text: 'Mic blocked — allow Inkfish in System Settings › Privacy & Security › Microphone.'
+      })
       return
     }
     const rec = new MediaRecorder(stream)
@@ -127,7 +126,9 @@ export default function AudioSettings(): React.JSX.Element {
     await routeOutput(el, prefs.outputId)
     await el
       .play()
-      .catch((e: unknown) => setResult({ ok: false, text: `Playback failed: ${e instanceof Error ? e.message : String(e)}` }))
+      .catch((e: unknown) =>
+        setResult({ ok: false, text: `Playback failed: ${e instanceof Error ? e.message : String(e)}` })
+      )
   }
 
   const playTone = async (): Promise<void> => {
@@ -252,10 +253,19 @@ function encodeWav(buf: AudioBuffer): ArrayBuffer {
   const s = (o: number, t: string): void => {
     for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i))
   }
-  s(0, 'RIFF'); v.setUint32(4, 36 + data.length * 2, true); s(8, 'WAVE'); s(12, 'fmt ')
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true)
-  v.setUint32(24, buf.sampleRate, true); v.setUint32(28, buf.sampleRate * 2, true)
-  v.setUint16(32, 2, true); v.setUint16(34, 16, true); s(36, 'data'); v.setUint32(40, data.length * 2, true)
+  s(0, 'RIFF')
+  v.setUint32(4, 36 + data.length * 2, true)
+  s(8, 'WAVE')
+  s(12, 'fmt ')
+  v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true)
+  v.setUint16(22, 1, true)
+  v.setUint32(24, buf.sampleRate, true)
+  v.setUint32(28, buf.sampleRate * 2, true)
+  v.setUint16(32, 2, true)
+  v.setUint16(34, 16, true)
+  s(36, 'data')
+  v.setUint32(40, data.length * 2, true)
   for (let i = 0; i < data.length; i++) {
     const x = Math.max(-1, Math.min(1, data[i] ?? 0))
     v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true)

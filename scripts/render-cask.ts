@@ -26,9 +26,7 @@ function argValue(flag: string): string | undefined {
 }
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(
-    'Usage: bun scripts/render-cask.ts --version X.Y.Z --sha256-arm HEX [--out PATH]'
-  )
+  console.log('Usage: bun scripts/render-cask.ts --version X.Y.Z --sha256-arm HEX [--out PATH]')
   console.log('Without --out, prints to stdout.')
   process.exit(0)
 }

@@ -88,13 +88,16 @@ export default function Capture(): React.JSX.Element {
       }
       setSaved(true)
       if (dest === 'today') say("Added to today's note ☀", 'Open ☀ Today in the main window (⌘⇧D) to read it', 2600)
-      window.setTimeout(() => {
-        setSaved(false)
-        setRaw('')
-        setAttachments([])
-        setSaving(false)
-        void window.api.popover.hide()
-      }, dest === 'today' ? 900 : 380)
+      window.setTimeout(
+        () => {
+          setSaved(false)
+          setRaw('')
+          setAttachments([])
+          setSaving(false)
+          void window.api.popover.hide()
+        },
+        dest === 'today' ? 900 : 380
+      )
     } catch (err) {
       setSaving(false)
       say(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -141,11 +144,7 @@ export default function Capture(): React.JSX.Element {
       if (wantLive && (liveAvailable() || prefs.engine === LIVE_ENGINE)) {
         liveRef.current = startLive(stream, (t) => setCaption(t)).catch((e) => {
           console.warn('[live]', e)
-          say(
-            'Live text off — transcript lands on stop',
-            e instanceof Error ? e.message : String(e),
-            5000
-          )
+          say('Live text off — transcript lands on stop', e instanceof Error ? e.message : String(e), 5000)
           return null
         })
       }
@@ -494,7 +493,12 @@ export default function Capture(): React.JSX.Element {
           </svg>
         </button>
         <span className="flex-sp" />
-        <button className="cap-save" disabled={!canSave || saving} onClick={() => void save()} title={dest === 'today' ? 'Add a timestamped line to today’s note (open via ☀ Today)' : 'Save to inbox'}>
+        <button
+          className="cap-save"
+          disabled={!canSave || saving}
+          onClick={() => void save()}
+          title={dest === 'today' ? 'Add a timestamped line to today’s note (open via ☀ Today)' : 'Save to inbox'}
+        >
           {saving ? 'Saving…' : dest === 'today' ? 'Add to Today' : 'Save'}
           <kbd>⌘↵</kbd>
         </button>

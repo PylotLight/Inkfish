@@ -14,49 +14,49 @@
  *    keeps the phone's text at the path and the disk version as a conflict
  *    copy, so nothing is lost either way.
  */
-import { conflictPath, mergeText } from './sync';
+import { conflictPath, mergeText } from './sync'
 
 /** Raw front matter block of a file (`---\n…\n---`), '' when it has none. Same detection as `parseFrontmatter`. */
 export function frontmatterHead(file: string): string {
-  if (!file.startsWith('---')) return '';
-  const end = file.indexOf('\n---', 3);
-  return end === -1 ? '' : file.slice(0, end + 4);
+  if (!file.startsWith('---')) return ''
+  const end = file.indexOf('\n---', 3)
+  return end === -1 ? '' : file.slice(0, end + 4)
 }
 
 /** Body of a file (front matter removed), matching `parseFrontmatter`'s body. */
 export function bodyOf(file: string): string {
-  const head = frontmatterHead(file);
-  return head ? file.slice(head.length).replace(/^\n/, '') : file;
+  const head = frontmatterHead(file)
+  return head ? file.slice(head.length).replace(/^\n/, '') : file
 }
 
 /** Normalised body as the editor writes it: trailing whitespace → one newline. */
 function tidy(body: string): string {
-  return `${body.replace(/\s+$/, '')}\n`;
+  return `${body.replace(/\s+$/, '')}\n`
 }
 
 /** File text for `body` under `head` (a raw front matter block, or ''). */
 export function withHead(head: string, body: string): string {
-  return head ? `${head}\n${tidy(body)}` : tidy(body);
+  return head ? `${head}\n${tidy(body)}` : tidy(body)
 }
 
 /** New file text for an editor save of `body`, keeping `existing`'s front matter verbatim. */
 export function withBody(existing: string, body: string): string {
-  return withHead(frontmatterHead(existing), body);
+  return withHead(frontmatterHead(existing), body)
 }
 
 function same(a: string, b: string): boolean {
-  return a.replace(/\s+$/, '') === b.replace(/\s+$/, '');
+  return a.replace(/\s+$/, '') === b.replace(/\s+$/, '')
 }
 
 export interface SavePlan {
   /** Full text to write at the note's path. */
-  file: string;
+  file: string
   /** The body now in the file (differs from `next` after a merge). */
-  body: string;
+  body: string
   /** Sync changed the note while it was open and the edits merged cleanly. */
-  merged: boolean;
+  merged: boolean
   /** Overlapping edits: write `conflict.text` (the disk version) at `conflict.path`. */
-  conflict?: { path: string; text: string };
+  conflict?: { path: string; text: string }
 }
 
 /**
@@ -64,19 +64,19 @@ export interface SavePlan {
  * editor opened (or last saved), `next` = the editor's body.
  */
 export function planSave(opts: { path: string; disk: string; base: string; next: string; at?: Date }): SavePlan {
-  const { path, disk, base, next } = opts;
-  const theirs = bodyOf(disk);
+  const { path, disk, base, next } = opts
+  const theirs = bodyOf(disk)
   if (same(theirs, base) || same(theirs, next)) {
-    return { file: withBody(disk, next), body: next, merged: false };
+    return { file: withBody(disk, next), body: next, merged: false }
   }
-  const m = mergeText(base, next, theirs);
-  if (m.clean) return { file: withBody(disk, m.text), body: m.text, merged: true };
+  const m = mergeText(base, next, theirs)
+  if (m.clean) return { file: withBody(disk, m.text), body: m.text, merged: true }
   return {
     file: withBody(disk, next),
     body: next,
     merged: false,
     conflict: { path: conflictPath(path, 'synced copy', opts.at), text: disk }
-  };
+  }
 }
 
 /**
@@ -87,8 +87,8 @@ export function planSave(opts: { path: string; disk: string; base: string; next:
  */
 export function relocate(candidates: Array<{ path: string; body: string }>, base: string, oldPath: string): string {
   if (base.trim()) {
-    const hits = candidates.filter((c) => same(c.body, base));
-    if (hits.length === 1) return hits[0]!.path;
+    const hits = candidates.filter((c) => same(c.body, base))
+    if (hits.length === 1) return hits[0]!.path
   }
-  return oldPath;
+  return oldPath
 }

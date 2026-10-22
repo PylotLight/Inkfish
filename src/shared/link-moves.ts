@@ -75,7 +75,13 @@ export function applyLinkMove(
   let out = text
   const remap = (p: string): string | null => remapPath(p, move.from, move.to)
   if (hasMarkdownLink(out)) {
-    out = rewriteLinks(out, { oldNotePath: ownFrom ?? notePath, newNotePath: notePath, remap, exists, keepResolving }).text
+    out = rewriteLinks(out, {
+      oldNotePath: ownFrom ?? notePath,
+      newNotePath: notePath,
+      remap,
+      exists,
+      keepResolving
+    }).text
   }
   if (out.includes('[[')) {
     for (const n of move.notes) {

@@ -24,9 +24,26 @@ import PopOutIcon from './views/PopOutIcon'
 import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle, tabDragPhase } from '../../shared/mini-window-tear'
 import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
-import { autoRenameTarget, createTitleSync, isTitleSyncPath, isUntitledName, matchesName, sanitizeFileTitle, stemOf, titleFromMarkdown, type TitleSyncScheduler } from '../../shared/title-sync'
+import {
+  autoRenameTarget,
+  createTitleSync,
+  isTitleSyncPath,
+  isUntitledName,
+  matchesName,
+  sanitizeFileTitle,
+  stemOf,
+  titleFromMarkdown,
+  type TitleSyncScheduler
+} from '../../shared/title-sync'
 import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
-import { SIDE_COLLAPSED_KEY, isSidebarToggleKey, parseSideCollapsed, serializeSideCollapsed, vaultLabel, vaultTooltip } from '../../shared/sidebar'
+import {
+  SIDE_COLLAPSED_KEY,
+  isSidebarToggleKey,
+  parseSideCollapsed,
+  serializeSideCollapsed,
+  vaultLabel,
+  vaultTooltip
+} from '../../shared/sidebar'
 import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
@@ -39,8 +56,7 @@ import { matchesTags, parseTagQuery } from '../../shared/tags'
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
   return (
-    typeof window !== 'undefined' &&
-    (window.location.hash === '#capture' || window.location.hash === '#capture-daily')
+    typeof window !== 'undefined' && (window.location.hash === '#capture' || window.location.hash === '#capture-daily')
   )
 }
 
@@ -63,9 +79,9 @@ function loadTabs(): { tabs: Tab[]; activeId: string | null } {
     const data = JSON.parse(raw) as { tabs?: Tab[]; activeId?: unknown }
     const tabs = Array.isArray(data.tabs)
       ? data.tabs
-        .filter((t) => t && typeof t.id === 'string' && typeof t.path === 'string')
-        .map((t) => ({ id: t.id, path: t.path, pinned: t.pinned === true }))
-        .slice(0, 30)
+          .filter((t) => t && typeof t.id === 'string' && typeof t.path === 'string')
+          .map((t) => ({ id: t.id, path: t.path, pinned: t.pinned === true }))
+          .slice(0, 30)
       : []
     return { tabs, activeId: typeof data.activeId === 'string' ? data.activeId : null }
   } catch {
@@ -138,15 +154,35 @@ function Main(): React.JSX.Element {
   const [titles, setTitles] = useState<Record<string, string>>({})
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
-  const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(null)
-  const [prompt, setPrompt] = useState<{ title: string; initial: string; confirm: string; onSubmit: (v: string) => void } | null>(null)
-  const [confirm, setConfirm] = useState<{ title: string; body: string; confirm: string; onConfirm: () => void } | null>(null)
+  const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(
+    null
+  )
+  const [prompt, setPrompt] = useState<{
+    title: string
+    initial: string
+    confirm: string
+    onSubmit: (v: string) => void
+  } | null>(null)
+  const [confirm, setConfirm] = useState<{
+    title: string
+    body: string
+    confirm: string
+    onConfirm: () => void
+  } | null>(null)
   /** Sidebar: note id whose row is in inline-rename mode. */
   const [treeRename, setTreeRename] = useState<string | null>(null)
   /** Sidebar: delete glance for a note with real content. */
-  const [delAsk, setDelAsk] = useState<{ entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null>(null)
+  const [delAsk, setDelAsk] = useState<{ entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null>(
+    null
+  )
   /** Undo toast after a delete (restores the trash entry). */
-  const [undoDel, setUndoDel] = useState<{ key: number; message: string; trashId: string; rel: string; wasOpen: boolean } | null>(null)
+  const [undoDel, setUndoDel] = useState<{
+    key: number
+    message: string
+    trashId: string
+    rel: string
+    wasOpen: boolean
+  } | null>(null)
   /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
    *  the collapsed rail, ⌘\ or the palette. */
   const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
@@ -214,7 +250,8 @@ function Main(): React.JSX.Element {
   const renamedAliasRef = useRef<{ from: string; to: string; doc: NoteDoc | null } | null>(null)
   const titleSyncRunRef = useRef<(id: string, markdown: string) => void>(() => undefined)
   const titleSyncRef = useRef<TitleSyncScheduler | null>(null)
-  if (!titleSyncRef.current) titleSyncRef.current = createTitleSync({ run: (id, md) => titleSyncRunRef.current(id, md) })
+  if (!titleSyncRef.current)
+    titleSyncRef.current = createTitleSync({ run: (id, md) => titleSyncRunRef.current(id, md) })
   const titleSync = titleSyncRef.current
   /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
   const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
@@ -309,7 +346,15 @@ function Main(): React.JSX.Element {
       .catch(console.error)
     // Settings › Shortcuts changed: keep the hints in step.
     return window.api.shortcuts.onChanged((s) =>
-      setProfile((p) => (p ? { ...p, captureShortcut: s.disabled ? '' : s.settings.capture, dailyShortcut: s.disabled ? '' : s.settings.daily } : p))
+      setProfile((p) =>
+        p
+          ? {
+              ...p,
+              captureShortcut: s.disabled ? '' : s.settings.capture,
+              dailyShortcut: s.disabled ? '' : s.settings.daily
+            }
+          : p
+      )
     )
   }, [])
   const isMacUi = sys?.platform === 'darwin'
@@ -368,7 +413,10 @@ function Main(): React.JSX.Element {
           return
         }
         const ok = new Set(tagged.map((n) => n.id))
-        window.api.notes.search(tq.text).then((r) => setResults(r.filter((n) => ok.has(n.id)))).catch(console.error)
+        window.api.notes
+          .search(tq.text)
+          .then((r) => setResults(r.filter((n) => ok.has(n.id))))
+          .catch(console.error)
         return
       }
       window.api.notes.search(query.trim()).then(setResults).catch(console.error)
@@ -403,8 +451,7 @@ function Main(): React.JSX.Element {
         // Keep the file open as a tab (no duplicates).
         setTabs((prev) => {
           if (prev.some((t) => t.id === id)) return prev
-          const path =
-            prev.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path ?? id
+          const path = prev.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path ?? id
           return [...prev, { id, path, pinned: false }]
         })
       } else {
@@ -412,10 +459,19 @@ function Main(): React.JSX.Element {
         setDoc(
           item
             ? {
-                id: item.id, path: `inbox/${item.id}.md`, title: plain(item.raw).slice(0, 80) || item.id,
-                kind: item.kind, status: item.status, projectId: null, inboxId: item.id,
-                tags: [], snippet: item.raw.slice(0, 220), createdAt: item.createdAt,
-                updatedAt: item.createdAt, size: item.raw.length, markdown: item.raw
+                id: item.id,
+                path: `inbox/${item.id}.md`,
+                title: plain(item.raw).slice(0, 80) || item.id,
+                kind: item.kind,
+                status: item.status,
+                projectId: null,
+                inboxId: item.id,
+                tags: [],
+                snippet: item.raw.slice(0, 220),
+                createdAt: item.createdAt,
+                updatedAt: item.createdAt,
+                size: item.raw.length,
+                markdown: item.raw
               }
             : null
         )
@@ -456,7 +512,8 @@ function Main(): React.JSX.Element {
 
   /** Lift `markdown` as `id`'s live text (shared across tabs and mini windows). */
   const liftDraft = useCallback((id: string, markdown: string) => {
-    const saved = docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
+    const saved =
+      docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
     setDrafts((prev) => {
       if (markdown === saved) {
         if (prev[id] === undefined) return prev
@@ -584,54 +641,69 @@ function Main(): React.JSX.Element {
   )
 
   // --- tabs --------------------------------------------------------------------
-  const activateNeighbor = useCallback((closedId: string, remaining: Tab[]) => {
-    const active = selRef.current
-    if (!active || active.id !== closedId) return
-    const next = remaining[remaining.length - 1]
-    if (next) {
-      openEntry(next.id, 'note')
-    } else {
-      setSel(null)
-      setDoc(null)
-    }
-  }, [openEntry])
+  const activateNeighbor = useCallback(
+    (closedId: string, remaining: Tab[]) => {
+      const active = selRef.current
+      if (!active || active.id !== closedId) return
+      const next = remaining[remaining.length - 1]
+      if (next) {
+        openEntry(next.id, 'note')
+      } else {
+        setSel(null)
+        setDoc(null)
+      }
+    },
+    [openEntry]
+  )
 
-  const removeTab = useCallback((id: string) => {
-    const remaining = tabsRef.current.filter((t) => t.id !== id)
-    setTabs(remaining)
-    activateNeighbor(id, remaining)
-  }, [activateNeighbor])
+  const removeTab = useCallback(
+    (id: string) => {
+      const remaining = tabsRef.current.filter((t) => t.id !== id)
+      setTabs(remaining)
+      activateNeighbor(id, remaining)
+    },
+    [activateNeighbor]
+  )
 
-  const closeTab = useCallback((id: string) => {
-    // Autosave: closing writes the tab's text — there is nothing to discard or confirm.
-    void autosave.flush(id)
-    removeTab(id)
-  }, [removeTab, autosave])
+  const closeTab = useCallback(
+    (id: string) => {
+      // Autosave: closing writes the tab's text — there is nothing to discard or confirm.
+      void autosave.flush(id)
+      removeTab(id)
+    },
+    [removeTab, autosave]
+  )
 
   const togglePin = useCallback((id: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
   }, [])
 
   /** Close a set of tabs (their pending text is written first). */
-  const closeTabsGuarded = useCallback((ids: string[], what: string) => {
-    for (const id of ids) void autosave.flush(id)
-    const keep = new Set(ids)
-    const remaining = tabsRef.current.filter((t) => !keep.has(t.id))
-    setTabs(remaining)
-    const active = selRef.current
-    if (active && keep.has(active.id)) activateNeighbor(active.id, remaining)
-    notify(what)
-  }, [activateNeighbor, notify, autosave])
+  const closeTabsGuarded = useCallback(
+    (ids: string[], what: string) => {
+      for (const id of ids) void autosave.flush(id)
+      const keep = new Set(ids)
+      const remaining = tabsRef.current.filter((t) => !keep.has(t.id))
+      setTabs(remaining)
+      const active = selRef.current
+      if (active && keep.has(active.id)) activateNeighbor(active.id, remaining)
+      notify(what)
+    },
+    [activateNeighbor, notify, autosave]
+  )
 
-  const closeOthers = useCallback((id: string) => {
-    // Pinned tabs survive "close others" (Obsidian-style).
-    const victimIds = tabsRef.current.filter((t) => t.id !== id && !t.pinned).map((t) => t.id)
-    if (victimIds.length === 0) {
-      notify('Nothing else to close')
-      return
-    }
-    closeTabsGuarded(victimIds, `Closed ${victimIds.length} tab${victimIds.length === 1 ? '' : 's'}`)
-  }, [closeTabsGuarded, notify])
+  const closeOthers = useCallback(
+    (id: string) => {
+      // Pinned tabs survive "close others" (Obsidian-style).
+      const victimIds = tabsRef.current.filter((t) => t.id !== id && !t.pinned).map((t) => t.id)
+      if (victimIds.length === 0) {
+        notify('Nothing else to close')
+        return
+      }
+      closeTabsGuarded(victimIds, `Closed ${victimIds.length} tab${victimIds.length === 1 ? '' : 's'}`)
+    },
+    [closeTabsGuarded, notify]
+  )
 
   const closeUnpinned = useCallback(() => {
     const victimIds = tabsRef.current.filter((t) => !t.pinned).map((t) => t.id)
@@ -688,9 +760,10 @@ function Main(): React.JSX.Element {
     if (restored || allNotes.length === 0) return
     setRestored(true)
     if (selRef.current || tabsRef.current.length === 0) return
-    const target = (pendingActive && tabsRef.current.some((t) => t.id === pendingActive))
-      ? pendingActive
-      : tabsRef.current[tabsRef.current.length - 1]?.id
+    const target =
+      pendingActive && tabsRef.current.some((t) => t.id === pendingActive)
+        ? pendingActive
+        : tabsRef.current[tabsRef.current.length - 1]?.id
     if (target) {
       setScope('notes')
       openEntry(target, 'note')
@@ -759,10 +832,14 @@ function Main(): React.JSX.Element {
   }, [activeNoteId, popOut])
 
   // A mini handed its note back (⌘⇧M / ⤢ in the mini).
-  useEffect(() => window.api.mini?.onOpenNote((id) => {
-    setSettingsOpen(false)
-    selectNote(id)
-  }), [selectNote])
+  useEffect(
+    () =>
+      window.api.mini?.onOpenNote((id) => {
+        setSettingsOpen(false)
+        selectNote(id)
+      }),
+    [selectNote]
+  )
 
   // Live sync: text typed in a mini shows up in this note's tab. The mini that typed it owns
   // the save, so any older pending text of ours is dropped rather than written over it.
@@ -794,8 +871,7 @@ function Main(): React.JSX.Element {
 
   // Renderer-side open-today: tray → main → `inkfish:open-today` → open daily note.
   useEffect(() => {
-    const sub = (window as unknown as { api?: { onOpenToday?: (cb: () => void) => () => void } }).api
-      ?.onOpenToday
+    const sub = (window as unknown as { api?: { onOpenToday?: (cb: () => void) => () => void } }).api?.onOpenToday
     if (!sub) return
     return sub(() => {
       void openToday()
@@ -803,20 +879,28 @@ function Main(): React.JSX.Element {
   }, [openToday])
 
   /** Set once renameNoteFile exists (it's declared further down, after followPathChange). */
-  const renameNoteFileRef = useRef<(id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }) => Promise<string>>(
-    async (_id, path) => path
-  )
+  const renameNoteFileRef = useRef<
+    (id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }) => Promise<string>
+  >(async (_id, path) => path)
   const renameNote = useCallback(
     (id: string, title: string) => {
       // Name files from title: the header title IS the file name — rename the file.
       const d = docRef.current
-      if (prefsRef.current.nameFromTitle && d && d.id === id && selRef.current?.origin === 'note' && isTitleSyncPath(d.path) && title.trim()) {
+      if (
+        prefsRef.current.nameFromTitle &&
+        d &&
+        d.id === id &&
+        selRef.current?.origin === 'note' &&
+        isTitleSyncPath(d.path) &&
+        title.trim()
+      ) {
         const text = draftsRef.current[id] ?? d.markdown
-        renameNoteFileRef.current(id, d.path, title.trim(), { baseAfter: titleFromMarkdown(text), toast: true })
+        renameNoteFileRef
+          .current(id, d.path, title.trim(), { baseAfter: titleFromMarkdown(text), toast: true })
           .catch((err: unknown) => {
-          notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`)
-          window.api.notes.titles().then(setTitles).catch(console.error)
-        })
+            notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`)
+            window.api.notes.titles().then(setTitles).catch(console.error)
+          })
         return
       }
       window.api.notes
@@ -830,10 +914,7 @@ function Main(): React.JSX.Element {
     [notify]
   )
 
-  const titleOf = useCallback(
-    (e: { id: string; path: string; title: string }) => displayTitle(e, titles),
-    [titles]
-  )
+  const titleOf = useCallback((e: { id: string; path: string; title: string }) => displayTitle(e, titles), [titles])
 
   // --- file CRUD ---------------------------------------------------------------
   /** File ops act on disk: write pending text first so a rename/trash never strands an edit. */
@@ -889,56 +970,62 @@ function Main(): React.JSX.Element {
    * A file/folder moved `rel` → `newRel` on disk (rename, drag & drop, Move to…): ids are paths by
    * default, so every open tab, the open note, cached docs/drafts and the new-note target follow.
    */
-  const followPathChange = useCallback((rel: string, newRel: string, all: NoteEntry[], openPath: string | null) => {
-    // Marks follow moves (and a hand rename drops one) in main — pick that up.
-    refreshTitleNamed()
-    const byPath = new Map(all.map((n) => [n.path, n]))
-    const idMoves = new Map<string, string>()
-    setTabs((prev) =>
-      prev.map((t) => {
-        const movedPath = remapPath(t.path, rel, newRel)
-        if (movedPath === null) return t
+  const followPathChange = useCallback(
+    (rel: string, newRel: string, all: NoteEntry[], openPath: string | null) => {
+      // Marks follow moves (and a hand rename drops one) in main — pick that up.
+      refreshTitleNamed()
+      const byPath = new Map(all.map((n) => [n.path, n]))
+      const idMoves = new Map<string, string>()
+      setTabs((prev) =>
+        prev.map((t) => {
+          const movedPath = remapPath(t.path, rel, newRel)
+          if (movedPath === null) return t
+          const found = byPath.get(movedPath)
+          if (!found) return t
+          if (found.id !== t.id) idMoves.set(t.id, found.id)
+          return { ...t, id: found.id, path: movedPath }
+        })
+      )
+      const rekey = <T,>(prev: Record<string, T>): Record<string, T> => {
+        let changed = false
+        const next: Record<string, T> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          const m = remapPath(k, rel, newRel)
+          const nk = m !== null && byPath.has(m) ? byPath.get(m)!.id : k
+          if (nk !== k) changed = true
+          next[nk] = v
+        }
+        return changed ? next : prev
+      }
+      setDrafts(rekey)
+      setDocsCache(rekey)
+      setTargetDir((cur) => remapPath(cur, rel, newRel) ?? cur)
+      if (openPath && remapPath(openPath, rel, newRel) !== null) {
+        const movedPath = remapPath(openPath, rel, newRel)!
         const found = byPath.get(movedPath)
-        if (!found) return t
-        if (found.id !== t.id) idMoves.set(t.id, found.id)
-        return { ...t, id: found.id, path: movedPath }
-      })
-    )
-    const rekey = <T,>(prev: Record<string, T>): Record<string, T> => {
-      let changed = false
-      const next: Record<string, T> = {}
-      for (const [k, v] of Object.entries(prev)) {
-        const m = remapPath(k, rel, newRel)
-        const nk = m !== null && byPath.has(m) ? byPath.get(m)!.id : k
-        if (nk !== k) changed = true
-        next[nk] = v
+        if (found) {
+          const oldId = selRef.current?.id
+          if (oldId && oldId !== found.id) autosave.rename(oldId, found.id)
+          setSel({ id: found.id, origin: 'note' })
+          setTargetDir(dirOf(movedPath))
+          window.api.notes
+            .get(found.id)
+            .then((fresh) => {
+              if (fresh) {
+                autosave.noteSaved(fresh.id, fresh.markdown)
+                setDocsCache((prev) => ({ ...prev, [found.id]: fresh }))
+                setDoc(fresh)
+              }
+            })
+            .catch(console.error)
+        } else {
+          setSel(null)
+          setDoc(null)
+        }
       }
-      return changed ? next : prev
-    }
-    setDrafts(rekey)
-    setDocsCache(rekey)
-    setTargetDir((cur) => remapPath(cur, rel, newRel) ?? cur)
-    if (openPath && remapPath(openPath, rel, newRel) !== null) {
-      const movedPath = remapPath(openPath, rel, newRel)!
-      const found = byPath.get(movedPath)
-      if (found) {
-        const oldId = selRef.current?.id
-        if (oldId && oldId !== found.id) autosave.rename(oldId, found.id)
-        setSel({ id: found.id, origin: 'note' })
-        setTargetDir(dirOf(movedPath))
-        window.api.notes.get(found.id).then((fresh) => {
-          if (fresh) {
-            autosave.noteSaved(fresh.id, fresh.markdown)
-            setDocsCache((prev) => ({ ...prev, [found.id]: fresh }))
-            setDoc(fresh)
-          }
-        }).catch(console.error)
-      } else {
-        setSel(null)
-        setDoc(null)
-      }
-    }
-  }, [autosave, refreshTitleNamed])
+    },
+    [autosave, refreshTitleNamed]
+  )
 
   /**
    * Rename note `id` (at `path`) in place to `title`'s file name — header inline title and the
@@ -953,9 +1040,10 @@ function Main(): React.JSX.Element {
       let landed: (to: string) => void = () => undefined
       try {
         await autosave.flush(id)
-        const openPath = selRef.current?.origin === 'note'
-          ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
-          : null
+        const openPath =
+          selRef.current?.origin === 'note'
+            ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+            : null
         // From here until it lands, saves for `id` wait and then go to the new id.
         renameInflightRef.current.set(id, new Promise<string>((resolve) => (landed = resolve)))
         let res: { rel: string; rewritten: string[] }
@@ -990,7 +1078,9 @@ function Main(): React.JSX.Element {
         autosave.rename(id, newId)
         if (autosave.pending(newId) !== undefined) void autosave.flush(newId)
         if (opts.toast || res.rewritten.length > 0) {
-          const links = res.rewritten.length ? ` · ${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated` : ''
+          const links = res.rewritten.length
+            ? ` · ${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated`
+            : ''
           notify(`Renamed → ${baseOf(res.rel)}${links}`)
         }
         return res.rel
@@ -1012,8 +1102,9 @@ function Main(): React.JSX.Element {
     if (!prefs.nameFromTitle || !openDocId || !d || d.id !== openDocId) return
     const override = titles[d.id]?.trim()
     if (!override || !isTitleSyncPath(d.path) || !isUntitledName(stemOf(d.path))) return
-    renameNoteFile(d.id, d.path, override, { baseAfter: titleFromMarkdown(draftsRef.current[d.id] ?? d.markdown) })
-      .catch((err: unknown) => console.error('[title-sync] untitled migration failed:', err))
+    renameNoteFile(d.id, d.path, override, {
+      baseAfter: titleFromMarkdown(draftsRef.current[d.id] ?? d.markdown)
+    }).catch((err: unknown) => console.error('[title-sync] untitled migration failed:', err))
   }, [openDocId, titles, prefs.nameFromTitle, renameNoteFile])
 
   /** The debounced title→filename check (see shared/title-sync for the rule). */
@@ -1024,7 +1115,8 @@ function Main(): React.JSX.Element {
       titleSync.schedule(id, markdown)
       return
     }
-    const path = allNotesRef.current.find((n) => n.id === id)?.path ?? (docRef.current?.id === id ? docRef.current.path : null)
+    const path =
+      allNotesRef.current.find((n) => n.id === id)?.path ?? (docRef.current?.id === id ? docRef.current.path : null)
     if (!path) return
     const title = titleFromMarkdown(markdown)
     const base = baseTitlesRef.current.get(id) ?? title
@@ -1047,9 +1139,10 @@ function Main(): React.JSX.Element {
     async (rel: string, kind: MoveKind, destDir: string) => {
       // Pending text first, so the rename never strands an edit at the old path.
       await autosave.flushAll()
-      const openPath = selRef.current?.origin === 'note'
-        ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
-        : null
+      const openPath =
+        selRef.current?.origin === 'note'
+          ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+          : null
       try {
         const res = await window.api.files.moveTo(rel, destDir)
         if (res.rel === rel) return
@@ -1057,7 +1150,9 @@ function Main(): React.JSX.Element {
         const extra = [
           res.renamed ? `as ${baseOf(res.rel)}` : '',
           res.rewritten.length ? `${res.rewritten.length} link${res.rewritten.length === 1 ? '' : 's'} updated` : ''
-        ].filter(Boolean).join(' · ')
+        ]
+          .filter(Boolean)
+          .join(' · ')
         notify(`Moved ${baseOf(rel).replace(/\.md$/, '')} → ${where}${extra ? ` (${extra})` : ''}`)
         const all = await window.api.notes.list(null)
         setAllNotes(all)
@@ -1125,7 +1220,9 @@ function Main(): React.JSX.Element {
       window.api.files
         .rename(rel, name)
         .then(({ rel: newRel, rewritten }) => {
-          const links = rewritten.length ? ` · ${rewritten.length} link${rewritten.length === 1 ? '' : 's'} updated` : ''
+          const links = rewritten.length
+            ? ` · ${rewritten.length} link${rewritten.length === 1 ? '' : 's'} updated`
+            : ''
           notify(`Renamed → ${newRel.split('/').pop()}${links}`)
           window.api.notes
             .list(null)
@@ -1172,10 +1269,12 @@ function Main(): React.JSX.Element {
       cancelTitleSyncUnder(rel)
       await autosave.flushAll()
       const active = selRef.current
-      const wasOpen = active?.origin === 'note' && (() => {
-        const p = openNotePath()
-        return p !== null && (p === rel || p.startsWith(`${rel}/`))
-      })()
+      const wasOpen =
+        active?.origin === 'note' &&
+        (() => {
+          const p = openNotePath()
+          return p !== null && (p === rel || p.startsWith(`${rel}/`))
+        })()
       try {
         const entry = await window.api.files.trash(rel)
         setTreeRename(null)
@@ -1183,7 +1282,8 @@ function Main(): React.JSX.Element {
         setTabs((prev) => {
           const remaining = prev.filter((t) => t.path !== rel && !t.path.startsWith(`${rel}/`))
           if (remaining.length !== prev.length && active?.origin === 'note') {
-            const gone = !remaining.some((t) => t.id === active.id) &&
+            const gone =
+              !remaining.some((t) => t.id === active.id) &&
               prev.some((t) => t.id === active.id && (t.path === rel || t.path.startsWith(`${rel}/`)))
             if (gone) {
               const next = remaining[remaining.length - 1]
@@ -1408,7 +1508,8 @@ function Main(): React.JSX.Element {
         ]
       }
       const name = target.name
-      const entry = allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
+      const entry =
+        allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
       return [
         { label: 'Rename  F2', action: () => (entry ? startNoteRename(entry) : doRename(target.rel, false)) },
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
@@ -1421,7 +1522,25 @@ function Main(): React.JSX.Element {
         }
       ]
     },
-    [doc, sel, titleOf, doCreateFile, doRename, doTrash, startNoteRename, deleteNote, notify, refreshNotes, togglePin, closeTab, closeOthers, closeUnpinned, popOut, openMovePicker, menu]
+    [
+      doc,
+      sel,
+      titleOf,
+      doCreateFile,
+      doRename,
+      doTrash,
+      startNoteRename,
+      deleteNote,
+      notify,
+      refreshNotes,
+      togglePin,
+      closeTab,
+      closeOthers,
+      closeUnpinned,
+      popOut,
+      openMovePicker,
+      menu
+    ]
   )
 
   // --- derived -------------------------------------------------------------------
@@ -1478,9 +1597,17 @@ function Main(): React.JSX.Element {
       prev,
       next,
       toToday,
-      onPrev: prev ? () => { selectNote(prev.entry.id); focusEndOn(prev.entry.id) } : null,
+      onPrev: prev
+        ? () => {
+            selectNote(prev.entry.id)
+            focusEndOn(prev.entry.id)
+          }
+        : null,
       onNext: next
-        ? () => { selectNote(next.entry.id); focusEndOn(next.entry.id) }
+        ? () => {
+            selectNote(next.entry.id)
+            focusEndOn(next.entry.id)
+          }
         : toToday
           ? () => void openToday()
           : null,
@@ -1515,7 +1642,10 @@ function Main(): React.JSX.Element {
   // Update notifications: dot on the Settings button; a notification click opens About & updates.
   const [updateBadge, setUpdateBadge] = useState(false)
   useEffect(() => {
-    void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
+    void window.api.updates
+      .get()
+      .then((u) => setUpdateBadge(u.showBadge))
+      .catch(() => undefined)
     return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
   }, [])
   useEffect(
@@ -1528,8 +1658,8 @@ function Main(): React.JSX.Element {
   )
 
   const pendingCount = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length
-  const activeItem = scope === 'inbox' ? inbox.find((i) => i.id === sel?.id) ?? null : null
-  const openPath = sel?.origin === 'note' ? doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null : null
+  const activeItem = scope === 'inbox' ? (inbox.find((i) => i.id === sel?.id) ?? null) : null
+  const openPath = sel?.origin === 'note' ? (doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null) : null
 
   // --- ⌘K command palette / ⌘O note switcher (ported from Surffish) -------------------
   const [palette, setPalette] = useState<PaletteMode | null>(null)
@@ -1549,66 +1679,278 @@ function Main(): React.JSX.Element {
     setShowMeeting(false)
     pickScope('journal')
   }
-  const activeTab = activeNoteId ? tabs.find((t) => t.id === activeNoteId) ?? null : null
+  const activeTab = activeNoteId ? (tabs.find((t) => t.id === activeNoteId) ?? null) : null
   const paletteCommands: RunnableCommand[] = [
-    { id: 'new-note', title: 'New Note', section: 'Notes', keywords: ['create', 'file', 'add'], run: () => { leaveSettings(); doCreateFile(targetDir) } },
-    { id: 'new-folder', title: 'New Folder', section: 'Notes', keywords: ['create', 'directory'], run: () => { leaveSettings(); doCreateFolder() } },
-    { id: 'today', title: "Open Today's Note", section: 'Notes', accelerator: 'CmdOrCtrl+Shift+D', keywords: ['daily', 'journal', 'day-log', 'today'], run: () => { leaveSettings(); void openToday() } },
-    { id: 'journal', title: 'Open Journal', section: 'Notes', accelerator: 'CmdOrCtrl+Shift+J', keywords: ['daily', 'journal', 'days', 'diary', 'log', 'calendar', 'history'], run: () => openJournal() },
-    { id: 'day-prev', title: 'Previous Day Note', section: 'Notes', keywords: ['daily', 'yesterday', 'journal', 'back'], enabled: !!dayNav?.onPrev, run: () => { leaveSettings(); dayNav?.onPrev?.() } },
-    { id: 'day-next', title: 'Next Day Note', section: 'Notes', keywords: ['daily', 'tomorrow', 'journal', 'forward'], enabled: !!dayNav?.onNext, run: () => { leaveSettings(); dayNav?.onNext?.() } },
-    { id: 'search-text', title: 'Search Note Text…', section: 'Notes', keywords: ['find', 'full text'], run: () => {
-      leaveSettings()
-      setSideCollapsed(false)
-      setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
-    } },
-    { id: 'rename-note', title: 'Rename Note…', section: 'Notes', enabled: !!openPath, run: () => openPath && doRename(openPath, false) },
-    { id: 'move-note', title: 'Move Note to…', section: 'Notes', keywords: ['folder', 'file', 'relocate', 'organize'], enabled: !!openPath && !openPath.startsWith('inbox/') && !openPath.startsWith('daily/'), run: () => {
-      leaveSettings()
-      if (openPath && doc) openMovePicker(openPath, 'file', titleOf(doc))
-    } },
-    { id: 'tag-search', title: 'Search by Tag…', section: 'Notes', keywords: ['tags', '#', 'filter'], run: () => {
-      leaveSettings()
-      setSideCollapsed(false)
-      setQuery('#')
-      setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
-    } },
-    { id: 'rescan', title: 'Rescan Vault', section: 'Notes', keywords: ['reindex', 'refresh'], run: () => {
-      window.api.vault
-        .reindex()
-        .then((r) => {
-          setBackend(r.backend)
-          refreshAll()
-          notify(`Re-indexed ${r.indexed} notes`)
-        })
-        .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
-    } },
-    { id: 'go-home', title: 'Go to Home', section: 'Navigate', keywords: ['dashboard'], run: () => { leaveSettings(); pickScope('home') } },
-    { id: 'go-notes', title: 'Go to Notes', section: 'Navigate', keywords: ['files', 'tree'], run: () => { leaveSettings(); pickScope('notes') } },
-    { id: 'go-inbox', title: 'Go to Inbox', section: 'Navigate', keywords: ['captures', 'queue'], run: () => { leaveSettings(); pickScope('inbox') } },
-    { id: 'meetings', title: meetingLive ? 'Meetings (recording)' : 'Meetings', section: 'Navigate', keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'], run: () => { leaveSettings(); setShowMeeting(true) } },
-    { id: 'meeting-record', title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…', section: 'Meetings', keywords: ['start', 'capture', 'transcribe', 'mic'], run: () => { leaveSettings(); setShowMeeting(true) } },
-    { id: 'meeting-close', title: 'Close Meetings', section: 'Meetings', enabled: showMeeting, keywords: ['back', 'exit'], run: () => setShowMeeting(false) },
-    { id: 'ai-toggle-view', title: 'AI: Raw / Processed View', section: 'AI', accelerator: 'Shift+Alt+P', keywords: ['format', 'tidy', 'processed', 'raw', 'llm'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('toggle-view') } },
-    { id: 'ai-process-note', title: 'AI: Process Note', section: 'AI', keywords: ['format', 'tidy', 'summarise', 'summarize', 'checklist', 'typos'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-note') } },
-    { id: 'ai-process-selection', title: 'AI: Process Selection…', section: 'AI', accelerator: 'Shift+Alt+S', keywords: ['format', 'rewrite', 'fix', 'selected'], enabled: !!doc, run: () => { leaveSettings(); sendAiCommand('process-selection') } },
-    { id: 'toggle-sidebar', title: 'Toggle Sidebar', section: 'View', accelerator: 'CmdOrCtrl+\\', keywords: ['collapse', 'hide'], run: () => setSideCollapsed((v) => !v) },
-    { id: 'pop-out', title: 'Pop Out to Mini Window', section: 'Window', accelerator: 'CmdOrCtrl+Shift+M', keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'], enabled: !!activeNoteId, run: () => popOut(activeNoteId) },
-    { id: 'close-tab', title: 'Close Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && closeTab(activeTab.id) },
-    { id: 'close-other-tabs', title: 'Close Other Tabs', section: 'Tabs', enabled: !!activeTab && tabs.length > 1, run: () => activeTab && closeOthers(activeTab.id) },
-    { id: 'pin-tab', title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab', section: 'Tabs', enabled: !!activeTab, run: () => activeTab && togglePin(activeTab.id) },
-    { id: 'settings', title: 'Open Settings', section: 'Settings', keywords: ['preferences', 'options'], accelerator: 'CmdOrCtrl+,', run: () => openSettingsAt(sessionStorage.getItem('inkfish.settingsTab') ?? 'appearance') },
-    ...([
-      ['appearance', 'Appearance', ['theme', 'font', 'accent', 'density', 'menu bar', 'tray']],
-      ['mini-window', 'Mini Window', ['float', 'dock', 'tuck']],
-      ['notes', 'Notes Location', ['vault', 'folder', 'move']],
-      ['sync', 'Sync', ['phone', 'android', 'pair', 'lan']],
-      ['trash', 'Trash', ['deleted', 'restore']],
-      ['audio', 'Audio', ['microphone', 'input']],
-      ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
-      ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
-      ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
-    ] as Array<[string, string, string[]]>).map(([tab, label, keywords]): RunnableCommand => ({
+    {
+      id: 'new-note',
+      title: 'New Note',
+      section: 'Notes',
+      keywords: ['create', 'file', 'add'],
+      run: () => {
+        leaveSettings()
+        doCreateFile(targetDir)
+      }
+    },
+    {
+      id: 'new-folder',
+      title: 'New Folder',
+      section: 'Notes',
+      keywords: ['create', 'directory'],
+      run: () => {
+        leaveSettings()
+        doCreateFolder()
+      }
+    },
+    {
+      id: 'today',
+      title: "Open Today's Note",
+      section: 'Notes',
+      accelerator: 'CmdOrCtrl+Shift+D',
+      keywords: ['daily', 'journal', 'day-log', 'today'],
+      run: () => {
+        leaveSettings()
+        void openToday()
+      }
+    },
+    {
+      id: 'journal',
+      title: 'Open Journal',
+      section: 'Notes',
+      accelerator: 'CmdOrCtrl+Shift+J',
+      keywords: ['daily', 'journal', 'days', 'diary', 'log', 'calendar', 'history'],
+      run: () => openJournal()
+    },
+    {
+      id: 'day-prev',
+      title: 'Previous Day Note',
+      section: 'Notes',
+      keywords: ['daily', 'yesterday', 'journal', 'back'],
+      enabled: !!dayNav?.onPrev,
+      run: () => {
+        leaveSettings()
+        dayNav?.onPrev?.()
+      }
+    },
+    {
+      id: 'day-next',
+      title: 'Next Day Note',
+      section: 'Notes',
+      keywords: ['daily', 'tomorrow', 'journal', 'forward'],
+      enabled: !!dayNav?.onNext,
+      run: () => {
+        leaveSettings()
+        dayNav?.onNext?.()
+      }
+    },
+    {
+      id: 'search-text',
+      title: 'Search Note Text…',
+      section: 'Notes',
+      keywords: ['find', 'full text'],
+      run: () => {
+        leaveSettings()
+        setSideCollapsed(false)
+        setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+      }
+    },
+    {
+      id: 'rename-note',
+      title: 'Rename Note…',
+      section: 'Notes',
+      enabled: !!openPath,
+      run: () => openPath && doRename(openPath, false)
+    },
+    {
+      id: 'move-note',
+      title: 'Move Note to…',
+      section: 'Notes',
+      keywords: ['folder', 'file', 'relocate', 'organize'],
+      enabled: !!openPath && !openPath.startsWith('inbox/') && !openPath.startsWith('daily/'),
+      run: () => {
+        leaveSettings()
+        if (openPath && doc) openMovePicker(openPath, 'file', titleOf(doc))
+      }
+    },
+    {
+      id: 'tag-search',
+      title: 'Search by Tag…',
+      section: 'Notes',
+      keywords: ['tags', '#', 'filter'],
+      run: () => {
+        leaveSettings()
+        setSideCollapsed(false)
+        setQuery('#')
+        setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+      }
+    },
+    {
+      id: 'rescan',
+      title: 'Rescan Vault',
+      section: 'Notes',
+      keywords: ['reindex', 'refresh'],
+      run: () => {
+        window.api.vault
+          .reindex()
+          .then((r) => {
+            setBackend(r.backend)
+            refreshAll()
+            notify(`Re-indexed ${r.indexed} notes`)
+          })
+          .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
+      }
+    },
+    {
+      id: 'go-home',
+      title: 'Go to Home',
+      section: 'Navigate',
+      keywords: ['dashboard'],
+      run: () => {
+        leaveSettings()
+        pickScope('home')
+      }
+    },
+    {
+      id: 'go-notes',
+      title: 'Go to Notes',
+      section: 'Navigate',
+      keywords: ['files', 'tree'],
+      run: () => {
+        leaveSettings()
+        pickScope('notes')
+      }
+    },
+    {
+      id: 'go-inbox',
+      title: 'Go to Inbox',
+      section: 'Navigate',
+      keywords: ['captures', 'queue'],
+      run: () => {
+        leaveSettings()
+        pickScope('inbox')
+      }
+    },
+    {
+      id: 'meetings',
+      title: meetingLive ? 'Meetings (recording)' : 'Meetings',
+      section: 'Navigate',
+      keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'],
+      run: () => {
+        leaveSettings()
+        setShowMeeting(true)
+      }
+    },
+    {
+      id: 'meeting-record',
+      title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…',
+      section: 'Meetings',
+      keywords: ['start', 'capture', 'transcribe', 'mic'],
+      run: () => {
+        leaveSettings()
+        setShowMeeting(true)
+      }
+    },
+    {
+      id: 'meeting-close',
+      title: 'Close Meetings',
+      section: 'Meetings',
+      enabled: showMeeting,
+      keywords: ['back', 'exit'],
+      run: () => setShowMeeting(false)
+    },
+    {
+      id: 'ai-toggle-view',
+      title: 'AI: Raw / Processed View',
+      section: 'AI',
+      accelerator: 'Shift+Alt+P',
+      keywords: ['format', 'tidy', 'processed', 'raw', 'llm'],
+      enabled: !!doc,
+      run: () => {
+        leaveSettings()
+        sendAiCommand('toggle-view')
+      }
+    },
+    {
+      id: 'ai-process-note',
+      title: 'AI: Process Note',
+      section: 'AI',
+      keywords: ['format', 'tidy', 'summarise', 'summarize', 'checklist', 'typos'],
+      enabled: !!doc,
+      run: () => {
+        leaveSettings()
+        sendAiCommand('process-note')
+      }
+    },
+    {
+      id: 'ai-process-selection',
+      title: 'AI: Process Selection…',
+      section: 'AI',
+      accelerator: 'Shift+Alt+S',
+      keywords: ['format', 'rewrite', 'fix', 'selected'],
+      enabled: !!doc,
+      run: () => {
+        leaveSettings()
+        sendAiCommand('process-selection')
+      }
+    },
+    {
+      id: 'toggle-sidebar',
+      title: 'Toggle Sidebar',
+      section: 'View',
+      accelerator: 'CmdOrCtrl+\\',
+      keywords: ['collapse', 'hide'],
+      run: () => setSideCollapsed((v) => !v)
+    },
+    {
+      id: 'pop-out',
+      title: 'Pop Out to Mini Window',
+      section: 'Window',
+      accelerator: 'CmdOrCtrl+Shift+M',
+      keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'],
+      enabled: !!activeNoteId,
+      run: () => popOut(activeNoteId)
+    },
+    {
+      id: 'close-tab',
+      title: 'Close Tab',
+      section: 'Tabs',
+      enabled: !!activeTab,
+      run: () => activeTab && closeTab(activeTab.id)
+    },
+    {
+      id: 'close-other-tabs',
+      title: 'Close Other Tabs',
+      section: 'Tabs',
+      enabled: !!activeTab && tabs.length > 1,
+      run: () => activeTab && closeOthers(activeTab.id)
+    },
+    {
+      id: 'pin-tab',
+      title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab',
+      section: 'Tabs',
+      enabled: !!activeTab,
+      run: () => activeTab && togglePin(activeTab.id)
+    },
+    {
+      id: 'settings',
+      title: 'Open Settings',
+      section: 'Settings',
+      keywords: ['preferences', 'options'],
+      accelerator: 'CmdOrCtrl+,',
+      run: () => openSettingsAt(sessionStorage.getItem('inkfish.settingsTab') ?? 'appearance')
+    },
+    ...(
+      [
+        ['appearance', 'Appearance', ['theme', 'font', 'accent', 'density', 'menu bar', 'tray']],
+        ['mini-window', 'Mini Window', ['float', 'dock', 'tuck']],
+        ['notes', 'Notes Location', ['vault', 'folder', 'move']],
+        ['sync', 'Sync', ['phone', 'android', 'pair', 'lan']],
+        ['trash', 'Trash', ['deleted', 'restore']],
+        ['audio', 'Audio', ['microphone', 'input']],
+        ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
+        ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
+        ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
+      ] as Array<[string, string, string[]]>
+    ).map(([tab, label, keywords]): RunnableCommand => ({
       id: `settings-${tab}`,
       title: `Settings: ${label}`,
       section: 'Settings',
@@ -1616,7 +1958,13 @@ function Main(): React.JSX.Element {
       run: () => openSettingsAt(tab)
     })),
     { id: 'hide-window', title: 'Hide Inkfish', section: 'App', run: () => void window.api.win.hide() },
-    { id: 'quit', title: 'Quit Inkfish', section: 'App', keywords: ['exit', 'close app'], run: () => void window.api.app.quit() }
+    {
+      id: 'quit',
+      title: 'Quit Inkfish',
+      section: 'App',
+      keywords: ['exit', 'close app'],
+      run: () => void window.api.app.quit()
+    }
   ]
   const paletteNotes = useMemo(
     () => allNotes.map((n) => ({ id: n.id, title: titleOf(n), path: n.path, tags: n.tags, updatedAt: n.updatedAt })),
@@ -1715,7 +2063,13 @@ function Main(): React.JSX.Element {
               <button
                 key={s}
                 className={`ribbon-btn${on ? ' on' : ''}`}
-                title={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : `Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+                title={
+                  s === 'home'
+                    ? 'Home'
+                    : s === 'notes'
+                      ? 'Notes'
+                      : `Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}`
+                }
                 aria-label={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
                 aria-current={on ? 'page' : undefined}
                 onClick={() => {
@@ -1783,7 +2137,10 @@ function Main(): React.JSX.Element {
         <div className="side-head">
           <span className="flex-sp" />
           {profile?.badge && (
-            <span className="pill profile-pill" title={`Separate ${profile.name} profile — its own settings, notes folder and sync`}>
+            <span
+              className="pill profile-pill"
+              title={`Separate ${profile.name} profile — its own settings, notes folder and sync`}
+            >
               {profile.badge}
             </span>
           )}
@@ -1897,7 +2254,9 @@ function Main(): React.JSX.Element {
                 // Only worth a row when there is something to filter between (or a filter is on).
                 kindsPresent > 1 || kind !== 'all' ? (
                   <div className="chips kinds" aria-label="Filter by kind">
-                    {KINDS.filter((k) => k.id === 'all' || (kindCounts.get(k.id as NoteKind) ?? 0) > 0 || kind === k.id).map((k) => (
+                    {KINDS.filter(
+                      (k) => k.id === 'all' || (kindCounts.get(k.id as NoteKind) ?? 0) > 0 || kind === k.id
+                    ).map((k) => (
                       <button
                         key={k.id}
                         className={kind === k.id ? 'on' : ''}
@@ -1905,10 +2264,16 @@ function Main(): React.JSX.Element {
                           setKind(k.id)
                           setScope('notes')
                         }}
-                        title={k.id === 'all' ? `${finalNotes.length} notes` : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`}
+                        title={
+                          k.id === 'all'
+                            ? `${finalNotes.length} notes`
+                            : `${kindCounts.get(k.id as NoteKind) ?? 0} ${k.name.toLowerCase()} notes`
+                        }
                       >
                         {k.name}
-                        <span className="count">{k.id === 'all' ? finalNotes.length : (kindCounts.get(k.id as NoteKind) ?? 0)}</span>
+                        <span className="count">
+                          {k.id === 'all' ? finalNotes.length : (kindCounts.get(k.id as NoteKind) ?? 0)}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1959,7 +2324,14 @@ function Main(): React.JSX.Element {
             chip (the toggle itself is the fixed .titlebar-toggle above). */}
         <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
           {sideCollapsed && meetingLive && !showMeeting && (
-            <button className="side-toggle rail-chip rec-live" onClick={() => { leaveSettings(); setShowMeeting(true) }} title="Meeting recording — open it">
+            <button
+              className="side-toggle rail-chip rec-live"
+              onClick={() => {
+                leaveSettings()
+                setShowMeeting(true)
+              }}
+              title="Meeting recording — open it"
+            >
               <Icon name="record" size={12} /> Recording
             </button>
           )}
@@ -1998,7 +2370,6 @@ function Main(): React.JSX.Element {
           </main>
         ) : showMeeting ? null : (
           <>
-
             {scope === 'home' ? (
               <main className="view-scroll" aria-label="Home">
                 <Home
@@ -2078,7 +2449,16 @@ function Main(): React.JSX.Element {
                       : 'Click to rename (display title only, file untouched)'
                   }
                   onEditorBlur={() => titleSync.flush()}
-                  {...(dayNav ? { dayNav: { onPrev: dayNav.onPrev, onNext: dayNav.onNext, prevLabel: dayNav.prevLabel, nextLabel: dayNav.nextLabel } } : {})}
+                  {...(dayNav
+                    ? {
+                        dayNav: {
+                          onPrev: dayNav.onPrev,
+                          onNext: dayNav.onNext,
+                          prevLabel: dayNav.prevLabel,
+                          nextLabel: dayNav.nextLabel
+                        }
+                      }
+                    : {})}
                   focusEnd={focusEnd}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                   onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
@@ -2117,14 +2497,7 @@ function Main(): React.JSX.Element {
         )}
       </div>
 
-      {menu && (
-        <CtxMenu
-          x={menu.x}
-          y={menu.y}
-          items={menuItems(menu.target)}
-          onClose={() => setMenu(null)}
-        />
-      )}
+      {menu && <CtxMenu x={menu.x} y={menu.y} items={menuItems(menu.target)} onClose={() => setMenu(null)} />}
       {palette && (
         <CommandPalette
           mode={palette}
@@ -2174,7 +2547,11 @@ function Main(): React.JSX.Element {
       {movePick && (
         <FolderPicker
           title={`Move “${movePick.name.slice(0, 40)}” to…`}
-          folders={movePick.kind === 'dir' ? folderList.filter((f) => f !== movePick.rel && !f.startsWith(`${movePick.rel}/`)) : folderList}
+          folders={
+            movePick.kind === 'dir'
+              ? folderList.filter((f) => f !== movePick.rel && !f.startsWith(`${movePick.rel}/`))
+              : folderList
+          }
           current={dirOf(movePick.rel)}
           x={movePick.x}
           y={movePick.y}
@@ -2222,8 +2599,19 @@ function Main(): React.JSX.Element {
 
 /** Obsidian-style tab strip: pinned files stay, × closes, right-click for more, drag out → mini window. */
 function TabBar({
-  tabs, activeId, allNotes, titles, titleOf,
-  onActivate, onClose, onTogglePin, onMenu, onNew, onPopOut, onTearOut, popTitle
+  tabs,
+  activeId,
+  allNotes,
+  titles,
+  titleOf,
+  onActivate,
+  onClose,
+  onTogglePin,
+  onMenu,
+  onNew,
+  onPopOut,
+  onTearOut,
+  popTitle
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -2241,7 +2629,9 @@ function TabBar({
 }): React.JSX.Element {
   const barRef = useRef<HTMLDivElement>(null)
   /** A press on a tab that may become a tear-off drag (pointer captured, so it tracks outside the window). */
-  const dragRef = useRef<{ id: string; pointerId: number; start: { x: number; y: number }; moved: boolean } | null>(null)
+  const dragRef = useRef<{ id: string; pointerId: number; start: { x: number; y: number }; moved: boolean } | null>(
+    null
+  )
   /** Swallow the click that follows a drag. */
   const suppressClick = useRef(false)
   const [tearing, setTearing] = useState<{ id: string; x: number; y: number; label: string } | null>(null)
@@ -2292,7 +2682,12 @@ function TabBar({
             }}
             onPointerDown={(e) => {
               if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
-              dragRef.current = { id: t.id, pointerId: e.pointerId, start: { x: e.clientX, y: e.clientY }, moved: false }
+              dragRef.current = {
+                id: t.id,
+                pointerId: e.pointerId,
+                start: { x: e.clientX, y: e.clientY },
+                moved: false
+              }
               suppressClick.current = false
               try {
                 e.currentTarget.setPointerCapture(e.pointerId)
@@ -2380,7 +2775,11 @@ function TabBar({
 
 /** Action bar pinned above inbox docs: route / move / undo / delete without leaving the note. */
 function InboxBar({
-  item, projects, onDone, onDelete, notify
+  item,
+  projects,
+  onDone,
+  onDelete,
+  notify
 }: {
   item: InboxItem
   projects: Project[]
@@ -2401,7 +2800,10 @@ function InboxBar({
 
   return (
     <div className="inboxbar glass">
-      <span className="qsub muted">{item.kind}{item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}</span>
+      <span className="qsub muted">
+        {item.kind}
+        {item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}
+      </span>
       <span className="flex-sp" />
       {item.status !== 'processing' && (
         <button
@@ -2449,7 +2851,9 @@ function InboxBar({
       >
         <option value="">Move →</option>
         {projects.map((p) => (
-          <option key={p.id} value={p.name}>{p.name}</option>
+          <option key={p.id} value={p.name}>
+            {p.name}
+          </option>
         ))}
       </select>
       {item.status === 'ready' && (

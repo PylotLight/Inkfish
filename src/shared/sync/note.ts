@@ -42,9 +42,16 @@ function joinFrontmatter(fm: Fm | null, body: string): string {
 function listItems(lines: string[]): string[] | null {
   // `tags: [a, b]` or `tags:` + `  - a` lines.
   const inline = /^[^:]+:\s*\[(.*)\]\s*$/.exec(lines[0] ?? '')
-  if (inline) return inline[1]!.split(',').map((s) => s.trim()).filter(Boolean)
+  if (inline)
+    return inline[1]!
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
   if (lines.length > 1 && lines.slice(1).every((l) => /^\s*-\s/.test(l) || !l.trim()))
-    return lines.slice(1).filter((l) => l.trim()).map((l) => l.replace(/^\s*-\s*/, '').trim())
+    return lines
+      .slice(1)
+      .filter((l) => l.trim())
+      .map((l) => l.replace(/^\s*-\s*/, '').trim())
   return null
 }
 
@@ -56,12 +63,22 @@ function mergeFm(base: Fm | null, ours: Fm | null, theirs: Fm | null): Fm | null
   for (const k of theirs.keys) if (!out.keys.includes(k)) out.keys.push(k)
   const same = (a?: string[], b?: string[]): boolean => (a ?? []).join('\n') === (b ?? []).join('\n')
   for (const k of out.keys) {
-    const b = base?.raw.get(k), o = ours.raw.get(k), t = theirs.raw.get(k)
+    const b = base?.raw.get(k),
+      o = ours.raw.get(k),
+      t = theirs.raw.get(k)
     if (same(o, t)) continue
-    if (same(b, o)) { if (t) out.raw.set(k, t); else { out.raw.delete(k); out.keys = out.keys.filter((x) => x !== k) } continue }
+    if (same(b, o)) {
+      if (t) out.raw.set(k, t)
+      else {
+        out.raw.delete(k)
+        out.keys = out.keys.filter((x) => x !== k)
+      }
+      continue
+    }
     if (same(b, t)) continue // only ours changed
     // Both changed: lists union, scalars keep ours (deterministic: caller picks "ours" = newer).
-    const lo = o && listItems(o), lt = t && listItems(t)
+    const lo = o && listItems(o),
+      lt = t && listItems(t)
     if (lo && lt) {
       const items = [...new Set([...lo, ...lt])]
       out.raw.set(k, [`${k}:`, ...items.map((i) => `  - ${i}`)])
@@ -77,7 +94,9 @@ export interface NoteMergeResult {
 
 /** Merge a markdown note edited on both sides since `base`. */
 export function mergeNote(base: string, ours: string, theirs: string): NoteMergeResult {
-  const b = splitFrontmatter(base), o = splitFrontmatter(ours), t = splitFrontmatter(theirs)
+  const b = splitFrontmatter(base),
+    o = splitFrontmatter(ours),
+    t = splitFrontmatter(theirs)
   const fm = mergeFm(b.fm, o.fm, t.fm)
   const body = mergeText(b.body, o.body, t.body)
   return { clean: body.clean, text: joinFrontmatter(fm, body.text) }
@@ -91,7 +110,8 @@ export function mergeDaily(ours: string, theirs: string): string {
     const { head, blocks } = splitEntries(body)
     return { fm, head: head.replace(/\s+$/, ''), blocks }
   }
-  const o = parse(ours), t = parse(theirs)
+  const o = parse(ours),
+    t = parse(theirs)
   const seen = new Set<string>()
   const all: Array<{ time: string; text: string; bullet: boolean; i: number }> = []
   for (const b of [...o.blocks, ...t.blocks]) {

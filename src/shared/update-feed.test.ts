@@ -27,8 +27,18 @@ import {
 
 const fixture = readFileSync(join(import.meta.dir, 'fixtures', 'inkfish-releases.atom'), 'utf8')
 const NOW = 1_800_000_000_000
-const prefs = (patch: Partial<UpdatePreferences> = {}): UpdatePreferences => ({ ...DEFAULT_UPDATE_PREFERENCES, ...patch })
-const entry = (version: string): ReleaseFeedEntry => ({ tag: `v${version}`, version, title: version, updated: '', link: '', contentHtml: '' })
+const prefs = (patch: Partial<UpdatePreferences> = {}): UpdatePreferences => ({
+  ...DEFAULT_UPDATE_PREFERENCES,
+  ...patch
+})
+const entry = (version: string): ReleaseFeedEntry => ({
+  tag: `v${version}`,
+  version,
+  title: version,
+  updated: '',
+  link: '',
+  contentHtml: ''
+})
 
 describe('feed parsing', () => {
   test('reads the Inkfish releases feed and skips Android tags', () => {
@@ -46,7 +56,9 @@ describe('feed parsing', () => {
     expect(() => parseReleaseFeed('<html></html>')).toThrow()
   })
   test('release notes drop scripts and tags', () => {
-    expect(releaseNotesToText('<h2>New</h2><ul><li>a &amp; b</li></ul><script>alert(1)</script>')).toBe('## New\n• a & b')
+    expect(releaseNotesToText('<h2>New</h2><ul><li>a &amp; b</li></ul><script>alert(1)</script>')).toBe(
+      '## New\n• a & b'
+    )
   })
 })
 
@@ -67,19 +79,38 @@ describe('semver', () => {
 
 describe('decideUpdate', () => {
   test('newer / same / older', () => {
-    expect(decideUpdate('0.2.6', '0.2.5', prefs(), NOW)).toMatchObject({ updateAvailable: true, showBadge: true, notify: true })
+    expect(decideUpdate('0.2.6', '0.2.5', prefs(), NOW)).toMatchObject({
+      updateAvailable: true,
+      showBadge: true,
+      notify: true
+    })
     expect(decideUpdate('0.2.5', '0.2.5', prefs(), NOW).updateAvailable).toBe(false)
     expect(decideUpdate('0.2.4', '0.2.5', prefs(), NOW).updateAvailable).toBe(false)
   })
   test('skip hides only that version', () => {
-    expect(decideUpdate('0.2.6', '0.2.5', prefs({ skippedVersion: '0.2.6' }), NOW)).toMatchObject({ skipped: true, showBadge: false, notify: false })
+    expect(decideUpdate('0.2.6', '0.2.5', prefs({ skippedVersion: '0.2.6' }), NOW)).toMatchObject({
+      skipped: true,
+      showBadge: false,
+      notify: false
+    })
     expect(decideUpdate('0.2.7', '0.2.5', prefs({ skippedVersion: '0.2.6' }), NOW).showBadge).toBe(true)
   })
   test('notify once per version; remind later snoozes then re-notifies', () => {
-    expect(decideUpdate('0.2.6', '0.2.5', prefs({ notifiedVersion: '0.2.6' }), NOW)).toMatchObject({ showBadge: true, notify: false })
+    expect(decideUpdate('0.2.6', '0.2.5', prefs({ notifiedVersion: '0.2.6' }), NOW)).toMatchObject({
+      showBadge: true,
+      notify: false
+    })
     const snoozed = prefs({ notifiedVersion: '0.2.6', remindLaterVersion: '0.2.6', remindAfter: NOW + 1000 })
-    expect(decideUpdate('0.2.6', '0.2.5', snoozed, NOW)).toMatchObject({ snoozed: true, showBadge: false, notify: false })
-    expect(decideUpdate('0.2.6', '0.2.5', snoozed, NOW + 2000)).toMatchObject({ snoozed: false, showBadge: true, notify: true })
+    expect(decideUpdate('0.2.6', '0.2.5', snoozed, NOW)).toMatchObject({
+      snoozed: true,
+      showBadge: false,
+      notify: false
+    })
+    expect(decideUpdate('0.2.6', '0.2.5', snoozed, NOW + 2000)).toMatchObject({
+      snoozed: false,
+      showBadge: true,
+      notify: true
+    })
   })
   test('scheduled checks are due after the interval', () => {
     expect(isUpdateCheckDue(null, NOW)).toBe(true)
@@ -103,21 +134,33 @@ describe('settings + feed URL', () => {
     expect(r.ok && r.changed && r.preferences.betaChannel).toBe(true)
   })
   test('GitHub 404 means private repo', () => {
-    expect(describeFeedHttpFailure(404, DEFAULT_UPDATE_FEED_URL).message).toBe('Update check unavailable (repo private)')
+    expect(describeFeedHttpFailure(404, DEFAULT_UPDATE_FEED_URL).message).toBe(
+      'Update check unavailable (repo private)'
+    )
     expect(describeFeedHttpFailure(500, DEFAULT_UPDATE_FEED_URL).status).toBe('error')
   })
   test('asset candidates follow the electron-builder artifact name on macOS', () => {
-    expect(releaseAssetCandidates('https://github.com/PylotLight/Inkfish/releases/tag/v0.2.5', '0.2.5', 'darwin', 'arm64')).toEqual([
+    expect(
+      releaseAssetCandidates('https://github.com/PylotLight/Inkfish/releases/tag/v0.2.5', '0.2.5', 'darwin', 'arm64')
+    ).toEqual([
       'https://github.com/PylotLight/Inkfish/releases/download/v0.2.5/Inkfish-0.2.5-mac-arm64.dmg',
       'https://github.com/PylotLight/Inkfish/releases/download/v0.2.5/Inkfish-0.2.5-mac-arm64.zip'
     ])
-    expect(releaseAssetCandidates('https://github.com/PylotLight/Inkfish/releases/tag/v0.2.5', '0.2.5', 'linux', 'x64')).toEqual([])
+    expect(
+      releaseAssetCandidates('https://github.com/PylotLight/Inkfish/releases/tag/v0.2.5', '0.2.5', 'linux', 'x64')
+    ).toEqual([])
   })
   test('preferences parse defensively', () => {
     expect(parseUpdatePreferences(null)).toEqual(DEFAULT_UPDATE_PREFERENCES)
-    expect(parseUpdatePreferences({ feedUrl: 'ftp://x', betaChannel: 'yes', skippedVersion: 'v0.2.5', remindAfter: -5, lastChecked: NOW })).toEqual(
-      prefs({ skippedVersion: '0.2.5', lastChecked: NOW })
-    )
+    expect(
+      parseUpdatePreferences({
+        feedUrl: 'ftp://x',
+        betaChannel: 'yes',
+        skippedVersion: 'v0.2.5',
+        remindAfter: -5,
+        lastChecked: NOW
+      })
+    ).toEqual(prefs({ skippedVersion: '0.2.5', lastChecked: NOW }))
   })
 })
 
@@ -125,7 +168,9 @@ describe('pre-releases (release.ts --pre test builds)', () => {
   const feed = [entry('0.2.15-beta.2'), entry('0.2.15-beta.1'), entry('0.2.14'), entry('0.2.13')]
   const offered = (current: string, betaChannel: boolean): string | null => {
     const best = pickLatestRelease(feed, { includePrereleases: betaChannel })
-    return decideUpdate(best?.version ?? null, current, prefs({ betaChannel }), NOW).updateAvailable ? best!.version : null
+    return decideUpdate(best?.version ?? null, current, prefs({ betaChannel }), NOW).updateAvailable
+      ? best!.version
+      : null
   }
   test('stable Macs are never offered a beta, and "latest" ignores them', () => {
     expect(pickLatestRelease(feed, { includePrereleases: false })!.version).toBe('0.2.14')
@@ -148,7 +193,10 @@ describe('pre-releases (release.ts --pre test builds)', () => {
   })
   test('android test-build tags in the feed are not Mac releases', () => {
     const xml = `<feed>${['android-v0.2.8-beta.1', 'v0.2.15-beta.1', 'v0.2.14']
-      .map((t) => `<entry><id>tag:github.com,2008:Repository/1/${t}</id><link rel="alternate" href="https://github.com/PylotLight/Inkfish/releases/tag/${t}"/><title>${t}</title></entry>`)
+      .map(
+        (t) =>
+          `<entry><id>tag:github.com,2008:Repository/1/${t}</id><link rel="alternate" href="https://github.com/PylotLight/Inkfish/releases/tag/${t}"/><title>${t}</title></entry>`
+      )
       .join('')}</feed>`
     expect(parseReleaseFeed(xml).map((e) => e.tag)).toEqual(['v0.2.15-beta.1', 'v0.2.14'])
   })

@@ -1199,7 +1199,9 @@ html.mini-window body {
   user-select: none;
   opacity: 0;
   transform: translateY(-100%);
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
   pointer-events: none;
 }
 .mini-shell.revealed .mini-head {
@@ -1555,7 +1557,6 @@ html.mini-window .ed-src .cm-gutters {
   gap: 4px;
 }
 
-
 .qtext {
   font-size: 14px;
   font-weight: 600;
@@ -1566,7 +1567,6 @@ html.mini-window .ed-src .cm-gutters {
 .qsub {
   font-size: 12px;
 }
-
 
 .status-pill.st-processing {
   color: var(--accent);
@@ -1773,11 +1773,30 @@ select.sm {
 
 /* Obsidian-style heading scale — only without the gutter, since numbers pin
  * to the top of each line box and would drift off scaled headings. */
-html[data-linenos='off'] .cm-line.lp-h1 { font-size: 1.6em; line-height: 1.3; padding-top: 0.5em; padding-bottom: 0.15em; }
-html[data-linenos='off'] .cm-line.lp-h2 { font-size: 1.35em; line-height: 1.3; padding-top: 0.45em; padding-bottom: 0.1em; }
-html[data-linenos='off'] .cm-line.lp-h3 { font-size: 1.17em; line-height: 1.35; padding-top: 0.35em; }
-html[data-linenos='off'] .cm-line.lp-h4 { font-size: 1.05em; padding-top: 0.25em; }
-html[data-linenos='off'] .ed-src .cm-gutters { display: none; }
+html[data-linenos='off'] .cm-line.lp-h1 {
+  font-size: 1.6em;
+  line-height: 1.3;
+  padding-top: 0.5em;
+  padding-bottom: 0.15em;
+}
+html[data-linenos='off'] .cm-line.lp-h2 {
+  font-size: 1.35em;
+  line-height: 1.3;
+  padding-top: 0.45em;
+  padding-bottom: 0.1em;
+}
+html[data-linenos='off'] .cm-line.lp-h3 {
+  font-size: 1.17em;
+  line-height: 1.35;
+  padding-top: 0.35em;
+}
+html[data-linenos='off'] .cm-line.lp-h4 {
+  font-size: 1.05em;
+  padding-top: 0.25em;
+}
+html[data-linenos='off'] .ed-src .cm-gutters {
+  display: none;
+}
 
 /* List lines: indent comes from --lp-depth (columns of hidden whitespace),
  * the marker hangs so wrapped text lines up under the first word. */
@@ -1786,8 +1805,12 @@ html[data-linenos='off'] .ed-src .cm-gutters { display: none; }
   padding-left: calc(6px + var(--lp-depth, 0) * 0.42em + var(--lp-hang));
   text-indent: calc(-1 * var(--lp-hang));
 }
-.ed-src .cm-line.lp-li-task { --lp-hang: 2.15em; }
-.ed-src .cm-line.lp-li-ordered { --lp-hang: 1.5em; }
+.ed-src .cm-line.lp-li-task {
+  --lp-hang: 2.15em;
+}
+.ed-src .cm-line.lp-li-ordered {
+  --lp-hang: 1.5em;
+}
 .ed-src .lp-bullet,
 .ed-src .lp-taskbullet {
   display: inline-block;
@@ -1862,9 +1885,15 @@ html.mini-window .editor {
   opacity: 0.6;
 }
 
-.ed-src .lp-bold { font-weight: 700; }
-.ed-src .lp-em { font-style: italic; }
-.ed-src .lp-strike { text-decoration: line-through; }
+.ed-src .lp-bold {
+  font-weight: 700;
+}
+.ed-src .lp-em {
+  font-style: italic;
+}
+.ed-src .lp-strike {
+  text-decoration: line-through;
+}
 .ed-src .lp-codespan {
   font-family: var(--mono-font);
   font-size: 0.88em;
@@ -1897,7 +1926,6 @@ input.lp-taskbox {
   font-variant-numeric: tabular-nums;
 }
 
-
 .editor-empty {
   display: flex;
   align-items: center;
@@ -1906,7 +1934,6 @@ input.lp-taskbox {
   text-align: center;
   padding: 24px;
 }
-
 
 /* onboarding + meeting modals */
 
@@ -2179,7 +2206,6 @@ html[data-font='compact'] {
 html[data-font='large'] {
   --ed-fs: 16px;
 }
-
 
 /* CodeMirror caret — default black is invisible on dark themes. */
 .ed-src .cm-content {
@@ -2761,7 +2787,6 @@ input.side-search:focus {
   display: flex;
   flex-direction: column;
 }
-
 
 .ed-actions {
   margin-top: 0;
@@ -3881,7 +3906,6 @@ html[data-density='compact'] .note-stage {
   padding: 10px 14px 0;
 }
 
-
 /* ---------- Inkfish: filename titles, rename, fallback editor ---------- */
 
 .ed-title h2 {
@@ -3900,7 +3924,9 @@ html[data-density='compact'] .note-stage {
   outline: none;
   cursor: text;
   white-space: pre-wrap;
-  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .ed-title h2.ed-inline-title:hover {
   background: var(--inset-soft);
@@ -3924,7 +3950,6 @@ html[data-density='compact'] .note-stage {
   line-height: 1.6;
   resize: vertical;
 }
-
 
 /* ---------- Inkfish: context menu + dialogs ---------- */
 
@@ -4191,7 +4216,6 @@ html[data-density='compact'] .note-stage {
   color: var(--text);
   background: var(--panel);
 }
-
 
 .cap-caption {
   margin: 0 12px 6px;
@@ -4831,7 +4855,9 @@ html[data-theme='paper'] .ctxmenu.glass.strong {
   display: none;
   padding: 1px 7px;
   border-radius: 6px;
-  font: 600 11px/18px var(--ui-font, system-ui), sans-serif;
+  font:
+    600 11px/18px var(--ui-font, system-ui),
+    sans-serif;
   font-variant-numeric: tabular-nums;
   color: #fff;
   background: rgba(0, 0, 0, 0.62);
@@ -5434,7 +5460,10 @@ input[type='password'].text-input {
   font-size: 12px;
   color: var(--muted);
   text-align: center;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
 }
 .ftree.drop-root .ftree-root-drop {
   border-color: color-mix(in srgb, var(--accent) 65%, transparent);
@@ -5673,7 +5702,9 @@ input[type='password'].text-input {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .hday:hover {

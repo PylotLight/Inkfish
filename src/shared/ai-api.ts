@@ -108,7 +108,10 @@ function isHttpUrl(value: string): boolean {
  * Migration: settings saved before the Models list had only `model`; it becomes the list's first
  * entry. The active model is always in the list, and per-action ids that left the list are dropped.
  */
-export function parseAiSettings(value: unknown, fallback: AiProviderSettings = DEFAULT_AI_SETTINGS): AiProviderSettings {
+export function parseAiSettings(
+  value: unknown,
+  fallback: AiProviderSettings = DEFAULT_AI_SETTINGS
+): AiProviderSettings {
   const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const kind = AI_PROVIDER_KINDS.includes(raw.kind as AiProviderKind) ? (raw.kind as AiProviderKind) : fallback.kind
   const baseRaw = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim().replace(/\/+$/, '') : null
@@ -122,7 +125,8 @@ export function parseAiSettings(value: unknown, fallback: AiProviderSettings = D
       : fallback.models.map((m) => ({ ...m }))
   const modelRaw = typeof raw.model === 'string' ? raw.model.trim().slice(0, 200) : null
   // Empty = the provider's default model (as before the Models list).
-  const model = modelRaw === '' ? DEFAULT_MODEL[kind] : modelRaw || fallback.model || models[0]?.id || DEFAULT_MODEL[kind]
+  const model =
+    modelRaw === '' ? DEFAULT_MODEL[kind] : modelRaw || fallback.model || models[0]?.id || DEFAULT_MODEL[kind]
   if (!models.some((m) => m.id === model)) models.unshift({ id: model })
   const ids = new Set(models.map((m) => m.id))
   const actionRaw =
@@ -192,7 +196,8 @@ export function sniffImageMime(b: Uint8Array): string | null {
   if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
   if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif'
-  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45) return 'image/webp'
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45)
+    return 'image/webp'
   return null
 }
 

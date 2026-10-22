@@ -40,7 +40,9 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
     <div className="queue">
       <div className="pane-head">
         <h2>Inbox</h2>
-        <span className="pill" title={`${pending} waiting`}>{pending}</span>
+        <span className="pill" title={`${pending} waiting`}>
+          {pending}
+        </span>
       </div>
       {items.length === 0 && (
         <div className="empty">

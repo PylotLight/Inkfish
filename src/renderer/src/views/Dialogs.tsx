@@ -7,7 +7,12 @@ export interface MenuItem {
 }
 
 /** Floating right-click / ⋯ menu. Closes on click-away or Escape. */
-export function CtxMenu({ x, y, items, onClose }: {
+export function CtxMenu({
+  x,
+  y,
+  items,
+  onClose
+}: {
   x: number
   y: number
   items: MenuItem[]
@@ -46,7 +51,13 @@ export function CtxMenu({ x, y, items, onClose }: {
 }
 
 /** Small confirm dialog (delete). */
-export function ConfirmModal({ title, body, confirmLabel, onConfirm, onClose }: {
+export function ConfirmModal({
+  title,
+  body,
+  confirmLabel,
+  onConfirm,
+  onClose
+}: {
   title: string
   body: string
   confirmLabel: string
@@ -55,11 +66,18 @@ export function ConfirmModal({ title, body, confirmLabel, onConfirm, onClose }: 
 }): React.JSX.Element {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal glass strong confirm" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-label={title}>
+      <div
+        className="modal glass strong confirm"
+        onClick={(e) => e.stopPropagation()}
+        role="alertdialog"
+        aria-label={title}
+      >
         <h3>{title}</h3>
         <p className="muted">{body}</p>
         <div className="row end">
-          <button className="btn ghost sm" onClick={onClose}>Cancel</button>
+          <button className="btn ghost sm" onClick={onClose}>
+            Cancel
+          </button>
           <button
             className="btn danger sm"
             autoFocus
@@ -77,7 +95,14 @@ export function ConfirmModal({ title, body, confirmLabel, onConfirm, onClose }: 
 }
 
 /** Small text-input dialog (rename). */
-export function PromptModal({ title, initial, placeholder, confirmLabel, onSubmit, onClose }: {
+export function PromptModal({
+  title,
+  initial,
+  placeholder,
+  confirmLabel,
+  onSubmit,
+  onClose
+}: {
   title: string
   initial: string
   placeholder: string
@@ -108,7 +133,9 @@ export function PromptModal({ title, initial, placeholder, confirmLabel, onSubmi
           onFocus={(e) => e.target.select()}
         />
         <div className="row end">
-          <button className="btn ghost sm" onClick={onClose}>Cancel</button>
+          <button className="btn ghost sm" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn mint sm" disabled={!value.trim()} onClick={submit}>
             {confirmLabel}
           </button>

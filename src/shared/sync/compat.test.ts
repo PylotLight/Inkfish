@@ -115,7 +115,13 @@ function wire(macVersion?: PeerVersion, phoneSends: PeerVersion | null = SELF_VE
   const fetchFn: Fetch = async (url, init) => {
     const u = new URL(url)
     const h = init?.headers ?? {}
-    const meta = phoneSends === null ? undefined : { protocol: h[PROTOCOL_HEADER] && String(phoneSends.protocol), minPeer: h[MIN_PEER_HEADER] && String(phoneSends.minPeer) }
+    const meta =
+      phoneSends === null
+        ? undefined
+        : {
+            protocol: h[PROTOCOL_HEADER] && String(phoneSends.protocol),
+            minPeer: h[MIN_PEER_HEADER] && String(phoneSends.minPeer)
+          }
     const r = await handle(init?.method ?? 'GET', u.pathname, h[PEER_HEADER] ?? null, init?.body ?? '', meta)
     return { ok: r.status === 200, status: r.status, text: async () => r.body }
   }

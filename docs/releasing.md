@@ -3,11 +3,11 @@
 Releases are tag-driven and per app: the Mac app and the Android app each
 have their own tag series and workflow, so either can ship without the other.
 
-| app | tag | workflow |
-| --- | --- | --- |
-| desktop (Mac) | `vX.Y.Z` | `.github/workflows/release.yml` |
-| android | `android-vX.Y.Z` | `.github/workflows/android-release.yml` (never marked latest) |
-| either, test build | `vX.Y.Z-beta.N` / `android-vX.Y.Z-beta.N` | same workflows, as a GitHub pre-release |
+| app                | tag                                       | workflow                                                      |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------- |
+| desktop (Mac)      | `vX.Y.Z`                                  | `.github/workflows/release.yml`                               |
+| android            | `android-vX.Y.Z`                          | `.github/workflows/android-release.yml` (never marked latest) |
+| either, test build | `vX.Y.Z-beta.N` / `android-vX.Y.Z-beta.N` | same workflows, as a GitHub pre-release                       |
 
 ```bash
 bun scripts/release.ts                       # show what changed per app since its last tag, ask which to ship

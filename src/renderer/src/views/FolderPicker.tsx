@@ -2,11 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { baseOf, cleanFolderPath, dirOf, rankFolders } from '../../../shared/note-move'
 import { Icon } from './icons'
 
-type Row =
-  | { kind: 'root' }
-  | { kind: 'folder'; rel: string }
-  | { kind: 'create'; rel: string }
-  | { kind: 'new' }
+type Row = { kind: 'root' } | { kind: 'folder'; rel: string } | { kind: 'create'; rel: string } | { kind: 'new' }
 
 /**
  * "Move to…" popover: fuzzy search over the vault's folders, the vault root, and "New folder…"
@@ -14,7 +10,13 @@ type Row =
  * breadcrumb, the ⌘K palette and the tree's right-click menu.
  */
 export default function FolderPicker({
-  title, folders, current, x, y, onPick, onClose
+  title,
+  folders,
+  current,
+  x,
+  y,
+  onPick,
+  onClose
 }: {
   /** What's moving, for the header (`Move “Groceries” to…`). */
   title: string
@@ -111,13 +113,18 @@ export default function FolderPicker({
           onChange={(e) => setQuery(e.target.value)}
         />
         <div className="fp-list" ref={listRef} role="listbox">
-          {rows.length === 0 && <p className="muted small fp-empty">{creating ? 'Type a folder name' : 'No folders match'}</p>}
+          {rows.length === 0 && (
+            <p className="muted small fp-empty">{creating ? 'Type a folder name' : 'No folders match'}</p>
+          )}
           {rows.map((r, i) => {
             const off = disabled(r)
             const label =
-              r.kind === 'root' ? 'Vault root'
-                : r.kind === 'folder' ? baseOf(r.rel)
-                  : r.kind === 'create' ? `Create “${r.rel}”`
+              r.kind === 'root'
+                ? 'Vault root'
+                : r.kind === 'folder'
+                  ? baseOf(r.rel)
+                  : r.kind === 'create'
+                    ? `Create “${r.rel}”`
                     : 'New folder…'
             const sub = r.kind === 'folder' ? dirOf(r.rel) : ''
             return (

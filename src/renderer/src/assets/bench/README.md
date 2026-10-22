@@ -9,12 +9,12 @@ Source: LibriSpeech dev-clean, speaker 1272 (utterance ids in `sttBench.ts`).
 
 ## Deep
 
-| File | Length | What |
-| --- | --- | --- |
-| `aus-pilbara.flac` | 60 s | Australian English — Pilbara Minerals quarterly call (mining operations, figures, disfluent speech) |
-| `aus-syrah.flac` | 66 s | Australian English — Syrah Resources call (EV / graphite markets, many numbers) |
-| `aus-goldroad.flac` | 60 s | Australian English — Gold Road Resources call (finance, two speakers) |
-| `librispeech-other.flac` | 102 s | LibriSpeech test-other — 13 different speakers, harder read speech |
+| File                     | Length | What                                                                                                |
+| ------------------------ | ------ | --------------------------------------------------------------------------------------------------- |
+| `aus-pilbara.flac`       | 60 s   | Australian English — Pilbara Minerals quarterly call (mining operations, figures, disfluent speech) |
+| `aus-syrah.flac`         | 66 s   | Australian English — Syrah Resources call (EV / graphite markets, many numbers)                     |
+| `aus-goldroad.flac`      | 60 s   | Australian English — Gold Road Resources call (finance, two speakers)                               |
+| `librispeech-other.flac` | 102 s  | LibriSpeech test-other — 13 different speakers, harder read speech                                  |
 
 The earnings-call clips are consecutive segments from Earnings-22 with any segment marked `[inaudible]` left out,
 joined with 0.4 s gaps. Scoring spells out numbers and ignores fillers (uh, um) on both sides.

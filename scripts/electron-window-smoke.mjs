@@ -21,7 +21,12 @@ const electron = createRequire(import.meta.url)('electron')
 const userData = mkdtempSync(join(tmpdir(), 'inkfish-window-smoke-'))
 const port = 9300 + Math.floor(Math.random() * 500)
 // --inspect must come before the app path, or Electron hands it to the app as a plain arg.
-const args = [`--inspect=127.0.0.1:${port}`, join(root, 'out/main/index.js'), `--user-data-dir=${userData}`, '--no-sandbox']
+const args = [
+  `--inspect=127.0.0.1:${port}`,
+  join(root, 'out/main/index.js'),
+  `--user-data-dir=${userData}`,
+  '--no-sandbox'
+]
 if (process.platform === 'linux') args.push('--ozone-platform=headless')
 const child = spawn(electron, args, {
   cwd: root,
@@ -30,7 +35,8 @@ const child = spawn(electron, args, {
 })
 let log = ''
 const keep = (d) => {
-  for (const line of String(d).split('\n')) if (line.includes('[inkfish]') || line.includes('[window]') || line.includes('Error')) log += line + '\n'
+  for (const line of String(d).split('\n'))
+    if (line.includes('[inkfish]') || line.includes('[window]') || line.includes('Error')) log += line + '\n'
 }
 child.stdout.on('data', keep)
 child.stderr.on('data', keep)

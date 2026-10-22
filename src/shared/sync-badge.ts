@@ -97,7 +97,8 @@ export function emptyActivity(): PeerActivity {
 function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: number | null } {
   const a = p.activity ?? emptyActivity()
   const seen = Math.max(a.lastSeen ?? 0, p.lastSync ?? 0) || null
-  const sessionLive = a.inFlight > 0 || (a.sessionSince !== null && a.lastSeen !== null && now - a.lastSeen < SESSION_IDLE_MS)
+  const sessionLive =
+    a.inFlight > 0 || (a.sessionSince !== null && a.lastSeen !== null && now - a.lastSeen < SESSION_IDLE_MS)
   const errLive = a.lastError !== null && now - a.lastError.at < ERROR_MS && a.lastError.at >= (p.lastSync ?? 0)
   const online = seen !== null && now - seen < ONLINE_MS
   const old = a.outdated ?? null
@@ -113,7 +114,8 @@ function peerRow(p: BadgePeerInput, now: number): { row: BadgePeerRow; next: num
           : 'offline'
   const candidates: number[] = []
   if (outdatedLive && old) candidates.push(old.at + ERROR_MS)
-  if (a.inFlight === 0 && a.sessionSince !== null && a.lastSeen !== null && sessionLive) candidates.push(a.lastSeen + SESSION_IDLE_MS)
+  if (a.inFlight === 0 && a.sessionSince !== null && a.lastSeen !== null && sessionLive)
+    candidates.push(a.lastSeen + SESSION_IDLE_MS)
   if (errLive && a.lastError) candidates.push(a.lastError.at + ERROR_MS)
   if (online && seen !== null) candidates.push(seen + ONLINE_MS)
   const next = candidates.length ? Math.min(...candidates) : null
@@ -140,13 +142,20 @@ export function deriveSyncBadge(input: BadgeInput, now: number): SyncBadge {
   const built = input.peers.map((p) => peerRow(p, now))
   const peers = built.map((b) => b.row)
   const nexts = built.map((b) => b.next).filter((n): n is number => n !== null)
-  const lastSync = peers.reduce<number | null>((m, p) => (p.lastSync !== null && (m === null || p.lastSync > m) ? p.lastSync : m), null)
+  const lastSync = peers.reduce<number | null>(
+    (m, p) => (p.lastSync !== null && (m === null || p.lastSync > m) ? p.lastSync : m),
+    null
+  )
   const inFlight = peers.reduce((n, p) => n + p.inFlight, 0)
   const nextChangeAt = nexts.length ? Math.min(...nexts) : null
   const base = { lastSync, inFlight, peers, nextChangeAt }
 
   if (peers.length === 0) {
-    return { ...base, state: input.error ? 'error' : 'none', label: input.error ? `Sync unavailable — ${input.error}` : 'No paired devices' }
+    return {
+      ...base,
+      state: input.error ? 'error' : 'none',
+      label: input.error ? `Sync unavailable — ${input.error}` : 'No paired devices'
+    }
   }
   if (input.error || !input.running) {
     return { ...base, state: 'error', label: input.error ? `Sync unavailable — ${input.error}` : 'Sync is not running' }
@@ -159,13 +168,20 @@ export function deriveSyncBadge(input: BadgeInput, now: number): SyncBadge {
     return {
       ...base,
       state: 'outdated',
-      label: app === 'mac' ? `update Mac — ${names(who)} needs a newer Inkfish here to sync` : `update phone — ${names(who)} needs a newer Inkfish to sync`
+      label:
+        app === 'mac'
+          ? `update Mac — ${names(who)} needs a newer Inkfish here to sync`
+          : `update phone — ${names(who)} needs a newer Inkfish to sync`
     }
   }
   const syncing = peers.filter((p) => p.state === 'syncing')
   if (syncing.length) {
     const live = syncing.length === 1 ? syncing[0]!.progress : null
-    return { ...base, state: 'syncing', label: `Syncing with ${names(syncing)}…${live ? ` ${progressShort(live)}` : ''}` }
+    return {
+      ...base,
+      state: 'syncing',
+      label: `Syncing with ${names(syncing)}…${live ? ` ${progressShort(live)}` : ''}`
+    }
   }
   const errored = peers.filter((p) => p.state === 'error')
   if (errored.length) return { ...base, state: 'error', label: `Sync error with ${names(errored)}` }
@@ -177,7 +193,9 @@ export function deriveSyncBadge(input: BadgeInput, now: number): SyncBadge {
   return {
     ...base,
     state: 'offline',
-    label: lastSync ? `${plural(peers.length, 'device')} paired · not seen recently · last sync ${ago(lastSync, now)}` : `${plural(peers.length, 'device')} paired · never synced`
+    label: lastSync
+      ? `${plural(peers.length, 'device')} paired · not seen recently · last sync ${ago(lastSync, now)}`
+      : `${plural(peers.length, 'device')} paired · never synced`
   }
 }
 
@@ -210,7 +228,13 @@ export function trayTooltip(appName: string, b: SyncBadge): string {
 /** True when the badge changed in a way the UI should repaint for (ignores timestamps that only move "ago"). */
 export function badgeChanged(a: SyncBadge | null, b: SyncBadge): boolean {
   if (!a) return true
-  if (a.state !== b.state || a.inFlight !== b.inFlight || a.lastSync !== b.lastSync || a.peers.length !== b.peers.length) return true
+  if (
+    a.state !== b.state ||
+    a.inFlight !== b.inFlight ||
+    a.lastSync !== b.lastSync ||
+    a.peers.length !== b.peers.length
+  )
+    return true
   return a.peers.some((p, i) => {
     const q = b.peers[i]
     return (

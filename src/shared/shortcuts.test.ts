@@ -11,7 +11,11 @@ import {
 import { resolveProfile, shortcutsDisabled } from './profile'
 
 const DEFAULTS = { capture: 'Alt+Space', daily: 'Shift+Alt+Space' }
-const key = (code: string, mods: Partial<{ meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }> = {}, k = '') => ({
+const key = (
+  code: string,
+  mods: Partial<{ meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }> = {},
+  k = ''
+) => ({
   code,
   key: k,
   metaKey: !!mods.meta,
@@ -75,7 +79,10 @@ describe('parseShortcutSettings', () => {
     expect(parseShortcutSettings({ capture: 'Space', daily: 7 }, DEFAULTS)).toEqual(DEFAULTS)
   })
   test("'' turns one off, valid values are normalized", () => {
-    expect(parseShortcutSettings({ capture: 'ctrl+alt+n', daily: '' }, DEFAULTS)).toEqual({ capture: 'Control+Alt+N', daily: '' })
+    expect(parseShortcutSettings({ capture: 'ctrl+alt+n', daily: '' }, DEFAULTS)).toEqual({
+      capture: 'Control+Alt+N',
+      daily: ''
+    })
     expect(parseShortcutSettings({ capture: 'F13' }, DEFAULTS)).toEqual({ capture: 'F13', daily: DEFAULTS.daily })
   })
 })

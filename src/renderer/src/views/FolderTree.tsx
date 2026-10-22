@@ -66,11 +66,7 @@ const byTitle = (titleOf: (n: NoteEntry) => string) => (a: NoteEntry, b: NoteEnt
   titleOf(a).localeCompare(titleOf(b))
 
 /** Build a nested dir tree with files attached — Obsidian-style. */
-export function buildTree(
-  notes: NoteEntry[],
-  titleOf: (n: NoteEntry) => string,
-  sort: TreeSort = 'name'
-): TreeData {
+export function buildTree(notes: NoteEntry[], titleOf: (n: NoteEntry) => string, sort: TreeSort = 'name'): TreeData {
   interface Mutable {
     name: string
     rel: string
@@ -217,8 +213,14 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
  *  itself is bare text (Obsidian-style): no per-file icons. */
 function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
   const common = {
-    width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none',
-    stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round'
+    width: 14,
+    height: 14,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round'
   } as const
   if (kind === 'voice') {
     return (
@@ -255,8 +257,23 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
-  notes, kind, titleOf, selectedId, selectedPath, results, revealDir,
-  onOpenFile, onPickDir, onMenu, onNewNote, onNewFolder, targetDir, filters, onMove, rowActions, captureKey = '⌥Space'
+  notes,
+  kind,
+  titleOf,
+  selectedId,
+  selectedPath,
+  results,
+  revealDir,
+  onOpenFile,
+  onPickDir,
+  onMenu,
+  onNewNote,
+  onNewFolder,
+  targetDir,
+  filters,
+  onMove,
+  rowActions,
+  captureKey = '⌥Space'
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const [sort, setSort] = useState<TreeSort>(loadSort)
@@ -307,10 +324,7 @@ function FolderTree({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealDir])
 
-  const visible = useMemo(
-    () => (kind === 'all' ? notes : notes.filter((n) => n.kind === kind)),
-    [notes, kind]
-  )
+  const visible = useMemo(() => (kind === 'all' ? notes : notes.filter((n) => n.kind === kind)), [notes, kind])
   const tree = useMemo(() => buildTree(visible, titleOf, sort), [visible, titleOf, sort])
   const dirRels = useMemo(() => allDirRels(tree), [tree])
   const anyOpen = dirRels.some((r) => !collapsed.has(r))
@@ -464,84 +478,99 @@ function FolderTree({
   if (results !== null) {
     return (
       <>
-      {toolbar}
-      {filters}
-      <div className="ftree" aria-label="Search results">
-        {results.length === 0 && <p className="muted small pad">No matches.</p>}
-        {results.map((n) => (
-          <FileRow
-            key={n.id}
-            entry={n}
-            title={titleOf(n)}
-            selected={selectedId === n.id}
-            onOpen={() => onOpenFile(n.id)}
-            onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
-            actions={rowActions}
-          />
-        ))}
-      </div>
+        {toolbar}
+        {filters}
+        <div className="ftree" aria-label="Search results">
+          {results.length === 0 && <p className="muted small pad">No matches.</p>}
+          {results.map((n) => (
+            <FileRow
+              key={n.id}
+              entry={n}
+              title={titleOf(n)}
+              selected={selectedId === n.id}
+              onOpen={() => onOpenFile(n.id)}
+              onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
+              actions={rowActions}
+            />
+          ))}
+        </div>
       </>
     )
   }
 
   return (
     <>
-    {toolbar}
-    {filters}
-    <div
-      ref={treeRef}
-      className={`ftree${dragging ? ' dragging' : ''}${dropDir === '' ? ' drop-root' : ''}`}
-      aria-label="Folders"
-      onDragOverCapture={onDragScroll}
-      onDragOver={dnd ? (e) => dnd.over(e, '') : undefined}
-      onDrop={dnd ? (e) => dnd.drop(e, '') : undefined}
-      onDragLeave={dnd ? (e) => {
-        if (!treeRef.current?.contains(e.relatedTarget as Node | null)) setDropDir(null)
-      } : undefined}
-    >
-      {tree.roots.map((n) => (
-        <Node
-          key={n.rel}
-          node={n}
-          titleOf={titleOf}
-          selectedId={selectedId}
-          collapsed={collapsed}
-          onToggle={toggle}
-          onPickDir={onPickDir}
-          onOpenFile={onOpenFile}
-          onMenu={onMenu}
-          dnd={dnd}
-          rowActions={rowActions}
-        />
-      ))}
-      {tree.rootFiles.map((n) => (
-        <FileRow
-          key={n.id}
-          entry={n}
-          title={titleOf(n)}
-          selected={selectedId === n.id}
-          bare
-          onOpen={() => onOpenFile(n.id)}
-          onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
-          dnd={dnd}
-          actions={rowActions}
-        />
-      ))}
-      {dragging && (
-        <div className="ftree-root-drop" aria-hidden>
-          Drop here to move to the vault root
-        </div>
-      )}
-      {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
-        <p className="muted small pad">Nothing here yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}</p>
-      )}
-    </div>
+      {toolbar}
+      {filters}
+      <div
+        ref={treeRef}
+        className={`ftree${dragging ? ' dragging' : ''}${dropDir === '' ? ' drop-root' : ''}`}
+        aria-label="Folders"
+        onDragOverCapture={onDragScroll}
+        onDragOver={dnd ? (e) => dnd.over(e, '') : undefined}
+        onDrop={dnd ? (e) => dnd.drop(e, '') : undefined}
+        onDragLeave={
+          dnd
+            ? (e) => {
+                if (!treeRef.current?.contains(e.relatedTarget as Node | null)) setDropDir(null)
+              }
+            : undefined
+        }
+      >
+        {tree.roots.map((n) => (
+          <Node
+            key={n.rel}
+            node={n}
+            titleOf={titleOf}
+            selectedId={selectedId}
+            collapsed={collapsed}
+            onToggle={toggle}
+            onPickDir={onPickDir}
+            onOpenFile={onOpenFile}
+            onMenu={onMenu}
+            dnd={dnd}
+            rowActions={rowActions}
+          />
+        ))}
+        {tree.rootFiles.map((n) => (
+          <FileRow
+            key={n.id}
+            entry={n}
+            title={titleOf(n)}
+            selected={selectedId === n.id}
+            bare
+            onOpen={() => onOpenFile(n.id)}
+            onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
+            dnd={dnd}
+            actions={rowActions}
+          />
+        ))}
+        {dragging && (
+          <div className="ftree-root-drop" aria-hidden>
+            Drop here to move to the vault root
+          </div>
+        )}
+        {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
+          <p className="muted small pad">
+            Nothing here yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}
+          </p>
+        )}
+      </div>
     </>
   )
 }
 
 function Node({
-  node, titleOf, selectedId, collapsed, onToggle, onPickDir, onOpenFile, onMenu, dnd, rowActions
+  node,
+  titleOf,
+  selectedId,
+  collapsed,
+  onToggle,
+  onPickDir,
+  onOpenFile,
+  onMenu,
+  dnd,
+  rowActions
 }: {
   node: TreeNode
   titleOf: (n: NoteEntry) => string
@@ -590,7 +619,9 @@ function Node({
           title={`${node.rel} — toggle / set as target`}
         >
           <span className="fname">{node.name}</span>
-          <span className="fcount" title={`${node.total} notes in subtree`}>{node.total}</span>
+          <span className="fcount" title={`${node.total} notes in subtree`}>
+            {node.total}
+          </span>
         </button>
       </div>
       {open && (
@@ -633,7 +664,14 @@ function Node({
 }
 
 export function FileRow({
-  entry, title, selected, bare, onOpen, onMenu, dnd, actions
+  entry,
+  title,
+  selected,
+  bare,
+  onOpen,
+  onMenu,
+  dnd,
+  actions
 }: {
   entry: NoteEntry
   title: string
@@ -660,7 +698,9 @@ export function FileRow({
       <div ref={wrapRef} className={`filerow-wrap renaming${selected ? ' on' : ''}`} data-note-id={entry.id}>
         <div className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}>
           {!bare && (
-            <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+            <span className="ficon" aria-hidden>
+              <KindGlyph kind={entry.kind} />
+            </span>
           )}
           <InlineRename rel={entry.path} onDone={(v) => actions.endRename(entry, v)} />
         </div>
@@ -669,7 +709,11 @@ export function FileRow({
   }
 
   return (
-    <div ref={wrapRef} className={`filerow-wrap${selected ? ' on' : ''}${actions ? ' has-acts' : ''}`} data-note-id={entry.id}>
+    <div
+      ref={wrapRef}
+      className={`filerow-wrap${selected ? ' on' : ''}${actions ? ' has-acts' : ''}`}
+      data-note-id={entry.id}
+    >
       <button
         className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
         onClick={(e) => {
@@ -702,7 +746,9 @@ export function FileRow({
         title={tip}
       >
         {!bare && (
-          <span className="ficon" aria-hidden><KindGlyph kind={entry.kind} /></span>
+          <span className="ficon" aria-hidden>
+            <KindGlyph kind={entry.kind} />
+          </span>
         )}
         <span className="ftext">
           <span className="fname">{title}</span>

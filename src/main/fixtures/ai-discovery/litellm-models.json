@@ -1,1 +1,9 @@
-{ "data": [ { "id": "gpt-6.1-sol", "object": "model", "owned_by": "openai" }, { "id": "claude-sonnet", "object": "model" }, { "id": "local-mystery", "object": "model" }, { "id": "embed-small", "object": "model" } ], "object": "list" }
+{
+  "data": [
+    { "id": "gpt-6.1-sol", "object": "model", "owned_by": "openai" },
+    { "id": "claude-sonnet", "object": "model" },
+    { "id": "local-mystery", "object": "model" },
+    { "id": "embed-small", "object": "model" }
+  ],
+  "object": "list"
+}

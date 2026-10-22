@@ -56,7 +56,7 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
     green: (s) => paint('32', s),
     cyan: (s) => paint('36', s),
     yellow: (s) => paint('33', s),
-    red: (s) => paint('31', s),
+    red: (s) => paint('31', s)
   }
   const width = () => Math.max(40, Math.min(stream.columns || 80, 120))
   const clip = (s, max = width() - 2) => (s.length > max ? s.slice(0, max - 1) + '…' : s)
@@ -68,7 +68,10 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
   let timer = null
 
   function hideCursor() {
-    if (interactive && !cursorHidden) { write(`${ESC}?25l`); cursorHidden = true }
+    if (interactive && !cursorHidden) {
+      write(`${ESC}?25l`)
+      cursorHidden = true
+    }
   }
   function clearLive() {
     if (!interactive || liveLines === 0) return
@@ -81,14 +84,19 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
   function drawLive(lines) {
     hideCursor()
     let s = ''
-    lines.forEach((line, i) => { s += `${i ? '\n' : '\r'}${ESC}2K${line}` })
+    lines.forEach((line, i) => {
+      s += `${i ? '\n' : '\r'}${ESC}2K${line}`
+    })
     // back to the first line so the next draw overwrites in place
     for (let i = 1; i < lines.length; i++) s += `${ESC}1A`
     write(s + '\r')
     liveLines = lines.length
   }
   function stopTimer() {
-    if (timer) { clearInterval(timer); timer = null }
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
   }
 
   const ui = {
@@ -100,12 +108,24 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
       clearLive()
       write(text + '\n')
     },
-    info(text) { ui.line(interactive ? `  ${c.dim(text)}` : text) },
-    header(text) { ui.line(interactive ? `${c.cyan('◆')} ${c.bold(text)}` : text) },
-    step(text) { ui.line(interactive ? `  ${c.green('✓')} ${text}` : `ok: ${text}`) },
-    next(text) { ui.line(interactive ? `  ${c.cyan('→')} ${text}` : `-> ${text}`) },
-    warn(text) { ui.line(interactive ? `  ${c.yellow('!')} ${text}` : `warning: ${text}`) },
-    error(text) { ui.line(interactive ? `${c.red('✗')} ${text}` : `error: ${text}`) },
+    info(text) {
+      ui.line(interactive ? `  ${c.dim(text)}` : text)
+    },
+    header(text) {
+      ui.line(interactive ? `${c.cyan('◆')} ${c.bold(text)}` : text)
+    },
+    step(text) {
+      ui.line(interactive ? `  ${c.green('✓')} ${text}` : `ok: ${text}`)
+    },
+    next(text) {
+      ui.line(interactive ? `  ${c.cyan('→')} ${text}` : `-> ${text}`)
+    },
+    warn(text) {
+      ui.line(interactive ? `  ${c.yellow('!')} ${text}` : `warning: ${text}`)
+    },
+    error(text) {
+      ui.line(interactive ? `${c.red('✗')} ${text}` : `error: ${text}`)
+    },
 
     /**
      * Download progress. Call update(received, total) as bytes arrive, done() at the end.
@@ -125,7 +145,10 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
       }
       if (interactive) {
         draw()
-        timer = setInterval(() => { rot++; draw() }, rotateMs)
+        timer = setInterval(() => {
+          rot++
+          draw()
+        }, rotateMs)
         timer.unref?.()
       } else {
         ui.line(label)
@@ -136,7 +159,10 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
           if (Number.isFinite(totalBytes) && totalBytes > 0) total = totalBytes
           if (interactive) {
             const t = now()
-            if (t - lastDraw >= 80) { lastDraw = t; draw() }
+            if (t - lastDraw >= 80) {
+              lastDraw = t
+              draw()
+            }
           } else if (Number.isFinite(total)) {
             const pct = Math.floor((received / total) * 100)
             if (pct >= lastPlainPct + 10) {
@@ -150,27 +176,36 @@ export function createUI({ stream = process.stderr, env = process.env, now = Dat
           stopTimer()
           clearLive()
           return { elapsedMs: now() - started, received }
-        },
+        }
       }
     },
 
     /** A spinner line for a short task; returns stop(). Plain mode prints the label once. */
     spinner(label) {
-      if (!interactive) { ui.line(`${label}...`); return () => {} }
+      if (!interactive) {
+        ui.line(`${label}...`)
+        return () => {}
+      }
       let i = 0
       const draw = () => drawLive([`  ${c.cyan(SPINNER[i++ % SPINNER.length] ?? '')} ${label}`])
       draw()
       const t = setInterval(draw, 80)
       t.unref?.()
-      return () => { clearInterval(t); clearLive() }
+      return () => {
+        clearInterval(t)
+        clearLive()
+      }
     },
 
     /** Put the terminal back (cursor, live region). Safe to call more than once. */
     restore() {
       stopTimer()
       clearLive()
-      if (cursorHidden) { write(`${ESC}?25h`); cursorHidden = false }
-    },
+      if (cursorHidden) {
+        write(`${ESC}?25h`)
+        cursorHidden = false
+      }
+    }
   }
   return ui
 }

@@ -9,7 +9,14 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const files: string[] = pkg.build.files
 
 const globToRe = (g: string): RegExp =>
-  new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(.*/)?').replace(/\*/g, '[^/]*') + '$')
+  new RegExp(
+    '^' +
+      g
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*\//g, '(.*/)?')
+        .replace(/\*/g, '[^/]*') +
+      '$'
+  )
 
 describe('tray icon assets get packaged', () => {
   for (const f of ['assets/trayTemplate.png', 'assets/trayTemplate@2x.png', 'assets/tray.png']) {

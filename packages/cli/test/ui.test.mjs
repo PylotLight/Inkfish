@@ -2,7 +2,15 @@ import { describe, expect, test } from 'bun:test'
 import { createUI, detectMode, progressLine, rotationLines } from '../lib/ui.mjs'
 
 const sink = (isTTY) => {
-  const out = { chunks: [], isTTY, columns: 100, write(s) { out.chunks.push(s); return true } }
+  const out = {
+    chunks: [],
+    isTTY,
+    columns: 100,
+    write(s) {
+      out.chunks.push(s)
+      return true
+    }
+  }
   return out
 }
 const ANSI = /\x1b\[/
@@ -28,7 +36,10 @@ describe('non-TTY output', () => {
     const ui = createUI({ stream: out, env: {}, now: () => t })
     ui.header('Inkfish v0.2.10')
     const bar = ui.progress({ rotation: ['a', 'b'], label: 'downloading https://x/y.zip' })
-    for (let i = 1; i <= 100; i++) { t += 50; bar.update(i * 1024 * 1024, 100 * 1024 * 1024) }
+    for (let i = 1; i <= 100; i++) {
+      t += 50
+      bar.update(i * 1024 * 1024, 100 * 1024 * 1024)
+    }
     bar.done()
     ui.step('downloaded 100.0 MB')
     ui.spinner('unpacking')()
@@ -59,7 +70,8 @@ describe('interactive output', () => {
     let t = 0
     const ui = createUI({ stream: out, env: {}, now: () => t, rotateMs: 1e9 })
     const bar = ui.progress({ rotation: ['Fetching Inkfish'], label: '' })
-    t += 1000; bar.update(50 * 1024 * 1024, 100 * 1024 * 1024)
+    t += 1000
+    bar.update(50 * 1024 * 1024, 100 * 1024 * 1024)
     bar.done()
     ui.step('downloaded')
     ui.restore()
@@ -75,7 +87,10 @@ describe('interactive output', () => {
     out.columns = 50
     const ui = createUI({ stream: out, env: { NO_COLOR: '1' }, rotateMs: 1e9 })
     ui.progress({ rotation: ['x'.repeat(200)], label: '' }).done()
-    const tipLine = out.chunks.join('').split(/[\r\n]/).find((l) => l.includes('› '))
+    const tipLine = out.chunks
+      .join('')
+      .split(/[\r\n]/)
+      .find((l) => l.includes('› '))
     expect(tipLine.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').length).toBeLessThanOrEqual(50)
     expect(tipLine).toContain('…')
   })

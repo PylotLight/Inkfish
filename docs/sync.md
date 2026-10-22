@@ -11,8 +11,8 @@ tested TypeScript (`src/shared/sync/`):
 - **Mac** (`src/main/sync.ts`) listens on port 47821 (0.0.0.0). It only
   serves files and applies changes; it never initiates.
 - **Phone** (`android/src/lib/syncing.tsx`) drives every session: launch,
-  foreground, ~4 s after local edits, going to background, and *Sync now*.
-- **Pairing**: Mac › Settings › Sync › *Show pairing code* → QR
+  foreground, ~4 s after local edits, going to background, and _Sync now_.
+- **Pairing**: Mac › Settings › Sync › _Show pairing code_ → QR
   `inkfish://pair?d=…` with Mac id, name, LAN IPs, port, a fresh 32-byte
   key and a 5-minute expiry. The phone scans (`expo-camera`), proves the key
   on `/v1/pair`, and that key becomes the phone's sync key. One code, one
@@ -75,7 +75,6 @@ tested TypeScript (`src/shared/sync/`):
 iroh (below) stays the plan for away-from-home sync; the engine, merge rules
 and files don't change, only the transport under `Remote`.
 
-
 **Decision (2026-10-08): v1 is LAN only.** No relays of any kind — iroh runs with
 relays disabled and local discovery (mDNS) only, so the phone syncs when it's
 on the same network as the Mac. External access (custom relay, tunnel such as
@@ -95,12 +94,12 @@ Tailscale / Cloudflare Tunnel, or n0 public relays) is a later phase.
 Two devices behind home/mobile NAT can't find each other with literally zero
 third parties. Something has to broker the first packet. The options are:
 
-| Option | Who runs it | What it sees | Works away from home |
-| --- | --- | --- | --- |
-| LAN only (mDNS) | nobody | nothing | no |
-| Public relay (n0's free iroh relays) | number0 | encrypted QUIC only, never content | yes |
-| Your own relay (`iroh-relay` on a VPS / home box / Tailscale) | you | encrypted QUIC only | yes |
-| Relay **inside the Mac app** | you | nothing new | only if the Mac is publicly reachable (port-forward / Tailscale Funnel) |
+| Option                                                        | Who runs it | What it sees                       | Works away from home                                                    |
+| ------------------------------------------------------------- | ----------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| LAN only (mDNS)                                               | nobody      | nothing                            | no                                                                      |
+| Public relay (n0's free iroh relays)                          | number0     | encrypted QUIC only, never content | yes                                                                     |
+| Your own relay (`iroh-relay` on a VPS / home box / Tailscale) | you         | encrypted QUIC only                | yes                                                                     |
+| Relay **inside the Mac app**                                  | you         | nothing new                        | only if the Mac is publicly reachable (port-forward / Tailscale Funnel) |
 
 The relay is only used to hole-punch and as a fallback pipe. iroh upgrades to a
 direct UDP path whenever the network allows (most home routers do), so in
@@ -111,13 +110,14 @@ mDNS local discovery; the pairing ticket carries only LAN addresses. Nothing
 leaves the network.
 
 **Later — external / tunnel support** (Settings › Sync › Away from home):
-- *Tunnel*: Mac reachable through Tailscale (tailnet IP / MagicDNS) or a
+
+- _Tunnel_: Mac reachable through Tailscale (tailnet IP / MagicDNS) or a
   Cloudflare/ngrok-style tunnel; phone dials the Mac's tunnel address directly.
   Simplest for a personal setup, no relay needed.
-- *Custom relay*: user's own `iroh-relay` (VPS/home server) added to the RelayMap.
-- *Public relay*: n0 preset, opt-in only.
-An "inbuilt relay" on the Mac only helps when the Mac is publicly reachable,
-which the tunnel option already covers.
+- _Custom relay_: user's own `iroh-relay` (VPS/home server) added to the RelayMap.
+- _Public relay_: n0 preset, opt-in only.
+  An "inbuilt relay" on the Mac only helps when the Mac is publicly reachable,
+  which the tunnel option already covers.
 
 ## Transport: iroh 1.0
 
@@ -128,7 +128,7 @@ both our runtimes:
   binary, Node ≥ 20.3. napi is ABI-stable, so no electron-rebuild per Electron bump.
 - **Android:** `computer.iroh:iroh` on Maven Central (uniffi Kotlin). Wrapped in
   a small **Expo Module** (Kotlin) that exposes `bind / connect(ticket) /
-  accept / openBi / read / write / close` to JS. Needs the dev-client/APK build
+accept / openBi / read / write / close` to JS. Needs the dev-client/APK build
   we already have (not Expo Go).
 
 Why iroh: dial by public key (not IP), QUIC + TLS 1.3 to that key, hole punching,
@@ -177,14 +177,14 @@ A sync session:
 
 ### Merge rules
 
-| File | Rule |
-| --- | --- |
-| Notes `.md` | Frontmatter merged per key (newest `updated` wins per key; `tags` = union). Body: three-way diff3 (`node-diff3`, pure JS — runs in Electron and Hermes). Clean merge → write it. Overlap → keep ours, write theirs as `Title (conflict · Pixel · 2026-10-08 09:14).md` next to it, and flag it in Inbox. |
-| `daily/YYYY-MM-DD.md` | Append-only log: union of `## HH:MM` sections, dedupe identical, sort by time. Never conflicts. |
-| `inbox/<id>.md` | Ids are unique per capture; status changes are frontmatter-only → per-key merge. |
-| `assets/**` | Immutable, unique names → never conflict. |
-| Folders | Implicit from paths; a rename is delete + add of the same hash, detected and applied as a move. |
-| Renamed notes | A rename that also changed the note (Mac title → filename, edit + sidebar rename) is "X gone, Y new" with different hashes. The phone pairs those by text (same front matter `id`, else the same body with the title line ignored; ties stay unpaired) and applies a move plus a pull/push — or, when the other side edited X meanwhile, a move plus a three-way merge at Y (conflict copy on overlap). Planner-side only (`renames.ts`): the Mac just sees normal `moves` + `writes`, so any Mac build works. |
+| File                  | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Notes `.md`           | Frontmatter merged per key (newest `updated` wins per key; `tags` = union). Body: three-way diff3 (`node-diff3`, pure JS — runs in Electron and Hermes). Clean merge → write it. Overlap → keep ours, write theirs as `Title (conflict · Pixel · 2026-10-08 09:14).md` next to it, and flag it in Inbox.                                                                                                                                                                                                       |
+| `daily/YYYY-MM-DD.md` | Append-only log: union of `## HH:MM` sections, dedupe identical, sort by time. Never conflicts.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `inbox/<id>.md`       | Ids are unique per capture; status changes are frontmatter-only → per-key merge.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `assets/**`           | Immutable, unique names → never conflict.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Folders               | Implicit from paths; a rename is delete + add of the same hash, detected and applied as a move.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Renamed notes         | A rename that also changed the note (Mac title → filename, edit + sidebar rename) is "X gone, Y new" with different hashes. The phone pairs those by text (same front matter `id`, else the same body with the title line ignored; ties stay unpaired) and applies a move plus a pull/push — or, when the other side edited X meanwhile, a move plus a three-way merge at Y (conflict copy on overlap). Planner-side only (`renames.ts`): the Mac just sees normal `moves` + `writes`, so any Mac build works. |
 
 Why not a CRDT (Loro/Automerge) now: they need native or WASM bindings in
 Hermes, and they want to own the document — a second source of truth next to
@@ -225,7 +225,7 @@ in a folder you choose" later.
 
 ## Open questions
 
-- Should the phone be able to sync with *several* Macs (work + home)? The
+- Should the phone be able to sync with _several_ Macs (work + home)? The
   design supports N peers; UI would list them.
 - Transcription: Android voice memos still transcribe on Mac after sync — Mac
   could write the transcript back into the inbox item so the phone sees it.

@@ -211,7 +211,10 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
     return () => window.clearTimeout(t)
   }, [flash])
 
-  const stale = useMemo(() => (entry && mode !== 'raw' ? entry.rawHash !== contentHash(text) : false), [entry, mode, text])
+  const stale = useMemo(
+    () => (entry && mode !== 'raw' ? entry.rawHash !== contentHash(text) : false),
+    [entry, mode, text]
+  )
 
   const processNote = useCallback(async (): Promise<void> => {
     if (action === 'custom' && !instruction.trim()) {
@@ -480,26 +483,39 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
                   Stale
                 </span>
               )}
-              <button className="btn ghost sm" onClick={applyToNote} title="Replace the note with this version (⌘Z undoes)">
+              <button
+                className="btn ghost sm"
+                onClick={applyToNote}
+                title="Replace the note with this version (⌘Z undoes)"
+              >
                 Apply to note
               </button>
               <button className="btn ghost sm" onClick={copy}>
                 Copy
               </button>
-              <button className="btn ghost sm icon" onClick={discard} title="Discard the processed version" aria-label="Discard">
+              <button
+                className="btn ghost sm icon"
+                onClick={discard}
+                title="Discard the processed version"
+                aria-label="Discard"
+              >
                 ⌫
               </button>
             </>
           )}
-          <button className="btn ghost sm icon ai-close" onClick={() => setMode('raw')} title="Back to raw (⇧⌥P)" aria-label="Close processed view">
+          <button
+            className="btn ghost sm icon ai-close"
+            onClick={() => setMode('raw')}
+            title="Back to raw (⇧⌥P)"
+            aria-label="Close processed view"
+          >
             ×
           </button>
         </div>
       )}
       {mode !== 'raw' && run.state === 'error' && (
         <p className="small error-text ai-error">
-          {run.message}{' '}
-          {run.details && <CopyDetails text={run.details} />}
+          {run.message} {run.details && <CopyDetails text={run.details} />}
           {run.connect && (
             <button className="btn ghost sm" onClick={openAiSettings}>
               Open Settings › AI
@@ -512,7 +528,8 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
       )}
       {mode !== 'raw' && entry && !running && entry.warnings.length > 0 && (
         <p className="small muted ai-warn">
-          Dropped {entry.warnings.length} image/link ref{entry.warnings.length > 1 ? 's' : ''}: {entry.warnings.slice(0, 3).join(', ')}
+          Dropped {entry.warnings.length} image/link ref{entry.warnings.length > 1 ? 's' : ''}:{' '}
+          {entry.warnings.slice(0, 3).join(', ')}
         </p>
       )}
       <div className={`ed-body ai-${mode}`}>
@@ -578,8 +595,7 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
           )}
           {pop.phase === 'error' && (
             <p className="small error-text">
-              {pop.error}{' '}
-              {pop.errorDetails && <CopyDetails text={pop.errorDetails} />}
+              {pop.error} {pop.errorDetails && <CopyDetails text={pop.errorDetails} />}
               {pop.connect && (
                 <button className="btn ghost sm" onClick={openAiSettings}>
                   Open Settings › AI

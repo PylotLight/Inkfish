@@ -37,7 +37,16 @@ export interface ModelMeta {
   endpoint?: AiEndpoint
 }
 
-export const META_FIELDS = ['name', 'contextWindow', 'maxOutputTokens', 'reasoningLevels', 'input', 'output', 'toolCalls', 'endpoint'] as const
+export const META_FIELDS = [
+  'name',
+  'contextWindow',
+  'maxOutputTokens',
+  'reasoningLevels',
+  'input',
+  'output',
+  'toolCalls',
+  'endpoint'
+] as const
 export type MetaField = (typeof META_FIELDS)[number]
 
 export interface AiModel extends ModelMeta {
@@ -137,7 +146,8 @@ export function parseModel(v: unknown): AiModel | null {
   const id = typeof raw.id === 'string' ? raw.id.trim().slice(0, 200) : ''
   if (!id) return null
   const model: AiModel = { id, ...parseMeta(raw) }
-  if (typeof raw.reasoning === 'string' && raw.reasoning.trim()) model.reasoning = raw.reasoning.trim().toLowerCase().slice(0, 32)
+  if (typeof raw.reasoning === 'string' && raw.reasoning.trim())
+    model.reasoning = raw.reasoning.trim().toLowerCase().slice(0, 32)
   if (raw.api === 'chat' || raw.api === 'responses') model.api = raw.api
   if (raw.detected && typeof raw.detected === 'object') model.detected = parseMeta(raw.detected)
   if (Array.isArray(raw.edited)) {
@@ -179,7 +189,11 @@ function pickMeta(src: ModelMeta): ModelMeta {
  * their value unless `force`; with `force` the edits are dropped and detected values win. A field
  * discovery did not report keeps its current value either way.
  */
-export function applyDetection(existing: AiModel | undefined, found: DiscoveredModel, opts: { force?: boolean } = {}): AiModel {
+export function applyDetection(
+  existing: AiModel | undefined,
+  found: DiscoveredModel,
+  opts: { force?: boolean } = {}
+): AiModel {
   const detected = pickMeta(found)
   if (!existing) return { id: found.id, ...detected, detected }
   const edited = opts.force ? [] : (existing.edited ?? [])
@@ -300,7 +314,11 @@ export function outputBudget(m: ModelMeta | null | undefined, promptTokens: numb
  * checklist) answer with about as much as they get, so the input also has to fit the output limit;
  * summarise / custom reserve a smaller answer. `undefined` = unlimited (nothing known).
  */
-export function inputBudget(m: ModelMeta | null | undefined, systemTokens: number, rewrite: boolean): number | undefined {
+export function inputBudget(
+  m: ModelMeta | null | undefined,
+  systemTokens: number,
+  rewrite: boolean
+): number | undefined {
   if (!m || (!m.contextWindow && !m.maxOutputTokens)) return undefined
   const ctx = m.contextWindow
   if (rewrite) {
@@ -382,7 +400,10 @@ export function untagImages(text: string): { text: string; dataUrls: string[] } 
  * The endpoint for a model: its own API setting, else the provider default; `auto` resolves to the
  * detected/learned endpoint, else Chat Completions. `auto: true` allows the one-time fallback.
  */
-export function resolveApi(m: AiModel | null | undefined, providerDefault: AiApi = 'auto'): { endpoint: AiEndpoint; auto: boolean } {
+export function resolveApi(
+  m: AiModel | null | undefined,
+  providerDefault: AiApi = 'auto'
+): { endpoint: AiEndpoint; auto: boolean } {
   const mode: AiApi = m?.api && m.api !== 'auto' ? m.api : providerDefault
   if (mode !== 'auto') return { endpoint: mode, auto: false }
   return { endpoint: m?.endpoint ?? 'chat', auto: true }

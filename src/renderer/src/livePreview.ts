@@ -826,7 +826,10 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       mark(starFrom + 1, sTo - 1, 'lp-em')
     }
     // `__bold__` / `_italic_` (underscore forms; same hide-markers + style as the `*` forms).
-    for (const [re, n, cls] of [[UNDER_BOLD_RE, 2, 'lp-bold'], [UNDER_ITALIC_RE, 1, 'lp-em']] as const) {
+    for (const [re, n, cls] of [
+      [UNDER_BOLD_RE, 2, 'lp-bold'],
+      [UNDER_ITALIC_RE, 1, 'lp-em']
+    ] as const) {
       for (const m of rest.matchAll(re)) {
         const prefix = m[1] ?? ''
         const inner = m[2] ?? ''

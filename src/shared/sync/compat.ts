@@ -83,7 +83,9 @@ export class SyncIncompatible extends Error {
   /** The app that needs updating. */
   readonly app: Side
   constructor(app: Side, detail = '') {
-    super(`${app === 'mac' ? 'Update Inkfish on the Mac' : 'Update Inkfish on this phone'} to keep syncing${detail ? ` (${detail})` : ''}`)
+    super(
+      `${app === 'mac' ? 'Update Inkfish on the Mac' : 'Update Inkfish on this phone'} to keep syncing${detail ? ` (${detail})` : ''}`
+    )
     this.name = 'SyncIncompatible'
     this.app = app
   }

@@ -14,7 +14,8 @@ import { createUI } from '../lib/ui.mjs'
 import { storeZip } from './zip-fixture.mjs'
 
 // the local server must not go through a runner/sandbox HTTP(S)_PROXY (bun's fetch honours them)
-for (const key of ['NO_PROXY', 'no_proxy']) process.env[key] = [process.env[key], '127.0.0.1', 'localhost'].filter(Boolean).join(',')
+for (const key of ['NO_PROXY', 'no_proxy'])
+  process.env[key] = [process.env[key], '127.0.0.1', 'localhost'].filter(Boolean).join(',')
 
 const hasZip = spawnSync('unzip', ['-v'], { stdio: 'ignore' }).status === 0
 const work = mkdtempSync(join(tmpdir(), 'cli-e2e-'))
@@ -24,7 +25,15 @@ let zipBytes = Buffer.alloc(0)
 let sha = ''
 
 const sink = () => {
-  const out = { chunks: [], isTTY: false, write(s) { out.chunks.push(s); return true }, text: () => out.chunks.join('') }
+  const out = {
+    chunks: [],
+    isTTY: false,
+    write(s) {
+      out.chunks.push(s)
+      return true
+    },
+    text: () => out.chunks.join('')
+  }
   return out
 }
 
@@ -33,23 +42,43 @@ beforeAll(async () => {
     { name: 'Inkfish.app/' },
     { name: 'Inkfish.app/Contents/' },
     { name: 'Inkfish.app/Contents/Info.plist', data: Buffer.from('<plist/>') },
-    { name: 'Inkfish.app/Contents/blob', data: Buffer.alloc(256 * 1024, 7) },
+    { name: 'Inkfish.app/Contents/blob', data: Buffer.alloc(256 * 1024, 7) }
   ])
   sha = createHash('sha256').update(zipBytes).digest('hex')
   server = createServer((req, res) => {
-    if (req.url === '/redirect') { res.writeHead(302, { Location: '/app.zip' }); res.end(); return }
-    if (req.url === '/app.zip') { res.writeHead(200, { 'Content-Length': zipBytes.length }); res.end(zipBytes); return }
-    res.writeHead(404); res.end()
+    if (req.url === '/redirect') {
+      res.writeHead(302, { Location: '/app.zip' })
+      res.end()
+      return
+    }
+    if (req.url === '/app.zip') {
+      res.writeHead(200, { 'Content-Length': zipBytes.length })
+      res.end(zipBytes)
+      return
+    }
+    res.writeHead(404)
+    res.end()
   })
   await new Promise((r) => server.listen(0, '127.0.0.1', r))
   base = `http://127.0.0.1:${server.address().port}`
 })
-afterAll(() => { server?.close(); rmSync(work, { recursive: true, force: true }) })
+afterAll(() => {
+  server?.close()
+  rmSync(work, { recursive: true, force: true })
+})
 
 describe('launcher', () => {
   test('unsupported platform prints a friendly message and exits 1', async () => {
     const err = sink()
-    const code = await run(config, { argv: [], packageVersion: '0.2.10', env: { HOME: work }, platform: 'win32', arch: 'x64', ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    const code = await run(config, {
+      argv: [],
+      packageVersion: '0.2.10',
+      env: { HOME: work },
+      platform: 'win32',
+      arch: 'x64',
+      ui: createUI({ stream: err, env: {} }),
+      stdout: sink()
+    })
     expect(code).toBe(1)
     expect(err.text()).toContain('There is no Windows build of Inkfish yet')
   })
@@ -58,7 +87,15 @@ describe('launcher', () => {
     const cacheDir = join(work, 'cache')
     const env = { INKFISH_CLI_CACHE_DIR: cacheDir, INKFISH_CLI_ASSET_URL: `${base}/redirect`, INKFISH_CLI_SHA256: sha }
     const err = sink()
-    const code = await run(config, { argv: ['--no-launch'], packageVersion: '0.2.10', env, platform: 'linux', arch: 'x64', ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    const code = await run(config, {
+      argv: ['--no-launch'],
+      packageVersion: '0.2.10',
+      env,
+      platform: 'linux',
+      arch: 'x64',
+      ui: createUI({ stream: err, env: {} }),
+      stdout: sink()
+    })
     expect(code).toBe(0)
     const text = err.text()
     expect(text).toContain('ok: downloaded')
@@ -70,15 +107,40 @@ describe('launcher', () => {
 
     // second run: cached, so no network at all; --path prints the bundle
     const out = sink()
-    const code2 = await run(config, { argv: ['--path'], packageVersion: '0.2.10', env: { INKFISH_CLI_CACHE_DIR: cacheDir }, platform: 'darwin', arch: 'arm64', ui: createUI({ stream: sink(), env: {} }), stdout: out, fetchImpl: () => { throw new Error('network used') } })
+    const code2 = await run(config, {
+      argv: ['--path'],
+      packageVersion: '0.2.10',
+      env: { INKFISH_CLI_CACHE_DIR: cacheDir },
+      platform: 'darwin',
+      arch: 'arm64',
+      ui: createUI({ stream: sink(), env: {} }),
+      stdout: out,
+      fetchImpl: () => {
+        throw new Error('network used')
+      }
+    })
     expect(code2).toBe(0)
     expect(out.text().trim()).toBe(join(cacheDir, '0.2.10', 'Inkfish.app'))
   })
 
   test.skipIf(!hasZip)('a checksum mismatch fails and leaves nothing in the cache', async () => {
     const cacheDir = join(work, 'cache-bad')
-    const env = { INKFISH_CLI_CACHE_DIR: cacheDir, INKFISH_CLI_ASSET_URL: `${base}/app.zip`, INKFISH_CLI_SHA256: 'a'.repeat(64) }
-    await expect(run(config, { argv: ['--no-launch'], packageVersion: '0.2.10', env, platform: 'linux', arch: 'x64', ui: createUI({ stream: sink(), env: {} }), stdout: sink() })).rejects.toThrow(/SHA-256 mismatch/)
+    const env = {
+      INKFISH_CLI_CACHE_DIR: cacheDir,
+      INKFISH_CLI_ASSET_URL: `${base}/app.zip`,
+      INKFISH_CLI_SHA256: 'a'.repeat(64)
+    }
+    await expect(
+      run(config, {
+        argv: ['--no-launch'],
+        packageVersion: '0.2.10',
+        env,
+        platform: 'linux',
+        arch: 'x64',
+        ui: createUI({ stream: sink(), env: {} }),
+        stdout: sink()
+      })
+    ).rejects.toThrow(/SHA-256 mismatch/)
     expect(readdirSync(cacheDir)).toEqual([])
   })
 
@@ -86,7 +148,15 @@ describe('launcher', () => {
     const cacheDir = join(work, 'cache-ditto')
     const env = { INKFISH_CLI_CACHE_DIR: cacheDir, INKFISH_CLI_ASSET_URL: `${base}/app.zip`, INKFISH_CLI_SHA256: sha }
     const err = sink()
-    const code = await run(config, { argv: ['--no-launch'], packageVersion: '0.2.10', env, platform: 'darwin', arch: 'arm64', ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    const code = await run(config, {
+      argv: ['--no-launch'],
+      packageVersion: '0.2.10',
+      env,
+      platform: 'darwin',
+      arch: 'arm64',
+      ui: createUI({ stream: err, env: {} }),
+      stdout: sink()
+    })
     expect(code).toBe(0)
     expect(err.text()).toContain('ok: unpacked with ditto')
     expect(existsSync(join(cacheDir, '0.2.10', 'Inkfish.app', 'Contents', 'Info.plist'))).toBe(true)
@@ -96,7 +166,13 @@ describe('launcher', () => {
     const cacheDir = join(work, 'inkfish-clear')
     mkdirSync(join(cacheDir, '0.1.0'), { recursive: true })
     const err = sink()
-    const code = await run(config, { argv: ['--clear-cache'], packageVersion: '0.2.10', env: { INKFISH_CLI_CACHE_DIR: cacheDir }, ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    const code = await run(config, {
+      argv: ['--clear-cache'],
+      packageVersion: '0.2.10',
+      env: { INKFISH_CLI_CACHE_DIR: cacheDir },
+      ui: createUI({ stream: err, env: {} }),
+      stdout: sink()
+    })
     expect(code).toBe(0)
     expect(existsSync(cacheDir)).toBe(false)
     expect(err.text()).toContain('ok: cleared')
@@ -109,7 +185,13 @@ describe('launcher', () => {
     mkdirSync(join(cacheDir, 'notes'), { recursive: true })
     writeFileSync(join(cacheDir, 'notes', 'keep.md'), 'mine')
     const err = sink()
-    const code = await run(config, { argv: ['--clear-cache'], packageVersion: '0.2.10', env: { INKFISH_CLI_CACHE_DIR: cacheDir }, ui: createUI({ stream: err, env: {} }), stdout: sink() })
+    const code = await run(config, {
+      argv: ['--clear-cache'],
+      packageVersion: '0.2.10',
+      env: { INKFISH_CLI_CACHE_DIR: cacheDir },
+      ui: createUI({ stream: err, env: {} }),
+      stdout: sink()
+    })
     expect(code).toBe(0)
     expect(readdirSync(cacheDir)).toEqual(['notes'])
     expect(readFileSync(join(cacheDir, 'notes', 'keep.md'), 'utf8')).toBe('mine')

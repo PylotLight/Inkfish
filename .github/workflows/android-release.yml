@@ -14,7 +14,7 @@ name: android-release
 on:
   push:
     tags:
-      - "android-v*"
+      - 'android-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -167,5 +167,5 @@ jobs:
           name: Android ${{ steps.v.outputs.version }}${{ steps.v.outputs.pre == 'true' && ' (test build)' || '' }}
           body_path: ANDROID_NOTES.md
           prerelease: ${{ steps.v.outputs.pre == 'true' }}
-          make_latest: "false"
+          make_latest: 'false'
           files: Inkfish-android-${{ steps.v.outputs.version }}.apk

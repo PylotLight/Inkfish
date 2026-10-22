@@ -2,12 +2,30 @@ import { useEffect, useState } from 'react'
 import type { MenuBarClick, MenuBarSettings as Settings } from '../../../shared/menubar'
 
 const CLICKS: Array<{ id: MenuBarClick; label: string; hint: string }> = [
-  { id: 'capture', label: 'Quick capture', hint: 'The capture popover drops out under the icon (same as the quick capture shortcut).' },
-  { id: 'today', label: "Add to today's note", hint: 'The capture popover, set to append to today’s note (same as its shortcut).' },
+  {
+    id: 'capture',
+    label: 'Quick capture',
+    hint: 'The capture popover drops out under the icon (same as the quick capture shortcut).'
+  },
+  {
+    id: 'today',
+    label: "Add to today's note",
+    hint: 'The capture popover, set to append to today’s note (same as its shortcut).'
+  },
   { id: 'window', label: 'Inkfish window', hint: 'Shows the main window; click again while it’s in front to hide it.' }
 ]
 
-function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange: (v: boolean) => void }): React.JSX.Element {
+function Switch({
+  on,
+  label,
+  disabled,
+  onChange
+}: {
+  on: boolean
+  label: string
+  disabled?: boolean
+  onChange: (v: boolean) => void
+}): React.JSX.Element {
   return (
     <button
       role="switch"
@@ -60,7 +78,12 @@ export default function MenuBarSettings(): React.JSX.Element {
             Off: reach Inkfish with its global shortcuts (Settings › Shortcuts){isMac ? ' and the Dock' : ''} only.
           </span>
         </span>
-        <Switch on={s?.showIcon ?? true} label={`Show ${where} icon`} disabled={!s} onChange={(v) => update({ showIcon: v })} />
+        <Switch
+          on={s?.showIcon ?? true}
+          label={`Show ${where} icon`}
+          disabled={!s}
+          onChange={(v) => update({ showIcon: v })}
+        />
       </div>
 
       <div className="setting-row stacked">
@@ -86,9 +109,16 @@ export default function MenuBarSettings(): React.JSX.Element {
         <div className="setting-row inline">
           <span className="setting-label">
             Drop the window under the icon
-            <span className="muted small setting-hint">Like a popover: the window opens anchored below the {where} icon.</span>
+            <span className="muted small setting-hint">
+              Like a popover: the window opens anchored below the {where} icon.
+            </span>
           </span>
-          <Switch on={s.anchorWindow} label="Drop the window under the icon" disabled={!s.showIcon} onChange={(v) => update({ anchorWindow: v })} />
+          <Switch
+            on={s.anchorWindow}
+            label="Drop the window under the icon"
+            disabled={!s.showIcon}
+            onChange={(v) => update({ anchorWindow: v })}
+          />
         </div>
       )}
 

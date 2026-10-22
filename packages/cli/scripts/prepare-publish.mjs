@@ -17,9 +17,15 @@ import { fetchRelease, targetFromRelease } from '../lib/release.mjs'
 
 const argv = process.argv.slice(2)
 const flag = (name) => argv.includes(name)
-const value = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined }
+const value = (name) => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
 const version = normalizeVersion(value('--version') ?? '')
-if (!version) { console.error('usage: prepare-publish.mjs --version X.Y.Z [--verify-download] [--allow-missing]'); process.exit(2) }
+if (!version) {
+  console.error('usage: prepare-publish.mjs --version X.Y.Z [--verify-download] [--allow-missing]')
+  process.exit(2)
+}
 
 const pkgUrl = new URL('../package.json', import.meta.url)
 const manifestUrl = new URL('../release.json', import.meta.url)
@@ -31,7 +37,11 @@ console.log(`${pkg.name} version -> ${version}`)
 const release = await fetchRelease(config, `v${version}`)
 const target = release ? await targetFromRelease(config, release) : null
 if (!target?.sha256) {
-  const why = !release ? `no GitHub release v${version}` : !target ? `release v${version} has no ${config.assetName(version)}` : `no digest for ${config.assetName(version)}`
+  const why = !release
+    ? `no GitHub release v${version}`
+    : !target
+      ? `release v${version} has no ${config.assetName(version)}`
+      : `no digest for ${config.assetName(version)}`
   rmSync(manifestUrl, { force: true })
   if (flag('--allow-missing')) {
     console.log(`::warning::${why}; packing without release.json (the launcher falls back to the GitHub API)`)
@@ -52,5 +62,8 @@ if (flag('--verify-download')) {
   }
 }
 
-writeFileSync(manifestUrl, JSON.stringify({ version, asset: target.assetName, sha256: target.sha256, size: target.size }, null, 2) + '\n')
+writeFileSync(
+  manifestUrl,
+  JSON.stringify({ version, asset: target.assetName, sha256: target.sha256, size: target.size }, null, 2) + '\n'
+)
 console.log(`release.json: ${target.assetName} sha256 ${target.sha256} (${target.checksumSource})`)

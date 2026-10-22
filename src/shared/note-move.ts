@@ -128,7 +128,10 @@ export function rankFolders(query: string, folders: readonly string[], limit = 5
     const s = Math.max(byName === null ? -Infinity : byName * 1.2, byPath ?? -Infinity)
     if (s > -Infinity) scored.push({ f, s })
   }
-  return scored.sort((a, b) => b.s - a.s || a.f.localeCompare(b.f)).slice(0, limit).map((x) => x.f)
+  return scored
+    .sort((a, b) => b.s - a.s || a.f.localeCompare(b.f))
+    .slice(0, limit)
+    .map((x) => x.f)
 }
 
 /** Breadcrumb segments for a note's folder: `Work/Images` → [{name:'Work',rel:'Work'}, …]. */
@@ -160,7 +163,8 @@ export interface LinkRewriteContext {
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i
 // `[text](dest "title")` / `![alt](<dest with spaces>)`. Dest allows one level of balanced parens.
-const LINK_RE = /(!?\[(?:[^\]\\\n]|\\.)*\])\((\s*)(<[^>\n]*>|(?:[^()\s]|\([^()\s]*\))+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*)\)/g
+const LINK_RE =
+  /(!?\[(?:[^\]\\\n]|\\.)*\])\((\s*)(<[^>\n]*>|(?:[^()\s]|\([^()\s]*\))+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*)\)/g
 
 function safeDecode(s: string): string {
   try {
@@ -212,7 +216,11 @@ function rewriteDest(rawDest: string, ctx: LinkRewriteContext): string | null {
   if (next === decoded) return null
   let out = next
   if (angle) return `<${out}${suffix}>`
-  if (encoded) out = out.split('/').map((s) => encodeURIComponent(s)).join('/')
+  if (encoded)
+    out = out
+      .split('/')
+      .map((s) => encodeURIComponent(s))
+      .join('/')
   else if (/\s/.test(out)) out = out.replace(/ /g, '%20')
   return out + suffix
 }

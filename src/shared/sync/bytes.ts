@@ -26,16 +26,25 @@ export function utf8Decode(b: Uint8Array): string {
     s += String.fromCharCode(...chunk)
     chunk.length = 0
   }
-  for (let i = 0; i < b.length; ) {
+  for (let i = 0; i < b.length;) {
     const x = b[i]!
     let c: number
-    if (x < 0x80) { c = x; i++ }
-    else if (x >> 5 === 6) { c = ((x & 31) << 6) | (b[i + 1]! & 63); i += 2 }
-    else if (x >> 4 === 14) { c = ((x & 15) << 12) | ((b[i + 1]! & 63) << 6) | (b[i + 2]! & 63); i += 3 }
-    else if (x >> 3 === 30) {
+    if (x < 0x80) {
+      c = x
+      i++
+    } else if (x >> 5 === 6) {
+      c = ((x & 31) << 6) | (b[i + 1]! & 63)
+      i += 2
+    } else if (x >> 4 === 14) {
+      c = ((x & 15) << 12) | ((b[i + 1]! & 63) << 6) | (b[i + 2]! & 63)
+      i += 3
+    } else if (x >> 3 === 30) {
       c = ((x & 7) << 18) | ((b[i + 1]! & 63) << 12) | ((b[i + 2]! & 63) << 6) | (b[i + 3]! & 63)
       i += 4
-    } else { c = 0xfffd; i++ }
+    } else {
+      c = 0xfffd
+      i++
+    }
     if (c >= 0x10000) {
       c -= 0x10000
       chunk.push(0xd800 + (c >> 10), 0xdc00 + (c & 1023))
@@ -60,7 +69,10 @@ export function toBase64(b: Uint8Array, url = false): string {
     s += A[(n >> 18) & 63]! + A[(n >> 12) & 63]!
     s += i + 1 < b.length ? A[(n >> 6) & 63]! : '='
     s += i + 2 < b.length ? A[n & 63]! : '='
-    if (s.length > 16384) { parts.push(s); s = '' }
+    if (s.length > 16384) {
+      parts.push(s)
+      s = ''
+    }
   }
   parts.push(s)
   const out = parts.join('')
@@ -70,7 +82,9 @@ export function toBase64(b: Uint8Array, url = false): string {
 export function fromBase64(s: string): Uint8Array {
   const clean = s.replace(/[\s=]/g, '')
   const out = new Uint8Array(Math.floor((clean.length * 3) / 4))
-  let o = 0, buf = 0, bits = 0
+  let o = 0,
+    buf = 0,
+    bits = 0
   for (let i = 0; i < clean.length; i++) {
     const v = REV[clean.charCodeAt(i)] ?? -1
     if (v < 0) throw new Error('bad base64')

@@ -60,7 +60,12 @@ describe('createShutdown', () => {
     const shutdown = createShutdown(
       [
         { name: 'watch', run: () => void order.push('watch') },
-        { name: 'sync', run: () => { throw new Error('boom') } },
+        {
+          name: 'sync',
+          run: () => {
+            throw new Error('boom')
+          }
+        },
         { name: 'db', run: () => void order.push('db') }
       ],
       (m) => logs.push(m)

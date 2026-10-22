@@ -44,7 +44,14 @@ export type EffectiveRouteSource = 'rule' | 'default' | 'local' | 'lan'
 
 export type EffectiveRoute =
   | { kind: 'direct'; source: EffectiveRouteSource; pattern: string | null }
-  | { kind: 'proxy'; source: EffectiveRouteSource; pattern: string | null; name: string | null; host: string; port: number }
+  | {
+      kind: 'proxy'
+      source: EffectiveRouteSource
+      pattern: string | null
+      name: string | null
+      host: string
+      port: number
+    }
 
 export const MAX_NAMED_PROXIES = 16
 export const MAX_PROXY_RULES = 500
@@ -65,7 +72,12 @@ export function normalizeHost(host: string): string {
 
 export function isLoopbackHost(host: string): boolean {
   const value = normalizeHost(host)
-  return value === 'localhost' || value.endsWith('.localhost') || value === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)
+  return (
+    value === 'localhost' ||
+    value.endsWith('.localhost') ||
+    value === '::1' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)
+  )
 }
 
 /** Dotless, non-IP names (`intranet`, `nas`): Chromium's `<local>` bypass, kept from the fixed-servers config. */
@@ -125,7 +137,12 @@ function hostnameFromInput(raw: string): string | null {
     return null
   }
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(ascii)) return null
-  if (ascii.split('.').some((label) => label.length === 0 || label.length > 63 || label.startsWith('-') || label.endsWith('-'))) return null
+  if (
+    ascii
+      .split('.')
+      .some((label) => label.length === 0 || label.length > 63 || label.startsWith('-') || label.endsWith('-'))
+  )
+    return null
   return ascii
 }
 
@@ -151,7 +168,11 @@ export function normalizeRulePattern(raw: string): string | null {
 }
 
 export function isProxyRoute(value: unknown): value is ProxyRoute {
-  return value === 'proxy' || value === 'direct' || (typeof value === 'string' && value.startsWith('proxy:') && value.length > 'proxy:'.length)
+  return (
+    value === 'proxy' ||
+    value === 'direct' ||
+    (typeof value === 'string' && value.startsWith('proxy:') && value.length > 'proxy:'.length)
+  )
 }
 
 function proxyNameOf(route: ProxyRoute): string | null {
@@ -195,7 +216,10 @@ export function matchProxyRule(host: string, rules: ProxyRule[]): RuleMatch | nu
   }
 }
 
-function proxyRouteTarget(route: ProxyRoute, input: ProxyRoutingInput): { name: string | null; host: string; port: number } {
+function proxyRouteTarget(
+  route: ProxyRoute,
+  input: ProxyRoutingInput
+): { name: string | null; host: string; port: number } {
   const name = proxyNameOf(route)
   if (name !== null) {
     const named = findNamedProxy(input.proxies, name)
@@ -215,9 +239,17 @@ export function effectiveRouteForHost(host: string, input: ProxyRoutingInput): E
     return { kind: 'proxy', source: 'rule', pattern: match.rule.pattern, ...proxyRouteTarget(match.rule.route, input) }
   }
   if (isPlainHostName(target)) return { kind: 'direct', source: 'local', pattern: null }
-  if (bypassesLocalNetwork(input.primary) && isLocalNetworkHost(target)) return { kind: 'direct', source: 'lan', pattern: null }
+  if (bypassesLocalNetwork(input.primary) && isLocalNetworkHost(target))
+    return { kind: 'direct', source: 'lan', pattern: null }
   if (!input.primary.enabled) return { kind: 'direct', source: 'default', pattern: null }
-  return { kind: 'proxy', source: 'default', pattern: null, name: null, host: input.primary.host, port: input.primary.port }
+  return {
+    kind: 'proxy',
+    source: 'default',
+    pattern: null,
+    name: null,
+    host: input.primary.host,
+    port: input.primary.port
+  }
 }
 
 export function effectiveRouteForUrl(url: string, input: ProxyRoutingInput): EffectiveRoute | null {
@@ -263,9 +295,10 @@ export function buildPacScript(input: ProxyRoutingInput): string {
   const exact: Record<string, string> = {}
   const suffix: Record<string, string> = {}
   for (const rule of input.rules) {
-    const route = rule.route === 'direct'
-      ? 'DIRECT'
-      : pacResultFor({ kind: 'proxy', source: 'rule', pattern: rule.pattern, ...proxyRouteTarget(rule.route, input) })
+    const route =
+      rule.route === 'direct'
+        ? 'DIRECT'
+        : pacResultFor({ kind: 'proxy', source: 'rule', pattern: rule.pattern, ...proxyRouteTarget(rule.route, input) })
     if (rule.pattern.startsWith('*.')) suffix[rule.pattern.slice(2)] = route
     else exact[rule.pattern] = route
   }
@@ -377,7 +410,12 @@ export function routingSelfTestCases(input: ProxyRoutingInput, limit = 12): Arra
 
 /** resolveProxy output vs expectation (Chromium may add spaces or a trailing ';'). */
 export function resolutionMatches(expected: string, actual: string): boolean {
-  const clean = (value: string): string => value.split(';').map((part) => part.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join(';')
+  const clean = (value: string): string =>
+    value
+      .split(';')
+      .map((part) => part.trim().replace(/\s+/g, ' ').toUpperCase())
+      .filter(Boolean)
+      .join(';')
   const actualClean = clean(actual)
   if (expected === 'DIRECT') return actualClean === 'DIRECT'
   return actualClean === clean(expected) && !pacResultAllowsDirect(actual)
@@ -402,11 +440,15 @@ export function validateProxyRouting(input: unknown, options: RoutingValidationO
     const name = typeof raw.name === 'string' ? raw.name.trim() : ''
     const host = typeof raw.host === 'string' ? raw.host.trim().toLowerCase() : ''
     const port = Number(raw.port)
-    if (!PROXY_NAME_PATTERN.test(name)) throw new Error(`“${name || '(blank)'}” isn't a usable proxy name: use up to 32 letters, numbers, spaces, dots, dashes or underscores.`)
+    if (!PROXY_NAME_PATTERN.test(name))
+      throw new Error(
+        `“${name || '(blank)'}” isn't a usable proxy name: use up to 32 letters, numbers, spaces, dots, dashes or underscores.`
+      )
     if (name.toLowerCase() === 'default') throw new Error('“Default” is reserved for the main proxy.')
     if (findNamedProxy(proxies, name)) throw new Error(`There are two proxies called “${name}”.`)
     if (!allowed.has(host)) throw new Error(`Proxy “${name}”: for safety only localhost SOCKS proxies are accepted.`)
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Proxy “${name}”: enter a port between 1 and 65535.`)
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new Error(`Proxy “${name}”: enter a port between 1 and 65535.`)
     proxies.push({ name, host, port })
   }
   const rules: ProxyRule[] = []
@@ -415,8 +457,10 @@ export function validateProxyRouting(input: unknown, options: RoutingValidationO
     if (!isRecord(raw)) throw new Error('Each rule needs a site and a route.')
     const rawPattern = typeof raw.pattern === 'string' ? raw.pattern : ''
     const pattern = normalizeRulePattern(rawPattern)
-    if (!pattern) throw new Error(`“${rawPattern.trim() || '(blank)'}” isn't a site pattern. Use example.com or *.example.com.`)
-    if (isLoopbackHost(pattern.replace(/^\*\./, ''))) throw new Error(`${pattern}: local addresses always connect directly.`)
+    if (!pattern)
+      throw new Error(`“${rawPattern.trim() || '(blank)'}” isn't a site pattern. Use example.com or *.example.com.`)
+    if (isLoopbackHost(pattern.replace(/^\*\./, '')))
+      throw new Error(`${pattern}: local addresses always connect directly.`)
     if (seen.has(pattern)) throw new Error(`${pattern} has more than one rule.`)
     if (!isProxyRoute(raw.route)) throw new Error(`${pattern}: choose Direct or a proxy.`)
     const name = proxyNameOf(raw.route)
@@ -467,7 +511,11 @@ export function parseProxyRouting(value: unknown): ProxyRoutingSettings {
 }
 
 /** Set (or with null, remove) the rule for one pattern, keeping the rest in order. */
-export function withRuleForPattern(settings: ProxyRoutingSettings, pattern: string, route: ProxyRoute | null): ProxyRoutingSettings {
+export function withRuleForPattern(
+  settings: ProxyRoutingSettings,
+  pattern: string,
+  route: ProxyRoute | null
+): ProxyRoutingSettings {
   const rules = settings.rules.filter((rule) => rule.pattern !== pattern)
   if (route) {
     const index = settings.rules.findIndex((rule) => rule.pattern === pattern)
@@ -480,7 +528,12 @@ export function withRuleForPattern(settings: ProxyRoutingSettings, pattern: stri
 
 /** Human label for a route, e.g. in the rules table and site panel. */
 export function routeLabel(route: EffectiveRoute): string {
-  if (route.kind === 'direct') return route.source === 'local' ? 'Direct (local address)' : route.source === 'lan' ? 'Direct (local network)' : 'Direct'
+  if (route.kind === 'direct')
+    return route.source === 'local'
+      ? 'Direct (local address)'
+      : route.source === 'lan'
+        ? 'Direct (local network)'
+        : 'Direct'
   return `${route.name ? `Proxy ${route.name}` : 'Proxy'} (${hostPort(route.host, route.port)})`
 }
 
@@ -504,7 +557,11 @@ export function siteRulePattern(host: string, registrableDomain: string | null):
   return normalizeRulePattern(`*.${registrableDomain ?? value}`)
 }
 
-export function siteRouteState(url: string, input: ProxyRoutingInput, registrableDomain: (host: string) => string | null): SiteRouteState | null {
+export function siteRouteState(
+  url: string,
+  input: ProxyRoutingInput,
+  registrableDomain: (host: string) => string | null
+): SiteRouteState | null {
   let host: string
   try {
     const parsed = new URL(url)

@@ -8,12 +8,12 @@
  *  - relative markdown links `[t](Old.md)` / `[t](../dir/Old%20name.md)` via `rewriteLinks`.
  * Pure (no RN / Expo) so it's tested under bun.
  */
-import { stemOf, rewriteWikiLinks } from '../../../src/shared/title-sync';
-import { hasMarkdownLink, remapPath, rewriteLinks } from '../../../src/shared/note-move';
+import { stemOf, rewriteWikiLinks } from '../../../src/shared/title-sync'
+import { hasMarkdownLink, remapPath, rewriteLinks } from '../../../src/shared/note-move'
 
 export interface NoteText {
-  path: string;
-  text: string;
+  path: string
+  text: string
 }
 
 /**
@@ -27,20 +27,21 @@ export function relinkAfterRename(
   newRel: string,
   exists: (rel: string) => boolean
 ): NoteText[] {
-  if (oldRel === newRel) return [];
-  const oldBase = oldRel.slice(oldRel.lastIndexOf('/') + 1);
-  const oldStem = stemOf(oldRel).toLowerCase();
-  const bareUnique = !notes.some((n) => n.path !== newRel && stemOf(n.path).toLowerCase() === oldStem);
-  const needles = [oldBase, encodeURIComponent(oldBase), oldBase.replace(/ /g, '%20'), stemOf(oldRel)];
-  const remap = (p: string): string | null => remapPath(p, oldRel, newRel);
-  const out: NoteText[] = [];
+  if (oldRel === newRel) return []
+  const oldBase = oldRel.slice(oldRel.lastIndexOf('/') + 1)
+  const oldStem = stemOf(oldRel).toLowerCase()
+  const bareUnique = !notes.some((n) => n.path !== newRel && stemOf(n.path).toLowerCase() === oldStem)
+  const needles = [oldBase, encodeURIComponent(oldBase), oldBase.replace(/ /g, '%20'), stemOf(oldRel)]
+  const remap = (p: string): string | null => remapPath(p, oldRel, newRel)
+  const out: NoteText[] = []
   for (const n of notes) {
-    if (n.path === newRel || n.path === oldRel) continue;
-    if (!needles.some((s) => n.text.includes(s))) continue;
-    let next = n.text;
-    if (hasMarkdownLink(next)) next = rewriteLinks(next, { oldNotePath: n.path, newNotePath: n.path, remap, exists }).text;
-    next = rewriteWikiLinks(next, oldRel, newRel, bareUnique).text;
-    if (next !== n.text) out.push({ path: n.path, text: next });
+    if (n.path === newRel || n.path === oldRel) continue
+    if (!needles.some((s) => n.text.includes(s))) continue
+    let next = n.text
+    if (hasMarkdownLink(next))
+      next = rewriteLinks(next, { oldNotePath: n.path, newNotePath: n.path, remap, exists }).text
+    next = rewriteWikiLinks(next, oldRel, newRel, bareUnique).text
+    if (next !== n.text) out.push({ path: n.path, text: next })
   }
-  return out;
+  return out
 }

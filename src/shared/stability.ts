@@ -46,16 +46,28 @@ export function emptyStabilityCounters(): StabilityCounters {
 
 type CounterKey = Exclude<keyof StabilityCounters, 'recent'>
 
-export function countStabilityEvent(counters: StabilityCounters, key: CounterKey, summary: string | null, now = Date.now()): void {
+export function countStabilityEvent(
+  counters: StabilityCounters,
+  key: CounterKey,
+  summary: string | null,
+  now = Date.now()
+): void {
   counters[key] += 1
   if (summary === null) return
   counters.recent.push(`${new Date(now).toISOString()} ${key}: ${summary.slice(0, 300)}`)
-  if (counters.recent.length > STABILITY_RECENT_LIMIT) counters.recent.splice(0, counters.recent.length - STABILITY_RECENT_LIMIT)
+  if (counters.recent.length > STABILITY_RECENT_LIMIT)
+    counters.recent.splice(0, counters.recent.length - STABILITY_RECENT_LIMIT)
 }
 
 /** Total of the "something died or threw" counters (reloads and hang events excluded). */
 export function stabilityFailureTotal(counters: StabilityCounters): number {
-  return counters.uncaughtExceptions + counters.unhandledRejections + counters.rendererGone + counters.gpuGone + counters.childGone
+  return (
+    counters.uncaughtExceptions +
+    counters.unhandledRejections +
+    counters.rendererGone +
+    counters.gpuGone +
+    counters.childGone
+  )
 }
 
 /** Log the first `head` occurrences of a signature, then every `every`th one. */
@@ -126,7 +138,10 @@ export interface ShutdownResult {
  * Run quit steps strictly in order. A step that throws is logged and skipped so the ones after
  * it (closing the index last) still run. Runs once: a second call is a no-op.
  */
-export function createShutdown(steps: readonly ShutdownStep[], log: (message: string) => void = () => {}): () => ShutdownResult[] {
+export function createShutdown(
+  steps: readonly ShutdownStep[],
+  log: (message: string) => void = () => {}
+): () => ShutdownResult[] {
   let done = false
   return () => {
     if (done) return []

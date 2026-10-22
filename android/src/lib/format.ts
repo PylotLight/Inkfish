@@ -3,65 +3,65 @@
  * (`src/main/vault.ts`, `src/main/ai.ts`). No RN / Expo imports here so the
  * file can be unit-tested with plain `tsc` + node.
  */
-import { parseTags } from '../../../src/shared/tags';
+import { parseTags } from '../../../src/shared/tags'
 
-export type NoteKind = 'text' | 'voice' | 'image' | 'meeting';
-export type NoteStatus = 'inbox' | 'processing' | 'ready' | 'archived';
-export type NoteSource = 'tray' | 'popover' | 'meeting' | 'image' | 'import' | 'android';
+export type NoteKind = 'text' | 'voice' | 'image' | 'meeting'
+export type NoteStatus = 'inbox' | 'processing' | 'ready' | 'archived'
+export type NoteSource = 'tray' | 'popover' | 'meeting' | 'image' | 'import' | 'android'
 
 export interface Project {
-  id: string;
-  name: string;
+  id: string
+  name: string
   /** Vault-relative dir, e.g. `work`. */
-  dir: string;
+  dir: string
 }
 
 export interface InboxItem {
-  id: string;
-  kind: NoteKind;
-  raw: string;
-  assets: string[];
-  status: NoteStatus;
-  projectHint?: string;
-  createdAt: number;
+  id: string
+  kind: NoteKind
+  raw: string
+  assets: string[]
+  status: NoteStatus
+  projectHint?: string
+  createdAt: number
 }
 
 export interface NoteEntry {
-  id: string;
+  id: string
   /** Vault-relative path, e.g. `work/2026-10-07-slug.md` (staging: `inbox/<id>.md`). */
-  path: string;
-  title: string;
-  kind: NoteKind;
-  status: NoteStatus;
-  projectId: string | null;
-  inboxId: string | null;
-  tags: string[];
-  snippet: string;
-  createdAt: number;
-  updatedAt: number;
-  size: number;
+  path: string
+  title: string
+  kind: NoteKind
+  status: NoteStatus
+  projectId: string | null
+  inboxId: string | null
+  tags: string[]
+  snippet: string
+  createdAt: number
+  updatedAt: number
+  size: number
 }
 
 export interface NoteDoc extends NoteEntry {
-  markdown: string;
+  markdown: string
   /** Raw front matter block the file had when read (`---…---`), '' when none. */
-  head?: string;
+  head?: string
 }
 
 export interface ClassifyResult {
-  projectId: string;
-  projectName: string;
-  title: string;
-  tags: string[];
-  markdown: string;
-  provider: string;
-  confidence: number;
+  projectId: string
+  projectName: string
+  title: string
+  tags: string[]
+  markdown: string
+  provider: string
+  confidence: number
 }
 
 export function newId(prefix = ''): string {
-  const rand = Math.random().toString(16).slice(2, 8);
-  const stamp = new Date().toISOString().slice(0, 10);
-  return prefix ? `${prefix}-${stamp}-${rand}` : `${stamp}-${rand}`;
+  const rand = Math.random().toString(16).slice(2, 8)
+  const stamp = new Date().toISOString().slice(0, 10)
+  return prefix ? `${prefix}-${stamp}-${rand}` : `${stamp}-${rand}`
 }
 
 export function slugify(s: string, max = 48): string {
@@ -71,49 +71,47 @@ export function slugify(s: string, max = 48): string {
       .normalize('NFKD')
       .replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'untitled';
-  return slug.slice(0, max).replace(/-+$/, '') || 'untitled';
+      .replace(/^-+|-+$/g, '') || 'untitled'
+  return slug.slice(0, max).replace(/-+$/, '') || 'untitled'
 }
 
 export function slugToId(slug: string): string {
-  return slugify(slug, 32);
+  return slugify(slug, 32)
 }
 
 // --- frontmatter (must stay identical to Mac `stringifyFrontmatter`) ---
 
 function fmEscape(v: string): string {
-  return v.includes(':') || v.includes('#') || v.includes('"')
-    ? `"${v.replace(/"/g, '\\"')}"`
-    : v;
+  return v.includes(':') || v.includes('#') || v.includes('"') ? `"${v.replace(/"/g, '\\"')}"` : v
 }
 
 export function stringifyFrontmatter(data: Record<string, unknown>): string {
-  const lines = ['---'];
+  const lines = ['---']
   for (const [k, v] of Object.entries(data)) {
-    if (v === undefined || v === null) continue;
+    if (v === undefined || v === null) continue
     if (Array.isArray(v)) {
-      lines.push(`${k}: [${v.map((x) => fmEscape(String(x))).join(', ')}]`);
+      lines.push(`${k}: [${v.map((x) => fmEscape(String(x))).join(', ')}]`)
     } else {
-      lines.push(`${k}: ${fmEscape(String(v))}`);
+      lines.push(`${k}: ${fmEscape(String(v))}`)
     }
   }
-  lines.push('---', '');
-  return lines.join('\n');
+  lines.push('---', '')
+  return lines.join('\n')
 }
 
 function unquote(s: string): string {
-  s = s.trim();
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"');
-  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
-  return s;
+  s = s.trim()
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"')
+  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'")
+  return s
 }
 
 function parseList(s: string): string[] {
-  s = s.trim();
-  if (!s.startsWith('[') || !s.endsWith(']')) return s ? [unquote(s)] : [];
-  const inner = s.slice(1, -1).trim();
-  if (!inner) return [];
-  return inner.split(',').map((x) => unquote(x.trim()));
+  s = s.trim()
+  if (!s.startsWith('[') || !s.endsWith(']')) return s ? [unquote(s)] : []
+  const inner = s.slice(1, -1).trim()
+  if (!inner) return []
+  return inner.split(',').map((x) => unquote(x.trim()))
 }
 
 /**
@@ -123,36 +121,36 @@ function parseList(s: string): string[] {
  * Other indented lines (nested maps, folded text) are skipped, never read as keys.
  */
 export function parseFrontmatter(md: string): [Record<string, string | string[]>, string] {
-  if (!md.startsWith('---')) return [{}, md];
-  const end = md.indexOf('\n---', 3);
-  if (end === -1) return [{}, md];
-  const data: Record<string, string | string[]> = {};
-  let listKey: string | null = null;
+  if (!md.startsWith('---')) return [{}, md]
+  const end = md.indexOf('\n---', 3)
+  if (end === -1) return [{}, md]
+  const data: Record<string, string | string[]> = {}
+  let listKey: string | null = null
   for (const raw of md.slice(3, end).split('\n')) {
-    const line = raw.replace(/\r$/, '');
-    const item = /^(?:\s+-|-)\s+(.*)$/.exec(line) ?? /^\s*-$/.exec(line);
+    const line = raw.replace(/\r$/, '')
+    const item = /^(?:\s+-|-)\s+(.*)$/.exec(line) ?? /^\s*-$/.exec(line)
     if (listKey && item) {
-      const v = unquote(item[1] ?? '');
-      const arr = data[listKey];
-      if (v) data[listKey] = Array.isArray(arr) ? [...arr, v] : [v];
-      continue;
+      const v = unquote(item[1] ?? '')
+      const arr = data[listKey]
+      if (v) data[listKey] = Array.isArray(arr) ? [...arr, v] : [v]
+      continue
     }
-    if (/^\s/.test(line)) continue; // nested / continuation line
-    listKey = null;
-    const i = line.indexOf(':');
-    if (i === -1) continue;
-    const key = line.slice(0, i).trim();
-    const val = line.slice(i + 1).trim();
-    if (!key) continue;
+    if (/^\s/.test(line)) continue // nested / continuation line
+    listKey = null
+    const i = line.indexOf(':')
+    if (i === -1) continue
+    const key = line.slice(0, i).trim()
+    const val = line.slice(i + 1).trim()
+    if (!key) continue
     if (!val) {
       // `key:` alone: a block list may follow.
-      data[key] = '';
-      listKey = key;
-      continue;
+      data[key] = ''
+      listKey = key
+      continue
     }
-    data[key] = val.startsWith('[') ? parseList(val) : unquote(val);
+    data[key] = val.startsWith('[') ? parseList(val) : unquote(val)
   }
-  return [data, md.slice(end + 4).replace(/^\n/, '')];
+  return [data, md.slice(end + 4).replace(/^\n/, '')]
 }
 
 // --- titles / bodies (same rules as Mac `db.ts` + `ai.ts`) ---
@@ -162,9 +160,9 @@ export function parseFrontmatter(md: string): [Record<string, string | string[]>
  * title sync), then the first `# H1`, then the first line.
  */
 export function titleFromFile(fm: Record<string, string | string[]>, body: string): string {
-  const t = fm['title'];
-  if (typeof t === 'string' && t.trim()) return t.trim().slice(0, 120);
-  return titleFromBody(body);
+  const t = fm['title']
+  if (typeof t === 'string' && t.trim()) return t.trim().slice(0, 120)
+  return titleFromBody(body)
 }
 
 /** Markdown image/embed refs, stripped from list snippets so they read as text. */
@@ -173,13 +171,13 @@ export function snippetText(body: string): string {
     .replace(/!\[\[[^\]\n]*\]\]/g, '')
     .replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, '')
     .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .trim()
 }
 
 export function titleFromBody(body: string): string {
-  const h = /^#\s+(.+)$/m.exec(body);
-  if (h?.[1]) return h[1].trim().slice(0, 120);
-  return body.split('\n')[0]?.trim().slice(0, 120) || 'Untitled';
+  const h = /^#\s+(.+)$/m.exec(body)
+  if (h?.[1]) return h[1].trim().slice(0, 120)
+  return body.split('\n')[0]?.trim().slice(0, 120) || 'Untitled'
 }
 
 export function titleFromRaw(raw: string): string {
@@ -187,63 +185,56 @@ export function titleFromRaw(raw: string): string {
     raw
       .split('\n')
       .map((l) => l.trim().replace(/^#+\s*/, ''))
-      .find((l) => l.length > 0) ?? 'Untitled';
-  const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first;
-  return sentence.slice(0, 80).trim() || 'Untitled';
+      .find((l) => l.length > 0) ?? 'Untitled'
+  const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
+  return sentence.slice(0, 80).trim() || 'Untitled'
 }
 
 export function tagsFromRaw(raw: string, kind: NoteKind): string[] {
-  const tags = new Set<string>();
+  const tags = new Set<string>()
   for (const m of raw.matchAll(/#([a-z0-9][a-z0-9-_]*)/gi)) {
-    const t = m[1]?.toLowerCase();
-    if (t) tags.add(t);
+    const t = m[1]?.toLowerCase()
+    if (t) tags.add(t)
   }
-  if (kind !== 'text') tags.add(kind);
-  return [...tags].slice(0, 8);
+  if (kind !== 'text') tags.add(kind)
+  return [...tags].slice(0, 8)
 }
 
 export function formatBody(raw: string, kind: NoteKind): string {
-  const text = raw.trim();
-  if (kind === 'meeting') return text;
+  const text = raw.trim()
+  if (kind === 'meeting') return text
   return text
     .replace(/\n{3,}/g, '\n\n')
     .split('\n')
     .map((l) => (/^\s*[*•]\s+/.test(l) ? l.replace(/^\s*[*•]\s+/, '- ') : l))
-    .join('\n');
+    .join('\n')
 }
 
 /** Rules router — identical scoring to Mac `rulesClassify` (no Apple LLM on Android). */
-export function rulesClassify(
-  raw: string,
-  kind: NoteKind,
-  projects: Project[],
-  projectHint?: string
-): ClassifyResult {
-  const hint = projectHint && projectHint !== 'auto' ? projectHint : null;
-  let project: Project | null = hint
-    ? (projects.find((p) => p.id === hint || p.name === hint) ?? null)
-    : null;
-  let confidence = hint ? 1 : 0;
+export function rulesClassify(raw: string, kind: NoteKind, projects: Project[], projectHint?: string): ClassifyResult {
+  const hint = projectHint && projectHint !== 'auto' ? projectHint : null
+  let project: Project | null = hint ? (projects.find((p) => p.id === hint || p.name === hint) ?? null) : null
+  let confidence = hint ? 1 : 0
   if (!project) {
-    const hay = raw.toLowerCase();
-    let best = 0;
+    const hay = raw.toLowerCase()
+    let best = 0
     for (const p of projects) {
-      const name = p.name.toLowerCase();
-      const words = name.split(/[^a-z0-9]+/).filter(Boolean);
-      let score = 0;
+      const name = p.name.toLowerCase()
+      const words = name.split(/[^a-z0-9]+/).filter(Boolean)
+      let score = 0
       for (const w of words) {
-        if (w.length < 3) continue;
-        const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-        score += (hay.match(re) ?? []).length * 2;
-        if (hay.includes(w)) score += 0.5;
+        if (w.length < 3) continue
+        const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
+        score += (hay.match(re) ?? []).length * 2
+        if (hay.includes(w)) score += 0.5
       }
       if (score > best) {
-        best = score;
-        project = p;
+        best = score
+        project = p
       }
     }
-    confidence = best >= 2 ? 0.7 : best > 0 ? 0.45 : 0.25;
-    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'general' };
+    confidence = best >= 2 ? 0.7 : best > 0 ? 0.45 : 0.25
+    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'general' }
   }
   return {
     projectId: project.id,
@@ -253,38 +244,33 @@ export function rulesClassify(
     markdown: formatBody(raw, kind),
     provider: 'rules',
     confidence
-  };
+  }
 }
 
 /** Folder-derived project for a vault-relative path (same rule as Mac `projectFromPath`). */
 export function projectFromPath(vaultRel: string): string | null {
-  const parts = vaultRel.split('/');
-  if (parts[0] === 'projects' && parts[1]) return parts[1] ?? null;
-  if (parts[0] === 'inbox' || parts[0] === 'daily') return null;
-  return parts.length > 1 ? (parts[0] ?? null) : null;
+  const parts = vaultRel.split('/')
+  if (parts[0] === 'projects' && parts[1]) return parts[1] ?? null
+  if (parts[0] === 'inbox' || parts[0] === 'daily') return null
+  return parts.length > 1 ? (parts[0] ?? null) : null
 }
 
 /** Build a `NoteEntry` from raw file text + stat info (mirrors Mac `indexFile`). */
-export function entryFromFile(
-  vaultRel: string,
-  text: string,
-  stat: { size: number; mtime: number }
-): NoteEntry {
-  const [fm, body] = parseFrontmatter(text);
-  const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
-  const id = str(fm['id']) ?? vaultRel;
-  const kind = (str(fm['kind']) as NoteKind | null) ?? 'text';
-  const status =
-    (str(fm['status']) as NoteStatus | null) ?? (vaultRel.startsWith('inbox/') ? 'inbox' : 'ready');
-  const fromFm = str(fm['project']);
-  const fromPath = projectFromPath(vaultRel);
-  const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null);
-  const inboxId = str(fm['inbox']);
+export function entryFromFile(vaultRel: string, text: string, stat: { size: number; mtime: number }): NoteEntry {
+  const [fm, body] = parseFrontmatter(text)
+  const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+  const id = str(fm['id']) ?? vaultRel
+  const kind = (str(fm['kind']) as NoteKind | null) ?? 'text'
+  const status = (str(fm['status']) as NoteStatus | null) ?? (vaultRel.startsWith('inbox/') ? 'inbox' : 'ready')
+  const fromFm = str(fm['project'])
+  const fromPath = projectFromPath(vaultRel)
+  const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null)
+  const inboxId = str(fm['inbox'])
   // Inline `[a, b]`, YAML block lists and `a, b` scalars — the Mac's own reader.
-  const tags = parseTags(text);
-  let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN;
-  if (!Number.isFinite(createdAt)) createdAt = stat.mtime;
-  const clean = snippetText(body.replace(/^\s*#\s+.*(\n|$)/, ''));
+  const tags = parseTags(text)
+  let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN
+  if (!Number.isFinite(createdAt)) createdAt = stat.mtime
+  const clean = snippetText(body.replace(/^\s*#\s+.*(\n|$)/, ''))
   return {
     id,
     path: vaultRel,
@@ -298,14 +284,14 @@ export function entryFromFile(
     createdAt,
     updatedAt: stat.mtime,
     size: stat.size
-  };
+  }
 }
 
 /** Build an `InboxItem` from a staging inbox file (mirrors Mac `readInboxItem`). */
 export function inboxFromFile(id: string, text: string): InboxItem {
-  const [fm, body] = parseFrontmatter(text);
-  const created = typeof fm['created'] === 'string' ? Date.parse(fm['created']) : NaN;
-  const assets = fm['assets'];
+  const [fm, body] = parseFrontmatter(text)
+  const created = typeof fm['created'] === 'string' ? Date.parse(fm['created']) : NaN
+  const assets = fm['assets']
   return {
     id: String(fm['id'] ?? id),
     kind: (fm['kind'] as NoteKind) ?? 'text',
@@ -314,5 +300,5 @@ export function inboxFromFile(id: string, text: string): InboxItem {
     status: (fm['status'] as NoteStatus) ?? 'inbox',
     projectHint: typeof fm['projectHint'] === 'string' ? fm['projectHint'] : 'auto',
     createdAt: Number.isFinite(created) ? (created as number) : 0
-  };
+  }
 }

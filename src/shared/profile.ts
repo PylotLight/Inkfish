@@ -37,7 +37,10 @@ export const DEV_DAILY_SHORTCUT = 'Shift+Control+Alt+Space'
 
 /** Sanitised INKFISH_PROFILE value ('' when unset / empty after cleaning). */
 export function cleanProfileName(raw: string | undefined): string {
-  return (raw ?? '').trim().replace(/[^\w.-]/g, '').slice(0, 32)
+  return (raw ?? '')
+    .trim()
+    .replace(/[^\w.-]/g, '')
+    .slice(0, 32)
 }
 
 export interface ProfileInput {
@@ -103,13 +106,21 @@ export function shortcutLabel(accelerator: string, isMac: boolean): string {
   if (!accelerator) return ''
   const parts = accelerator.split('+')
   const key = parts.pop() ?? ''
-  if (!isMac) return [...parts.map((p) => (p === 'CommandOrControl' ? 'Ctrl' : p === 'Control' ? 'Ctrl' : p)), key].join('+')
+  if (!isMac)
+    return [...parts.map((p) => (p === 'CommandOrControl' ? 'Ctrl' : p === 'Control' ? 'Ctrl' : p)), key].join('+')
   const order = ['Control', 'Alt', 'Shift', 'Command', 'CommandOrControl']
   const sym: Record<string, string> = { Control: '⌃', Alt: '⌥', Shift: '⇧', Command: '⌘', CommandOrControl: '⌘' }
   const mods = [...parts].sort((a, b) => order.indexOf(a) - order.indexOf(b))
   // Apple order is ⌃⌥⇧⌘, but Inkfish has always written ⇧⌥Space; keep ⇧ first for familiarity.
   const shift = mods.includes('Shift') ? '⇧' : ''
-  return shift + mods.filter((m) => m !== 'Shift').map((m) => sym[m] ?? m).join('') + key
+  return (
+    shift +
+    mods
+      .filter((m) => m !== 'Shift')
+      .map((m) => sym[m] ?? m)
+      .join('') +
+    key
+  )
 }
 
 /** What the renderer gets from `app:profile`. */

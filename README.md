@@ -47,20 +47,24 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 ## What it does
 
 **Capture**
+
 - ⌥Space anywhere opens a small capture window near the cursor. Type, paste or drop images, dictate, and ⌘↩ saves to the inbox. ⇧⌥Space appends to today's daily note instead. Both shortcuts can be changed or turned off in Settings → Shortcuts.
 - Lives in the menu bar: left-click the icon to capture, right-click for the menu. Menu bar mode can hide the Dock icon, change what a click opens (capture, today, or the main window), or turn the icon off (Settings → Appearance → Menu bar).
 - Voice notes transcribe on-device: Apple Speech, SpeechAnalyzer (macOS 26), or downloadable Parakeet / Nemotron / Cohere models on the Neural Engine, with a built-in benchmark to pick one (Settings → Voice Engine).
 
 **Inbox to project notes**
+
 - Captures sit in the inbox, then get cleaned up and filed into a top-level folder (`work/`, `personal/`, …) with a title and tags. Raw captures are kept, and a wrong pick can be undone or reassigned.
 - Sorting runs on rules out of the box. Turn on Apple Intelligence (on-device, macOS 26) or connect your own provider: Anthropic or any OpenAI-compatible server (OpenAI, Ollama, LM Studio, LiteLLM).
 - Per-note AI actions: tidy formatting, fix typos, summarise, turn into a checklist, or a custom instruction. Raw / Split / Processed views leave the file untouched until you apply the result (one ⌘Z undoes it). Works on a selection too.
 
 **Meetings**
+
 - Record a call as a two-speaker transcript: your mic is "Me", the Mac's audio is "Them", with live captions. Pick system audio from specific apps (just Teams, not your music).
 - Saved as a filed meeting note. Teams `.vtt` transcripts can be imported too.
 
 **Notes**
+
 - Live-preview markdown editor (CodeMirror) with tabs, pinning, in-note find, code highlighting and autosave.
 - Images: paste or drop to save into `assets/`, drag to resize (Obsidian-style `![alt|300](…)` widths), drag to move, right-click to copy.
 - New (Untitled) notes take their file name from their `# title` and keep following it until you rename the file by hand. Notes you bring in (an Obsidian vault) keep their names unless you turn on Settings → Notes → Also rename notes named after their heading. Click the header title to rename in place. Any rename or move (title, hand rename, Move to…, drag and drop) updates links and `[[wikilinks]]` to the note.
@@ -69,9 +73,11 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 - ⌘K command palette (commands, notes, `#tags`) and ⌘O note switcher.
 
 **Mini windows**
+
 - ⇧⌘M pops a note out into a small always-on-top window that floats over full-screen apps and every Space. Tuck it to the screen edge behind a handle, snap it to a corner, set its opacity. Up to 6 at once, kept in sync with the main window. ⌃⌥M shows or hides them all.
 
 **Android companion + sync**
+
 - The Android app (`android/`) captures, browses and edits the same notes. Pair it with a QR code (Settings → Sync) and it syncs with the Mac over your local network, end-to-end encrypted, no server. Big deletions ask before they apply.
 
 **Looks:** glass (vibrancy) window, themes and accent colours, font choices including the bundled Libron.

@@ -13,7 +13,9 @@ function frameInterval(): number {
   if (interval !== null) return interval
   if (!watching) {
     watching = true
-    const reset = (): void => { interval = null }
+    const reset = (): void => {
+      interval = null
+    }
     screen.on('display-added', reset)
     screen.on('display-removed', reset)
     screen.on('display-metrics-changed', reset)
@@ -21,7 +23,9 @@ function frameInterval(): number {
   let hz = 0
   try {
     for (const display of screen.getAllDisplays()) hz = Math.max(hz, display.displayFrequency || 0)
-  } catch { /* no displays yet */ }
+  } catch {
+    /* no displays yet */
+  }
   interval = frameIntervalFor(hz)
   return interval
 }
@@ -40,10 +44,18 @@ export const motion = createFrameLoop({
 export function placeWindow(win: BaseWindow, rect: MotionRect): void {
   if (win.isDestroyed()) return
   if (motion.inTick()) {
-    motion.place(win, rect, (next) => { if (!win.isDestroyed()) win.setBounds(next) }, () => (win.isDestroyed() ? null : win.getBounds()))
+    motion.place(
+      win,
+      rect,
+      (next) => {
+        if (!win.isDestroyed()) win.setBounds(next)
+      },
+      () => (win.isDestroyed() ? null : win.getBounds())
+    )
     return
   }
   motion.drop(win)
   const now = win.getBounds()
-  if (now.x !== rect.x || now.y !== rect.y || now.width !== rect.width || now.height !== rect.height) win.setBounds(rect)
+  if (now.x !== rect.x || now.y !== rect.y || now.width !== rect.width || now.height !== rect.height)
+    win.setBounds(rect)
 }

@@ -23,11 +23,24 @@ import {
   type Random
 } from './protocol'
 import { parseHello } from './server'
-import { compat, INCOMPATIBLE_STATUS, outdatedApp, parseIncompatible, peerVersion, SELF_VERSION, SyncIncompatible, versionHeaders, type PeerVersion } from './compat'
+import {
+  compat,
+  INCOMPATIBLE_STATUS,
+  outdatedApp,
+  parseIncompatible,
+  peerVersion,
+  SELF_VERSION,
+  SyncIncompatible,
+  versionHeaders,
+  type PeerVersion
+} from './compat'
 
 /** Phone side: talk to a paired Mac over HTTP. `fetch` is injected for tests. */
 
-export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
+export type Fetch = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }
+) => Promise<{
   ok: boolean
   status: number
   text(): Promise<string>
@@ -78,7 +91,10 @@ export function assertCompatible(h: Hello, self: PeerVersion = SELF_VERSION): vo
  * Find the paired Mac on this network: last good host, then the QR's
  * addresses, then a sweep of those /24 subnets (DHCP may have moved it).
  */
-export async function findMac(fetchFn: Fetch, peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>): Promise<string | null> {
+export async function findMac(
+  fetchFn: Fetch,
+  peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>
+): Promise<string | null> {
   return (await findMacHello(fetchFn, peer))?.host ?? null
 }
 
@@ -92,8 +108,12 @@ export async function findMacHello(
     const r = await hello(fetchFn, h, peer.port)
     if (r?.id === peer.id) return { host: h, hello: r }
   }
-  const prefixes = [...new Set(first.map((h) => h.split('.').slice(0, 3).join('.')).filter((p) => /^\d+\.\d+\.\d+$/.test(p)))]
-  const candidates = prefixes.flatMap((p) => Array.from({ length: 254 }, (_, i) => `${p}.${i + 1}`)).filter((h) => !first.includes(h))
+  const prefixes = [
+    ...new Set(first.map((h) => h.split('.').slice(0, 3).join('.')).filter((p) => /^\d+\.\d+\.\d+$/.test(p)))
+  ]
+  const candidates = prefixes
+    .flatMap((p) => Array.from({ length: 254 }, (_, i) => `${p}.${i + 1}`))
+    .filter((h) => !first.includes(h))
   let found: { host: string; hello: Hello } | null = null
   let i = 0
   const worker = async (): Promise<void> => {
@@ -121,7 +141,8 @@ export class HttpError extends Error {
 /** Worth another try: network trouble, timeouts, damaged replies, a busy / restarting Mac. Never auth, handshake or bad requests. */
 export function retryable(err: unknown): boolean {
   if (err instanceof SyncIncompatible) return false
-  if (err instanceof HttpError) return err.status >= 500 || err.status === 408 || err.status === 429 || err.status === 422
+  if (err instanceof HttpError)
+    return err.status >= 500 || err.status === 408 || err.status === 429 || err.status === 422
   return true
 }
 
@@ -166,26 +187,53 @@ async function call<Req, Res>(
 ): Promise<Res> {
   const sealed = sealJson(key, body, aad('req', path, me), random)
   const r = await withTimeout(timeoutMs, (signal) =>
-    fetchFn(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'text/plain', [PEER_HEADER]: me, ...versionHeaders() }, body: sealed, signal })
+    fetchFn(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', [PEER_HEADER]: me, ...versionHeaders() },
+      body: sealed,
+      signal
+    })
   )
   const text = await r.text()
   if (r.status === INCOMPATIBLE_STATUS) {
     const app = parseIncompatible(text)
     if (app) throw new SyncIncompatible(app, text.split(':').slice(2).join(':'))
   }
-  if (!r.ok) throw new HttpError(r.status, r.status === 401 ? (/stale/.test(text) ? 'Phone and Mac clocks are too far apart (check date & time)' : 'This phone is no longer paired with the Mac') : `Mac said ${r.status}: ${text.slice(0, 80)}`)
+  if (!r.ok)
+    throw new HttpError(
+      r.status,
+      r.status === 401
+        ? /stale/.test(text)
+          ? 'Phone and Mac clocks are too far apart (check date & time)'
+          : 'This phone is no longer paired with the Mac'
+        : `Mac said ${r.status}: ${text.slice(0, 80)}`
+    )
   return openJson<Res>(key, text, aad('res', path, me)).body
 }
 
 /** Pair with a Mac from its QR. Returns the stored peer record. */
-export async function pairWithMac(fetchFn: Fetch, qr: PairPayload, me: { id: string; name: string }, random: Random, now = Date.now()): Promise<MacPeer> {
+export async function pairWithMac(
+  fetchFn: Fetch,
+  qr: PairPayload,
+  me: { id: string; name: string },
+  random: Random,
+  now = Date.now()
+): Promise<MacPeer> {
   if (qr.exp < now) throw new Error('That code expired. Show a new one on the Mac.')
   const found = await findMacHello(fetchFn, { id: qr.id, hosts: qr.hosts, port: qr.port })
   if (!found) throw new Error("Can't reach the Mac. Make sure both are on the same Wi-Fi.")
   assertCompatible(found.hello)
   const host = found.host
   const key = fromBase64(qr.key)
-  const res = await call<{ name: string }, PairRes>(fetchFn, `http://${host}:${qr.port}`, '/v1/pair', me.id, key, { name: me.name }, random)
+  const res = await call<{ name: string }, PairRes>(
+    fetchFn,
+    `http://${host}:${qr.port}`,
+    '/v1/pair',
+    me.id,
+    key,
+    { name: me.name },
+    random
+  )
   return { id: res.id, name: res.name, key: qr.key, hosts: qr.hosts, port: qr.port, lastHost: host }
 }
 
@@ -203,13 +251,26 @@ export interface RemoteOpts {
  * are no-ops — and each attempt is freshly sealed, so the replay guard is
  * happy).
  */
-export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random, opts: RemoteOpts = {}): Remote {
+export function httpRemote(
+  fetchFn: Fetch,
+  host: string,
+  peer: MacPeer,
+  me: string,
+  random: Random,
+  opts: RemoteOpts = {}
+): Remote {
   const base = `http://${host}:${peer.port}`
   const key = fromBase64(peer.key)
   const r = <T>(f: () => Promise<T>): Promise<T> => withRetry(f, opts.retry)
   const remote: Remote = {
-    manifest: () => r(async () => (await call<object, ManifestRes>(fetchFn, base, '/v1/manifest', me, key, {}, random)).manifest),
-    get: (paths) => r(async () => decodeFiles((await call<{ paths: string[] }, GetRes>(fetchFn, base, '/v1/get', me, key, { paths }, random)).files)),
+    manifest: () =>
+      r(async () => (await call<object, ManifestRes>(fetchFn, base, '/v1/manifest', me, key, {}, random)).manifest),
+    get: (paths) =>
+      r(async () =>
+        decodeFiles(
+          (await call<{ paths: string[] }, GetRes>(fetchFn, base, '/v1/get', me, key, { paths }, random)).files
+        )
+      ),
     apply: (req): Promise<Manifest> =>
       r(async () => {
         const writes = req.writes.map((w) => ({
@@ -218,7 +279,12 @@ export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: stri
           ...(w.hash ? { hash: w.hash } : {}),
           ...(w.expect !== undefined ? { expect: w.expect } : {})
         }))
-        const body: ApplyReq = { moves: req.moves, writes, deletes: req.deletes, ...(req.deleteExpect ? { deleteExpect: req.deleteExpect } : {}) }
+        const body: ApplyReq = {
+          moves: req.moves,
+          writes,
+          deletes: req.deletes,
+          ...(req.deleteExpect ? { deleteExpect: req.deleteExpect } : {})
+        }
         return (await call<ApplyReq, ApplyRes>(fetchFn, base, '/v1/apply', me, key, body, random, 120_000)).manifest
       })
   }
@@ -236,7 +302,14 @@ export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: stri
           '/v1/put',
           me,
           key,
-          { path: q.path, hash: q.hash, size: q.size, offset: q.offset, ...(q.data ? { data: toBase64(q.data) } : {}), ...(q.expect !== undefined ? { expect: q.expect } : {}) },
+          {
+            path: q.path,
+            hash: q.hash,
+            size: q.size,
+            offset: q.offset,
+            ...(q.data ? { data: toBase64(q.data) } : {}),
+            ...(q.expect !== undefined ? { expect: q.expect } : {})
+          },
           random
         )
       )
@@ -245,8 +318,23 @@ export function httpRemote(fetchFn: Fetch, host: string, peer: MacPeer, me: stri
 }
 
 /** End the session. `summary` (a PeerRun) shows in the Mac's sync history; older Macs ignore it. */
-export async function markDone(fetchFn: Fetch, host: string, peer: MacPeer, me: string, random: Random, summary?: PeerRun): Promise<void> {
-  await call<DoneReq, object>(fetchFn, `http://${host}:${peer.port}`, '/v1/done', me, fromBase64(peer.key), summary ? { summary } : {}, random)
+export async function markDone(
+  fetchFn: Fetch,
+  host: string,
+  peer: MacPeer,
+  me: string,
+  random: Random,
+  summary?: PeerRun
+): Promise<void> {
+  await call<DoneReq, object>(
+    fetchFn,
+    `http://${host}:${peer.port}`,
+    '/v1/done',
+    me,
+    fromBase64(peer.key),
+    summary ? { summary } : {},
+    random
+  )
 }
 
 /** Does this Mac take live progress (Hello.features)? */
@@ -279,7 +367,16 @@ export function progressPoster(
     const p = latest
     latest = null
     lastSent = clock()
-    inFlight = call<ProgressReq, object>(fetchFn, `http://${host}:${peer.port}`, '/v1/progress', me, fromBase64(peer.key), { progress: { ...p, sentAt: clock() } }, random, 5000)
+    inFlight = call<ProgressReq, object>(
+      fetchFn,
+      `http://${host}:${peer.port}`,
+      '/v1/progress',
+      me,
+      fromBase64(peer.key),
+      { progress: { ...p, sentAt: clock() } },
+      random,
+      5000
+    )
       .then(() => undefined)
       .catch(() => {
         dead = true // older Mac / gone: stop trying this session

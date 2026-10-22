@@ -1,5 +1,12 @@
 import { estimateTokens, type AiProviderKind, type ChatMessage } from '../shared/ai-api'
-import { AiRequestError, isAiRequestError, scrubDetail, toErrorDetail, type AiApiKind, type AiErrorDetail } from '../shared/ai-errors'
+import {
+  AiRequestError,
+  isAiRequestError,
+  scrubDetail,
+  toErrorDetail,
+  type AiApiKind,
+  type AiErrorDetail
+} from '../shared/ai-errors'
 import {
   learnEndpoint,
   outputBudget,
@@ -57,7 +64,14 @@ export function modelFor(cfg: ProviderConfig, run?: RunOptions): AiModel {
 export function thinkingBudget(level: string): number {
   const n = Number(level)
   if (Number.isFinite(n) && n > 0) return Math.round(n)
-  const table: Record<string, number> = { minimal: 1024, low: 2048, medium: 8192, high: 16_384, xhigh: 32_000, max: 32_000 }
+  const table: Record<string, number> = {
+    minimal: 1024,
+    low: 2048,
+    medium: 8192,
+    high: 16_384,
+    xhigh: 32_000,
+    max: 32_000
+  }
   return table[level] ?? 8192
 }
 
@@ -79,7 +93,10 @@ export function openAIBody(cfg: ProviderConfig, messages: ChatMessage[], run?: R
           role: msg.role,
           content: [
             { type: 'text', text: msg.content },
-            ...msg.images.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.data}` } }))
+            ...msg.images.map((img) => ({
+              type: 'image_url',
+              image_url: { url: `data:${img.mime};base64,${img.data}` }
+            }))
           ]
         }
       : { role: msg.role, content: msg.content }
@@ -110,7 +127,10 @@ export function anthropicBody(cfg: ProviderConfig, messages: ChatMessage[], run?
         ? {
             role: x.role,
             content: [
-              ...x.images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.data } })),
+              ...x.images.map((img) => ({
+                type: 'image',
+                source: { type: 'base64', media_type: img.mime, data: img.data }
+              })),
               { type: 'text', text: x.content }
             ]
           }
@@ -215,7 +235,8 @@ export function parseErrorBody(text: string): { message: string; code?: string; 
       const type = typeof o.type === 'string' ? o.type : undefined
       return { message, ...(code ? { code } : {}), ...(type ? { type } : {}) }
     }
-    if (typeof j.message === 'string') return { message: j.message, ...(typeof j.code === 'string' ? { code: j.code } : {}) }
+    if (typeof j.message === 'string')
+      return { message: j.message, ...(typeof j.code === 'string' ? { code: j.code } : {}) }
     if (typeof j.detail === 'string') return { message: j.detail }
     if (j.detail !== undefined) return { message: JSON.stringify(j.detail).slice(0, 500) }
     return { message: text.slice(0, 500) }
@@ -226,7 +247,10 @@ export function parseErrorBody(text: string): { message: string; code?: string; 
 
 function hintFor(status: number, endpoint: string): string | undefined {
   if (status === 401 || status === 403) return 'check the API key'
-  if (status === 404) return endpoint.includes('/responses') ? 'check the base URL; this server may not have /responses' : 'check the base URL and model'
+  if (status === 404)
+    return endpoint.includes('/responses')
+      ? 'check the base URL; this server may not have /responses'
+      : 'check the base URL and model'
   if (status === 429) return 'rate limited or out of credit'
   return undefined
 }
@@ -242,18 +266,41 @@ async function httpError(res: Response, ctx: ErrorCtx): Promise<AiRequestError> 
   const hint = hintFor(res.status, ctx.endpoint)
   return new AiRequestError(
     scrubDetail(
-      { provider: ctx.provider, status: res.status, ...body, endpoint: ctx.endpoint, model: ctx.model, kind: 'http', ...(hint ? { hint } : {}) },
+      {
+        provider: ctx.provider,
+        status: res.status,
+        ...body,
+        endpoint: ctx.endpoint,
+        model: ctx.model,
+        kind: 'http',
+        ...(hint ? { hint } : {})
+      },
       ctx.key
     )
   )
 }
 
-function streamError(ctx: ErrorCtx, e: { message?: unknown; code?: unknown; type?: unknown } | undefined, kind: AiErrorDetail['kind'] = 'stream'): AiRequestError {
+function streamError(
+  ctx: ErrorCtx,
+  e: { message?: unknown; code?: unknown; type?: unknown } | undefined,
+  kind: AiErrorDetail['kind'] = 'stream'
+): AiRequestError {
   const message = typeof e?.message === 'string' && e.message ? e.message : 'The provider reported an error mid-stream.'
   const code = e?.code !== undefined && e?.code !== null ? String(e.code) : undefined
   const type = typeof e?.type === 'string' ? e.type : undefined
   return new AiRequestError(
-    scrubDetail({ provider: ctx.provider, message, ...(code ? { code } : {}), ...(type ? { type } : {}), endpoint: ctx.endpoint, model: ctx.model, kind }, ctx.key)
+    scrubDetail(
+      {
+        provider: ctx.provider,
+        message,
+        ...(code ? { code } : {}),
+        ...(type ? { type } : {}),
+        endpoint: ctx.endpoint,
+        model: ctx.model,
+        kind
+      },
+      ctx.key
+    )
   )
 }
 
@@ -267,7 +314,12 @@ async function send(fetchFn: Fetch, url: string, init: RequestInit, ctx: ErrorCt
     return await fetchFn(url, init)
   } catch (e) {
     if (isAbortError(e, init.signal ?? undefined) && !(e instanceof Error && e.name === 'TimeoutError')) throw e
-    throw new AiRequestError(scrubDetail(toErrorDetail(e, { provider: ctx.provider, endpoint: ctx.endpoint, model: ctx.model, kind: 'network' }), ctx.key))
+    throw new AiRequestError(
+      scrubDetail(
+        toErrorDetail(e, { provider: ctx.provider, endpoint: ctx.endpoint, model: ctx.model, kind: 'network' }),
+        ctx.key
+      )
+    )
   }
 }
 
@@ -284,7 +336,9 @@ export function isResponsesOnlyError(d: AiErrorDetail): boolean {
     /unsupported_api_for_model/i.test(text) ||
     /v1\/responses|\/responses\b|responses api|responses endpoint/i.test(text) ||
     /only (?:be )?(?:supported|available|usable)\b.{0,40}\bresponses\b/i.test(text) ||
-    /(?:not supported|unsupported|does not support|doesn't support|not available)\b.{0,40}\bchat[ /_.-]?completions?/i.test(text) ||
+    /(?:not supported|unsupported|does not support|doesn't support|not available)\b.{0,40}\bchat[ /_.-]?completions?/i.test(
+      text
+    ) ||
     /chat[ /_.-]?completions?\b.{0,40}(?:not supported|unsupported|is not available)/i.test(text)
   )
 }
@@ -292,7 +346,8 @@ export function isResponsesOnlyError(d: AiErrorDetail): boolean {
 /** A Responses error that means the server has no /responses route (fall back to chat once). */
 export function isNoResponsesRoute(d: AiErrorDetail): boolean {
   if (d.kind !== 'http') return false
-  if (d.status === 404 || d.status === 405 || d.status === 501) return !/model/i.test(d.message) || /route|path|endpoint|url/i.test(d.message)
+  if (d.status === 404 || d.status === 405 || d.status === 501)
+    return !/model/i.test(d.message) || /route|path|endpoint|url/i.test(d.message)
   return /no route|unknown (?:url|route|endpoint)|invalid url|not implemented/i.test(d.message)
 }
 
@@ -304,7 +359,10 @@ async function* chatStream(res: Response, ctx: ErrorCtx): AsyncGenerator<string>
   if (!res.body) throw streamError(ctx, { message: 'empty response body' }, 'parse')
   // Some servers ignore stream:true and answer with plain JSON.
   if (!(res.headers.get('content-type') ?? '').includes('event-stream')) {
-    const j = (await res.json().catch(() => null)) as { choices?: Array<{ message?: { content?: unknown } }>; error?: Json } | null
+    const j = (await res.json().catch(() => null)) as {
+      choices?: Array<{ message?: { content?: unknown } }>
+      error?: Json
+    } | null
     if (j?.error) throw streamError(ctx, j.error)
     const content = j?.choices?.[0]?.message?.content
     if (typeof content !== 'string') throw streamError(ctx, { message: 'no message in the response' }, 'parse')
@@ -354,7 +412,13 @@ export function responsesBody(cfg: ProviderConfig, messages: ChatMessage[], run?
             ]
           }
     )
-  const body: Record<string, unknown> = { ...(m.id ? { model: m.id } : {}), ...(instructions ? { instructions } : {}), input, stream: true, store: false }
+  const body: Record<string, unknown> = {
+    ...(m.id ? { model: m.id } : {}),
+    ...(instructions ? { instructions } : {}),
+    input,
+    stream: true,
+    store: false
+  }
   const budget = outputBudget(m, estimateTokens(vision ? messages : messages.map((x) => ({ ...x, images: undefined }))))
   if (budget) body.max_output_tokens = Math.max(16, budget)
   if (m.reasoning) body.reasoning = { effort: m.reasoning }
@@ -386,7 +450,18 @@ function incompleteError(ctx: ErrorCtx, r: Json | undefined): AiRequestError {
         ? 'the provider filtered the reply'
         : undefined
   return new AiRequestError(
-    scrubDetail({ provider: ctx.provider, message: `Response incomplete: ${reason}`, code: reason, endpoint: ctx.endpoint, model: ctx.model, kind: 'incomplete', ...(hint ? { hint } : {}) }, ctx.key)
+    scrubDetail(
+      {
+        provider: ctx.provider,
+        message: `Response incomplete: ${reason}`,
+        code: reason,
+        endpoint: ctx.endpoint,
+        model: ctx.model,
+        kind: 'incomplete',
+        ...(hint ? { hint } : {})
+      },
+      ctx.key
+    )
   )
 }
 
@@ -396,7 +471,10 @@ function incompleteError(ctx: ErrorCtx, r: Json | undefined): AiRequestError {
  * `response.failed`, `error`, refusals, and proxies that only send `*.done` events or drop the
  * final event. Exported for tests.
  */
-export async function* parseResponsesEvents(events: AsyncIterable<{ event: string; data: string }>, ctx: ErrorCtx): AsyncGenerator<string> {
+export async function* parseResponsesEvents(
+  events: AsyncIterable<{ event: string; data: string }>,
+  ctx: ErrorCtx
+): AsyncGenerator<string> {
   let emitted = 0
   let refusal = ''
   for await (const { event, data } of events) {
@@ -491,7 +569,12 @@ function openAICompatible(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
         const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'text/event-stream' }
         if (cfg.apiKey) headers.authorization = `Bearer ${cfg.apiKey}`
         const body = endpoint === 'responses' ? responsesBody(cfg, messages, run) : openAIBody(cfg, messages, run)
-        const res = await send(fetchFn, `${cfg.baseUrl}${path}`, { method: 'POST', headers, body: JSON.stringify(body), signal }, ctx)
+        const res = await send(
+          fetchFn,
+          `${cfg.baseUrl}${path}`,
+          { method: 'POST', headers, body: JSON.stringify(body), signal },
+          ctx
+        )
         if (!res.ok) throw await httpError(res, ctx)
         yield* endpoint === 'responses' ? responsesStream(res, ctx) : chatStream(res, ctx)
       }
@@ -562,7 +645,8 @@ function anthropic(cfg: ProviderConfig, fetchFn: Fetch): AiProvider {
           continue
         }
         if (event === 'error' || j.type === 'error') throw streamError(ctx, j.error)
-        if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta' && typeof j.delta.text === 'string') yield j.delta.text
+        if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta' && typeof j.delta.text === 'string')
+          yield j.delta.text
       }
     }
   }

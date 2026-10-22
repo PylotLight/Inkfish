@@ -110,11 +110,16 @@ const branch = run('git', ['branch', '--show-current'])
 if (branch !== 'main') info(`note: releasing from branch '${branch}', not 'main'`)
 
 const tags = run('git', ['tag', '--list'], true).split('\n').filter(Boolean)
-const lastTags: Record<App, string | null> = { desktop: latestTag('desktop', tags), android: latestTag('android', tags) }
+const lastTags: Record<App, string | null> = {
+  desktop: latestTag('desktop', tags),
+  android: latestTag('android', tags)
+}
 
 function changedSince(tag: string | null): string[] {
   if (!tag) return run('git', ['ls-files']).split('\n').filter(Boolean)
-  return run('git', ['diff', '--name-only', `${tag}..HEAD`]).split('\n').filter(Boolean)
+  return run('git', ['diff', '--name-only', `${tag}..HEAD`])
+    .split('\n')
+    .filter(Boolean)
 }
 
 // --- which apps ----------------------------------------------------------------
@@ -175,7 +180,9 @@ function planDesktop(): { version: string; tag: string; cliff: { bin: string; ba
   const tag = `${TAG_PREFIX.desktop}${version}`
   if (tags.includes(tag)) fail(`tag ${tag} already exists`)
   const open = openPrerelease('desktop', tags)
-  info(`desktop: ${lastTags.desktop ?? pkg.version}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`)
+  info(
+    `desktop: ${lastTags.desktop ?? pkg.version}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`
+  )
   return { version, tag, cliff }
 }
 
@@ -202,11 +209,16 @@ function cutDesktop(p: ReturnType<typeof planDesktop>): void {
 
 function planAndroid(): { version: string; tag: string } {
   const appJson = JSON.parse(readFileSync(join(root, 'android', 'app.json'), 'utf8')) as { expo?: { version?: string } }
-  const version = nextVersion('android', lastTags.android, args.version, appJson.expo?.version ?? '0.0.0', { tags, pre: args.pre })
+  const version = nextVersion('android', lastTags.android, args.version, appJson.expo?.version ?? '0.0.0', {
+    tags,
+    pre: args.pre
+  })
   const tag = `${TAG_PREFIX.android}${version}`
   if (tags.includes(tag)) fail(`tag ${tag} already exists`)
   const open = openPrerelease('android', tags)
-  info(`android: ${lastTags.android ?? '(none)'}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`)
+  info(
+    `android: ${lastTags.android ?? '(none)'}${open ? ` (open: ${open})` : ''} → ${tag}${args.pre ? ' (pre-release)' : ''}`
+  )
   return { version, tag }
 }
 
@@ -227,7 +239,11 @@ const androidTag = androidPlan?.tag ?? (args.pre ? openPrerelease('android', tag
 
 if (args.dryRun) {
   if (desktopPlan) {
-    const preview = run(desktopPlan.cliff.bin, [...desktopPlan.cliff.base, '--unreleased', '--tag', desktopPlan.tag, '--strip', 'all'], true)
+    const preview = run(
+      desktopPlan.cliff.bin,
+      [...desktopPlan.cliff.base, '--unreleased', '--tag', desktopPlan.tag, '--strip', 'all'],
+      true
+    )
     console.log(`\n${preview}\n`)
     const what = isPrerelease(desktopPlan.version) ? 'package.json' : 'package.json + CHANGELOG.md'
     info(`dry run — would update ${what}, commit 'chore(release): ${desktopPlan.tag}' and tag ${desktopPlan.tag}`)

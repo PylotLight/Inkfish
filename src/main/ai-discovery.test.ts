@@ -14,7 +14,8 @@ import {
 } from './ai-discovery'
 
 const KEY = 'sk-discovery-secret-42'
-const fx = (name: string): unknown => JSON.parse(readFileSync(join(import.meta.dir, 'fixtures', 'ai-discovery', name), 'utf8'))
+const fx = (name: string): unknown =>
+  JSON.parse(readFileSync(join(import.meta.dir, 'fixtures', 'ai-discovery', name), 'utf8'))
 const byId = <T extends { id: string }>(list: T[], id: string): T => {
   const m = list.find((x) => x.id === id)
   if (!m) throw new Error(`no ${id}`)
@@ -29,10 +30,12 @@ function server(routes: Record<string, unknown | number>) {
     const headers = (init.headers ?? {}) as Record<string, string>
     seen.push({ url, method, headers, body: typeof init.body === 'string' ? init.body : undefined })
     let key = `${method} ${url}`
-    if (method === 'POST' && typeof init.body === 'string') key += ` ${(JSON.parse(init.body) as { model?: string }).model ?? ''}`
+    if (method === 'POST' && typeof init.body === 'string')
+      key += ` ${(JSON.parse(init.body) as { model?: string }).model ?? ''}`
     const hit = routes[key]
     if (hit === undefined) return new Response('not found', { status: 404 })
-    if (typeof hit === 'number') return new Response(JSON.stringify({ error: { message: `nope ${KEY}` } }), { status: hit })
+    if (typeof hit === 'number')
+      return new Response(JSON.stringify({ error: { message: `nope ${KEY}` } }), { status: hit })
     return new Response(JSON.stringify(hit), { status: 200, headers: { 'content-type': 'application/json' } })
   }
   return { seen, fetchFn }
@@ -93,12 +96,20 @@ describe('parsers', () => {
     const llava = parseOllamaShow('llava:13b', fx('ollama-show-llava.json'))
     expect(llava).toMatchObject({ contextWindow: 4096, input: ['text', 'image'], toolCalls: false })
     expect(parseOllamaShow('nomic-embed-text:latest', fx('ollama-show-embed.json')).nonChat).toBe(true)
-    expect(parseOllamaShow('x', { capabilities: ['completion', 'thinking'] }).reasoningLevels).toEqual(['low', 'medium', 'high'])
+    expect(parseOllamaShow('x', { capabilities: ['completion', 'thinking'] }).reasoningLevels).toEqual([
+      'low',
+      'medium',
+      'high'
+    ])
   })
 
   test('LM Studio /api/v0/models: loaded context wins, vlm → image input, tool_use', () => {
     const m = parseLMStudioModels(fx('lmstudio-v0-models.json'))
-    expect(byId(m, 'qwen2-vl-7b-instruct')).toMatchObject({ contextWindow: 32_768, input: ['text', 'image'], toolCalls: true })
+    expect(byId(m, 'qwen2-vl-7b-instruct')).toMatchObject({
+      contextWindow: 32_768,
+      input: ['text', 'image'],
+      toolCalls: true
+    })
     expect(byId(m, 'meta-llama-3.1-8b-instruct')).toMatchObject({ contextWindow: 8192, input: ['text'] })
     expect(byId(m, 'text-embedding-nomic-embed-text-v1.5').nonChat).toBe(true)
   })
@@ -118,7 +129,9 @@ describe('parsers', () => {
     expect(anthropicDefaults('claude-3-haiku-20240307').maxOutputTokens).toBe(4096)
     expect(anthropicDefaults('claude-opus-4-5').maxOutputTokens).toBe(64_000)
     // Limits the API reports win over the table.
-    expect(parseAnthropicModels({ data: [{ id: 'claude-sonnet-9', max_input_tokens: 1_000_000, max_tokens: 128_000 }] })[0]).toMatchObject({
+    expect(
+      parseAnthropicModels({ data: [{ id: 'claude-sonnet-9', max_input_tokens: 1_000_000, max_tokens: 128_000 }] })[0]
+    ).toMatchObject({
       contextWindow: 1_000_000,
       maxOutputTokens: 128_000
     })
@@ -141,7 +154,11 @@ describe('discoverModels (end to end, fake servers)', () => {
     const r = await discoverModels({ kind: 'openai', baseUrl: 'http://proxy:4000/v1', apiKey: KEY }, s.fetchFn)
     expect(r.error).toBeUndefined()
     expect(r.sources).toEqual(['GET /models', 'GET /model/info (LiteLLM)'])
-    expect(byId(r.models, 'gpt-6.1-sol')).toMatchObject({ contextWindow: 1_100_000, input: ['text', 'image', 'pdf'], sources: ['litellm', 'models'] })
+    expect(byId(r.models, 'gpt-6.1-sol')).toMatchObject({
+      contextWindow: 1_100_000,
+      input: ['text', 'image', 'pdf'],
+      sources: ['litellm', 'models']
+    })
     expect(byId(r.models, 'claude-sonnet').maxOutputTokens).toBe(64_000)
     expect(s.seen.find((x) => x.url.endsWith('/v1/models'))?.headers.authorization).toBe(`Bearer ${KEY}`)
     expect(JSON.stringify(r)).not.toContain(KEY)
@@ -164,7 +181,9 @@ describe('discoverModels (end to end, fake servers)', () => {
 
   test('LM Studio: /api/v0/models fills context + vlm', async () => {
     const s = server({
-      'GET http://localhost:1234/v1/models': { data: [{ id: 'qwen2-vl-7b-instruct' }, { id: 'meta-llama-3.1-8b-instruct' }] },
+      'GET http://localhost:1234/v1/models': {
+        data: [{ id: 'qwen2-vl-7b-instruct' }, { id: 'meta-llama-3.1-8b-instruct' }]
+      },
       'GET http://localhost:1234/api/v0/models': fx('lmstudio-v0-models.json')
     })
     const r = await discoverModels({ kind: 'openai', baseUrl: 'http://localhost:1234/v1', apiKey: null }, s.fetchFn)
@@ -191,7 +210,8 @@ describe('discoverModels (end to end, fake servers)', () => {
   test('Anthropic: x-api-key + version header, follows pagination', async () => {
     const s = server({
       'GET https://api.anthropic.com/v1/models?limit=1000': fx('anthropic-models.json'),
-      'GET https://api.anthropic.com/v1/models?limit=1000&after_id=claude-3-5-haiku-20241022': fx('anthropic-models-page2.json')
+      'GET https://api.anthropic.com/v1/models?limit=1000&after_id=claude-3-5-haiku-20241022':
+        fx('anthropic-models-page2.json')
     })
     const r = await discoverModels({ kind: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: KEY }, s.fetchFn)
     expect(r.models.map((m) => m.id)).toEqual([

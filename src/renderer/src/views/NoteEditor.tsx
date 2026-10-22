@@ -1,12 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
-import {
-  Decoration,
-  EditorView,
-  keymap,
-  lineNumbers,
-  type DecorationSet
-} from '@codemirror/view'
+import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { minimalEdit } from '../../../shared/mini-window'
@@ -113,7 +107,26 @@ interface Props {
  * (sidebar, lists, queue). Edits are ALSO lifted via `onDraft`, where the
  * parent autosaves them (Obsidian-style: no Save button, nothing "unsaved").
  */
-function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint, onEditorBlur, onMore, compact, onPopOut, popOutTitle, onMoveClick, onSetTags, onTagClick, allTags, dayNav, focusEnd }: Props): React.JSX.Element {
+function NoteEditor({
+  doc,
+  title,
+  draft,
+  onDraft,
+  onFlush,
+  onRename,
+  renameHint,
+  onEditorBlur,
+  onMore,
+  compact,
+  onPopOut,
+  popOutTitle,
+  onMoveClick,
+  onSetTags,
+  onTagClick,
+  allTags,
+  dayNav,
+  focusEnd
+}: Props): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const [text, setText] = useState('')
@@ -195,78 +208,78 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
     let view: EditorView | null = null
     try {
       view = new EditorView({
-      state: EditorState.create({
-        doc: textRef.current,
-        extensions: [
-          lineNumbers(),
-          EditorView.lineWrapping,
-          history(),
-          keymap.of([
-            ...listKeys,
-            ...defaultKeymap,
-            ...historyKeymap,
-            {
-              key: 'Mod-s',
-              run: () => {
-                saveRef.current.onFlush?.()
+        state: EditorState.create({
+          doc: textRef.current,
+          extensions: [
+            lineNumbers(),
+            EditorView.lineWrapping,
+            history(),
+            keymap.of([
+              ...listKeys,
+              ...defaultKeymap,
+              ...historyKeymap,
+              {
+                key: 'Mod-s',
+                run: () => {
+                  saveRef.current.onFlush?.()
+                  return true
+                }
+              }
+            ]),
+            EditorView.updateListener.of((u) => {
+              if (!u.docChanged) return
+              const next = u.state.doc.toString()
+              const remote = u.transactions.some((t) => t.annotation(remoteSync))
+              handleTextRef.current(next, !remote)
+              // Live sync with mini windows: local edits only (remote ones came from there).
+              const d = saveRef.current.doc
+              if (d && !remote) window.api.mini?.draft(d.id, next)
+            }),
+            findQueryField,
+            findDecoField,
+            livePreview({
+              onToggleTask: (pos) => toggleTaskRef.current(pos),
+              resolveImage: (src) => imageCandidates(src, notePathRef.current)
+            }),
+            // Images: paste / drop → assets/, ref inserted on its own line.
+            // Handled here (not a DOM listener) so CodeMirror doesn't also
+            // paste the clipboard's text/html fallback for the same image.
+            EditorView.domEventHandlers({
+              paste: (e, v) => {
+                const files = imageFiles(e.clipboardData)
+                if (files.length === 0) return false
+                e.preventDefault()
+                void insertImages(v, files, v.state.selection.main.head)
+                return true
+              },
+              dragover: (e) => {
+                // Files aren't readable until drop — only allow the drop here.
+                if (!hasFileDrag(e.dataTransfer)) return false
+                e.preventDefault()
+                return true
+              },
+              drop: (e, v) => {
+                const files = imageFiles(e.dataTransfer)
+                if (files.length === 0) return false
+                e.preventDefault()
+                const at = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head
+                void insertImages(v, files, at)
                 return true
               }
-            }
-          ]),
-          EditorView.updateListener.of((u) => {
-            if (!u.docChanged) return
-            const next = u.state.doc.toString()
-            const remote = u.transactions.some((t) => t.annotation(remoteSync))
-            handleTextRef.current(next, !remote)
-            // Live sync with mini windows: local edits only (remote ones came from there).
-            const d = saveRef.current.doc
-            if (d && !remote) window.api.mini?.draft(d.id, next)
-          }),
-          findQueryField,
-          findDecoField,
-          livePreview({
-            onToggleTask: (pos) => toggleTaskRef.current(pos),
-            resolveImage: (src) => imageCandidates(src, notePathRef.current)
-          }),
-          // Images: paste / drop → assets/, ref inserted on its own line.
-          // Handled here (not a DOM listener) so CodeMirror doesn't also
-          // paste the clipboard's text/html fallback for the same image.
-          EditorView.domEventHandlers({
-            paste: (e, v) => {
-              const files = imageFiles(e.clipboardData)
-              if (files.length === 0) return false
-              e.preventDefault()
-              void insertImages(v, files, v.state.selection.main.head)
-              return true
-            },
-            dragover: (e) => {
-              // Files aren't readable until drop — only allow the drop here.
-              if (!hasFileDrag(e.dataTransfer)) return false
-              e.preventDefault()
-              return true
-            },
-            drop: (e, v) => {
-              const files = imageFiles(e.dataTransfer)
-              if (files.length === 0) return false
-              e.preventDefault()
-              const at = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head
-              void insertImages(v, files, at)
-              return true
-            }
-          }),
-          EditorView.theme({
-            '&': { backgroundColor: 'transparent', height: '100%' },
-            '.cm-content': {
-              fontFamily: 'var(--text-font)',
-              fontSize: 'var(--ed-fs, 14px)',
-              caretColor: 'var(--text)'
-            },
-            '.cm-cursor': { borderLeftColor: 'var(--text)' },
-            '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
-          })
-        ]
-      }),
-      parent: mountRef.current
+            }),
+            EditorView.theme({
+              '&': { backgroundColor: 'transparent', height: '100%' },
+              '.cm-content': {
+                fontFamily: 'var(--text-font)',
+                fontSize: 'var(--ed-fs, 14px)',
+                caretColor: 'var(--text)'
+              },
+              '.cm-cursor': { borderLeftColor: 'var(--text)' },
+              '.cm-gutters': { backgroundColor: 'transparent', border: 'none' }
+            })
+          ]
+        }),
+        parent: mountRef.current
       })
     } catch (err) {
       console.error('[editor] CodeMirror mount failed, using textarea fallback:', err)
@@ -330,7 +343,7 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
       // Fallback textarea can't render marks — jump the caret instead.
       if (cmFailed && findTotal > 0) {
         const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
-        const pos = findHits[((findIndex + dir) % findTotal + findTotal) % findTotal] ?? 0
+        const pos = findHits[(((findIndex + dir) % findTotal) + findTotal) % findTotal] ?? 0
         if (ta) {
           ta.focus()
           ta.setSelectionRange(pos, pos + findQuery.length)
@@ -344,8 +357,14 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
     return (
       <div className="editor-empty">
         <div>
-          <p className="empty-icon" aria-hidden>✒</p>
-          <p className="muted">Nothing open — pick a note on the left,<br />or hit ⌥Space to capture one.</p>
+          <p className="empty-icon" aria-hidden>
+            ✒
+          </p>
+          <p className="muted">
+            Nothing open — pick a note on the left,
+            <br />
+            or hit ⌥Space to capture one.
+          </p>
         </div>
       </div>
     )
@@ -376,110 +395,134 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
         }
       }}
     >
-      {!compact && <div className="ed-head">
-        {onMoveClick && (
-          <div className="ed-crumbs-row">
-          <button
-            className="ed-crumbs"
-            title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} — click to move`}
-            aria-label="Note folder — move to another folder"
-            onClick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-              onMoveClick(r.left, r.bottom + 6)
-            }}
-          >
-            {breadcrumb(doc.path).length === 0 ? (
-              <span className="crumb root">Vault root</span>
-            ) : (
-              breadcrumb(doc.path).map((c, i) => (
-                <span key={c.rel} className="crumb">
-                  {i > 0 && <span className="crumb-sep" aria-hidden>›</span>}
-                  {c.name}
+      {!compact && (
+        <div className="ed-head">
+          {onMoveClick && (
+            <div className="ed-crumbs-row">
+              <button
+                className="ed-crumbs"
+                title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} — click to move`}
+                aria-label="Note folder — move to another folder"
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  onMoveClick(r.left, r.bottom + 6)
+                }}
+              >
+                {breadcrumb(doc.path).length === 0 ? (
+                  <span className="crumb root">Vault root</span>
+                ) : (
+                  breadcrumb(doc.path).map((c, i) => (
+                    <span key={c.rel} className="crumb">
+                      {i > 0 && (
+                        <span className="crumb-sep" aria-hidden>
+                          ›
+                        </span>
+                      )}
+                      {c.name}
+                    </span>
+                  ))
+                )}
+                <span className="crumb-caret" aria-hidden>
+                  ▾
                 </span>
-              ))
+              </button>
+            </div>
+          )}
+          <div className={`ed-title${dayNav ? ' ed-title-day' : ''}`}>
+            {dayNav && (
+              <button
+                className="btn ghost sm icon ed-daynav"
+                disabled={!dayNav.onPrev}
+                title={dayNav.prevLabel ? `Previous day note · ${dayNav.prevLabel}` : 'No earlier day notes'}
+                aria-label="Previous day note"
+                onClick={() => dayNav.onPrev?.()}
+              >
+                ‹
+              </button>
             )}
-            <span className="crumb-caret" aria-hidden>▾</span>
-          </button>
+            <InlineTitle
+              title={title || 'Untitled'}
+              hint={renameHint}
+              onCommit={onRename}
+              onDone={() => viewRef.current?.focus()}
+            />
+            {dayNav && (
+              <button
+                className="btn ghost sm icon ed-daynav"
+                disabled={!dayNav.onNext}
+                title={dayNav.nextLabel ? `Next day note · ${dayNav.nextLabel}` : 'This is the latest day'}
+                aria-label="Next day note"
+                onClick={() => dayNav.onNext?.()}
+              >
+                ›
+              </button>
+            )}
           </div>
-        )}
-        <div className={`ed-title${dayNav ? ' ed-title-day' : ''}`}>
-          {dayNav && (
+          <div className="row ed-actions">
             <button
-              className="btn ghost sm icon ed-daynav"
-              disabled={!dayNav.onPrev}
-              title={dayNav.prevLabel ? `Previous day note · ${dayNav.prevLabel}` : 'No earlier day notes'}
-              aria-label="Previous day note"
-              onClick={() => dayNav.onPrev?.()}
+              className={`btn ghost sm icon${findOpen ? ' active-opt' : ''}`}
+              title="Find in note (⌘F)"
+              aria-label="Find in note"
+              aria-expanded={findOpen}
+              onClick={() => (findOpen ? setFindOpen(false) : openFind())}
             >
-              ‹
+              ⌕
             </button>
-          )}
-          <InlineTitle title={title || 'Untitled'} hint={renameHint} onCommit={onRename} onDone={() => viewRef.current?.focus()} />
-          {dayNav && (
             <button
-              className="btn ghost sm icon ed-daynav"
-              disabled={!dayNav.onNext}
-              title={dayNav.nextLabel ? `Next day note · ${dayNav.nextLabel}` : 'This is the latest day'}
-              aria-label="Next day note"
-              onClick={() => dayNav.onNext?.()}
+              className="btn ghost sm icon"
+              title="Raw / Processed view with AI (⇧⌥P)"
+              aria-label="Raw / Processed view"
+              onClick={() => sendAiCommand('toggle-view')}
             >
-              ›
+              ✦
             </button>
-          )}
+            {onPopOut && (
+              <button
+                className="btn ghost sm icon ed-pop"
+                title={popOutTitle ?? 'Pop out to mini window'}
+                aria-label="Pop out to mini window"
+                onClick={onPopOut}
+              >
+                <PopOutIcon size={13} />
+              </button>
+            )}
+            <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
+              Reveal
+            </button>
+            <button
+              className="btn ghost sm icon"
+              title="Note actions (reveal, rename, delete)"
+              aria-label="Note actions"
+              onClick={(e) => {
+                const r = (e.target as HTMLElement).getBoundingClientRect()
+                onMore(r.left, r.bottom + 6)
+              }}
+            >
+              ⋯
+            </button>
+          </div>
+          <p
+            className="muted small ed-meta"
+            title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
+          >
+            {doc.path} ·{' '}
+            {draft !== undefined
+              ? `${fmtChars(text.length)} · `
+              : doc.size > 0
+                ? `${fmtBytes(doc.size)} · `
+                : `${fmtChars(doc.markdown.length)} · `}
+            edited {timeAgo(doc.updatedAt)} · created{' '}
+            {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+            {!onSetTags && (
+              <>
+                {' · '}
+                {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+              </>
+            )}
+          </p>
+          {onSetTags && <TagChips tags={doc.tags} allTags={allTags} onChange={onSetTags} onTagClick={onTagClick} />}
         </div>
-        <div className="row ed-actions">
-          <button
-            className={`btn ghost sm icon${findOpen ? ' active-opt' : ''}`}
-            title="Find in note (⌘F)"
-            aria-label="Find in note"
-            aria-expanded={findOpen}
-            onClick={() => (findOpen ? setFindOpen(false) : openFind())}
-          >
-            ⌕
-          </button>
-          <button
-            className="btn ghost sm icon"
-            title="Raw / Processed view with AI (⇧⌥P)"
-            aria-label="Raw / Processed view"
-            onClick={() => sendAiCommand('toggle-view')}
-          >
-            ✦
-          </button>
-          {onPopOut && (
-            <button
-              className="btn ghost sm icon ed-pop"
-              title={popOutTitle ?? 'Pop out to mini window'}
-              aria-label="Pop out to mini window"
-              onClick={onPopOut}
-            >
-              <PopOutIcon size={13} />
-            </button>
-          )}
-          <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
-            Reveal
-          </button>
-          <button
-            className="btn ghost sm icon"
-            title="Note actions (reveal, rename, delete)"
-            aria-label="Note actions"
-            onClick={(e) => {
-              const r = (e.target as HTMLElement).getBoundingClientRect()
-              onMore(r.left, r.bottom + 6)
-            }}
-          >
-            ⋯
-          </button>
-        </div>
-        <p
-          className="muted small ed-meta"
-          title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
-        >
-          {doc.path} · {draft !== undefined ? `${fmtChars(text.length)} · ` : doc.size > 0 ? `${fmtBytes(doc.size)} · ` : `${fmtChars(doc.markdown.length)} · `}
-          edited {timeAgo(doc.updatedAt)} · created {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-          {!onSetTags && <>{' · '}{doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}</>}
-        </p>
-        {onSetTags && <TagChips tags={doc.tags} allTags={allTags} onChange={onSetTags} onTagClick={onTagClick} />}
-      </div>}
+      )}
       {findOpen && (
         <div className="find-bar" role="search" aria-label="Find in note">
           <input
@@ -507,10 +550,22 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
           <span className="muted small find-count" aria-live="polite">
             {findQuery ? (findTotal > 0 ? `${findCurrent + 1}/${findTotal}` : '0/0') : ''}
           </span>
-          <button className="btn ghost sm icon" title="Previous (⇧↵)" aria-label="Previous match" onClick={() => stepFind(-1)} disabled={findTotal === 0}>
+          <button
+            className="btn ghost sm icon"
+            title="Previous (⇧↵)"
+            aria-label="Previous match"
+            onClick={() => stepFind(-1)}
+            disabled={findTotal === 0}
+          >
             ↑
           </button>
-          <button className="btn ghost sm icon" title="Next (↵)" aria-label="Next match" onClick={() => stepFind(1)} disabled={findTotal === 0}>
+          <button
+            className="btn ghost sm icon"
+            title="Next (↵)"
+            aria-label="Next match"
+            onClick={() => stepFind(1)}
+            disabled={findTotal === 0}
+          >
             ↓
           </button>
           <button
@@ -555,7 +610,17 @@ function NoteEditor({ doc, title, draft, onDraft, onFlush, onRename, renameHint,
  * The big header title, editable in place (Obsidian inline title): click into it and type.
  * Enter or blur commits, Esc cancels. Plain text only; one line.
  */
-function InlineTitle({ title, hint, onCommit, onDone }: { title: string; hint?: string; onCommit: (t: string) => void; onDone: () => void }): React.JSX.Element {
+function InlineTitle({
+  title,
+  hint,
+  onCommit,
+  onDone
+}: {
+  title: string
+  hint?: string
+  onCommit: (t: string) => void
+  onDone: () => void
+}): React.JSX.Element {
   const ref = useRef<HTMLHeadingElement>(null)
   const editing = useRef(false)
   const cancelled = useRef(false)

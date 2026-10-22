@@ -36,7 +36,10 @@ export function normalizeGlobalShortcut(input: unknown): string | null {
   if (typeof input !== 'string') return null
   const normalized = normalizeAccelerator(input)
   if (normalized) return normalized
-  const parts = input.split('+').map((p) => p.trim()).filter(Boolean)
+  const parts = input
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean)
   const [a = '', b = ''] = parts
   if (parts.length === 1 && F_KEY.test(a)) return a.toUpperCase()
   if (parts.length === 2) {
@@ -48,7 +51,20 @@ export function normalizeGlobalShortcut(input: unknown): string | null {
 
 export type ShortcutCheck = { ok: true; accelerator: string } | { ok: false; error: string }
 
-const MODIFIER_WORDS = new Set(['command', 'cmd', 'commandorcontrol', 'cmdorctrl', 'control', 'ctrl', 'alt', 'option', 'altgr', 'shift', 'super', 'meta'])
+const MODIFIER_WORDS = new Set([
+  'command',
+  'cmd',
+  'commandorcontrol',
+  'cmdorctrl',
+  'control',
+  'ctrl',
+  'alt',
+  'option',
+  'altgr',
+  'shift',
+  'super',
+  'meta'
+])
 
 /**
  * Why a recorded / typed accelerator can't be a global shortcut, in words for Settings. '' is
@@ -58,7 +74,10 @@ export function validateGlobalShortcut(input: string, isMac: boolean): ShortcutC
   if (input === '') return { ok: true, accelerator: '' }
   const ok = normalizeGlobalShortcut(input)
   if (ok) return { ok: true, accelerator: ok }
-  const parts = input.split('+').map((p) => p.trim()).filter(Boolean)
+  const parts = input
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean)
   const mods = parts.filter((p) => MODIFIER_WORDS.has(p.toLowerCase()))
   const keys = parts.filter((p) => !MODIFIER_WORDS.has(p.toLowerCase()))
   const modHint = isMac ? '⌘, ⌃ or ⌥' : 'Ctrl, Alt or Super'
@@ -94,10 +113,15 @@ export function sameShortcut(a: string, b: string, isMac: boolean): boolean {
  * Inkfish's own other global shortcut already on these keys, as a message, or null.
  * `others` maps a name ("Mini window show/hide") to its accelerator.
  */
-export function ownShortcutConflict(accelerator: string, others: Record<string, string>, isMac: boolean): string | null {
+export function ownShortcutConflict(
+  accelerator: string,
+  others: Record<string, string>,
+  isMac: boolean
+): string | null {
   if (!accelerator) return null
   for (const [name, other] of Object.entries(others)) {
-    if (sameShortcut(accelerator, other, isMac)) return `${formatAccelerator(accelerator, isMac)} is already Inkfish's ${name} shortcut.`
+    if (sameShortcut(accelerator, other, isMac))
+      return `${formatAccelerator(accelerator, isMac)} is already Inkfish's ${name} shortcut.`
   }
   return null
 }

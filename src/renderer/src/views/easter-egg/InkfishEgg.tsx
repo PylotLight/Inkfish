@@ -48,7 +48,9 @@ function prefersReducedMotion(): boolean {
 function Swimmer({ still }: { still: boolean }): React.JSX.Element {
   return (
     <g className="inkfish-egg-squid" transform={still ? 'translate(330 0) rotate(90)' : undefined}>
-      {!still && <animateMotion dur={`${SWIM_SECONDS}s`} repeatCount="indefinite" rotate="auto" path={SWIM} calcMode="linear" />}
+      {!still && (
+        <animateMotion dur={`${SWIM_SECONDS}s`} repeatCount="indefinite" rotate="auto" path={SWIM} calcMode="linear" />
+      )}
       <g>
         {!still && (
           <animateTransform
@@ -107,7 +109,11 @@ export default function InkfishEgg({ logoUrl, onClose }: { logoUrl: string; onCl
     >
       <div className="inkfish-egg-water" aria-hidden="true">
         {PUFFS.map((p, i) => (
-          <span key={i} className="inkfish-egg-puff" style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.size}cqmin`, animationDelay: `${p.delay}s` }} />
+          <span
+            key={i}
+            className="inkfish-egg-puff"
+            style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.size}cqmin`, animationDelay: `${p.delay}s` }}
+          />
         ))}
         {DROPS.map((d, i) => (
           <span key={i} className="inkfish-egg-drop" style={{ left: `${d.x}%`, animationDelay: `${d.delay}s` }}>
@@ -135,7 +141,13 @@ export default function InkfishEgg({ logoUrl, onClose }: { logoUrl: string; onCl
             strokeDashoffset={still ? TRAIL_LENGTH - STILL_AT : TRAIL_LENGTH}
           >
             {!still && (
-              <animate attributeName="stroke-dashoffset" from={TRAIL_LENGTH} to={TRAIL_LENGTH - 100} dur={`${SWIM_SECONDS}s`} repeatCount="indefinite" />
+              <animate
+                attributeName="stroke-dashoffset"
+                from={TRAIL_LENGTH}
+                to={TRAIL_LENGTH - 100}
+                dur={`${SWIM_SECONDS}s`}
+                repeatCount="indefinite"
+              />
             )}
           </path>
           <Swimmer still={still} />
@@ -150,7 +162,13 @@ export default function InkfishEgg({ logoUrl, onClose }: { logoUrl: string; onCl
           <span
             key={i}
             className="inkfish-egg-bubble"
-            style={{ left: `${b.x}%`, width: b.size, height: b.size, animationDelay: `${b.delay}s`, animationDuration: `${b.duration}s` }}
+            style={{
+              left: `${b.x}%`,
+              width: b.size,
+              height: b.size,
+              animationDelay: `${b.delay}s`,
+              animationDuration: `${b.duration}s`
+            }}
           />
         ))}
       </div>

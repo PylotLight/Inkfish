@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { applyRenames, matchRenames, plan, renameCandidates, renameScore, runSync, sha256, utf8Decode, utf8Encode } from './index'
+import {
+  applyRenames,
+  matchRenames,
+  plan,
+  renameCandidates,
+  renameScore,
+  runSync,
+  sha256,
+  utf8Decode,
+  utf8Encode
+} from './index'
 import type { Base, Manifest, Remote, SyncFs, SyncState } from './index'
 
 class MemFs implements SyncFs {
@@ -18,23 +28,55 @@ class MemFs implements SyncFs {
     if (!d) throw new Error(`ENOENT ${p}`)
     return d
   }
-  async write(p: string, d: Uint8Array): Promise<void> { this.files.set(p, d) }
-  async remove(p: string): Promise<void> { this.trashed.push(p); this.files.delete(p) }
-  async move(a: string, b: string): Promise<void> { const d = this.files.get(a); if (d) { this.files.delete(a); this.files.set(b, d) } }
-  set(p: string, t: string): void { this.files.set(p, utf8Encode(t)) }
-  rename(a: string, b: string, t?: string): void { const d = this.files.get(a)!; this.files.delete(a); this.files.set(b, t === undefined ? d : utf8Encode(t)) }
-  text(p: string): string | undefined { const d = this.files.get(p); return d && utf8Decode(d) }
-  paths(): string[] { return [...this.files.keys()].sort() }
+  async write(p: string, d: Uint8Array): Promise<void> {
+    this.files.set(p, d)
+  }
+  async remove(p: string): Promise<void> {
+    this.trashed.push(p)
+    this.files.delete(p)
+  }
+  async move(a: string, b: string): Promise<void> {
+    const d = this.files.get(a)
+    if (d) {
+      this.files.delete(a)
+      this.files.set(b, d)
+    }
+  }
+  set(p: string, t: string): void {
+    this.files.set(p, utf8Encode(t))
+  }
+  rename(a: string, b: string, t?: string): void {
+    const d = this.files.get(a)!
+    this.files.delete(a)
+    this.files.set(b, t === undefined ? d : utf8Encode(t))
+  }
+  text(p: string): string | undefined {
+    const d = this.files.get(p)
+    return d && utf8Decode(d)
+  }
+  paths(): string[] {
+    return [...this.files.keys()].sort()
+  }
 }
 
 class MemState implements SyncState {
   base: Base = {}
   texts = new Map<string, string>()
-  async loadBase(): Promise<Base> { return { ...this.base } }
-  async saveBase(b: Base): Promise<void> { this.base = b }
-  async getText(h: string): Promise<string | null> { return this.texts.get(h) ?? null }
-  async putText(h: string, t: string): Promise<void> { this.texts.set(h, t) }
-  async pruneTexts(keep: Set<string>): Promise<void> { for (const k of [...this.texts.keys()]) if (!keep.has(k)) this.texts.delete(k) }
+  async loadBase(): Promise<Base> {
+    return { ...this.base }
+  }
+  async saveBase(b: Base): Promise<void> {
+    this.base = b
+  }
+  async getText(h: string): Promise<string | null> {
+    return this.texts.get(h) ?? null
+  }
+  async putText(h: string, t: string): Promise<void> {
+    this.texts.set(h, t)
+  }
+  async pruneTexts(keep: Set<string>): Promise<void> {
+    for (const k of [...this.texts.keys()]) if (!keep.has(k)) this.texts.delete(k)
+  }
 }
 
 type ApplyLog = Array<{ moves: unknown[]; writes: string[]; deletes: string[] }>
@@ -45,7 +87,10 @@ function macRemote(mac: MemFs, log: ApplyLog = []): Remote {
     manifest: () => mac.list(),
     async get(paths) {
       const out: Record<string, Uint8Array> = {}
-      for (const p of paths) { const d = mac.files.get(p); if (d) out[p] = d }
+      for (const p of paths) {
+        const d = mac.files.get(p)
+        if (d) out[p] = d
+      }
       return out
     },
     async apply(r) {
@@ -77,11 +122,15 @@ const titled = '# Groceries\n\n- milk\n- eggs\n- bread\n- coffee\n'
 describe('renameScore', () => {
   test('same front matter id decides, a different id never matches', () => {
     expect(renameScore('a.md', '---\nid: n-1\n---\nx\n', 'b.md', '---\nid: n-1\n---\ntotally different\n')).toBe(1)
-    expect(renameScore('a.md', '---\nid: n-1\n---\nsame\nsame2\nsame3\n', 'b.md', '---\nid: n-2\n---\nsame\nsame2\nsame3\n')).toBe(0)
+    expect(
+      renameScore('a.md', '---\nid: n-1\n---\nsame\nsame2\nsame3\n', 'b.md', '---\nid: n-2\n---\nsame\nsame2\nsame3\n')
+    ).toBe(0)
   })
   test('title change + rename matches; an unrelated note does not', () => {
     expect(renameScore('work/Untitled.md', body, 'work/Groceries.md', titled)).toBeGreaterThan(0.5)
-    expect(renameScore('work/Untitled.md', body, 'work/Other.md', '# Other\n\nnothing alike\nhere at all\nreally\n')).toBe(0)
+    expect(
+      renameScore('work/Untitled.md', body, 'work/Other.md', '# Other\n\nnothing alike\nhere at all\nreally\n')
+    ).toBe(0)
   })
   test('empty note → title-only note only counts for Untitled → title in the same folder', () => {
     expect(renameScore('work/Untitled 2.md', '', 'work/Groceries.md', '# Groceries\n')).toBeGreaterThan(0)
@@ -172,7 +221,9 @@ describe('runSync: renames arrive as moves (against an unchanged protocol-v1 Mac
     const { mac, phone, sync, log } = await synced({ 'work/Untitled.md': body })
     phone.rename('work/Untitled.md', 'work/Groceries.md', titled)
     await sync()
-    expect(log).toEqual([{ moves: [{ from: 'work/Untitled.md', to: 'work/Groceries.md' }], writes: ['work/Groceries.md'], deletes: [] }])
+    expect(log).toEqual([
+      { moves: [{ from: 'work/Untitled.md', to: 'work/Groceries.md' }], writes: ['work/Groceries.md'], deletes: [] }
+    ])
     expect(mac.trashed).toEqual([])
     expect(mac.paths()).toEqual(['work/Groceries.md'])
     expect(mac.text('work/Groceries.md')).toBe(titled)

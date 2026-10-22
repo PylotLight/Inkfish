@@ -115,7 +115,8 @@ export class CiFs implements SyncFs {
   store = new Map<string, { path: string; data: Uint8Array }>()
   writes = 0
   constructor(init: Record<string, string | Uint8Array> = {}) {
-    for (const [k, v] of Object.entries(init)) this.store.set(k.toLowerCase(), { path: k, data: typeof v === 'string' ? utf8Encode(v) : v })
+    for (const [k, v] of Object.entries(init))
+      this.store.set(k.toLowerCase(), { path: k, data: typeof v === 'string' ? utf8Encode(v) : v })
   }
   private resolve(p: string): string {
     const segs = p.split('/')
@@ -125,7 +126,13 @@ export class CiFs implements SyncFs {
       let hit: string | null = null
       for (const e of this.store.values()) {
         const es = e.path.split('/')
-        if (es.length > i + 1 && es.slice(0, i + 1).join('/').toLowerCase() === prefix) {
+        if (
+          es.length > i + 1 &&
+          es
+            .slice(0, i + 1)
+            .join('/')
+            .toLowerCase() === prefix
+        ) {
           hit = es[i]!
           break
         }
@@ -191,7 +198,13 @@ export class MemState implements SyncState {
 }
 
 /** A paired Mac (handler over `mac`) and the phone's Remote to it. */
-export function wired(mac: SyncFs): { remote: Remote; changed: string[][]; requests: string[]; fetchFn: Fetch; peer: MacPeer } {
+export function wired(mac: SyncFs): {
+  remote: Remote
+  changed: string[][]
+  requests: string[]
+  fetchFn: Fetch
+  peer: MacPeer
+} {
   const key = random(32)
   const peerId = 'phone-abcdef12'
   const peers = new Map<string, PeerRecord>([[peerId, { id: peerId, name: 'Pixel', key: toBase64(key), pairedAt: 0 }]])

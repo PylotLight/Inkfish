@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { createFrameLoop, easeOut, frameIntervalFor, lerpRect, motionDuration, type MotionRect } from './mini-window-motion'
+import {
+  createFrameLoop,
+  easeOut,
+  frameIntervalFor,
+  lerpRect,
+  motionDuration,
+  type MotionRect
+} from './mini-window-motion'
 
 /** Fake clock: timeouts fire as time advances (late by `lag` ms when set, like a busy main thread). */
 function fakeTimers() {
@@ -14,7 +21,9 @@ function fakeTimers() {
       timers.set(id, { fn, at: now + ms + api.lag })
       return id
     },
-    clearTimeout: (id: unknown) => { timers.delete(id as number) },
+    clearTimeout: (id: unknown) => {
+      timers.delete(id as number)
+    },
     pending: () => timers.size,
     advance(ms: number) {
       const end = now + ms
@@ -34,7 +43,12 @@ function fakeTimers() {
 
 function rig(hz = 60) {
   const timers = fakeTimers()
-  const loop = createFrameLoop({ now: timers.now, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, interval: () => frameIntervalFor(hz) })
+  const loop = createFrameLoop({
+    now: timers.now,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    interval: () => frameIntervalFor(hz)
+  })
   return { timers, loop }
 }
 
@@ -46,7 +60,10 @@ describe('frame loop', () => {
     const ticks: number[] = []
     let left = 12
     timers.lag = 1 // every timer fires 1 ms late: the schedule still holds 8.33 ms on average
-    loop.run('a', (now) => { ticks.push(now); return --left > 0 })
+    loop.run('a', (now) => {
+      ticks.push(now)
+      return --left > 0
+    })
     timers.advance(1000)
     expect(ticks.length).toBe(12)
     const span = (ticks[11] ?? 0) - (ticks[0] ?? 0)
@@ -87,7 +104,15 @@ describe('frame loop', () => {
     let current = rect(5)
     let calls = 0
     loop.run('job', () => {
-      loop.place('w', rect(5), (r) => { calls++; current = r }, () => current)
+      loop.place(
+        'w',
+        rect(5),
+        (r) => {
+          calls++
+          current = r
+        },
+        () => current
+      )
       return false
     })
     timers.advance(50)
@@ -99,7 +124,10 @@ describe('frame loop', () => {
     const ran: number[] = []
     for (let i = 0; i < 5; i++) loop.once('follow', () => ran.push(i))
     let count = 0
-    loop.run('job', () => { count++; return true })
+    loop.run('job', () => {
+      count++
+      return true
+    })
     loop.place('w', rect(1), () => ran.push(99))
     loop.drop('w')
     timers.advance(20)
@@ -114,9 +142,15 @@ describe('frame loop', () => {
   test('a job replaced mid-tick (an interrupted slide) runs only as the new one', () => {
     const { timers, loop } = rig()
     const seen: string[] = []
-    loop.run('slide', () => { seen.push('old'); return true })
+    loop.run('slide', () => {
+      seen.push('old')
+      return true
+    })
     timers.advance(17)
-    loop.run('slide', () => { seen.push('new'); return false })
+    loop.run('slide', () => {
+      seen.push('new')
+      return false
+    })
     timers.advance(100)
     expect(seen).toEqual(['old', 'new'])
   })

@@ -151,7 +151,10 @@ function saveGeometry(m: Mini): void {
   const rect = m.win.getBounds()
   const display = screen.getDisplayMatching(rect)
   const slots = geometrySlots()
-  writeJson(MINI_WINDOW_GEOMETRY_FILE, withMiniSlot(slots, m.slot, { ...(slots[m.slot] ?? {}), [miniDisplayKey(display.workArea)]: rect }))
+  writeJson(
+    MINI_WINDOW_GEOMETRY_FILE,
+    withMiniSlot(slots, m.slot, { ...(slots[m.slot] ?? {}), [miniDisplayKey(display.workArea)]: rect })
+  )
 }
 
 function scheduleGeometrySave(m: Mini): void {
@@ -201,7 +204,8 @@ function within(p: PeekPoint, r: MiniRect): boolean {
 }
 
 function rendererUrl(hash: string): { url?: string; file?: string; hash: string } {
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) return { url: `${process.env['ELECTRON_RENDERER_URL']}#${hash}`, hash }
+  if (is.dev && process.env['ELECTRON_RENDERER_URL'])
+    return { url: `${process.env['ELECTRON_RENDERER_URL']}#${hash}`, hash }
   return { file: join(__dirname, '../renderer/index.html'), hash }
 }
 
@@ -312,7 +316,10 @@ function closeHandle(m: Mini): void {
 function placeHandle(m: Mini, rect: MiniRect): void {
   if (!m.dock) return closeHandle(m)
   const h = ensureHandle(m)
-  const bounds = m.tucked && m.along !== null && !m.sliding && !m.drag ? dockHandleAt(rect, m.dock.edge, m.along) : dockHandleBounds(rect, m.dock.edge)
+  const bounds =
+    m.tucked && m.along !== null && !m.sliding && !m.drag
+      ? dockHandleAt(rect, m.dock.edge, m.along)
+      : dockHandleBounds(rect, m.dock.edge)
   placeWindow(h, bounds)
   if (!h.isVisible()) {
     h.showInactive()
@@ -336,7 +343,11 @@ function relayoutHandles(): void {
     const edge = (first.dock as MiniDock).edge
     const [min, max] = dockEdgeSpan(dockDisplay(first).workArea, edge)
     const rects = group.map((m) => dockedBounds(m.win.getBounds(), m.dock as MiniDock, dockDisplay(m).workArea, true))
-    const spread = spreadDockHandles(rects.map((r) => dockHandleAlong(r, edge)), min, max)
+    const spread = spreadDockHandles(
+      rects.map((r) => dockHandleAlong(r, edge)),
+      min,
+      max
+    )
     group.forEach((m, i) => {
       m.along = spread[i] ?? null
       if (!m.sliding) placeHandle(m, rects[i] as MiniRect)
@@ -627,7 +638,12 @@ export function openMini(noteId: string, focus = false, at?: PeekPoint): boolean
     visualEffectState: IS_MAC ? 'active' : undefined,
     roundedCorners: true,
     backgroundColor: IS_MAC ? '#00000000' : '#14181d',
-    webPreferences: { preload: preloadPath(), sandbox: false, contextIsolation: true, enableBlinkFeatures: 'AIPromptAPI' }
+    webPreferences: {
+      preload: preloadPath(),
+      sandbox: false,
+      contextIsolation: true,
+      enableBlinkFeatures: 'AIPromptAPI'
+    }
   })
   setFloating(win)
   if (process.platform !== 'linux') win.setOpacity(s.opacity)
@@ -870,7 +886,10 @@ export function registerMiniWindow(): void {
   ipcMain.handle('mini:settings', (): MiniSettingsState => settingsState())
   ipcMain.handle('mini:set-settings', (_e: IpcMainInvokeEvent, patch: unknown): MiniSettingsState => {
     const prev = getMiniSettings()
-    const next = parseMiniWindowSettings({ ...prev, ...(typeof patch === 'object' && patch ? patch : {}) }, profileDefaults)
+    const next = parseMiniWindowSettings(
+      { ...prev, ...(typeof patch === 'object' && patch ? patch : {}) },
+      profileDefaults
+    )
     settingsCache = next
     writeJson(MINI_WINDOW_SETTINGS_FILE, next)
     if (next.shortcut !== prev.shortcut || !registeredShortcut) registerShortcut(next.shortcut)

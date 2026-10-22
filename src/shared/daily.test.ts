@@ -60,7 +60,8 @@ describe('daily entries', () => {
     expect(splitDailyFile('no fm')).toEqual({ fm: '', body: 'no fm' })
   })
   test('parseEntries reads new bullets and old ## sections', () => {
-    const body = '# 2026-10-20\n\n## 08:00 · voice\n\nold one\n\nnotes\n\n- 09:10 coffee\n- 9:30 · image · ![](a.png)\n- 10:00\n  later line\n'
+    const body =
+      '# 2026-10-20\n\n## 08:00 · voice\n\nold one\n\nnotes\n\n- 09:10 coffee\n- 9:30 · image · ![](a.png)\n- 10:00\n  later line\n'
     expect(parseEntries(body)).toEqual([
       { time: '08:00', text: 'old one', kind: 'voice' },
       { time: '09:10', text: 'coffee' },
@@ -82,7 +83,9 @@ describe('legacy cleanup', () => {
   })
   test('migrateLegacyDaily → front matter only, or null to leave it', () => {
     expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n`, '2026-10-20')).toBe(fm)
-    expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')).toBeNull()
+    expect(
+      migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')
+    ).toBeNull()
   })
   test('stripLegacyTitle drops only a leading ISO-date H1', () => {
     expect(stripLegacyTitle('# 2026-10-20\n\n- 09:00 a\n')).toBe('- 09:00 a\n')

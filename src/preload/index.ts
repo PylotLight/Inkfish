@@ -265,7 +265,10 @@ const api = {
     renameToTitle: (rel: string, title: string): Promise<{ rel: string; rewritten: string[] }> =>
       ipcRenderer.invoke('files:rename-to-title', rel, title),
     /** Collision-safe move (`Name 2.md`) that also fixes relative links broken by it. */
-    moveTo: (rel: string, destDirRel: string): Promise<{ rel: string; renamed: boolean; moved: Array<{ from: string; to: string }>; rewritten: string[] }> =>
+    moveTo: (
+      rel: string,
+      destDirRel: string
+    ): Promise<{ rel: string; renamed: boolean; moved: Array<{ from: string; to: string }>; rewritten: string[] }> =>
       ipcRenderer.invoke('files:move-to', rel, destDirRel),
     trash: (rel: string): Promise<{ id: string; originalRel: string; name: string }> =>
       ipcRenderer.invoke('files:trash', rel),
@@ -334,8 +337,10 @@ const api = {
       return () => ipcRenderer.removeListener('ai-api:changed', fn)
     },
     /** Find models on the provider (main does the requests; the key never reaches the renderer). */
-    discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> => ipcRenderer.invoke('ai-api:discover', patch),
-    processedGet: (noteId: string): Promise<ProcessedEntry | null> => ipcRenderer.invoke('ai-api:processed-get', noteId),
+    discover: (patch?: Partial<AiProviderSettings>): Promise<DiscoveryResult> =>
+      ipcRenderer.invoke('ai-api:discover', patch),
+    processedGet: (noteId: string): Promise<ProcessedEntry | null> =>
+      ipcRenderer.invoke('ai-api:processed-get', noteId),
     processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
     processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId)
   },
@@ -418,7 +423,8 @@ const api = {
   shortcuts: {
     get: (): Promise<ShortcutState> => ipcRenderer.invoke('shortcuts:get'),
     /** Set one ('' = off). Refused (invalid / taken by another app) → `error` set, old one kept. */
-    set: (id: ShortcutId, accelerator: string): Promise<ShortcutSetResult> => ipcRenderer.invoke('shortcuts:set', id, accelerator),
+    set: (id: ShortcutId, accelerator: string): Promise<ShortcutSetResult> =>
+      ipcRenderer.invoke('shortcuts:set', id, accelerator),
     /** A recorder field has focus: release Inkfish's capture shortcuts so they can be recorded. */
     recording: (on: boolean): void => ipcRenderer.send('shortcuts:recording', on),
     onChanged: (cb: (s: ShortcutState) => void): (() => void) => {

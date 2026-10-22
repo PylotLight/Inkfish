@@ -1,128 +1,126 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BookOpen, ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { Icon } from './Icon';
-import { SyncRow } from './SyncIndicator';
-import { useStore } from '../lib/store';
-import { fileLabel } from '../lib/vault';
-import type { NoteEntry } from '../lib/format';
-import { folderOf } from '../lib/when';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Animated, Dimensions, FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BookOpen, ChevronDown, ChevronRight, FilePlus, Folder, FolderPlus, Plus } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { Icon } from './Icon'
+import { SyncRow } from './SyncIndicator'
+import { useStore } from '../lib/store'
+import { fileLabel } from '../lib/vault'
+import type { NoteEntry } from '../lib/format'
+import { folderOf } from '../lib/when'
 
-const WIDTH = Math.min(340, Dimensions.get('window').width * 0.85);
+const WIDTH = Math.min(340, Dimensions.get('window').width * 0.85)
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
-  onOpenNote: (noteId: string) => void;
+  open: boolean
+  onClose: () => void
+  onOpenNote: (noteId: string) => void
   /** Daily notes live in the Journal (not as a long flat list of dates in the tree). */
-  onOpenJournal: () => void;
+  onOpenJournal: () => void
 }
 
 interface DirNode {
-  name: string;
+  name: string
   /** Vault-relative dir, e.g. `personal/cairns-2026`. */
-  rel: string;
-  files: NoteEntry[];
-  children: DirNode[];
-  total: number;
+  rel: string
+  files: NoteEntry[]
+  children: DirNode[]
+  total: number
 }
 
-const fileName = (n: NoteEntry): string => fileLabel(n.path);
+const fileName = (n: NoteEntry): string => fileLabel(n.path)
 
 /** Nested dir tree from vault-relative paths — mirrors desktop `buildTree`. */
 function buildTree(notes: NoteEntry[], dirs: string[] = []): { roots: DirNode[]; rootFiles: NoteEntry[] } {
   interface Mutable {
-    name: string;
-    rel: string;
-    files: NoteEntry[];
-    kids: Map<string, Mutable>;
+    name: string
+    rel: string
+    files: NoteEntry[]
+    kids: Map<string, Mutable>
   }
-  const top = new Map<string, Mutable>();
-  const rootFiles: NoteEntry[] = [];
+  const top = new Map<string, Mutable>()
+  const rootFiles: NoteEntry[] = []
   for (const n of notes) {
-    const parts = n.path.split('/');
+    const parts = n.path.split('/')
     if (parts.length <= 1) {
-      rootFiles.push(n);
-      continue;
+      rootFiles.push(n)
+      continue
     }
-    let level = top;
-    let rel = '';
-    let node: Mutable | undefined;
+    let level = top
+    let rel = ''
+    let node: Mutable | undefined
     for (const d of parts.slice(0, -1)) {
-      rel = rel ? `${rel}/${d}` : d;
-      node = level.get(d);
+      rel = rel ? `${rel}/${d}` : d
+      node = level.get(d)
       if (!node) {
-        node = { name: d, rel, files: [], kids: new Map() };
-        level.set(d, node);
+        node = { name: d, rel, files: [], kids: new Map() }
+        level.set(d, node)
       }
-      level = node.kids;
+      level = node.kids
     }
-    node?.files.push(n);
+    node?.files.push(n)
   }
   // Empty folders (no notes anywhere below) still get a row.
   for (const d of dirs) {
-    let level = top;
-    let rel = '';
+    let level = top
+    let rel = ''
     for (const part of d.split('/')) {
-      rel = rel ? `${rel}/${part}` : part;
-      let node = level.get(part);
+      rel = rel ? `${rel}/${part}` : part
+      let node = level.get(part)
       if (!node) {
-        node = { name: part, rel, files: [], kids: new Map() };
-        level.set(part, node);
+        node = { name: part, rel, files: [], kids: new Map() }
+        level.set(part, node)
       }
-      level = node.kids;
+      level = node.kids
     }
   }
   const byFile = (a: NoteEntry, b: NoteEntry): number =>
-    fileName(a).toLowerCase().localeCompare(fileName(b).toLowerCase());
+    fileName(a).toLowerCase().localeCompare(fileName(b).toLowerCase())
   const freeze = (m: Mutable): DirNode => {
-    const children = [...m.kids.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(freeze);
+    const children = [...m.kids.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze)
     return {
       name: m.name,
       rel: m.rel,
       files: [...m.files].sort(byFile),
       children,
       total: m.files.length + children.reduce((a, c) => a + c.total, 0)
-    };
-  };
-  const roots = [...top.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze);
-  rootFiles.sort(byFile);
-  return { roots, rootFiles };
+    }
+  }
+  const roots = [...top.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze)
+  rootFiles.sort(byFile)
+  return { roots, rootFiles }
 }
 
 type Row =
   | { kind: 'dir'; rel: string; name: string; depth: number; total: number; shut: boolean }
-  | { kind: 'file'; id: string; rel: string; name: string; depth: number };
+  | { kind: 'file'; id: string; rel: string; name: string; depth: number }
 
 function rememberRow(row: Row, cache: Map<string, Row>): Row {
-  const key = row.kind === 'dir' ? `d:${row.rel}:${row.shut ? 1 : 0}` : `f:${row.id}:${row.depth}`;
-  const existing = cache.get(key);
-  if (existing) return existing;
-  cache.set(key, row);
-  return row;
+  const key = row.kind === 'dir' ? `d:${row.rel}:${row.shut ? 1 : 0}` : `f:${row.id}:${row.depth}`
+  const existing = cache.get(key)
+  if (existing) return existing
+  cache.set(key, row)
+  return row
 }
 
 /** Flatten only the visible rows — collapsed subtrees cost nothing to toggle. */
 function flatten(roots: DirNode[], rootFiles: NoteEntry[], openDirs: Set<string>, rowCache: Map<string, Row>): Row[] {
-  const out: Row[] = [];
+  const out: Row[] = []
   const walk = (node: DirNode, depth: number): void => {
-    const shut = !openDirs.has(node.rel);
-    out.push(rememberRow({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut }, rowCache));
-    if (shut) return;
-    for (const kid of node.children) walk(kid, depth + 1);
+    const shut = !openDirs.has(node.rel)
+    out.push(rememberRow({ kind: 'dir', rel: node.rel, name: node.name, depth, total: node.total, shut }, rowCache))
+    if (shut) return
+    for (const kid of node.children) walk(kid, depth + 1)
     for (const f of node.files) {
-      out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: depth + 1 }, rowCache));
+      out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: depth + 1 }, rowCache))
     }
-  };
-  for (const r of roots) walk(r, 0);
-  for (const f of rootFiles) {
-    out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: 0 }, rowCache));
   }
-  return out;
+  for (const r of roots) walk(r, 0)
+  for (const f of rootFiles) {
+    out.push(rememberRow({ kind: 'file', id: f.id, rel: f.path, name: fileName(f), depth: 0 }, rowCache))
+  }
+  return out
 }
 
 const DirRow = memo(function DirRow({
@@ -131,12 +129,12 @@ const DirRow = memo(function DirRow({
   onCreate,
   onMenu
 }: {
-  row: Extract<Row, { kind: 'dir' }>;
-  onToggle: (rel: string) => void;
-  onCreate: (dir: string) => void;
-  onMenu: (rel: string, name: string) => void;
+  row: Extract<Row, { kind: 'dir' }>
+  onToggle: (rel: string) => void
+  onCreate: (dir: string) => void
+  onMenu: (rel: string, name: string) => void
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
+  const { ui, c } = useTheme()
   return (
     <View style={[ui.row, { justifyContent: 'space-between', paddingLeft: row.depth * 14 }]}>
       <Pressable
@@ -157,19 +155,19 @@ const DirRow = memo(function DirRow({
         <Icon as={Plus} size={16} color={c.faint} />
       </Pressable>
     </View>
-  );
-});
+  )
+})
 
 const FileRow = memo(function FileRow({
   row,
   onOpen,
   onMenu
 }: {
-  row: Extract<Row, { kind: 'file' }>;
-  onOpen: (id: string) => void;
-  onMenu: (id: string, rel: string, name: string) => void;
+  row: Extract<Row, { kind: 'file' }>
+  onOpen: (id: string) => void
+  onMenu: (id: string, rel: string, name: string) => void
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
+  const { ui, c } = useTheme()
   return (
     <Pressable
       onPress={() => onOpen(row.id)}
@@ -181,26 +179,26 @@ const FileRow = memo(function FileRow({
         {row.name}
       </Text>
     </Pressable>
-  );
-});
+  )
+})
 
 interface SheetAction {
-  label: string;
-  destructive?: boolean;
-  onPress: () => void;
+  label: string
+  destructive?: boolean
+  onPress: () => void
 }
 
 /** Android's Alert caps at 3 buttons, so row menus use this bottom sheet. */
 interface Sheet {
-  title: string;
-  subtitle?: string;
-  actions: SheetAction[];
+  title: string
+  subtitle?: string
+  actions: SheetAction[]
 }
 
 type NameModal =
   | { mode: 'folder'; parent: string }
   | { mode: 'renameFile'; rel: string; current: string }
-  | { mode: 'renameDir'; rel: string; current: string };
+  | { mode: 'renameDir'; rel: string; current: string }
 
 /**
  * File sidebar (Obsidian-style left drawer): folder tree + all notes,
@@ -209,75 +207,76 @@ type NameModal =
  * not the whole vault. Long-press a row for rename / delete / new folder.
  */
 export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const insets = useSafeAreaInsets();
-  const { notes, days, projects, dirs, indexed, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } = useStore();
-  const [q, setQ] = useState('');
+  const { ui, c } = useTheme()
+  const insets = useSafeAreaInsets()
+  const { notes, days, projects, dirs, indexed, newNote, createDir, deleteFile, deleteDir, renameFile, renameDir } =
+    useStore()
+  const [q, setQ] = useState('')
   // Folders start collapsed (Obsidian-style) so a big vault opens instantly.
-  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
-  const [sheet, setSheet] = useState<Sheet | null>(null);
-  const [modal, setModal] = useState<NameModal | null>(null);
-  const [name, setName] = useState('');
-  const x = useRef(new Animated.Value(0)).current;
+  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set())
+  const [sheet, setSheet] = useState<Sheet | null>(null)
+  const [modal, setModal] = useState<NameModal | null>(null)
+  const [name, setName] = useState('')
+  const x = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    Animated.timing(x, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start();
-  }, [open, x]);
+    Animated.timing(x, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start()
+  }, [open, x])
 
   const toggle = useCallback((rel: string) => {
     setOpenDirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(rel)) next.delete(rel);
-      else next.add(rel);
-      return next;
-    });
-  }, []);
+      const next = new Set(prev)
+      if (next.has(rel)) next.delete(rel)
+      else next.add(rel)
+      return next
+    })
+  }, [])
 
   /** Reveal a dir after create/rename: expand its ancestors, open it. */
   const reveal = useCallback((rel: string) => {
-    if (!rel) return;
+    if (!rel) return
     setOpenDirs((prev) => {
-      const next = new Set(prev);
-      const parts = rel.split('/');
-      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'));
-      return next;
-    });
-  }, []);
+      const next = new Set(prev)
+      const parts = rel.split('/')
+      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
+      return next
+    })
+  }, [])
 
   /** Drop open state for a removed subtree; on rename, carry it to the new path. */
   const prune = useCallback((rel: string, nextRel?: string) => {
     setOpenDirs((prev) => {
-      let changed = false;
-      const next = new Set(prev);
+      let changed = false
+      const next = new Set(prev)
       for (const k of prev) {
         if (k === rel || k.startsWith(`${rel}/`)) {
-          next.delete(k);
-          if (nextRel) next.add(nextRel + k.slice(rel.length));
-          changed = true;
+          next.delete(k)
+          if (nextRel) next.add(nextRel + k.slice(rel.length))
+          changed = true
         }
       }
-      return changed ? next : prev;
-    });
-  }, []);
+      return changed ? next : prev
+    })
+  }, [])
 
   const tree = useMemo(() => {
-    const t = buildTree(notes, dirs);
+    const t = buildTree(notes, dirs)
     // Empty top-level projects still get a header so they don't vanish.
-    const have = new Set(t.roots.map((r) => r.rel));
+    const have = new Set(t.roots.map((r) => r.rel))
     for (const p of projects) {
       if (!have.has(p.dir)) {
-        t.roots.push({ name: p.name, rel: p.dir, files: [], children: [], total: 0 });
-        have.add(p.dir);
+        t.roots.push({ name: p.name, rel: p.dir, files: [], children: [], total: 0 })
+        have.add(p.dir)
       }
     }
-    t.roots.sort((a, b) => a.name.localeCompare(b.name));
-    return t;
-  }, [notes, projects, dirs]);
+    t.roots.sort((a, b) => a.name.localeCompare(b.name))
+    return t
+  }, [notes, projects, dirs])
   // Reuse row objects for unchanged items so memoized rows stay memoized when
   // a directory is toggled. The cache is scoped to the current vault snapshot.
-  const rowCache = useMemo(() => new Map<string, Row>(), [tree]);
+  const rowCache = useMemo(() => new Map<string, Row>(), [tree])
 
-  const needle = q.trim().toLowerCase();
+  const needle = q.trim().toLowerCase()
   const data: Row[] = useMemo(() => {
     if (needle) {
       return notes
@@ -288,48 +287,48 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
             n.snippet.toLowerCase().includes(needle)
         )
         .slice(0, 100)
-        .map((n) => rememberRow({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }, rowCache));
+        .map((n) => rememberRow({ kind: 'file', id: n.id, rel: n.path, name: fileName(n), depth: 0 }, rowCache))
     }
-    return flatten(tree.roots, tree.rootFiles, openDirs, rowCache);
-  }, [notes, needle, tree, openDirs, rowCache]);
+    return flatten(tree.roots, tree.rootFiles, openDirs, rowCache)
+  }, [notes, needle, tree, openDirs, rowCache])
 
   const fail = useCallback((e: unknown) => {
-    Alert.alert('Hmm', e instanceof Error ? e.message : String(e));
-  }, []);
+    Alert.alert('Hmm', e instanceof Error ? e.message : String(e))
+  }, [])
 
   const createIn = useCallback(
     async (dir: string): Promise<void> => {
       try {
-        const id = await newNote(dir);
-        if (id) onOpenNote(id);
+        const id = await newNote(dir)
+        if (id) onOpenNote(id)
       } catch (e) {
-        fail(e);
+        fail(e)
       }
     },
     [newNote, onOpenNote, fail]
-  );
+  )
 
   const submitName = useCallback(async (): Promise<void> => {
-    if (!modal) return;
-    const value = name.trim();
-    if (!value) return;
+    if (!modal) return
+    const value = name.trim()
+    if (!value) return
     try {
       if (modal.mode === 'folder') {
-        const rel = await createDir(modal.parent, value);
-        reveal(rel);
+        const rel = await createDir(modal.parent, value)
+        reveal(rel)
       } else if (modal.mode === 'renameFile') {
-        await renameFile(modal.rel, value);
+        await renameFile(modal.rel, value)
       } else {
-        const next = await renameDir(modal.rel, value);
-        prune(modal.rel, next);
-        reveal(next);
+        const next = await renameDir(modal.rel, value)
+        prune(modal.rel, next)
+        reveal(next)
       }
-      setModal(null);
-      setName('');
+      setModal(null)
+      setName('')
     } catch (e) {
-      fail(e);
+      fail(e)
     }
-  }, [modal, name, createDir, renameFile, renameDir, reveal, prune, fail]);
+  }, [modal, name, createDir, renameFile, renameDir, reveal, prune, fail])
 
   const askDeleteFile = useCallback(
     (rel: string, label: string) => {
@@ -339,14 +338,12 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
           text: 'Delete',
           style: 'destructive',
           onPress: () =>
-            void deleteFile(rel).catch((e: unknown) =>
-              Alert.alert('Hmm', e instanceof Error ? e.message : String(e))
-            )
+            void deleteFile(rel).catch((e: unknown) => Alert.alert('Hmm', e instanceof Error ? e.message : String(e)))
         }
-      ]);
+      ])
     },
     [deleteFile]
-  );
+  )
 
   const askDeleteDir = useCallback(
     (rel: string, label: string, total: number) => {
@@ -364,21 +361,21 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
                 .catch((e: unknown) => Alert.alert('Hmm', e instanceof Error ? e.message : String(e)))
           }
         ]
-      );
+      )
     },
     [deleteDir, prune]
-  );
+  )
 
   const dirMenu = useCallback(
     (rel: string, label: string) => {
       const node = (function find(rs: DirNode[]): DirNode | null {
         for (const r of rs) {
-          if (r.rel === rel) return r;
-          const k = find(r.children);
-          if (k) return k;
+          if (r.rel === rel) return r
+          const k = find(r.children)
+          if (k) return k
         }
-        return null;
-      })(tree.roots);
+        return null
+      })(tree.roots)
       setSheet({
         title: label,
         subtitle: rel,
@@ -387,23 +384,23 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
           {
             label: 'New folder here',
             onPress: () => {
-              setName('');
-              setModal({ mode: 'folder', parent: rel });
+              setName('')
+              setModal({ mode: 'folder', parent: rel })
             }
           },
           {
             label: 'Rename folder',
             onPress: () => {
-              setName(label);
-              setModal({ mode: 'renameDir', rel, current: label });
+              setName(label)
+              setModal({ mode: 'renameDir', rel, current: label })
             }
           },
           { label: 'Delete folder', destructive: true, onPress: () => askDeleteDir(rel, label, node?.total ?? 0) }
         ]
-      });
+      })
     },
     [tree, createIn, askDeleteDir]
-  );
+  )
 
   const fileMenu = useCallback(
     (_id: string, rel: string, label: string) => {
@@ -414,16 +411,16 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
           {
             label: 'Rename',
             onPress: () => {
-              setName(label);
-              setModal({ mode: 'renameFile', rel, current: label });
+              setName(label)
+              setModal({ mode: 'renameFile', rel, current: label })
             }
           },
           { label: 'Delete', destructive: true, onPress: () => askDeleteFile(rel, label) }
         ]
-      });
+      })
     },
     [askDeleteFile]
-  );
+  )
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) =>
@@ -433,16 +430,26 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
         <FileRow row={item} onOpen={onOpenNote} onMenu={fileMenu} />
       ),
     [toggle, createIn, dirMenu, fileMenu, onOpenNote]
-  );
+  )
 
-  const keyOf = useCallback((r: Row) => (r.kind === 'dir' ? `d:${r.rel}` : `f:${r.id}`), []);
+  const keyOf = useCallback((r: Row) => (r.kind === 'dir' ? `d:${r.rel}` : `f:${r.id}`), [])
 
-  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH - 24, 0] });
-  const scrimOpacity = x.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] });
+  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-WIDTH - 24, 0] })
+  const scrimOpacity = x.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] })
 
   return (
     <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} pointerEvents={open ? 'auto' : 'none'}>
-      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#000', opacity: scrimOpacity }}>
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: '#000',
+          opacity: scrimOpacity
+        }}
+      >
         <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
       <Animated.View
@@ -466,8 +473,8 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
           <View style={[ui.row, { gap: 0 }]}>
             <Pressable
               onPress={() => {
-                setName('');
-                setModal({ mode: 'folder', parent: '' });
+                setName('')
+                setModal({ mode: 'folder', parent: '' })
               }}
               style={ui.iconBtn}
               accessibilityLabel="New folder"
@@ -506,14 +513,19 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
           windowSize={5}
           removeClippedSubviews
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={ui.meta}>{needle ? 'No notes match.' : indexed ? 'No notes yet.' : 'Loading notes…'}</Text>}
+          ListEmptyComponent={
+            <Text style={ui.meta}>{needle ? 'No notes match.' : indexed ? 'No notes yet.' : 'Loading notes…'}</Text>
+          }
           contentContainerStyle={{ paddingBottom: 24 }}
         />
         <SyncRow />
         <Text style={[ui.meta, { marginTop: 4 }]}>Long-press a row for rename · delete · new folder</Text>
       </Animated.View>
       <Modal visible={sheet !== null} transparent animationType="fade" onRequestClose={() => setSheet(null)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={() => setSheet(null)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
+          onPress={() => setSheet(null)}
+        >
           <Pressable
             onPress={() => undefined}
             style={{
@@ -539,8 +551,8 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
               <Pressable
                 key={a.label}
                 onPress={() => {
-                  setSheet(null);
-                  a.onPress();
+                  setSheet(null)
+                  a.onPress()
                 }}
                 style={{ paddingVertical: 13 }}
               >
@@ -554,7 +566,13 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
       </Modal>
       <Modal visible={modal !== null} transparent animationType="fade" onRequestClose={() => setModal(null)}>
         <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 32 }}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 32
+          }}
           onPress={() => setModal(null)}
         >
           <Pressable
@@ -569,11 +587,7 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
             }}
           >
             <Text style={[ui.title, { fontSize: 16 }]}>
-              {modal?.mode === 'folder'
-                ? 'New folder'
-                : modal?.mode === 'renameFile'
-                  ? 'Rename note'
-                  : 'Rename folder'}
+              {modal?.mode === 'folder' ? 'New folder' : modal?.mode === 'renameFile' ? 'Rename note' : 'Rename folder'}
             </Text>
             {!!modal && modal.mode !== 'renameFile' && modal.mode !== 'renameDir' && (
               <Text style={[ui.meta, { marginTop: 2 }]} numberOfLines={1}>
@@ -593,8 +607,8 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
             <View style={[ui.row, { justifyContent: 'flex-end', gap: 4, marginTop: 8 }]}>
               <Pressable
                 onPress={() => {
-                  setModal(null);
-                  setName('');
+                  setModal(null)
+                  setName('')
                 }}
                 style={[ui.quiet, { paddingVertical: 10 }]}
               >
@@ -608,5 +622,5 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
         </Pressable>
       </Modal>
     </View>
-  );
+  )
 }

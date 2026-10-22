@@ -61,7 +61,9 @@ function mods(list: unknown): Modality[] | undefined {
  */
 export function endpointFrom(mode: unknown, endpoints: unknown): 'responses' | undefined {
   if (typeof mode === 'string' && mode.trim().toLowerCase() === 'responses') return 'responses'
-  const list = arr(endpoints).filter((x): x is string => typeof x === 'string').map((x) => x.toLowerCase())
+  const list = arr(endpoints)
+    .filter((x): x is string => typeof x === 'string')
+    .map((x) => x.toLowerCase())
   if (!list.length) return undefined
   const responses = list.some((x) => /(^|\/)responses$/.test(x))
   const chat = list.some((x) => /chat\/completions$/.test(x))
@@ -111,7 +113,9 @@ export function parseOpenAIModels(body: unknown): DiscoveredModel[] {
       endpoint: endpointFrom(m.mode, m.supported_endpoints ?? m.endpoints)
     }
     const nonChat =
-      type === 'embedding' || type === 'embeddings' || /(^|[-_/.])(embed|embedding|rerank|tts|whisper|dall-e|moderation)/i.test(id)
+      type === 'embedding' ||
+      type === 'embeddings' ||
+      /(^|[-_/.])(embed|embedding|rerank|tts|whisper|dall-e|moderation)/i.test(id)
     out.push({ id, ...clean(meta), sources: ['models'], ...(nonChat ? { nonChat } : {}) })
   }
   return out
@@ -143,7 +147,8 @@ export function parseLiteLLMInfo(body: unknown): DiscoveredModel[] {
       maxOutputTokens: num(info.max_output_tokens),
       input: known ? input : undefined,
       output: known ? output : undefined,
-      toolCalls: known && typeof info.supports_function_calling === 'boolean' ? info.supports_function_calling : undefined,
+      toolCalls:
+        known && typeof info.supports_function_calling === 'boolean' ? info.supports_function_calling : undefined,
       reasoningLevels: info.supports_reasoning === true ? [...DEFAULT_REASONING_LEVELS] : known ? [] : undefined,
       endpoint: endpointFrom(mode, info.supported_endpoints ?? obj(m.litellm_params).supported_endpoints)
     }
@@ -268,7 +273,8 @@ export function mergeDiscovered(list: DiscoveredModel[], extras: DiscoveredModel
     const all = [...(byId.get(base.id) ?? [base])].sort((a, b) => rank(a) - rank(b))
     const merged: DiscoveredModel = { id: base.id, sources: [] }
     for (const d of all) {
-      for (const f of META_FIELDS) if (merged[f] === undefined && d[f] !== undefined) (merged as unknown as Json)[f] = d[f]
+      for (const f of META_FIELDS)
+        if (merged[f] === undefined && d[f] !== undefined) (merged as unknown as Json)[f] = d[f]
       for (const s of d.sources) if (!merged.sources.includes(s)) merged.sources.push(s)
       if (d.nonChat) merged.nonChat = true
     }
@@ -293,7 +299,12 @@ const SOURCE_LABEL = {
   anthropic: 'GET /v1/models (Anthropic) + known Claude limits'
 }
 
-async function getJson(fetchFn: Fetch, url: string, headers: Record<string, string>, init: RequestInit = {}): Promise<unknown> {
+async function getJson(
+  fetchFn: Fetch,
+  url: string,
+  headers: Record<string, string>,
+  init: RequestInit = {}
+): Promise<unknown> {
   const res = await fetchFn(url, { method: 'GET', headers, signal: AbortSignal.timeout(TIMEOUT_MS), ...init })
   if (!res.ok) {
     let detail = ''
@@ -308,7 +319,12 @@ async function getJson(fetchFn: Fetch, url: string, headers: Record<string, stri
     } catch {
       // unreadable body
     }
-    const hint = res.status === 401 || res.status === 403 ? ' (check the API key)' : res.status === 404 ? ' (check the base URL)' : ''
+    const hint =
+      res.status === 401 || res.status === 403
+        ? ' (check the API key)'
+        : res.status === 404
+          ? ' (check the base URL)'
+          : ''
     throw new Error(`HTTP ${res.status}${hint}${detail ? ` — ${detail.slice(0, 200)}` : ''}`)
   }
   return res.json()
@@ -380,7 +396,11 @@ async function discoverOpenAI(cfg: DiscoveryConfig, fetchFn: Fetch): Promise<Dis
   }
   if (!list.length && !listBody.ok) {
     const e = listBody.e
-    return { models: [], sources, error: scrubSecret(`Could not list models: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey) }
+    return {
+      models: [],
+      sources,
+      error: scrubSecret(`Could not list models: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey)
+    }
   }
   return { models: mergeDiscovered(list, extras), sources }
 }
@@ -401,11 +421,18 @@ async function discoverAnthropic(cfg: DiscoveryConfig, fetchFn: Fetch): Promise<
       after = last
     }
   } catch (e) {
-    return { models: [], sources: [], error: scrubSecret(`Could not list models: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey) }
+    return {
+      models: [],
+      sources: [],
+      error: scrubSecret(`Could not list models: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey)
+    }
   }
   return { models: mergeDiscovered(models, []), sources: [SOURCE_LABEL.anthropic] }
 }
 
-export async function discoverModels(cfg: DiscoveryConfig, fetchFn: Fetch = (input, init) => fetch(input, init)): Promise<DiscoveryResult> {
+export async function discoverModels(
+  cfg: DiscoveryConfig,
+  fetchFn: Fetch = (input, init) => fetch(input, init)
+): Promise<DiscoveryResult> {
   return cfg.kind === 'anthropic' ? discoverAnthropic(cfg, fetchFn) : discoverOpenAI(cfg, fetchFn)
 }

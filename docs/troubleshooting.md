@@ -9,7 +9,7 @@ Electron apps, not just this one.
 
 `bun run dev` runs through `scripts/dev.ts`, which owns shutdown: on child exit it drains
 leftover stdin bytes (in raw mode, so they can't trigger anything) and restores the
-cursor before returning your prompt. If you kill the process from *another* terminal the
+cursor before returning your prompt. If you kill the process from _another_ terminal the
 wrapper never runs — use `reset`. `bun run dev:bare` skips the wrapper for raw
 `electron-vite dev` behavior.
 

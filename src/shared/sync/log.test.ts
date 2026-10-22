@@ -26,7 +26,13 @@ describe('sync log', () => {
   })
 
   test('back-to-back applies from one phone collapse into one row', () => {
-    const apply = (at: number, files: number, peer = 'Pixel'): SyncLogEntry => ({ at, peer, kind: 'apply', files, message: `${files} file change(s) from ${peer}` })
+    const apply = (at: number, files: number, peer = 'Pixel'): SyncLogEntry => ({
+      at,
+      peer,
+      kind: 'apply',
+      files,
+      message: `${files} file change(s) from ${peer}`
+    })
     let log: SyncLogEntry[] = []
     log = appendCollapsed(log, apply(1000, 10))
     log = appendCollapsed(log, apply(2000, 11))

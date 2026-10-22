@@ -72,7 +72,14 @@ describe('projects + routing', () => {
 
     const { item } = v.writeInboxItem({ kind: 'text', raw: 'note body', source: 'tray' }, paths)
     const routed = v.routeToProject(
-      { inboxId: item.id, projectName: 'my-project', title: 'Hello World', tags: ['x'], markdown: 'note body', kind: 'text' },
+      {
+        inboxId: item.id,
+        projectName: 'my-project',
+        title: 'Hello World',
+        tags: ['x'],
+        markdown: 'note body',
+        kind: 'text'
+      },
       paths
     )
     expect(routed.vaultRel).toMatch(/^my-project\/\d{4}-\d{2}-\d{2}-hello-world\.md$/)
@@ -276,7 +283,12 @@ describe('vault home', () => {
       try {
         v.saveProfile('work', a)
         v.saveProfile('personal', b)
-        expect(v.listProfiles().map((p) => p.id).sort()).toEqual(['personal', 'work'])
+        expect(
+          v
+            .listProfiles()
+            .map((p) => p.id)
+            .sort()
+        ).toEqual(['personal', 'work'])
         expect(v.switchProfile('work')).toBe(a)
         expect(v.readStoredRoot()).toBe(a)
       } finally {
@@ -328,64 +340,64 @@ describe('vault home', () => {
     }
   })
 
-describe('case-duplicate healing', () => {
-  test('Personal + personal merge into personal, files kept', async () => {
-    const v = await vault()
-    const { writeFileSync, mkdirSync, readdirSync } = await import('node:fs')
-    const paths = v.ensureVault()
-    mkdirSync(join(dir, 'Personal'), { recursive: true })
-    mkdirSync(join(dir, 'personal'), { recursive: true })
-    writeFileSync(join(dir, 'Personal', 'a.md'), '# A\n')
-    writeFileSync(join(dir, 'personal', 'b.md'), '# B\n')
-    const rep = v.mergeCaseDuplicates(paths.root)
-    expect(rep.dirs).toBe(1)
-    expect(readdirSync(dir).filter((e) => e === 'Personal' || e === 'personal')).toEqual(['personal'])
-    expect(readdirSync(join(dir, 'personal')).sort()).toEqual(['a.md', 'b.md'])
-  })
+  describe('case-duplicate healing', () => {
+    test('Personal + personal merge into personal, files kept', async () => {
+      const v = await vault()
+      const { writeFileSync, mkdirSync, readdirSync } = await import('node:fs')
+      const paths = v.ensureVault()
+      mkdirSync(join(dir, 'Personal'), { recursive: true })
+      mkdirSync(join(dir, 'personal'), { recursive: true })
+      writeFileSync(join(dir, 'Personal', 'a.md'), '# A\n')
+      writeFileSync(join(dir, 'personal', 'b.md'), '# B\n')
+      const rep = v.mergeCaseDuplicates(paths.root)
+      expect(rep.dirs).toBe(1)
+      expect(readdirSync(dir).filter((e) => e === 'Personal' || e === 'personal')).toEqual(['personal'])
+      expect(readdirSync(join(dir, 'personal')).sort()).toEqual(['a.md', 'b.md'])
+    })
 
-  test('identical files dedupe, conflicting ones bump', async () => {
-    const v = await vault()
-    const { writeFileSync, mkdirSync, readdirSync } = await import('node:fs')
-    const paths = v.ensureVault()
-    mkdirSync(join(dir, 'Notes'), { recursive: true })
-    mkdirSync(join(dir, 'notes'), { recursive: true })
-    writeFileSync(join(dir, 'Notes', 'same.md'), '# Same\n')
-    writeFileSync(join(dir, 'notes', 'same.md'), '# Same\n')
-    writeFileSync(join(dir, 'Notes', 'clash.md'), '# One\n')
-    writeFileSync(join(dir, 'notes', 'clash.md'), '# Two\n')
-    v.mergeCaseDuplicates(paths.root)
-    const kids = readdirSync(join(dir, 'notes')).sort()
-    expect(kids).toContain('same.md')
-    expect(kids.filter((f) => f.startsWith('clash'))).toHaveLength(2)
-  })
+    test('identical files dedupe, conflicting ones bump', async () => {
+      const v = await vault()
+      const { writeFileSync, mkdirSync, readdirSync } = await import('node:fs')
+      const paths = v.ensureVault()
+      mkdirSync(join(dir, 'Notes'), { recursive: true })
+      mkdirSync(join(dir, 'notes'), { recursive: true })
+      writeFileSync(join(dir, 'Notes', 'same.md'), '# Same\n')
+      writeFileSync(join(dir, 'notes', 'same.md'), '# Same\n')
+      writeFileSync(join(dir, 'Notes', 'clash.md'), '# One\n')
+      writeFileSync(join(dir, 'notes', 'clash.md'), '# Two\n')
+      v.mergeCaseDuplicates(paths.root)
+      const kids = readdirSync(join(dir, 'notes')).sort()
+      expect(kids).toContain('same.md')
+      expect(kids.filter((f) => f.startsWith('clash'))).toHaveLength(2)
+    })
 
-  test('second run is a no-op', async () => {
-    const v = await vault()
-    const { writeFileSync, mkdirSync } = await import('node:fs')
-    const paths = v.ensureVault()
-    mkdirSync(join(dir, 'Personal'), { recursive: true })
-    writeFileSync(join(dir, 'Personal', 'a.md'), '# A\n')
-    expect(v.mergeCaseDuplicates(paths.root)).toEqual({ dirs: 0, files: 0 })
-  })
+    test('second run is a no-op', async () => {
+      const v = await vault()
+      const { writeFileSync, mkdirSync } = await import('node:fs')
+      const paths = v.ensureVault()
+      mkdirSync(join(dir, 'Personal'), { recursive: true })
+      writeFileSync(join(dir, 'Personal', 'a.md'), '# A\n')
+      expect(v.mergeCaseDuplicates(paths.root)).toEqual({ dirs: 0, files: 0 })
+    })
 
-  test('createDir reuses a case-variant sibling instead of forking', async () => {
-    const v = await vault()
-    const { mkdirSync, readdirSync } = await import('node:fs')
-    v.ensureVault()
-    mkdirSync(join(dir, 'personal'), { recursive: true })
-    expect(v.createDir('', 'Personal')).toBe('personal')
-    expect(readdirSync(dir).filter((e) => e.toLowerCase() === 'personal')).toEqual(['personal'])
-  })
+    test('createDir reuses a case-variant sibling instead of forking', async () => {
+      const v = await vault()
+      const { mkdirSync, readdirSync } = await import('node:fs')
+      v.ensureVault()
+      mkdirSync(join(dir, 'personal'), { recursive: true })
+      expect(v.createDir('', 'Personal')).toBe('personal')
+      expect(readdirSync(dir).filter((e) => e.toLowerCase() === 'personal')).toEqual(['personal'])
+    })
 
-  test('resolveDirRel maps to on-disk spelling', async () => {
-    const v = await vault()
-    const { mkdirSync } = await import('node:fs')
-    v.ensureVault()
-    mkdirSync(join(dir, 'personal', 'Trips'), { recursive: true })
-    expect(v.resolveDirRel('Personal/trips')).toBe('personal/Trips')
-    expect(v.resolveDirRel('')).toBe('')
+    test('resolveDirRel maps to on-disk spelling', async () => {
+      const v = await vault()
+      const { mkdirSync } = await import('node:fs')
+      v.ensureVault()
+      mkdirSync(join(dir, 'personal', 'Trips'), { recursive: true })
+      expect(v.resolveDirRel('Personal/trips')).toBe('personal/Trips')
+      expect(v.resolveDirRel('')).toBe('')
+    })
   })
-})
 
   test('import: existing md trees index with folder projects, hidden skipped', async () => {
     const v = await vault()

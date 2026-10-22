@@ -8,7 +8,12 @@
  * Pure (clock/timers injected) so it unit-tests with fake time; main/mini-window-motion.ts wires it.
  */
 
-export interface MotionRect { x: number; y: number; width: number; height: number }
+export interface MotionRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 /** A job runs once per tick with the tick's time; return false when done. */
 export type FrameJob = (now: number) => boolean
@@ -60,7 +65,12 @@ export function sameMotionRect(a: MotionRect, b: MotionRect): boolean {
 export function lerpRect(from: MotionRect, to: MotionRect, t: number): MotionRect {
   const e = easeOut(t)
   const mix = (a: number, b: number): number => Math.round(a + (b - a) * e)
-  return { x: mix(from.x, to.x), y: mix(from.y, to.y), width: mix(from.width, to.width), height: mix(from.height, to.height) }
+  return {
+    x: mix(from.x, to.x),
+    y: mix(from.y, to.y),
+    width: mix(from.width, to.width),
+    height: mix(from.height, to.height)
+  }
 }
 
 /**
@@ -69,7 +79,12 @@ export function lerpRect(from: MotionRect, to: MotionRect, t: number): MotionRec
  * 40% of it, so nothing jumps.
  */
 export function motionDuration(from: MotionRect, to: MotionRect, full: number, fullMs: number): number {
-  const distance = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y), Math.abs(to.width - from.width), Math.abs(to.height - from.height))
+  const distance = Math.max(
+    Math.abs(to.x - from.x),
+    Math.abs(to.y - from.y),
+    Math.abs(to.width - from.width),
+    Math.abs(to.height - from.height)
+  )
   if (distance === 0) return 0
   if (full <= 0) return fullMs
   return Math.round(fullMs * Math.min(1, Math.max(0.4, distance / full)))
@@ -78,7 +93,10 @@ export function motionDuration(from: MotionRect, to: MotionRect, full: number, f
 export function createFrameLoop(deps: FrameLoopDeps): FrameLoop {
   const jobs = new Map<unknown, FrameJob>()
   const onces = new Map<unknown, (now: number) => void>()
-  const pending = new Map<unknown, { rect: MotionRect; apply: (rect: MotionRect) => void; current?: () => MotionRect | null }>()
+  const pending = new Map<
+    unknown,
+    { rect: MotionRect; apply: (rect: MotionRect) => void; current?: () => MotionRect | null }
+  >()
   let timer: unknown = null
   let inTick = false
   /** When the next tick is due (drift-corrected). */
@@ -148,7 +166,9 @@ export function createFrameLoop(deps: FrameLoopDeps): FrameLoop {
       pending.set(target, { rect: { ...rect }, apply, current })
       schedule()
     },
-    drop: (target) => { pending.delete(target) },
+    drop: (target) => {
+      pending.delete(target)
+    },
     inTick: () => inTick,
     flush,
     running: () => timer !== null

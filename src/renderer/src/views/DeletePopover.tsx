@@ -36,7 +36,16 @@ export function popoverKeyAction(e: { key: string }, active: Element | null, pop
  * Delete confirm for a note with real content: title, a few lines, size + edited time.
  * Enter / ⌘⌫ (again) confirms, Esc or click-away cancels.
  */
-export function DeletePopover({ anchor, title, path, lines, size, updatedAt, onConfirm, onCancel }: {
+export function DeletePopover({
+  anchor,
+  title,
+  path,
+  lines,
+  size,
+  updatedAt,
+  onConfirm,
+  onCancel
+}: {
   anchor: Anchor
   title: string
   path: string
@@ -75,9 +84,17 @@ export function DeletePopover({ anchor, title, path, lines, size, updatedAt, onC
   return (
     <>
       <div className="del-scrim" onClick={onCancel} onContextMenu={(e) => e.preventDefault()} />
-      <div ref={ref} className="del-pop" style={{ left: pos.left, top: pos.top }} role="alertdialog" aria-label={`Delete ${title}?`}>
+      <div
+        ref={ref}
+        className="del-pop"
+        style={{ left: pos.left, top: pos.top }}
+        role="alertdialog"
+        aria-label={`Delete ${title}?`}
+      >
         <h4 className="del-pop-title">Delete “{title}”?</h4>
-        <div className="del-pop-meta" title={meta}>{meta}</div>
+        <div className="del-pop-meta" title={meta}>
+          {meta}
+        </div>
         {lines.length > 0 && (
           <div className="del-pop-preview" aria-label="Preview">
             {lines.map((l, i) => (
@@ -86,9 +103,15 @@ export function DeletePopover({ anchor, title, path, lines, size, updatedAt, onC
           </div>
         )}
         <div className="del-pop-actions">
-          <span className="del-pop-hint" title="Enter deletes · Esc cancels · ⇧ skips this next time">↩ / esc</span>
-          <button className="btn ghost sm" onClick={onCancel}>Cancel</button>
-          <button className="btn danger sm" onClick={onConfirm}>Delete</button>
+          <span className="del-pop-hint" title="Enter deletes · Esc cancels · ⇧ skips this next time">
+            ↩ / esc
+          </span>
+          <button className="btn ghost sm" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn danger sm" onClick={onConfirm}>
+            Delete
+          </button>
         </div>
       </div>
     </>
@@ -96,7 +119,12 @@ export function DeletePopover({ anchor, title, path, lines, size, updatedAt, onC
 }
 
 /** Bottom toast with an Undo button; auto-dismisses. */
-export function UndoToast({ message, onUndo, onClose, ms = 6000 }: {
+export function UndoToast({
+  message,
+  onUndo,
+  onClose,
+  ms = 6000
+}: {
   message: string
   onUndo: () => void
   onClose: () => void

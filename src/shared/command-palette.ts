@@ -29,7 +29,15 @@ export interface PaletteNote {
 }
 
 export type PaletteItem =
-  | { kind: 'command'; key: string; title: string; subtitle: string; shortcut: string | null; commandId: string; score: number }
+  | {
+      kind: 'command'
+      key: string
+      title: string
+      subtitle: string
+      shortcut: string | null
+      commandId: string
+      score: number
+    }
   | { kind: 'note'; key: string; title: string; subtitle: string; noteId: string; score: number }
 
 export const MAX_RECENT = 20
@@ -242,11 +250,22 @@ export function rankPalette(sources: PaletteSources): PaletteItem[] {
       })
       const limit = mode === 'notes' ? MAX_RESULTS : EMPTY_QUERY_NOTES
       byRecent.slice(0, limit).forEach((note, index) => {
-        items.push({ kind: 'note', key: `note:${note.id}`, title: note.title, subtitle: note.path, noteId: note.id, score: 30 - index * 0.01 })
+        items.push({
+          kind: 'note',
+          key: `note:${note.id}`,
+          title: note.title,
+          subtitle: note.path,
+          noteId: note.id,
+          score: 30 - index * 0.01
+        })
       })
     } else {
       for (const note of sources.notes) {
-        const score = matchFields(query, [note.title, note.path, noteFolder(note.path), ...(note.tags ?? []).map((t) => `#${t}`)], [1, 0.7, 0.5, 0.6])
+        const score = matchFields(
+          query,
+          [note.title, note.path, noteFolder(note.path), ...(note.tags ?? []).map((t) => `#${t}`)],
+          [1, 0.7, 0.5, 0.6]
+        )
         if (score === null) continue
         items.push({
           kind: 'note',

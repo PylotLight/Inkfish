@@ -2,11 +2,28 @@
 // Generic; everything app-specific comes from the config object (see app.config.mjs).
 import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes, createHash } from 'node:crypto'
-import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import {
-  appPath, assertChecksum, cacheRoot, formatBytes, formatDuration, parseArgs, platformSupport,
-  resolveVersionRequest, tildify, versionDir,
+  appPath,
+  assertChecksum,
+  cacheRoot,
+  formatBytes,
+  formatDuration,
+  parseArgs,
+  platformSupport,
+  resolveVersionRequest,
+  tildify,
+  versionDir
 } from './core.mjs'
 import { readManifest, resolveTarget } from './release.mjs'
 import { createUI, rotationLines } from './ui.mjs'
@@ -27,7 +44,11 @@ export function isCached(config, version, env = process.env) {
 export function newestCached(config, env = process.env) {
   const root = cacheRoot(config, env)
   let names = []
-  try { names = readdirSync(root) } catch { return null }
+  try {
+    names = readdirSync(root)
+  } catch {
+    return null
+  }
   const done = names.filter((n) => /^\d+\.\d+\.\d+/.test(n) && isCached(config, n, env))
   done.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   return done.at(-1) ?? null
@@ -36,7 +57,11 @@ export function newestCached(config, env = process.env) {
 function dirSize(path) {
   let total = 0
   let st
-  try { st = statSync(path, { throwIfNoEntry: false }) } catch { return 0 }
+  try {
+    st = statSync(path, { throwIfNoEntry: false })
+  } catch {
+    return 0
+  }
   if (!st) return 0
   if (!st.isDirectory()) return st.size
   for (const name of readdirSync(path)) {
@@ -45,7 +70,9 @@ function dirSize(path) {
       const s = statSync(child, { throwIfNoEntry: false })
       if (s?.isSymbolicLink?.()) continue
       total += s?.isDirectory() ? dirSize(child) : (s?.size ?? 0)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return total
 }
@@ -54,7 +81,11 @@ function dirSize(path) {
  * Streams `url` to `dest`, hashing as it goes. Follows redirects (fetch does).
  * @returns {Promise<{ sha256: string, bytes: number }>}
  */
-export async function download(url, dest, { signal, onProgress = (_r, _t) => {}, fetchImpl = fetch, userAgent = 'launcher' } = {}) {
+export async function download(
+  url,
+  dest,
+  { signal, onProgress = (_r, _t) => {}, fetchImpl = fetch, userAgent = 'launcher' } = {}
+) {
   const res = await fetchImpl(url, { redirect: 'follow', signal, headers: { 'User-Agent': userAgent } })
   if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${res.status} for ${url}`)
   const total = Number(res.headers.get('content-length')) || NaN
@@ -80,7 +111,8 @@ export async function download(url, dest, { signal, onProgress = (_r, _t) => {},
 /** `ditto -x -k` on macOS (keeps the bundle's symlinks, modes and xattrs), `unzip` elsewhere. */
 export function unzip(zipPath, destDir, platform = process.platform) {
   mkdirSync(destDir, { recursive: true })
-  const [cmd, args] = platform === 'darwin' ? ['ditto', ['-x', '-k', zipPath, destDir]] : ['unzip', ['-q', '-o', zipPath, '-d', destDir]]
+  const [cmd, args] =
+    platform === 'darwin' ? ['ditto', ['-x', '-k', zipPath, destDir]] : ['unzip', ['-q', '-o', zipPath, '-d', destDir]]
   const r = spawnSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8' })
   if (r.error) throw new Error(`${cmd} not found (${r.error.message})`)
   if (r.status !== 0) throw new Error(`${cmd} failed: ${(r.stderr || '').trim() || `exit ${r.status}`}`)
@@ -101,7 +133,9 @@ function launchApp(bundle, args, platform = process.platform) {
   return new Promise((resolve, reject) => {
     const child = spawn('open', openArgs, { stdio: 'inherit' })
     child.on('error', reject)
-    child.on('exit', (code) => (code === 0 ? resolve({ launched: true }) : reject(new Error(`open exited with ${code}`))))
+    child.on('exit', (code) =>
+      code === 0 ? resolve({ launched: true }) : reject(new Error(`open exited with ${code}`))
+    )
   })
 }
 
@@ -172,27 +206,52 @@ export async function run(config, opts) {
   const userAgent = `${config.packageName}/${opts.packageVersion}`
   const home = tildify
 
-  if (args.help) { stdout.write(helpText(config, opts.packageVersion)); return 0 }
+  if (args.help) {
+    stdout.write(helpText(config, opts.packageVersion))
+    return 0
+  }
 
   const request = resolveVersionRequest({ packageVersion: opts.packageVersion, latest: args.latest })
   if (args.version) {
-    const runs = request.kind === 'pinned' ? `${config.displayName} v${request.version}` : `the latest ${config.displayName} release`
+    const runs =
+      request.kind === 'pinned'
+        ? `${config.displayName} v${request.version}`
+        : `the latest ${config.displayName} release`
     stdout.write(`${config.packageName} ${opts.packageVersion} (runs ${runs})\n`)
     return 0
   }
 
   if (args.uninstall) {
-    return runUninstall(config, { all: args.all, yes: args.yes, env, platform, ui, stdout, home: opts.home, isRunning: opts.isRunning, confirm: opts.confirm,
-      keychainExists: opts.keychainExists, exec: opts.exec, dirSize, formatBytes })
+    return runUninstall(config, {
+      all: args.all,
+      yes: args.yes,
+      env,
+      platform,
+      ui,
+      stdout,
+      home: opts.home,
+      isRunning: opts.isRunning,
+      confirm: opts.confirm,
+      keychainExists: opts.keychainExists,
+      exec: opts.exec,
+      dirSize,
+      formatBytes
+    })
   }
 
   if (args.clearCache) {
     const root = cacheRoot(config, env)
-    if (root === '/' || !root.includes(config.id)) { ui.error(`refusing to delete ${root}`); return 1 }
+    if (root === '/' || !root.includes(config.id)) {
+      ui.error(`refusing to delete ${root}`)
+      return 1
+    }
     const size = dirSize(root)
     const r = removeCacheDir(root)
     ui.step(`cleared ${home(root)} (${formatBytes(size)})`)
-    if (r.kept.length) ui.warn(`left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${home(root)} the launcher didn't put there`)
+    if (r.kept.length)
+      ui.warn(
+        `left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${home(root)} the launcher didn't put there`
+      )
     return 0
   }
 
@@ -203,7 +262,8 @@ export async function run(config, opts) {
     ui.line(`(${config.displayName} releases: https://github.com/${config.repo}/releases)`)
     return 1
   }
-  if (unsupported) ui.warn(`${platform}-${arch}: no build, but ${config.envPrefix}_ASSET_URL is set (test mode, won't launch)`)
+  if (unsupported)
+    ui.warn(`${platform}-${arch}: no build, but ${config.envPrefix}_ASSET_URL is set (test mode, won't launch)`)
 
   // Pinned + cached: launch without touching the network at all.
   if (request.kind === 'pinned' && isCached(config, request.version, env) && !testOverride) {
@@ -211,17 +271,30 @@ export async function run(config, opts) {
   }
 
   // bunx without Node runs this under Bun, whose fetch can't use socks:// proxies (Node's ignores them)
-  const socks = ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy'].map((k) => env[k]).find((v) => v && /^socks/i.test(v))
-  if (socks && /** @type {any} */ (process.versions).bun) ui.warn(`Bun can't download through a SOCKS proxy (${socks.split('://')[0]}); if this fails, use npx or unset HTTPS_PROXY`)
+  const socks = ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+    .map((k) => env[k])
+    .find((v) => v && /^socks/i.test(v))
+  if (socks && /** @type {any} */ (process.versions).bun)
+    ui.warn(
+      `Bun can't download through a SOCKS proxy (${socks.split('://')[0]}); if this fails, use npx or unset HTTPS_PROXY`
+    )
 
   /** @type {Target} */
   let target
   try {
-    target = await resolveTarget(config, request, { manifest: opts.manifestPath ? readManifest(opts.manifestPath) : null, env, fetchImpl, signal: opts.signal, userAgent })
+    target = await resolveTarget(config, request, {
+      manifest: opts.manifestPath ? readManifest(opts.manifestPath) : null,
+      env,
+      fetchImpl,
+      signal: opts.signal,
+      userAgent
+    })
   } catch (err) {
     const fallback = request.kind === 'latest' ? newestCached(config, env) : null
     if (fallback && !args.path) {
-      ui.warn(`couldn't check for the latest release (${/** @type {Error} */ (err).message}); using cached v${fallback}`)
+      ui.warn(
+        `couldn't check for the latest release (${/** @type {Error} */ (err).message}); using cached v${fallback}`
+      )
       return finish(fallback, false)
     }
     ui.error(/** @type {Error} */ (err).message)
@@ -235,7 +308,9 @@ export async function run(config, opts) {
     return 1
   }
   if (!target.sha256 && !testOverride) {
-    ui.error(`no SHA-256 is published for ${target.assetName}, so it can't be verified. Set ${config.envPrefix}_SHA256 to override.`)
+    ui.error(
+      `no SHA-256 is published for ${target.assetName}, so it can't be verified. Set ${config.envPrefix}_SHA256 to override.`
+    )
     return 1
   }
 
@@ -266,7 +341,7 @@ export async function run(config, opts) {
       `Cached in ${home(root)} so the next launch is instant`,
       `Next: verifying SHA-256 so you get the exact build CI produced`,
       `Then: unpacking with ${platform === 'darwin' ? 'ditto' : 'unzip'} to keep the app bundle intact`,
-      `Ctrl+C stops cleanly; the partial file is deleted`,
+      `Ctrl+C stops cleanly; the partial file is deleted`
     ]
     ui.header(`${config.displayName} v${t.version} · first launch of this version, downloading once (${sizeHint})`)
     try {
@@ -274,30 +349,50 @@ export async function run(config, opts) {
       let result
       let elapsedMs = 0
       try {
-        result = await download(t.url, tmpZip, { signal: abort.signal, fetchImpl, userAgent, onProgress: (r, total) => bar.update(r, Number.isFinite(total) ? total : (t.size ?? NaN)) })
+        result = await download(t.url, tmpZip, {
+          signal: abort.signal,
+          fetchImpl,
+          userAgent,
+          onProgress: (r, total) => bar.update(r, Number.isFinite(total) ? total : (t.size ?? NaN))
+        })
       } finally {
         elapsedMs = bar.done().elapsedMs
       }
       const secs = Math.max(elapsedMs / 1000, 0.001)
-      ui.step(`downloaded ${formatBytes(result.bytes)} in ${formatDuration(secs)} (${formatBytes(result.bytes / secs)}/s)`)
+      ui.step(
+        `downloaded ${formatBytes(result.bytes)} in ${formatDuration(secs)} (${formatBytes(result.bytes / secs)}/s)`
+      )
 
       if (t.sha256) {
         // hashed while streaming, so this is just the comparison
         assertChecksum(result.sha256, t.sha256, t.assetName)
-        ui.step(`verified sha256 ${result.sha256.slice(0, 12)}…${result.sha256.slice(-6)} (matches ${t.checksumSource})`)
+        ui.step(
+          `verified sha256 ${result.sha256.slice(0, 12)}…${result.sha256.slice(-6)} (matches ${t.checksumSource})`
+        )
       } else {
         ui.warn(`not verified: no checksum for this override (set ${config.envPrefix}_SHA256)`)
       }
 
       const stop = ui.spinner(`unpacking with ${platform === 'darwin' ? 'ditto' : 'unzip'}`)
       let tool
-      try { tool = unzip(tmpZip, staging, platform) } finally { stop() }
+      try {
+        tool = unzip(tmpZip, staging, platform)
+      } finally {
+        stop()
+      }
       rmSync(tmpZip, { force: true })
       if (!existsSync(join(staging, config.appBundle))) {
         if (!testOverride) throw new Error(`${config.appBundle} isn't in ${t.assetName}`)
         ui.warn(`${config.appBundle} isn't in the zip (fine for a test asset)`)
       }
-      writeFileSync(join(staging, MARKER), JSON.stringify({ version: t.version, sha256: result.sha256, url: t.url, installedAt: new Date().toISOString() }, null, 2))
+      writeFileSync(
+        join(staging, MARKER),
+        JSON.stringify(
+          { version: t.version, sha256: result.sha256, url: t.url, installedAt: new Date().toISOString() },
+          null,
+          2
+        )
+      )
       if (isCached(config, t.version, env) && !testOverride) {
         // A parallel run finished first (and may already be running the app from it): keep theirs.
         rmSync(staging, { recursive: true, force: true })
@@ -329,7 +424,10 @@ export async function run(config, opts) {
   /** Launch (or print the path). */
   async function finish(version, fresh) {
     const bundle = appPath(config, version, env)
-    if (args.path) { stdout.write(bundle + '\n'); return 0 }
+    if (args.path) {
+      stdout.write(bundle + '\n')
+      return 0
+    }
     if (stripQuarantine(bundle, platform)) ui.step('removed the com.apple.quarantine flag (the app is unsigned)')
     if (args.noLaunch || platform !== 'darwin') {
       ui.step(`ready: ${home(bundle)}${platform !== 'darwin' ? ' (not launching: not macOS)' : ''}`)
@@ -342,4 +440,3 @@ export async function run(config, opts) {
     return 0
   }
 }
-

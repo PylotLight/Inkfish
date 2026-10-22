@@ -63,7 +63,13 @@ const folderOf = (path: string): string => path.split('/').slice(0, -1).join('/'
  * the vault as its own meeting note that you can title, tag, and file.
  */
 export default function Meetings({
-  notes, titleOf, onOpenNote, onRefresh, onClose, onRecording, notify
+  notes,
+  titleOf,
+  onOpenNote,
+  onRefresh,
+  onClose,
+  onRecording,
+  notify
 }: Props): React.JSX.Element {
   const [labels, setLabels] = useState<SpeakerLabels>(() => loadLabels())
   const [state, setState] = useState<'idle' | 'starting' | 'rec' | 'saving'>('idle')
@@ -83,7 +89,10 @@ export default function Meetings({
   const stickRef = useRef(true)
 
   useEffect(() => {
-    window.api.projects.list().then(setProjects).catch(() => setProjects([]))
+    window.api.projects
+      .list()
+      .then(setProjects)
+      .catch(() => setProjects([]))
   }, [saved])
 
   useEffect(() => onRecording(state === 'rec' || state === 'starting' || state === 'saving'), [state, onRecording])
@@ -149,7 +158,9 @@ export default function Meetings({
       setDevices({ mic: m.micDevice, system: sysName, error: m.systemError })
       setState('rec')
       if (!m.hasSystemAudio)
-        notify(`Mic only: ${m.systemError || 'no call audio'}. Allow Inkfish (or your terminal in dev) under Privacy & Security › Screen & System Audio Recording › System Audio Recording Only, then reopen`)
+        notify(
+          `Mic only: ${m.systemError || 'no call audio'}. Allow Inkfish (or your terminal in dev) under Privacy & Security › Screen & System Audio Recording › System Audio Recording Only, then reopen`
+        )
     } catch (e) {
       notify(`Couldn't start: ${ipcError(e)}`)
       setState('idle')
@@ -237,7 +248,11 @@ export default function Meetings({
 
   // Past meetings, newest first.
   const meetings = useMemo(
-    () => notes.filter((n) => n.kind === 'meeting').sort((a, b) => b.createdAt - a.createdAt).slice(0, 40),
+    () =>
+      notes
+        .filter((n) => n.kind === 'meeting')
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 40),
     [notes]
   )
   const folders = useMemo(() => {
@@ -291,7 +306,7 @@ export default function Meetings({
                   aria-label={ch === 'mic' ? 'Label for your microphone' : 'Label for call audio'}
                   disabled={state === 'saving'}
                 />
-                <span className="meet-dev muted small" title={off ? devices?.error : dev ?? ''}>
+                <span className="meet-dev muted small" title={off ? devices?.error : (dev ?? '')}>
                   {off
                     ? devices?.error || 'not shared'
                     : state === 'rec' && ch === 'system' && elapsed > 8 && heardRef.current < 0.3
@@ -438,7 +453,9 @@ export default function Meetings({
                   aria-label="Folder"
                   onChange={(e) => move(n, e.target.value)}
                 >
-                  {!folders.includes(folderOf(n.path)) && <option value={folderOf(n.path)}>{folderOf(n.path) || '/'}</option>}
+                  {!folders.includes(folderOf(n.path)) && (
+                    <option value={folderOf(n.path)}>{folderOf(n.path) || '/'}</option>
+                  )}
                   {folders.map((f) => (
                     <option key={f} value={f}>
                       {f}
@@ -451,9 +468,7 @@ export default function Meetings({
         )}
       </section>
 
-      {showImport && (
-        <MeetingImport onClose={() => setShowImport(false)} onImported={onRefresh} notify={notify} />
-      )}
+      {showImport && <MeetingImport onClose={() => setShowImport(false)} onImported={onRefresh} notify={notify} />}
     </div>
   )
 }

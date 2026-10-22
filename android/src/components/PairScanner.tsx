@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { X } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { Icon } from './Icon';
+import React, { useRef, useState } from 'react'
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { CameraView, useCameraPermissions } from 'expo-camera'
+import { X } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { Icon } from './Icon'
 
 /**
  * Full-screen QR scanner for pairing with the Mac (Mac › Settings › Sync ›
@@ -15,29 +15,29 @@ export function PairScanner({
   onClose,
   onCode
 }: {
-  visible: boolean;
-  onClose: () => void;
-  onCode: (data: string) => Promise<void>;
+  visible: boolean
+  onClose: () => void
+  onCode: (data: string) => Promise<void>
 }): React.JSX.Element {
-  const { ui } = useTheme();
-  const [perm, requestPerm] = useCameraPermissions();
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const lock = useRef(false);
+  const { ui } = useTheme()
+  const [perm, requestPerm] = useCameraPermissions()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const lock = useRef(false)
 
   const handle = (data: string): void => {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setMsg(null);
+    if (lock.current) return
+    lock.current = true
+    setBusy(true)
+    setMsg(null)
     onCode(data)
       .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
       .finally(() => {
-        setBusy(false);
+        setBusy(false)
         // brief pause so one bad code doesn't spin
-        setTimeout(() => (lock.current = false), 1200);
-      });
-  };
+        setTimeout(() => (lock.current = false), 1200)
+      })
+  }
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -65,19 +65,38 @@ export function PairScanner({
         </View>
 
         {perm?.granted && (
-          <View pointerEvents="none" style={{ position: 'absolute', top: '28%', alignSelf: 'center', width: 240, height: 240, borderRadius: 20, borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' }} />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: '28%',
+              alignSelf: 'center',
+              width: 240,
+              height: 240,
+              borderRadius: 20,
+              borderWidth: 2,
+              borderColor: 'rgba(255,255,255,0.85)'
+            }}
+          />
         )}
 
         <View style={{ position: 'absolute', bottom: 56, left: 24, right: 24, alignItems: 'center' }}>
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={{ color: msg ? '#ffb4a8' : 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+            <Text
+              style={{
+                color: msg ? '#ffb4a8' : 'rgba(255,255,255,0.85)',
+                fontSize: 14,
+                textAlign: 'center',
+                lineHeight: 20
+              }}
+            >
               {msg ?? 'On your Mac: Inkfish › Settings › Sync › Show pairing code. Both on the same Wi-Fi.'}
             </Text>
           )}
         </View>
       </View>
     </Modal>
-  );
+  )
 }

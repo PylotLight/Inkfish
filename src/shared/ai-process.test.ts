@@ -99,7 +99,10 @@ See [the doc](https://example.com/doc?id=1) and https://inkfish.dev/x.`
   })
 
   test('summarise may drop refs: they come back as warnings', async () => {
-    const r = await processText({ action: 'summarize', text: NOTE }, mock('- Settings page Thursday; ask Sam.').complete)
+    const r = await processText(
+      { action: 'summarize', text: NOTE },
+      mock('- Settings page Thursday; ask Sam.').complete
+    )
     expect(r.warnings).toContain('![](assets/board.png)')
     expect(r.text.startsWith('---\ntitle: Standup')).toBe(true)
   })
@@ -118,7 +121,9 @@ See [the doc](https://example.com/doc?id=1) and https://inkfish.dev/x.`
   })
 
   test('empty body and empty reply are errors', async () => {
-    await expect(processText({ action: 'tidy', text: '---\na: 1\n---\n  \n' }, mock('x').complete)).rejects.toThrow(/empty/)
+    await expect(processText({ action: 'tidy', text: '---\na: 1\n---\n  \n' }, mock('x').complete)).rejects.toThrow(
+      /empty/
+    )
     await expect(processText({ action: 'tidy', text: 'hello' }, mock('   ').complete)).rejects.toThrow(/empty reply/)
   })
 })
@@ -167,11 +172,14 @@ describe('long notes vs the model limits', () => {
   test('rewrite action over the budget: processed in parts, joined in order, with a notice', async () => {
     const users: string[] = []
     const systems: string[] = []
-    const r = await processText({ action: 'tidy', text: `---\nt: 1\n---\n${long}`, model: { contextWindow: 1500, maxOutputTokens: 400 } }, async (p) => {
-      users.push(p.user)
-      systems.push(p.system)
-      return p.user
-    })
+    const r = await processText(
+      { action: 'tidy', text: `---\nt: 1\n---\n${long}`, model: { contextWindow: 1500, maxOutputTokens: 400 } },
+      async (p) => {
+        users.push(p.user)
+        systems.push(p.system)
+        return p.user
+      }
+    )
     expect(users.length).toBeGreaterThan(2)
     expect(systems[0]).toContain('one consecutive part of a longer note')
     expect(r.text).toBe(`---\nt: 1\n---\n${long}\n`)
@@ -180,10 +188,13 @@ describe('long notes vs the model limits', () => {
 
   test('summarise over the budget: only the first part is sent, with a notice', async () => {
     let sent = ''
-    const r = await processText({ action: 'summarize', text: long, model: { contextWindow: 1200, maxOutputTokens: 200 } }, async (p) => {
-      sent = p.user
-      return '- summary'
-    })
+    const r = await processText(
+      { action: 'summarize', text: long, model: { contextWindow: 1200, maxOutputTokens: 200 } },
+      async (p) => {
+        sent = p.user
+        return '- summary'
+      }
+    )
     expect(sent.length).toBeLessThan(long.length)
     expect(long.startsWith(sent)).toBe(true)
     expect(r.notices[0]).toMatch(/Only the first part was sent/)
@@ -192,7 +203,12 @@ describe('long notes vs the model limits', () => {
   test('streaming across parts shows the finished parts plus the current one', async () => {
     const seen: string[] = []
     await processText(
-      { action: 'typos', text: long, model: { contextWindow: 1500, maxOutputTokens: 400 }, onChunk: (t) => seen.push(t) },
+      {
+        action: 'typos',
+        text: long,
+        model: { contextWindow: 1500, maxOutputTokens: 400 },
+        onChunk: (t) => seen.push(t)
+      },
       async (p, onChunk) => {
         onChunk?.(p.user)
         return p.user

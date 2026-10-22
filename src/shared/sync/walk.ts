@@ -45,13 +45,23 @@ export interface WalkResult {
 
 export const MAX_SYNC_FILE = 200 * 1024 * 1024
 
-export async function walkManifest(io: WalkIo, roots: WalkRoot[], cache: HashCache, concurrency = 8): Promise<WalkResult> {
+export async function walkManifest(
+  io: WalkIo,
+  roots: WalkRoot[],
+  cache: HashCache,
+  concurrency = 8
+): Promise<WalkResult> {
   const manifest: Manifest = {}
   const next: HashCache = {}
   let stats = 0
   let hashed = 0
   let caseDupes = false
-  let queue: Array<{ uri: string; rel: string; root: WalkRoot; top: boolean }> = roots.map((r) => ({ uri: r.uri, rel: r.prefix, root: r, top: true }))
+  let queue: Array<{ uri: string; rel: string; root: WalkRoot; top: boolean }> = roots.map((r) => ({
+    uri: r.uri,
+    rel: r.prefix,
+    root: r,
+    top: true
+  }))
   const files: Array<{ uri: string; rel: string; size: number; mtime: number }> = []
 
   // Pass 1: directories → names → one stat each.
@@ -113,7 +123,11 @@ export async function walkManifest(io: WalkIo, roots: WalkRoot[], cache: HashCac
   return { manifest, cache: next, dirty, caseDupes, stats, hashed }
 }
 
-export async function mapLimit<T, R>(items: readonly T[], limit: number, f: (item: T, i: number) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  f: (item: T, i: number) => Promise<R>
+): Promise<R[]> {
   const out = new Array<R>(items.length)
   let i = 0
   const worker = async (): Promise<void> => {

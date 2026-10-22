@@ -4,19 +4,34 @@
       "model_name": "gpt-6.1-sol",
       "litellm_params": { "model": "openai/gpt-6.1-sol" },
       "model_info": {
-        "id": "a1", "key": "gpt-6.1-sol", "litellm_provider": "openai", "mode": "chat",
-        "max_tokens": 128000, "max_input_tokens": 1100000, "max_output_tokens": 128000,
-        "supports_vision": true, "supports_pdf_input": true, "supports_audio_input": false,
-        "supports_function_calling": true, "supports_reasoning": true
+        "id": "a1",
+        "key": "gpt-6.1-sol",
+        "litellm_provider": "openai",
+        "mode": "chat",
+        "max_tokens": 128000,
+        "max_input_tokens": 1100000,
+        "max_output_tokens": 128000,
+        "supports_vision": true,
+        "supports_pdf_input": true,
+        "supports_audio_input": false,
+        "supports_function_calling": true,
+        "supports_reasoning": true
       }
     },
     {
       "model_name": "claude-sonnet",
       "litellm_params": { "model": "anthropic/claude-sonnet-4-5" },
       "model_info": {
-        "id": "a2", "key": "claude-sonnet-4-5", "litellm_provider": "anthropic", "mode": "chat",
-        "max_input_tokens": 200000, "max_output_tokens": 64000,
-        "supports_vision": true, "supports_pdf_input": true, "supports_function_calling": true, "supports_reasoning": true
+        "id": "a2",
+        "key": "claude-sonnet-4-5",
+        "litellm_provider": "anthropic",
+        "mode": "chat",
+        "max_input_tokens": 200000,
+        "max_output_tokens": 64000,
+        "supports_vision": true,
+        "supports_pdf_input": true,
+        "supports_function_calling": true,
+        "supports_reasoning": true
       }
     },
     {
@@ -27,7 +42,13 @@
     {
       "model_name": "embed-small",
       "litellm_params": { "model": "openai/text-embedding-3-small" },
-      "model_info": { "id": "a4", "key": "text-embedding-3-small", "litellm_provider": "openai", "mode": "embedding", "max_input_tokens": 8191 }
+      "model_info": {
+        "id": "a4",
+        "key": "text-embedding-3-small",
+        "litellm_provider": "openai",
+        "mode": "embedding",
+        "max_input_tokens": 8191
+      }
     }
   ]
 }

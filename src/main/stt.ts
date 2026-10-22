@@ -136,7 +136,10 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
 
 const MAX_ATTEMPTS = 4
 const BACKOFF_MS = [3_000, 10_000, 30_000]
-const active = new Map<string, { child?: ChildProcess; closeProxy?: () => void; paused: boolean; progress: DownloadProgress }>()
+const active = new Map<
+  string,
+  { child?: ChildProcess; closeProxy?: () => void; paused: boolean; progress: DownloadProgress }
+>()
 
 // Tear down native downloads and their tunnels before changing routing policy.
 onProxyChanging(() => pauseAllDownloadsForProxyChange())
@@ -159,7 +162,10 @@ export async function prepareEngine(
   onProgress: (p: DownloadProgress) => void = () => {},
   mirror = ''
 ): Promise<void> {
-  if (isProxyTransitioning()) throw new Error('Native model downloads are paused while proxy settings change or routing is blocked. Retry after saving Network settings.')
+  if (isProxyTransitioning())
+    throw new Error(
+      'Native model downloads are paused while proxy settings change or routing is blocked. Retry after saving Network settings.'
+    )
   const helper = helperPath()
   if (!helper) throw new Error('Transcription helper not built')
   const existing = active.get(engineId)
@@ -187,10 +193,12 @@ export async function prepareEngine(
   // FluidAudio 0.17.5 passes these HTTP(S) proxy settings to every registry,
   // small-file and streaming URLSession, including redirected CDN requests.
   // The bridge selects Inkfish's route per destination and keeps TLS end-to-end.
-  const bridge = await createModelDownloadProxy(getProxySettings(), () => d.paused || isProxyTransitioning()).catch((error: unknown) => {
-    emit({ state: 'error', error: error instanceof Error ? error.message : String(error) })
-    throw error
-  })
+  const bridge = await createModelDownloadProxy(getProxySettings(), () => d.paused || isProxyTransitioning()).catch(
+    (error: unknown) => {
+      emit({ state: 'error', error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
+  )
   d.closeProxy = bridge.close
   try {
     if (d.paused || isProxyTransitioning()) {

@@ -51,12 +51,12 @@ inkfish [options]                    after bun add -g @pylotlight/inkfish (or np
 
 `npx` works anywhere `bunx` does. Anything else is passed to Inkfish. Put `--` in front of an argument the launcher would otherwise take, such as `-- --version`.
 
-| Environment | Effect |
-|---|---|
-| `XDG_CACHE_HOME` | cache base directory (default `~/.cache`) |
-| `INKFISH_CLI_CACHE_DIR` | exact cache directory |
-| `GITHUB_TOKEN` | used for GitHub API calls, which only `--latest` or a version without a recorded checksum need (60 unauthenticated calls an hour) |
-| `NO_COLOR`, `CI` | no colour / plain output |
+| Environment             | Effect                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `XDG_CACHE_HOME`        | cache base directory (default `~/.cache`)                                                                                         |
+| `INKFISH_CLI_CACHE_DIR` | exact cache directory                                                                                                             |
+| `GITHUB_TOKEN`          | used for GitHub API calls, which only `--latest` or a version without a recorded checksum need (60 unauthenticated calls an hour) |
+| `NO_COLOR`, `CI`        | no colour / plain output                                                                                                          |
 
 ## How it verifies the download
 
@@ -82,15 +82,15 @@ This deletes the launcher's download cache (`~/.cache/inkfish`, or `$XDG_CACHE_H
 
 What Inkfish itself leaves behind, all in your home folder:
 
-| Path | What |
-|---|---|
-| `~/Library/Application Support/Inkfish` | config, note index, inbox staging, trash, AI + sync settings, window state |
-| `~/Library/Caches/Inkfish`, `~/Library/Caches/com.pylotlight.inkfish` | caches |
-| `~/Library/HTTPStorages/com.pylotlight.inkfish` | macOS network storage |
-| `~/Library/Preferences/com.pylotlight.inkfish.plist` | macOS preferences |
-| `~/Library/Saved Application State/com.pylotlight.inkfish.savedState` | window restore state |
-| `~/Library/Logs/Inkfish` | logs |
-| keychain item `Inkfish Safe Storage` | the key that encrypts your saved AI API key and paired-phone sync keys |
+| Path                                                                  | What                                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `~/Library/Application Support/Inkfish`                               | config, note index, inbox staging, trash, AI + sync settings, window state |
+| `~/Library/Caches/Inkfish`, `~/Library/Caches/com.pylotlight.inkfish` | caches                                                                     |
+| `~/Library/HTTPStorages/com.pylotlight.inkfish`                       | macOS network storage                                                      |
+| `~/Library/Preferences/com.pylotlight.inkfish.plist`                  | macOS preferences                                                          |
+| `~/Library/Saved Application State/com.pylotlight.inkfish.savedState` | window restore state                                                       |
+| `~/Library/Logs/Inkfish`                                              | logs                                                                       |
+| keychain item `Inkfish Safe Storage`                                  | the key that encrypts your saved AI API key and paired-phone sync keys     |
 
 To delete those too:
 

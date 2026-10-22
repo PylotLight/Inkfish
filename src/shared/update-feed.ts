@@ -106,9 +106,7 @@ export function parseSemver(input: string): ParsedSemver | null {
   const match = SEMVER_PATTERN.exec(input.trim())
   if (!match) return null
   const [, major, minor, patch, pre] = match
-  const prerelease = pre
-    ? pre.split('.').map((part) => (/^\d+$/.test(part) ? Number(part) : part))
-    : []
+  const prerelease = pre ? pre.split('.').map((part) => (/^\d+$/.test(part) ? Number(part) : part)) : []
   if (prerelease.some((part) => part === '')) return null
   return { major: Number(major), minor: Number(minor), patch: Number(patch), prerelease }
 }
@@ -158,16 +156,23 @@ const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quo
 export function decodeXmlEntities(value: string): string {
   return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, body: string) => {
     if (body[0] === '#') {
-      const code = body[1] === 'x' || body[1] === 'X' ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10)
+      const code =
+        body[1] === 'x' || body[1] === 'X' ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10)
       if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return whole
-      try { return String.fromCodePoint(code) } catch { return whole }
+      try {
+        return String.fromCodePoint(code)
+      } catch {
+        return whole
+      }
     }
     return NAMED_ENTITIES[body.toLowerCase()] ?? whole
   })
 }
 
 export function unwrapCdata(value: string): string {
-  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, inner: string) => inner.replace(/[&<>]/g, (char) => (char === '&' ? '&amp;' : char === '<' ? '&lt;' : '&gt;')))
+  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, inner: string) =>
+    inner.replace(/[&<>]/g, (char) => (char === '&' ? '&amp;' : char === '<' ? '&lt;' : '&gt;'))
+  )
 }
 
 export function elementText(block: string, name: string): string {
@@ -202,7 +207,11 @@ function entryLink(block: string): string {
 function entryTag(link: string, id: string): string {
   const fromLink = /\/releases\/tag\/([^/?#]+)/.exec(link)?.[1]
   if (fromLink) {
-    try { return decodeURIComponent(fromLink) } catch { return fromLink }
+    try {
+      return decodeURIComponent(fromLink)
+    } catch {
+      return fromLink
+    }
   }
   return id.split('/').at(-1)?.trim() ?? ''
 }
@@ -265,7 +274,10 @@ export interface LatestReleaseOptions {
 }
 
 /** Highest-precedence release in the feed (pre-releases only when the beta channel is on). */
-export function pickLatestRelease(entries: readonly ReleaseFeedEntry[], options: LatestReleaseOptions): ReleaseFeedEntry | null {
+export function pickLatestRelease(
+  entries: readonly ReleaseFeedEntry[],
+  options: LatestReleaseOptions
+): ReleaseFeedEntry | null {
   let best: ReleaseFeedEntry | null = null
   for (const entry of entries) {
     if (!options.includePrereleases && isPrereleaseVersion(entry.version)) continue
@@ -288,24 +300,50 @@ export interface UpdateDecision {
   snoozed: boolean
 }
 
-export function decideUpdate(latestVersion: string | null, currentVersion: string, preferences: UpdatePreferences, now: number): UpdateDecision {
-  const none: UpdateDecision = { updateAvailable: false, showBadge: false, notify: false, skipped: false, snoozed: false }
+export function decideUpdate(
+  latestVersion: string | null,
+  currentVersion: string,
+  preferences: UpdatePreferences,
+  now: number
+): UpdateDecision {
+  const none: UpdateDecision = {
+    updateAvailable: false,
+    showBadge: false,
+    notify: false,
+    skipped: false,
+    snoozed: false
+  }
   if (!latestVersion || !isNewerVersion(latestVersion, currentVersion)) return none
   const skipped = preferences.skippedVersion !== null && compareSemver(preferences.skippedVersion, latestVersion) === 0
-  const snoozed = !skipped
-    && preferences.remindLaterVersion !== null
-    && compareSemver(preferences.remindLaterVersion, latestVersion) === 0
-    && preferences.remindAfter !== null
-    && now < preferences.remindAfter
+  const snoozed =
+    !skipped &&
+    preferences.remindLaterVersion !== null &&
+    compareSemver(preferences.remindLaterVersion, latestVersion) === 0 &&
+    preferences.remindAfter !== null &&
+    now < preferences.remindAfter
   const showBadge = !skipped && !snoozed
-  const alreadyNotified = preferences.notifiedVersion !== null && compareSemver(preferences.notifiedVersion, latestVersion) === 0
+  const alreadyNotified =
+    preferences.notifiedVersion !== null && compareSemver(preferences.notifiedVersion, latestVersion) === 0
   // A snooze that ran out re-notifies once; otherwise each version notifies once.
-  const snoozeExpired = preferences.remindLaterVersion !== null && compareSemver(preferences.remindLaterVersion, latestVersion) === 0 && !snoozed
-  return { updateAvailable: true, showBadge, notify: showBadge && (!alreadyNotified || snoozeExpired), skipped, snoozed }
+  const snoozeExpired =
+    preferences.remindLaterVersion !== null &&
+    compareSemver(preferences.remindLaterVersion, latestVersion) === 0 &&
+    !snoozed
+  return {
+    updateAvailable: true,
+    showBadge,
+    notify: showBadge && (!alreadyNotified || snoozeExpired),
+    skipped,
+    snoozed
+  }
 }
 
 /** Should a scheduled check run now? Manual checks always run. */
-export function isUpdateCheckDue(lastChecked: number | null, now: number, intervalMs = UPDATE_CHECK_INTERVAL_MS): boolean {
+export function isUpdateCheckDue(
+  lastChecked: number | null,
+  now: number,
+  intervalMs = UPDATE_CHECK_INTERVAL_MS
+): boolean {
   return lastChecked === null || !Number.isFinite(lastChecked) || now - lastChecked >= intervalMs || lastChecked > now
 }
 
@@ -328,7 +366,8 @@ export function normalizeFeedUrl(input: unknown): string | null {
   }
 }
 
-export const INVALID_FEED_URL_MESSAGE = 'Enter an http(s) feed URL, or leave it blank for the default GitHub releases feed.'
+export const INVALID_FEED_URL_MESSAGE =
+  'Enter an http(s) feed URL, or leave it blank for the default GitHub releases feed.'
 
 /** What Settings → About & updates gets back from saving: a bad feed URL is an inline message, not a thrown error. */
 export type UpdateSettingsResult = { ok: true; state: UpdateState } | { ok: false; error: string }
@@ -337,8 +376,12 @@ export type UpdateSettingsResult = { ok: true; state: UpdateState } | { ok: fals
  * Apply a settings patch from the renderer ({ feedUrl?, betaChannel? }). Invalid input is a
  * validation result for the form, never an exception.
  */
-export function applyUpdateSettings(preferences: UpdatePreferences, input: unknown): { ok: true; preferences: UpdatePreferences; changed: boolean } | { ok: false; error: string } {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return { ok: false, error: 'Update settings must be an object.' }
+export function applyUpdateSettings(
+  preferences: UpdatePreferences,
+  input: unknown
+): { ok: true; preferences: UpdatePreferences; changed: boolean } | { ok: false; error: string } {
+  if (typeof input !== 'object' || input === null || Array.isArray(input))
+    return { ok: false, error: 'Update settings must be an object.' }
   const patch = input as { feedUrl?: unknown; betaChannel?: unknown }
   const next = { ...preferences }
   if (patch.feedUrl !== undefined) {
@@ -402,10 +445,20 @@ export function describeFeedHttpFailure(httpStatus: number, feedUrl: string): Fe
  * electron-builder artifact name (Inkfish-<version>-mac-<arch>.<ext>); .dmg first, then .zip.
  * Empty for non-GitHub feeds or non-macOS platforms (the release page opens instead).
  */
-export function releaseAssetCandidates(releaseLink: string, version: string, platform: string, arch: string, productName = 'Inkfish'): string[] {
+export function releaseAssetCandidates(
+  releaseLink: string,
+  version: string,
+  platform: string,
+  arch: string,
+  productName = 'Inkfish'
+): string[] {
   if (platform !== 'darwin') return []
   let url: URL
-  try { url = new URL(releaseLink) } catch { return [] }
+  try {
+    url = new URL(releaseLink)
+  } catch {
+    return []
+  }
   if (url.protocol !== 'https:' || !isGitHubHost(url.toString())) return []
   const match = /^\/([^/]+)\/([^/]+)\/releases\/tag\/([^/]+)\/?$/.exec(url.pathname)
   if (!match || !parseSemver(normalizeVersionTag(version))) return []

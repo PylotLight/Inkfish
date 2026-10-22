@@ -85,7 +85,8 @@ describe('auto-named rule', () => {
 
 describe('rewriteWikiLinks', () => {
   test('bare, alias, heading, path and .md forms', () => {
-    const md = 'see [[Untitled 3]] and [[Untitled 3|that]] and [[Untitled 3#Food]] and [[personal/Untitled 3]] and ![[Untitled 3.md]]'
+    const md =
+      'see [[Untitled 3]] and [[Untitled 3|that]] and [[Untitled 3#Food]] and [[personal/Untitled 3]] and ![[Untitled 3.md]]'
     const r = rewriteWikiLinks(md, 'personal/Untitled 3.md', 'personal/Japan list.md', true)
     expect(r.text).toBe(
       'see [[Japan list]] and [[Japan list|that]] and [[Japan list#Food]] and [[personal/Japan list]] and ![[Japan list.md]]'
@@ -163,7 +164,9 @@ describe('review fixes', () => {
     expect(sanitizeFileTitle('[draft] notes ^1')).toBe('draft notes 1')
   })
   test('rewriteWikiLinks: ambiguous new name gets the folder path', () => {
-    expect(rewriteWikiLinks('[[Untitled]] [[Untitled|u]]', 'a/Untitled.md', 'a/Ideas.md', true, true).text).toBe('[[a/Ideas]] [[a/Ideas|u]]')
+    expect(rewriteWikiLinks('[[Untitled]] [[Untitled|u]]', 'a/Untitled.md', 'a/Ideas.md', true, true).text).toBe(
+      '[[a/Ideas]] [[a/Ideas|u]]'
+    )
     expect(rewriteWikiLinks('[[Untitled]]', 'a/Untitled.md', 'a/Ideas.md', true, false).text).toBe('[[Ideas]]')
   })
 })

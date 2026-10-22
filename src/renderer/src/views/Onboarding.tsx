@@ -15,7 +15,15 @@ interface Props {
 }
 
 /** Onboarding: vault location FIRST (before any setup), then mic, shortcut. */
-export default function Onboarding({ step, setStep, vault, profile, onVaultReady, onDone, notify }: Props): React.JSX.Element {
+export default function Onboarding({
+  step,
+  setStep,
+  vault,
+  profile,
+  onVaultReady,
+  onDone,
+  notify
+}: Props): React.JSX.Element {
   const [picked, setPicked] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [mic, setMic] = useState<'untested' | 'ok' | 'blocked'>('untested')
@@ -76,22 +84,18 @@ export default function Onboarding({ step, setStep, vault, profile, onVaultReady
           <>
             <h3>Where do your notes live?</h3>
             <p className="muted">
-              Pick a folder for your notes — a fresh empty folder, or an existing
-              vault (Obsidian etc.) whose <code>.md</code> files get indexed on
-              import. Routed notes land in plain top-level folders
-              (<code>work/</code>, <code>personal/</code>…); working state stays
-              in hidden app data, never in your folder. Your files stay plain
-              Markdown. Nothing is created until you confirm.
+              Pick a folder for your notes — a fresh empty folder, or an existing vault (Obsidian etc.) whose{' '}
+              <code>.md</code> files get indexed on import. Routed notes land in plain top-level folders (
+              <code>work/</code>, <code>personal/</code>…); working state stays in hidden app data, never in your
+              folder. Your files stay plain Markdown. Nothing is created until you confirm.
             </p>
             <code className="pill">{picked || '…'}</code>
-            {vault?.managed && (
-              <p className="muted small">Location is managed by INKFISH_VAULT (dev mode).</p>
-            )}
+            {vault?.managed && <p className="muted small">Location is managed by INKFISH_VAULT (dev mode).</p>}
             {profile?.badge && !vault?.managed && (
               <p className="muted small">
-                This is <b>{profile.name}</b>, a separate profile from the release app. It defaults to its
-                own folder (<code>{profile.defaultVaultRoot}</code>); only pick your release notes folder if
-                you really want both apps writing to it.
+                This is <b>{profile.name}</b>, a separate profile from the release app. It defaults to its own folder (
+                <code>{profile.defaultVaultRoot}</code>); only pick your release notes folder if you really want both
+                apps writing to it.
               </p>
             )}
             <div className="row">
@@ -123,8 +127,7 @@ export default function Onboarding({ step, setStep, vault, profile, onVaultReady
           <>
             <h3>Mic check</h3>
             <p className="muted">
-              Voice notes + meeting capture need the mic. Headphones recommended (model-card
-              noise weakness).
+              Voice notes + meeting capture need the mic. Headphones recommended (model-card noise weakness).
             </p>
             <div className="row">
               <button className="btn" onClick={() => void testMic()}>
@@ -154,9 +157,8 @@ export default function Onboarding({ step, setStep, vault, profile, onVaultReady
                 : '⌥Space captures from anywhere'}
             </h3>
             <p className="muted">
-              The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the
-              inbox — the worker routes it, raw is never deleted. Change the shortcut any time in
-              Settings › Shortcuts.
+              The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the inbox — the worker routes it,
+              raw is never deleted. Change the shortcut any time in Settings › Shortcuts.
             </p>
             <div className="row end">
               <button className="btn ghost" onClick={() => setStep(1)}>

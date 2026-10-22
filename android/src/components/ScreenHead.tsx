@@ -1,15 +1,15 @@
-import React from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { Menu, type LucideIcon } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { Icon } from './Icon';
-import { SyncBadge } from './SyncIndicator';
+import React from 'react'
+import { Pressable, Text, View } from 'react-native'
+import { Menu, type LucideIcon } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { Icon } from './Icon'
+import { SyncBadge } from './SyncIndicator'
 
 export interface HeadAction {
-  icon: LucideIcon;
-  onPress: () => void;
-  label: string;
-  active?: boolean;
+  icon: LucideIcon
+  onPress: () => void
+  label: string
+  active?: boolean
 }
 
 /**
@@ -24,16 +24,16 @@ export function ScreenHead({
   left,
   sync = true
 }: {
-  title: string;
-  onMenu?: () => void;
-  actions?: HeadAction[];
+  title: string
+  onMenu?: () => void
+  actions?: HeadAction[]
   /** Replaces the menu button (e.g. a close/back action). */
-  left?: HeadAction;
+  left?: HeadAction
   /** Show the sync badge (connected Mac · syncing · synced x ago · offline · error). */
-  sync?: boolean;
+  sync?: boolean
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const lead = left ?? (onMenu ? { icon: Menu, onPress: onMenu, label: 'Open files' } : null);
+  const { ui, c } = useTheme()
+  const lead = left ?? (onMenu ? { icon: Menu, onPress: onMenu, label: 'Open files' } : null)
   return (
     <View style={ui.topBar}>
       {lead ? (
@@ -55,5 +55,5 @@ export function ScreenHead({
         ))}
       </View>
     </View>
-  );
+  )
 }

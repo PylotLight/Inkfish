@@ -6,7 +6,10 @@ import { normalizeTag, uniqueTags } from '../../../shared/tags'
  * Esc cancels, ⌫ on empty removes the last). Writes go through `onChange` → front matter `tags:`.
  */
 export default function TagChips({
-  tags, allTags, onChange, onTagClick
+  tags,
+  allTags,
+  onChange,
+  onTagClick
 }: {
   tags: readonly string[]
   /** Every tag in the vault — autocomplete. */
@@ -20,7 +23,10 @@ export default function TagChips({
   const listId = useId()
 
   const commit = (raw: string, keepOpen: boolean): void => {
-    const add = raw.split(/[,\s]+/).map(normalizeTag).filter(Boolean)
+    const add = raw
+      .split(/[,\s]+/)
+      .map(normalizeTag)
+      .filter(Boolean)
     if (add.length) onChange(uniqueTags([...tags, ...add]))
     setValue('')
     if (!keepOpen) setAdding(false)
@@ -77,14 +83,21 @@ export default function TagChips({
           />
           {allTags && allTags.length > 0 && (
             <datalist id={listId}>
-              {allTags.filter((t) => !tags.includes(t)).slice(0, 200).map((t) => (
-                <option key={t} value={t} />
-              ))}
+              {allTags
+                .filter((t) => !tags.includes(t))
+                .slice(0, 200)
+                .map((t) => (
+                  <option key={t} value={t} />
+                ))}
             </datalist>
           )}
         </>
       ) : (
-        <button className="tag-add" onClick={() => setAdding(true)} title="Add a tag (saved in the note's front matter)">
+        <button
+          className="tag-add"
+          onClick={() => setAdding(true)}
+          title="Add a tag (saved in the note's front matter)"
+        >
           + tag
         </button>
       )}

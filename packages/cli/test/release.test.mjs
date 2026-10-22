@@ -8,7 +8,7 @@ const asset = (version, extra = {}) => ({
   name: `Inkfish-${version}-mac-arm64.zip`,
   size: 124889704,
   browser_download_url: `https://github.com/PylotLight/Inkfish/releases/download/v${version}/Inkfish-${version}-mac-arm64.zip`,
-  ...extra,
+  ...extra
 })
 
 /** fetch stub: url -> { status, json | text }; records calls */
@@ -26,7 +26,11 @@ function stubFetch(routes) {
 describe('resolveTarget', () => {
   test('pinned + matching release.json makes no network call', async () => {
     const { impl, calls } = stubFetch({})
-    const t = await resolveTarget(config, { kind: 'pinned', version: '0.2.10' }, { env: {}, fetchImpl: impl, manifest: { version: '0.2.10', sha256: SHA, asset: '', size: 1 } })
+    const t = await resolveTarget(
+      config,
+      { kind: 'pinned', version: '0.2.10' },
+      { env: {}, fetchImpl: impl, manifest: { version: '0.2.10', sha256: SHA, asset: '', size: 1 } }
+    )
     expect(calls).toEqual([])
     expect(t.sha256).toBe(SHA)
     expect(t.url).toBe(asset('0.2.10').browser_download_url)
@@ -34,15 +38,28 @@ describe('resolveTarget', () => {
   })
   test('pinned without a matching manifest uses the asset digest from the API', async () => {
     const { impl, calls } = stubFetch({
-      'https://api.github.com/repos/PylotLight/Inkfish/releases/tags/v0.2.9': { json: release('v0.2.9', [asset('0.2.9', { digest: `sha256:${SHA}` })]) },
+      'https://api.github.com/repos/PylotLight/Inkfish/releases/tags/v0.2.9': {
+        json: release('v0.2.9', [asset('0.2.9', { digest: `sha256:${SHA}` })])
+      }
     })
-    const t = await resolveTarget(config, { kind: 'pinned', version: '0.2.9' }, { env: {}, fetchImpl: impl, manifest: { version: '0.2.10', sha256: 'f'.repeat(64), asset: '', size: 1 } })
+    const t = await resolveTarget(
+      config,
+      { kind: 'pinned', version: '0.2.9' },
+      { env: {}, fetchImpl: impl, manifest: { version: '0.2.10', sha256: 'f'.repeat(64), asset: '', size: 1 } }
+    )
     expect(calls).toHaveLength(1)
-    expect(t).toMatchObject({ version: '0.2.9', sha256: SHA, size: 124889704, checksumSource: 'GitHub release asset digest' })
+    expect(t).toMatchObject({
+      version: '0.2.9',
+      sha256: SHA,
+      size: 124889704,
+      checksumSource: 'GitHub release asset digest'
+    })
   })
   test('--latest reads releases/latest', async () => {
     const { impl } = stubFetch({
-      'https://api.github.com/repos/PylotLight/Inkfish/releases/latest': { json: release('v0.2.30', [asset('0.2.30', { digest: `sha256:${SHA}` })]) },
+      'https://api.github.com/repos/PylotLight/Inkfish/releases/latest': {
+        json: release('v0.2.30', [asset('0.2.30', { digest: `sha256:${SHA}` })])
+      }
     })
     const t = await resolveTarget(config, { kind: 'latest' }, { env: {}, fetchImpl: impl })
     expect(t.version).toBe('0.2.30')
@@ -50,7 +67,11 @@ describe('resolveTarget', () => {
   test('falls back to a SHA256SUMS asset when there is no digest', async () => {
     const sumsUrl = 'https://example.test/SHA256SUMS'
     const { impl } = stubFetch({ [sumsUrl]: { text: `${SHA}  Inkfish-0.2.5-mac-arm64.zip\n` } })
-    const t = await targetFromRelease(config, release('v0.2.5', [asset('0.2.5'), { name: 'SHA256SUMS', browser_download_url: sumsUrl }]), { fetchImpl: impl })
+    const t = await targetFromRelease(
+      config,
+      release('v0.2.5', [asset('0.2.5'), { name: 'SHA256SUMS', browser_download_url: sumsUrl }]),
+      { fetchImpl: impl }
+    )
     expect(t).toMatchObject({ sha256: SHA, checksumSource: 'SHA256SUMS' })
   })
   test('no checksum anywhere -> sha256 null', async () => {
@@ -58,14 +79,24 @@ describe('resolveTarget', () => {
     expect(t).toMatchObject({ sha256: null, checksumSource: 'none' })
   })
   test('a missing release is a clear error', async () => {
-    await expect(resolveTarget(config, { kind: 'pinned', version: '9.9.9' }, { env: {}, fetchImpl: stubFetch({}).impl })).rejects.toThrow(/no GitHub release v9\.9\.9/)
+    await expect(
+      resolveTarget(config, { kind: 'pinned', version: '9.9.9' }, { env: {}, fetchImpl: stubFetch({}).impl })
+    ).rejects.toThrow(/no GitHub release v9\.9\.9/)
   })
   test('rate limits mention GITHUB_TOKEN', async () => {
     const impl = async () => new Response('{}', { status: 403 })
-    await expect(resolveTarget(config, { kind: 'latest' }, { env: {}, fetchImpl: impl })).rejects.toThrow(/GITHUB_TOKEN/)
+    await expect(resolveTarget(config, { kind: 'latest' }, { env: {}, fetchImpl: impl })).rejects.toThrow(
+      /GITHUB_TOKEN/
+    )
   })
   test('env overrides (test asset)', async () => {
-    const t = await resolveTarget(config, { kind: 'latest' }, { env: { INKFISH_CLI_ASSET_URL: 'http://127.0.0.1/x.zip', INKFISH_CLI_SHA256: SHA, INKFISH_CLI_VERSION: '1.2.3' } })
+    const t = await resolveTarget(
+      config,
+      { kind: 'latest' },
+      {
+        env: { INKFISH_CLI_ASSET_URL: 'http://127.0.0.1/x.zip', INKFISH_CLI_SHA256: SHA, INKFISH_CLI_VERSION: '1.2.3' }
+      }
+    )
     expect(t).toMatchObject({ version: '1.2.3', url: 'http://127.0.0.1/x.zip', sha256: SHA })
   })
 })

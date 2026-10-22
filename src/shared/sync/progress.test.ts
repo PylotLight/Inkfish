@@ -1,7 +1,20 @@
 import { describe, expect, test } from 'bun:test'
 import { runSync, type SyncProgress } from './engine'
 import { markDone, progressPoster, supportsProgress, hello } from './client'
-import { cleanProgress, cleanRun, etaMs, percent, progressLine, progressShort, pushRun, runFromReport, runLine, RUNS_CAP, type LiveProgress, type PeerRun } from './progress'
+import {
+  cleanProgress,
+  cleanRun,
+  etaMs,
+  percent,
+  progressLine,
+  progressShort,
+  pushRun,
+  runFromReport,
+  runLine,
+  RUNS_CAP,
+  type LiveProgress,
+  type PeerRun
+} from './progress'
 import { createHandler } from './server'
 import { CiFs, MemFs, MemState, random } from './testkit'
 import { httpRemote, type Fetch, type MacPeer } from './client'
@@ -9,7 +22,16 @@ import { PEER_HEADER } from './protocol'
 import { toBase64 } from './bytes'
 import { deriveSyncBadge, emptyActivity, badgeChanged } from '../sync-badge'
 
-const P = (x: Partial<SyncProgress>): SyncProgress => ({ stage: 'downloading', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: 0, stageAt: 0, ...x })
+const P = (x: Partial<SyncProgress>): SyncProgress => ({
+  stage: 'downloading',
+  done: 0,
+  total: 0,
+  bytesDone: 0,
+  bytesTotal: 0,
+  startedAt: 0,
+  stageAt: 0,
+  ...x
+})
 
 describe('progress display helpers', () => {
   test('percent / eta / lines', () => {
@@ -18,7 +40,9 @@ describe('progress display helpers', () => {
     expect(percent(P({}))).toBeNull()
     expect(etaMs(P({ bytesDone: 25, bytesTotal: 100, stageAt: 0 }), 4000)).toBe(12000)
     expect(etaMs(P({ bytesDone: 25, bytesTotal: 100, stageAt: 0 }), 1000)).toBeNull() // too early to guess
-    expect(progressLine(P({ done: 30, total: 120, bytesDone: 3 << 20, bytesTotal: 12 << 20 }), 4000)).toBe('downloading 30 of 120 · 3.0 MB of 12 MB · ~12s left')
+    expect(progressLine(P({ done: 30, total: 120, bytesDone: 3 << 20, bytesTotal: 12 << 20 }), 4000)).toBe(
+      'downloading 30 of 120 · 3.0 MB of 12 MB · ~12s left'
+    )
     expect(progressShort(P({ stage: 'comparing' }))).toBe('comparing')
     expect(progressShort(P({ done: 9, total: 10 }))).toBe('90%')
   })
@@ -38,12 +62,34 @@ describe('progress display helpers', () => {
     expect(cleanProgress({ stage: 'nope' }, 1)).toBeNull()
     expect(cleanProgress(null, 1)).toBeNull()
     // Phone clock 1h ahead: durations survive, absolute times move to ours.
-    const lp = cleanProgress({ stage: 'uploading', done: 2, total: 4, bytesDone: -5, startedAt: 3_600_000 + 1000, stageAt: 3_600_000 + 3000, sentAt: 3_600_000 + 5000, current: 'x'.repeat(999) }, 10_000)!
+    const lp = cleanProgress(
+      {
+        stage: 'uploading',
+        done: 2,
+        total: 4,
+        bytesDone: -5,
+        startedAt: 3_600_000 + 1000,
+        stageAt: 3_600_000 + 3000,
+        sentAt: 3_600_000 + 5000,
+        current: 'x'.repeat(999)
+      },
+      10_000
+    )!
     expect(lp.startedAt).toBe(6000)
     expect(lp.stageAt).toBe(8000)
     expect(lp.bytesDone).toBe(0)
     expect(lp.current!.length).toBe(300)
-    expect(cleanRun({ pulled: 3, ms: 'x', error: 'e'.repeat(500) }, 5)).toEqual({ at: 5, ms: 0, pulled: 3, pushed: 0, merged: 0, moved: 0, deleted: 0, conflicts: 0, error: 'e'.repeat(200) })
+    expect(cleanRun({ pulled: 3, ms: 'x', error: 'e'.repeat(500) }, 5)).toEqual({
+      at: 5,
+      ms: 0,
+      pulled: 3,
+      pushed: 0,
+      merged: 0,
+      moved: 0,
+      deleted: 0,
+      conflicts: 0,
+      error: 'e'.repeat(200)
+    })
   })
 })
 
@@ -56,7 +102,14 @@ describe('engine progress events', () => {
     const events: SyncProgress[] = []
     const { remote } = wiredWithHooks(mac)
     let t = 0
-    const r = await runSync({ fs: phone, remote, state: new MemState(), remoteName: 'Mac', onProgress: (p) => events.push(p), clock: () => t++ })
+    const r = await runSync({
+      fs: phone,
+      remote,
+      state: new MemState(),
+      remoteName: 'Mac',
+      onProgress: (p) => events.push(p),
+      clock: () => t++
+    })
     expect(r.pulled).toBe(300)
     const stages = events.map((e) => e.stage).filter((s, i, a) => a[i - 1] !== s)
     expect(stages).toEqual(['comparing', 'downloading', 'applying', 'uploading', 'done'])
@@ -116,20 +169,57 @@ describe('progress over the wire', () => {
 describe('desktop badge with progress', () => {
   test('syncing row carries progress, label shows %, runs + device info pass through', () => {
     const now = 100_000
-    const a = { ...emptyActivity(), lastSeen: now - 100, inFlight: 1, sessionSince: now - 2000, ip: '192.168.1.40', protocol: 1, progress: { ...P({ done: 5, total: 10 }), at: now } }
-    const runs: PeerRun[] = [{ at: now - 60_000, ms: 900, pulled: 1, pushed: 0, merged: 0, moved: 0, deleted: 0, conflicts: 0 }]
-    const b = deriveSyncBadge({ running: true, error: null, peers: [{ id: 'p', name: 'Pixel', lastSync: now - 60_000, activity: a, runs }] }, now)
+    const a = {
+      ...emptyActivity(),
+      lastSeen: now - 100,
+      inFlight: 1,
+      sessionSince: now - 2000,
+      ip: '192.168.1.40',
+      protocol: 1,
+      progress: { ...P({ done: 5, total: 10 }), at: now }
+    }
+    const runs: PeerRun[] = [
+      { at: now - 60_000, ms: 900, pulled: 1, pushed: 0, merged: 0, moved: 0, deleted: 0, conflicts: 0 }
+    ]
+    const b = deriveSyncBadge(
+      { running: true, error: null, peers: [{ id: 'p', name: 'Pixel', lastSync: now - 60_000, activity: a, runs }] },
+      now
+    )
     expect(b.state).toBe('syncing')
     expect(b.label).toBe('Syncing with Pixel… 50%')
     expect(b.peers[0]!.progress?.done).toBe(5)
     expect(b.peers[0]!.ip).toBe('192.168.1.40')
     expect(b.peers[0]!.runs).toHaveLength(1)
     // A progress step is a repaint; an identical one isn't.
-    const b2 = deriveSyncBadge({ running: true, error: null, peers: [{ id: 'p', name: 'Pixel', lastSync: now - 60_000, activity: { ...a, progress: { ...a.progress, done: 6 } }, runs }] }, now)
+    const b2 = deriveSyncBadge(
+      {
+        running: true,
+        error: null,
+        peers: [
+          {
+            id: 'p',
+            name: 'Pixel',
+            lastSync: now - 60_000,
+            activity: { ...a, progress: { ...a.progress, done: 6 } },
+            runs
+          }
+        ]
+      },
+      now
+    )
     expect(badgeChanged(b, b2)).toBe(true)
     expect(badgeChanged(b, b)).toBe(false)
     // Not syncing → no progress shown even if a stale one is around.
-    const idle = deriveSyncBadge({ running: true, error: null, peers: [{ id: 'p', name: 'Pixel', lastSync: now - 1000, activity: { ...a, inFlight: 0, sessionSince: null }, runs }] }, now)
+    const idle = deriveSyncBadge(
+      {
+        running: true,
+        error: null,
+        peers: [
+          { id: 'p', name: 'Pixel', lastSync: now - 1000, activity: { ...a, inFlight: 0, sessionSince: null }, runs }
+        ]
+      },
+      now
+    )
     expect(idle.peers[0]!.progress).toBeNull()
   })
 })

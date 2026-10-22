@@ -1,22 +1,39 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { ChevronLeft, ChevronRight, SquarePen, X } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { useStore } from '../lib/store';
-import type { DayInfo } from '../lib/vault';
-import { ScreenHead } from '../components/ScreenHead';
-import { Icon } from '../components/Icon';
-import { Markdown } from '../components/Markdown';
-import { dailyTitle, localDay, parseDay } from '../../../src/shared/daily';
-import { entryCountLabel, filterDays, groupByMonth, monthCounts, streak, type JournalRow } from '../../../src/shared/journal';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  FlatList,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent
+} from 'react-native'
+import { ChevronLeft, ChevronRight, SquarePen, X } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { useStore } from '../lib/store'
+import type { DayInfo } from '../lib/vault'
+import { ScreenHead } from '../components/ScreenHead'
+import { Icon } from '../components/Icon'
+import { Markdown } from '../components/Markdown'
+import { dailyTitle, localDay, parseDay } from '../../../src/shared/daily'
+import {
+  entryCountLabel,
+  filterDays,
+  groupByMonth,
+  monthCounts,
+  streak,
+  type JournalRow
+} from '../../../src/shared/journal'
 
 interface Props {
-  onMenu: () => void;
+  onMenu: () => void
   /** Open a day note in the editor. */
-  onEdit: (id: string) => void;
+  onEdit: (id: string) => void
   /** Day shown in the pager (null = the timeline). Lives in the shell so it survives a trip to the editor. */
-  day: string | null;
-  onDay: (day: string | null) => void;
+  day: string | null
+  onDay: (day: string | null) => void
 }
 
 /**
@@ -26,46 +43,64 @@ interface Props {
  * (swipe or the arrows; each page reads its file when it comes near), long-press to edit.
  */
 export function JournalScreen({ onMenu, onEdit, day, onDay }: Props): React.JSX.Element {
-  const { days } = useStore();
+  const { days } = useStore()
   // Android back from a day page is handled by the shell (it owns `day`).
   if (day && days.some((d) => d.day === day)) {
-    return <DayPager days={days} day={day} onDay={onDay} onClose={() => onDay(null)} onEdit={onEdit} />;
+    return <DayPager days={days} day={day} onDay={onDay} onClose={() => onDay(null)} onEdit={onEdit} />
   }
-  return <Timeline days={days} onMenu={onMenu} onOpenDay={onDay} onEdit={onEdit} />;
+  return <Timeline days={days} onMenu={onMenu} onOpenDay={onDay} onEdit={onEdit} />
 }
 
 // --- timeline -------------------------------------------------------------------------
 
 function Timeline({
-  days, onMenu, onOpenDay, onEdit
+  days,
+  onMenu,
+  onOpenDay,
+  onEdit
 }: {
-  days: DayInfo[];
-  onMenu: () => void;
-  onOpenDay: (day: string) => void;
-  onEdit: (id: string) => void;
+  days: DayInfo[]
+  onMenu: () => void
+  onOpenDay: (day: string) => void
+  onEdit: (id: string) => void
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const [q, setQ] = useState('');
-  const list = useRef<FlatList<JournalRow<DayInfo>>>(null);
-  const today = localDay();
-  const filtered = useMemo(() => filterDays(days, q, (d) => d.snippet), [days, q]);
-  const rows = useMemo(() => groupByMonth(filtered), [filtered]);
-  const sticky = useMemo(() => rows.flatMap((r, i) => (r.kind === 'month' ? [i] : [])), [rows]);
-  const months = useMemo(() => monthCounts(filtered.map((d) => d.day)), [filtered]);
-  const run = useMemo(() => streak(days.map((d) => d.day), today), [days, today]);
+  const { ui, c } = useTheme()
+  const [q, setQ] = useState('')
+  const list = useRef<FlatList<JournalRow<DayInfo>>>(null)
+  const today = localDay()
+  const filtered = useMemo(() => filterDays(days, q, (d) => d.snippet), [days, q])
+  const rows = useMemo(() => groupByMonth(filtered), [filtered])
+  const sticky = useMemo(() => rows.flatMap((r, i) => (r.kind === 'month' ? [i] : [])), [rows])
+  const months = useMemo(() => monthCounts(filtered.map((d) => d.day)), [filtered])
+  const run = useMemo(
+    () =>
+      streak(
+        days.map((d) => d.day),
+        today
+      ),
+    [days, today]
+  )
 
   const jump = useCallback(
     (key: string) => {
-      const index = rows.findIndex((r) => r.kind === 'month' && r.key === key);
-      if (index >= 0) list.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+      const index = rows.findIndex((r) => r.kind === 'month' && r.key === key)
+      if (index >= 0) list.current?.scrollToIndex({ index, animated: true, viewPosition: 0 })
     },
     [rows]
-  );
+  )
 
   const renderItem = useCallback(
     ({ item }: { item: JournalRow<DayInfo> }) =>
       item.kind === 'month' ? (
-        <View style={{ backgroundColor: c.bg, paddingTop: 14, paddingBottom: 6, flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View
+          style={{
+            backgroundColor: c.bg,
+            paddingTop: 14,
+            paddingBottom: 6,
+            flexDirection: 'row',
+            justifyContent: 'space-between'
+          }}
+        >
           <Text style={[ui.label, { marginTop: 0, marginBottom: 0 }]}>{item.label}</Text>
           <Text style={[ui.label, { marginTop: 0, marginBottom: 0 }]}>{String(item.count)}</Text>
         </View>
@@ -73,7 +108,7 @@ function Timeline({
         <DayRow info={item.item} today={item.day === today} onOpen={onOpenDay} onEdit={onEdit} />
       ),
     [ui, c.bg, today, onOpenDay, onEdit]
-  );
+  )
 
   return (
     <View style={ui.screen}>
@@ -82,7 +117,11 @@ function Timeline({
         <TextInput
           value={q}
           onChangeText={setQ}
-          placeholder={days.length ? `Filter ${days.length} day${days.length === 1 ? '' : 's'}${run > 1 ? ` · ${run}-day streak` : ''}` : 'Filter days'}
+          placeholder={
+            days.length
+              ? `Filter ${days.length} day${days.length === 1 ? '' : 's'}${run > 1 ? ` · ${run}-day streak` : ''}`
+              : 'Filter days'
+          }
           placeholderTextColor={c.faint}
           style={ui.inputText}
           returnKeyType="search"
@@ -94,9 +133,19 @@ function Timeline({
         )}
       </View>
       {months.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 4 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, marginHorizontal: -20 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 4 }}
+        >
           {months.map((m) => (
-            <Pressable key={m.key} onPress={() => jump(m.key)} style={ui.chip} accessibilityLabel={`Jump to ${m.label}`}>
+            <Pressable
+              key={m.key}
+              onPress={() => jump(m.key)}
+              style={ui.chip}
+              accessibilityLabel={`Jump to ${m.label}`}
+            >
               <Text style={ui.chipText}>
                 {shortMonth(m.key)} <Text style={{ color: c.faint }}>{String(m.count)}</Text>
               </Text>
@@ -116,8 +165,8 @@ function Timeline({
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         onScrollToIndexFailed={(info) => {
-          list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
-          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 }), 60);
+          list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false })
+          setTimeout(() => list.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0 }), 60)
         }}
         ListEmptyComponent={
           <Text style={[ui.meta, { marginTop: 16 }]}>
@@ -127,28 +176,31 @@ function Timeline({
         contentContainerStyle={ui.scrollPad}
       />
     </View>
-  );
+  )
 }
 
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function shortMonth(key: string): string {
-  const [y, m] = key.split('-');
-  const label = MONTHS_SHORT[Number(m) - 1] ?? key;
-  return y === String(new Date().getFullYear()) ? label : `${label} ${y?.slice(2)}`;
+  const [y, m] = key.split('-')
+  const label = MONTHS_SHORT[Number(m) - 1] ?? key
+  return y === String(new Date().getFullYear()) ? label : `${label} ${y?.slice(2)}`
 }
 
 const DayRow = memo(function DayRow({
-  info, today, onOpen, onEdit
+  info,
+  today,
+  onOpen,
+  onEdit
 }: {
-  info: DayInfo;
-  today: boolean;
-  onOpen: (day: string) => void;
-  onEdit: (id: string) => void;
+  info: DayInfo
+  today: boolean
+  onOpen: (day: string) => void
+  onEdit: (id: string) => void
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const d = parseDay(info.day);
-  const title = dailyTitle(info.day);
-  const more = info.count - info.entries.length;
+  const { ui, c } = useTheme()
+  const d = parseDay(info.day)
+  const title = dailyTitle(info.day)
+  const more = info.count - info.entries.length
   return (
     <Pressable
       onPress={() => onOpen(info.day)}
@@ -158,10 +210,14 @@ const DayRow = memo(function DayRow({
       accessibilityLabel={`${title}, ${entryCountLabel(info.count)}`}
     >
       <View style={{ width: 36, alignItems: 'center' }}>
-        <Text style={{ color: today ? c.accent : c.text, fontSize: 21, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+        <Text
+          style={{ color: today ? c.accent : c.text, fontSize: 21, fontWeight: '700', fontVariant: ['tabular-nums'] }}
+        >
           {String(d?.getDate() ?? '')}
         </Text>
-        <Text style={{ color: c.faint, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6 }}>{title.slice(0, 3).toUpperCase()}</Text>
+        <Text style={{ color: c.faint, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6 }}>
+          {title.slice(0, 3).toUpperCase()}
+        </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={[ui.row, { justifyContent: 'space-between', marginBottom: 3 }]}>
@@ -189,51 +245,58 @@ const DayRow = memo(function DayRow({
         {more > 0 && <Text style={[ui.meta, { marginTop: 2, marginLeft: 48 }]}>+{more} more</Text>}
       </View>
     </Pressable>
-  );
-});
+  )
+})
 
 // --- pager ----------------------------------------------------------------------------
 
 /** Bodies read this session, by path@mtime (a page re-read only when the day changed). */
-const bodyCache = new Map<string, string>();
+const bodyCache = new Map<string, string>()
 
 function DayPager({
-  days, day, onDay, onClose, onEdit
+  days,
+  day,
+  onDay,
+  onClose,
+  onEdit
 }: {
-  days: DayInfo[];
-  day: string;
-  onDay: (day: string) => void;
-  onClose: () => void;
-  onEdit: (id: string) => void;
+  days: DayInfo[]
+  day: string
+  onDay: (day: string) => void
+  onClose: () => void
+  onEdit: (id: string) => void
 }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const { width } = useWindowDimensions();
+  const { ui, c } = useTheme()
+  const { width } = useWindowDimensions()
   // Oldest → newest, so a swipe left goes forward in time (like turning a page).
-  const ordered = useMemo(() => [...days].reverse(), [days]);
-  const index = Math.max(0, ordered.findIndex((d) => d.day === day));
-  const pager = useRef<FlatList<DayInfo>>(null);
-  const current = ordered[index];
+  const ordered = useMemo(() => [...days].reverse(), [days])
+  const index = Math.max(
+    0,
+    ordered.findIndex((d) => d.day === day)
+  )
+  const pager = useRef<FlatList<DayInfo>>(null)
+  const current = ordered[index]
 
   const go = useCallback(
     (to: number) => {
-      const next = ordered[to];
-      if (!next) return;
-      pager.current?.scrollToIndex({ index: to, animated: true });
-      onDay(next.day);
+      const next = ordered[to]
+      if (!next) return
+      pager.current?.scrollToIndex({ index: to, animated: true })
+      onDay(next.day)
     },
     [ordered, onDay]
-  );
+  )
 
   const onSettle = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width));
-      const next = ordered[i];
-      if (next && next.day !== day) onDay(next.day);
+      const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width))
+      const next = ordered[i]
+      if (next && next.day !== day) onDay(next.day)
     },
     [ordered, width, day, onDay]
-  );
+  )
 
-  const renderItem = useCallback(({ item }: { item: DayInfo }) => <DayPage info={item} width={width} />, [width]);
+  const renderItem = useCallback(({ item }: { item: DayInfo }) => <DayPage info={item} width={width} />, [width])
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -250,10 +313,20 @@ function DayPager({
             {`${index + 1} of ${ordered.length}`}
           </Text>
         </View>
-        <Pressable onPress={() => go(index - 1)} disabled={index <= 0} style={ui.iconBtn} accessibilityLabel="Previous day">
+        <Pressable
+          onPress={() => go(index - 1)}
+          disabled={index <= 0}
+          style={ui.iconBtn}
+          accessibilityLabel="Previous day"
+        >
           <Icon as={ChevronLeft} color={index <= 0 ? c.faint : undefined} />
         </Pressable>
-        <Pressable onPress={() => go(index + 1)} disabled={index >= ordered.length - 1} style={ui.iconBtn} accessibilityLabel="Next day">
+        <Pressable
+          onPress={() => go(index + 1)}
+          disabled={index >= ordered.length - 1}
+          style={ui.iconBtn}
+          accessibilityLabel="Next day"
+        >
           <Icon as={ChevronRight} color={index >= ordered.length - 1 ? c.faint : undefined} />
         </Pressable>
         <Pressable onPress={() => current && onEdit(current.id)} style={ui.iconBtn} accessibilityLabel="Edit this day">
@@ -277,42 +350,40 @@ function DayPager({
         onMomentumScrollEnd={onSettle}
       />
     </View>
-  );
+  )
 }
 
 const DayPage = memo(function DayPage({ info, width }: { info: DayInfo; width: number }): React.JSX.Element {
-  const { ui } = useTheme();
-  const { readDay } = useStore();
-  const key = `${info.path}@${info.updatedAt}`;
-  const [body, setBody] = useState<string | null>(() => bodyCache.get(key) ?? null);
+  const { ui } = useTheme()
+  const { readDay } = useStore()
+  const key = `${info.path}@${info.updatedAt}`
+  const [body, setBody] = useState<string | null>(() => bodyCache.get(key) ?? null)
   useEffect(() => {
-    const have = bodyCache.get(key);
+    const have = bodyCache.get(key)
     if (have !== undefined) {
-      setBody(have);
-      return;
+      setBody(have)
+      return
     }
-    let live = true;
+    let live = true
     void readDay(info.day).then((b) => {
-      bodyCache.set(key, b);
-      if (bodyCache.size > 60) bodyCache.delete(bodyCache.keys().next().value as string);
-      if (live) setBody(b);
-    });
+      bodyCache.set(key, b)
+      if (bodyCache.size > 60) bodyCache.delete(bodyCache.keys().next().value as string)
+      if (live) setBody(b)
+    })
     return () => {
-      live = false;
-    };
-  }, [key, info.day, readDay]);
+      live = false
+    }
+  }, [key, info.day, readDay])
   return (
     <ScrollView style={{ width }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60, paddingTop: 4 }}>
       {body === null ? (
         // Index preview until the file is read (a few ms).
-        info.entries.map((e, i) => (
-          <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time}  ${e.text}`}</Text>
-        ))
+        info.entries.map((e, i) => <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time}  ${e.text}`}</Text>)
       ) : body.trim() ? (
         <Markdown text={body} notePath={info.path} />
       ) : (
         <Text style={[ui.meta, { marginTop: 12 }]}>Nothing logged this day.</Text>
       )}
     </ScrollView>
-  );
-});
+  )
+})

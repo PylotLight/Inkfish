@@ -4,8 +4,19 @@ import { applySettingsPatch, parseStoredAi } from './ai-store'
 
 describe('ai-provider.json', () => {
   test('v0.2.x file (single model + key) migrates; key ciphertext kept', () => {
-    const s = parseStoredAi({ enabled: true, kind: 'openai', baseUrl: 'http://nas:4000/v1', model: 'gpt-6.1-sol', keyEnc: 'Y2lwaGVy' })
-    expect(s).toMatchObject({ enabled: true, model: 'gpt-6.1-sol', models: [{ id: 'gpt-6.1-sol' }], keyEnc: 'Y2lwaGVy' })
+    const s = parseStoredAi({
+      enabled: true,
+      kind: 'openai',
+      baseUrl: 'http://nas:4000/v1',
+      model: 'gpt-6.1-sol',
+      keyEnc: 'Y2lwaGVy'
+    })
+    expect(s).toMatchObject({
+      enabled: true,
+      model: 'gpt-6.1-sol',
+      models: [{ id: 'gpt-6.1-sol' }],
+      keyEnc: 'Y2lwaGVy'
+    })
   })
 
   test('garbage file → defaults, no key', () => {
@@ -23,7 +34,12 @@ describe('ai-provider.json', () => {
   })
 
   test('switching provider stashes the list and restores it on the way back', () => {
-    const openai = parseStoredAi({ kind: 'openai', model: 'b', models: [{ id: 'a', contextWindow: 9 }, { id: 'b' }], actionModels: { tidy: 'a' } })
+    const openai = parseStoredAi({
+      kind: 'openai',
+      model: 'b',
+      models: [{ id: 'a', contextWindow: 9 }, { id: 'b' }],
+      actionModels: { tidy: 'a' }
+    })
     const toAnthropic = applySettingsPatch(openai, { kind: 'anthropic', baseUrl: 'https://api.anthropic.com' })
     expect(toAnthropic.model).toBe(DEFAULT_MODEL.anthropic)
     expect(toAnthropic.models).toEqual([{ id: DEFAULT_MODEL.anthropic }])

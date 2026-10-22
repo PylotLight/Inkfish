@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
-import { usePrefs, type AccentId, type Prefs, type ThemeId } from './lib/prefs';
+import { useMemo } from 'react'
+import { StyleSheet } from 'react-native'
+import { usePrefs, type AccentId, type Prefs, type ThemeId } from './lib/prefs'
 
 /**
  * Dynamic theme — Mac themes + accents, AMOLED pure black, text scaling.
@@ -9,20 +9,20 @@ import { usePrefs, type AccentId, type Prefs, type ThemeId } from './lib/prefs';
  */
 
 export interface Colors {
-  bg: string;
-  card: string;
-  card2: string;
-  inset: string;
-  text: string;
-  muted: string;
-  faint: string;
-  accent: string;
-  ink: string;
-  danger: string;
-  border: string;
-  barBg: string;
-  barSolid: string;
-  tabOn: string;
+  bg: string
+  card: string
+  card2: string
+  inset: string
+  text: string
+  muted: string
+  faint: string
+  accent: string
+  ink: string
+  danger: string
+  border: string
+  barBg: string
+  barSolid: string
+  tabOn: string
 }
 
 const ACCENT_HEX: Record<AccentId, { accent: string; ink: string; tabOn: string }> = {
@@ -31,9 +31,9 @@ const ACCENT_HEX: Record<AccentId, { accent: string; ink: string; tabOn: string 
   violet: { accent: '#b79bff', ink: '#1c1033', tabOn: 'rgba(183,155,255,0.16)' },
   amber: { accent: '#f2c069', ink: '#2a1c07', tabOn: 'rgba(242,192,105,0.16)' },
   coral: { accent: '#f28b8b', ink: '#2b0e0e', tabOn: 'rgba(242,139,139,0.16)' }
-};
+}
 
-type Base = Omit<Colors, 'accent' | 'ink' | 'tabOn'>;
+type Base = Omit<Colors, 'accent' | 'ink' | 'tabOn'>
 
 const DARK_BASE: Base = {
   bg: '#08090c',
@@ -47,16 +47,16 @@ const DARK_BASE: Base = {
   border: 'rgba(255,255,255,0.10)',
   barBg: 'rgba(16,18,24,0.55)',
   barSolid: '#14161c'
-};
+}
 
 function baseFor(theme: ThemeId): { base: Base; light: boolean } {
   switch (theme) {
     case 'abyss':
-      return { base: { ...DARK_BASE, bg: '#06090f', barSolid: '#0a0f16' }, light: false };
+      return { base: { ...DARK_BASE, bg: '#06090f', barSolid: '#0a0f16' }, light: false }
     case 'forest':
-      return { base: { ...DARK_BASE, bg: '#0e1a14', barSolid: '#122019' }, light: false };
+      return { base: { ...DARK_BASE, bg: '#0e1a14', barSolid: '#122019' }, light: false }
     case 'plum':
-      return { base: { ...DARK_BASE, bg: '#171222', barSolid: '#1d1729' }, light: false };
+      return { base: { ...DARK_BASE, bg: '#171222', barSolid: '#1d1729' }, light: false }
     case 'amoled':
       return {
         base: {
@@ -70,7 +70,7 @@ function baseFor(theme: ThemeId): { base: Base; light: boolean } {
           barSolid: '#0a0a0c'
         },
         light: false
-      };
+      }
     case 'paper':
       return {
         base: {
@@ -87,31 +87,31 @@ function baseFor(theme: ThemeId): { base: Base; light: boolean } {
           barSolid: '#e9e6dd'
         },
         light: true
-      };
+      }
     case 'deep':
     default:
-      return { base: DARK_BASE, light: false };
+      return { base: DARK_BASE, light: false }
   }
 }
 
 export function buildTheme(p: Prefs): {
-  c: Colors;
-  ui: ReturnType<typeof buildUi>;
-  md: ReturnType<typeof buildMd>;
-  statusBar: 'light-content' | 'dark-content';
-  blurTint: 'light' | 'dark';
+  c: Colors
+  ui: ReturnType<typeof buildUi>
+  md: ReturnType<typeof buildMd>
+  statusBar: 'light-content' | 'dark-content'
+  blurTint: 'light' | 'dark'
 } {
-  const { base, light } = baseFor(p.theme);
-  const a = ACCENT_HEX[p.accent];
-  const c: Colors = { ...base, accent: a.accent, ink: a.ink, tabOn: a.tabOn };
-  const scale = p.textSize === 'compact' ? 0.9 : p.textSize === 'large' ? 1.15 : 1;
+  const { base, light } = baseFor(p.theme)
+  const a = ACCENT_HEX[p.accent]
+  const c: Colors = { ...base, accent: a.accent, ink: a.ink, tabOn: a.tabOn }
+  const scale = p.textSize === 'compact' ? 0.9 : p.textSize === 'large' ? 1.15 : 1
   return {
     c,
     ui: buildUi(c, scale),
     md: buildMd(c, scale),
     statusBar: light ? 'dark-content' : 'light-content',
     blurTint: light ? 'light' : 'dark'
-  };
+  }
 }
 
 function buildUi(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
@@ -238,12 +238,20 @@ function buildUi(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
       backgroundColor: c.barBg
     },
     tab: { width: 52, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
-    tabAdd: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: c.accent, marginHorizontal: 4 },
+    tabAdd: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 22,
+      backgroundColor: c.accent,
+      marginHorizontal: 4
+    },
     tabOn: { backgroundColor: c.tabOn },
     glyph: { color: c.muted, fontSize: 21 },
     glyphOn: { color: c.accent },
     badge: { position: 'absolute', top: 9, right: 13, width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent }
-  });
+  })
 }
 
 function buildMd(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
@@ -265,14 +273,14 @@ function buildMd(c: Colors, s: number): ReturnType<typeof StyleSheet.create> {
     codeBox: { backgroundColor: c.inset, borderRadius: 10, padding: 12, marginVertical: 8 },
     code: { color: c.text, fontFamily: 'monospace', fontSize: 13.5 * s, lineHeight: 20 * s },
     imgRef: { color: c.muted, fontSize: 13, marginVertical: 4 }
-  });
+  })
 }
 
-export type AppTheme = ReturnType<typeof buildTheme>;
+export type AppTheme = ReturnType<typeof buildTheme>
 
 export function useTheme(): AppTheme {
-  const { prefs } = usePrefs();
-  return useMemo(() => buildTheme(prefs), [prefs]);
+  const { prefs } = usePrefs()
+  return useMemo(() => buildTheme(prefs), [prefs])
 }
 
 /** Swatch colours for the Settings pickers. */
@@ -283,7 +291,7 @@ export const THEME_SWATCH: Record<ThemeId, string> = {
   plum: '#171222',
   paper: '#f2efe8',
   amoled: '#000000'
-};
+}
 export const ACCENT_SWATCH: Record<AccentId, string> = Object.fromEntries(
   Object.entries(ACCENT_HEX).map(([k, v]) => [k, v.accent])
-) as Record<AccentId, string>;
+) as Record<AccentId, string>

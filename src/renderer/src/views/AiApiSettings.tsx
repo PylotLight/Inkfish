@@ -123,8 +123,8 @@ export default function AiApiSettings(): React.JSX.Element {
         <h4>AI provider</h4>
         <p className="muted small setting-hint" style={{ marginTop: 0 }}>
           Connect an AI service to process notes: tidy formatting, fix typos, summarise, make checklists, or follow your
-          own instruction. Nothing runs unless you ask for it in a note (✦, ⇧⌥P, or select text and ⇧⌥S), and your raw note
-          only changes when you choose Apply or Accept.
+          own instruction. Nothing runs unless you ask for it in a note (✦, ⇧⌥P, or select text and ⇧⌥S), and your raw
+          note only changes when you choose Apply or Accept.
         </p>
 
         <div className="setting-row inline">
@@ -244,7 +244,9 @@ export default function AiApiSettings(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            <p className="muted small setting-hint">{API_HINT[form.api ?? 'auto']} A model can override this in Models.</p>
+            <p className="muted small setting-hint">
+              {API_HINT[form.api ?? 'auto']} A model can override this in Models.
+            </p>
           </div>
         )}
 
@@ -260,15 +262,13 @@ export default function AiApiSettings(): React.JSX.Element {
             </span>
             {test && !('running' in test) && !test.ok && (
               <span className="row" style={{ marginTop: 4 }}>
-                <CopyDetails text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })} />
+                <CopyDetails
+                  text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })}
+                />
               </span>
             )}
           </div>
-          <button
-            className="btn ghost sm"
-            disabled={!!test && 'running' in test}
-            onClick={() => void runTest()}
-          >
+          <button className="btn ghost sm" disabled={!!test && 'running' in test} onClick={() => void runTest()}>
             {test && 'running' in test ? 'Testing…' : 'Test'}
           </button>
         </div>

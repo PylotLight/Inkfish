@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
 import { BREW_UPGRADE_COMMAND, isPrereleaseVersion, type UpdateState } from '../../../shared/update-feed'
 
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (v: boolean) => void }): React.JSX.Element {
+function Switch({
+  on,
+  label,
+  onChange
+}: {
+  on: boolean
+  label: string
+  onChange: (v: boolean) => void
+}): React.JSX.Element {
   return (
-    <button role="switch" aria-checked={on} className={`switch${on ? ' on' : ''}`} onClick={() => onChange(!on)} aria-label={label}>
+    <button
+      role="switch"
+      aria-checked={on}
+      className={`switch${on ? ' on' : ''}`}
+      onClick={() => onChange(!on)}
+      aria-label={label}
+    >
       <span className="knob" />
     </button>
   )
@@ -62,7 +76,11 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
               {s ? `Electron ${s.engine.electron} · Chromium ${s.engine.chromium}` : '…'}
             </span>
           </span>
-          <button className="btn ghost sm" disabled={s?.status === 'checking'} onClick={() => void window.api.updates.check().then(setS)}>
+          <button
+            className="btn ghost sm"
+            disabled={s?.status === 'checking'}
+            onClick={() => void window.api.updates.check().then(setS)}
+          >
             {s?.status === 'checking' ? 'Checking…' : 'Check now'}
           </button>
         </div>
@@ -100,7 +118,10 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
                 <button className="btn ghost sm" onClick={() => void window.api.updates.remindLater().then(setS)}>
                   Remind me later
                 </button>
-                <button className="btn ghost sm" onClick={() => void window.api.updates.skip(latest.version).then(setS)}>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => void window.api.updates.skip(latest.version).then(setS)}
+                >
                   Skip this version
                 </button>
               </>
@@ -115,9 +136,15 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
         <div className="setting-row inline">
           <span className="setting-label">
             Beta updates
-            <span className="muted small setting-hint">Also offer test builds (pre-releases like v0.2.15-beta.1). Off: full releases only.</span>
+            <span className="muted small setting-hint">
+              Also offer test builds (pre-releases like v0.2.15-beta.1). Off: full releases only.
+            </span>
           </span>
-          <Switch on={s?.betaChannel ?? false} label="Beta updates" onChange={(v) => saveSettings({ betaChannel: v })} />
+          <Switch
+            on={s?.betaChannel ?? false}
+            label="Beta updates"
+            onChange={(v) => saveSettings({ betaChannel: v })}
+          />
         </div>
         <div className="setting-row stacked">
           <span className="setting-label">Feed URL</span>
@@ -134,11 +161,17 @@ export default function UpdateSettings({ notify }: { notify: (msg: string) => vo
                 if (e.key === 'Enter') saveSettings({ feedUrl: feed })
               }}
             />
-            <button className="btn ghost sm" disabled={!s || feed === s.feedUrl} onClick={() => saveSettings({ feedUrl: feed })}>
+            <button
+              className="btn ghost sm"
+              disabled={!s || feed === s.feedUrl}
+              onClick={() => saveSettings({ feedUrl: feed })}
+            >
               Save
             </button>
           </div>
-          <p className="muted small setting-hint">{feedError ?? 'Blank uses the GitHub releases feed. Any Atom releases feed works.'}</p>
+          <p className="muted small setting-hint">
+            {feedError ?? 'Blank uses the GitHub releases feed. Any Atom releases feed works.'}
+          </p>
         </div>
       </section>
     </>

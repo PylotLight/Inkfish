@@ -46,7 +46,11 @@ export async function startRedux(
     const live = await speech.listen({
       stream,
       onUpdate: (u: RealtimeUpdate) => {
-        segments = u.segments.map((s: RealtimeSegment) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+        segments = u.segments.map((s: RealtimeSegment) => ({
+          text: s.text.trim(),
+          start: s.startSeconds,
+          end: s.endSeconds
+        }))
         onText(u.text.trim(), segments)
       },
       onError: (e: unknown) => console.warn('[live] redux', e)
@@ -55,7 +59,11 @@ export async function startRedux(
       engine: 'Parakeet Redux · live',
       stop: async () => {
         const text = (await live.stop()).replace(/\s+/g, ' ').trim()
-        segments = live.segments.map((s: RealtimeSegment) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+        segments = live.segments.map((s: RealtimeSegment) => ({
+          text: s.text.trim(),
+          start: s.startSeconds,
+          end: s.endSeconds
+        }))
         release()
         return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
       },

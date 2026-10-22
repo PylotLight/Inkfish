@@ -61,7 +61,9 @@ describe('drag auto-scroll', () => {
     expect(dragScrollStep(5, 0, 1000)).toBeLessThan(0)
     expect(dragScrollStep(995, 0, 1000)).toBeGreaterThan(0)
     // Closer to the edge scrolls faster.
-    expect(Math.abs(dragScrollStep(1, 0, 1000))).toBeGreaterThan(Math.abs(dragScrollStep(DRAG_SCROLL_EDGE - 4, 0, 1000)))
+    expect(Math.abs(dragScrollStep(1, 0, 1000))).toBeGreaterThan(
+      Math.abs(dragScrollStep(DRAG_SCROLL_EDGE - 4, 0, 1000))
+    )
     // Too short to have edges: never scroll.
     expect(dragScrollStep(1, 0, 60)).toBe(0)
   })

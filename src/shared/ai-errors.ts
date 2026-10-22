@@ -53,7 +53,11 @@ export function scrubText(text: string, secret?: string | null): string {
 
 export function scrubDetail(d: AiErrorDetail, secret?: string | null): AiErrorDetail {
   const s = (v: string | undefined): string | undefined => (v === undefined ? v : scrubText(v, secret))
-  const out: AiErrorDetail = { ...d, provider: scrubText(d.provider, secret), message: scrubText(d.message, secret).slice(0, 2000) }
+  const out: AiErrorDetail = {
+    ...d,
+    provider: scrubText(d.provider, secret),
+    message: scrubText(d.message, secret).slice(0, 2000)
+  }
   for (const k of ['code', 'type', 'endpoint', 'model', 'hint'] as const) if (d[k] !== undefined) out[k] = s(d[k])
   if (d.attempts?.length) out.attempts = d.attempts.map((a) => scrubDetail(a, secret))
   return out
@@ -66,7 +70,8 @@ export function formatAiError(d: AiErrorDetail): string {
   const msg = d.message.length > 400 ? `${d.message.slice(0, 400)}…` : d.message
   let out = `${head}: ${msg || '(no message)'}${where ? ` (${where})` : ''}`
   if (d.hint) out += ` — ${d.hint}`
-  if (d.attempts?.length) out += ` [after: ${d.attempts.map((a) => `${a.endpoint ?? '?'} ${a.status ?? a.kind}`).join('; ')}]`
+  if (d.attempts?.length)
+    out += ` [after: ${d.attempts.map((a) => `${a.endpoint ?? '?'} ${a.status ?? a.kind}`).join('; ')}]`
   return out
 }
 
@@ -90,8 +95,10 @@ export function toErrorDetail(e: unknown, fallback: Partial<AiErrorDetail> = {})
   const err = e instanceof Error ? e : new Error(String(e))
   const timeout = err.name === 'TimeoutError' || /timed? ?out/i.test(err.message)
   const cause = (err as { cause?: { code?: string; message?: string } }).cause
-  const network = !timeout && (err.name === 'TypeError' || /fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|socket|network/i.test(err.message))
-  const message = cause?.message && cause.message !== err.message ? `${err.message} (${cause.code ?? cause.message})` : err.message
+  const network =
+    !timeout && (err.name === 'TypeError' || /fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|socket|network/i.test(err.message))
+  const message =
+    cause?.message && cause.message !== err.message ? `${err.message} (${cause.code ?? cause.message})` : err.message
   const kind = timeout ? 'timeout' : network ? 'network' : (fallback.kind ?? 'parse')
   return { provider: 'AI provider', ...fallback, kind, message: timeout ? 'Timed out' : message }
 }
@@ -115,12 +122,16 @@ export function splitErrorSentinel(out: string): { text: string; error: AiErrorD
   if (m) {
     try {
       const j = JSON.parse(m[1] ?? '{}') as AiErrorDetail
-      if (j && typeof j.message === 'string') error = { ...j, provider: String(j.provider ?? 'AI provider'), kind: j.kind ?? 'parse' }
+      if (j && typeof j.message === 'string')
+        error = { ...j, provider: String(j.provider ?? 'AI provider'), kind: j.kind ?? 'parse' }
     } catch {
       // malformed: report a generic error below
     }
   }
-  return { text: out.slice(0, idx), error: error ?? { provider: 'AI provider', kind: 'parse', message: 'The AI handler reported an error.' } }
+  return {
+    text: out.slice(0, idx),
+    error: error ?? { provider: 'AI provider', kind: 'parse', message: 'The AI handler reported an error.' }
+  }
 }
 
 /** Text safe to show while streaming: everything before a (possibly partial) sentinel. */
@@ -140,6 +151,10 @@ export function isElectronUnknownError(e: unknown): boolean {
 }
 
 /** What "Copy details" puts on the clipboard. */
-export function errorDetailsText(d: AiErrorDetail | null, message: string, extra: Record<string, unknown> = {}): string {
+export function errorDetailsText(
+  d: AiErrorDetail | null,
+  message: string,
+  extra: Record<string, unknown> = {}
+): string {
   return JSON.stringify({ message, ...(d ? { detail: d } : {}), ...extra, at: new Date().toISOString() }, null, 2)
 }

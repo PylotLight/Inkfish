@@ -65,8 +65,8 @@ export default function TrashSettings(): React.JSX.Element {
         <div className="setting-label">
           Deleted notes and folders
           <span className="muted small setting-hint">
-            Kept for 7 days, including anything sync removed. Restoring puts it back in the same place, and your
-            phone gets it on its next sync.
+            Kept for 7 days, including anything sync removed. Restoring puts it back in the same place, and your phone
+            gets it on its next sync.
           </span>
         </div>
         {items && items.length > 1 ? (

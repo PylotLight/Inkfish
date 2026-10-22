@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { MINI_PEEK_GRACE_MS, MINI_PEEK_POLL_MS, createPeekDriver, stepPeek, type PeekPoint, type PeekState } from './mini-window-peek'
+import {
+  MINI_PEEK_GRACE_MS,
+  MINI_PEEK_POLL_MS,
+  createPeekDriver,
+  stepPeek,
+  type PeekPoint,
+  type PeekState
+} from './mini-window-peek'
 
 /** Fake time: intervals fire as the clock advances. */
 function fakeClock() {
@@ -13,7 +20,9 @@ function fakeClock() {
       timers.set(id, { fn, ms, at: now + ms })
       return id
     },
-    clearInterval: (id: unknown) => { timers.delete(id as number) },
+    clearInterval: (id: unknown) => {
+      timers.delete(id as number)
+    },
     active: () => timers.size,
     advance(ms: number) {
       const end = now + ms
@@ -34,12 +43,19 @@ function fakeClock() {
 
 const HANDLE = { x: 1580, y: 480, width: 20, height: 64 }
 const WINDOW = { x: 1180, y: 300, width: 420, height: 500 }
-const inside = (r: { x: number; y: number; width: number; height: number }, p: PeekPoint): boolean => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height
+const inside = (r: { x: number; y: number; width: number; height: number }, p: PeekPoint): boolean =>
+  p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height
 
 function rig(options: { delay?: number; enabled?: boolean } = {}) {
   const clock = fakeClock()
   const log: string[] = []
-  const env = { cursor: { x: 0, y: 0 } as PeekPoint, out: false, blocked: false, enabled: options.enabled ?? true, delay: options.delay ?? 350 }
+  const env = {
+    cursor: { x: 0, y: 0 } as PeekPoint,
+    out: false,
+    blocked: false,
+    enabled: options.enabled ?? true,
+    delay: options.delay ?? 350
+  }
   const driver = createPeekDriver({
     now: clock.now,
     cursor: () => env.cursor,
@@ -48,13 +64,22 @@ function rig(options: { delay?: number; enabled?: boolean } = {}) {
     blocked: () => env.blocked,
     enabled: () => env.enabled,
     delayMs: () => env.delay,
-    slideOut: () => { env.out = true; log.push('slide-out') },
-    tuck: () => { env.out = false; log.push('tuck'); driver.cancel() },
+    slideOut: () => {
+      env.out = true
+      log.push('slide-out')
+    },
+    tuck: () => {
+      env.out = false
+      log.push('tuck')
+      driver.cancel()
+    },
     ended: () => log.push('ended'),
     setInterval: clock.setInterval,
     clearInterval: clock.clearInterval
   })
-  const park = (x: number, y: number) => { env.cursor = { x, y } }
+  const park = (x: number, y: number) => {
+    env.cursor = { x, y }
+  }
   return { clock, log, env, driver, park }
 }
 
@@ -204,8 +229,24 @@ describe('hover peek driver (fake timers)', () => {
 })
 
 describe('stepPeek', () => {
-  const sample = (over: Partial<{ now: number; cursor: PeekPoint; overHandle: boolean; overWindow: boolean; blocked: boolean; delayMs: number }>) => ({
-    type: 'sample' as const, now: 0, cursor: { x: 0, y: 0 }, overHandle: true, overWindow: false, blocked: false, delayMs: 350, ...over
+  const sample = (
+    over: Partial<{
+      now: number
+      cursor: PeekPoint
+      overHandle: boolean
+      overWindow: boolean
+      blocked: boolean
+      delayMs: number
+    }>
+  ) => ({
+    type: 'sample' as const,
+    now: 0,
+    cursor: { x: 0, y: 0 },
+    overHandle: true,
+    overWindow: false,
+    blocked: false,
+    delayMs: 350,
+    ...over
   })
   test('idle ignores samples and leave', () => {
     const idle: PeekState = { phase: 'idle' }
@@ -216,12 +257,21 @@ describe('stepPeek', () => {
     const dwell: PeekState = { phase: 'dwell', anchor: { x: 5, y: 5 }, since: 0 }
     expect(stepPeek(dwell, sample({ now: 100, cursor: { x: 5, y: 5 }, overHandle: false })).state.phase).toBe('idle')
     expect(stepPeek(dwell, sample({ now: 350, cursor: { x: 7, y: 8 } })).effect).toBe('slide-out')
-    expect(stepPeek(dwell, sample({ now: 350, cursor: { x: 9, y: 5 } }))).toEqual({ state: { phase: 'dwell', anchor: { x: 9, y: 5 }, since: 350 }, effect: null })
+    expect(stepPeek(dwell, sample({ now: 350, cursor: { x: 9, y: 5 } }))).toEqual({
+      state: { phase: 'dwell', anchor: { x: 9, y: 5 }, since: 350 },
+      effect: null
+    })
   })
   test('out: the grace counts from the last time the pointer was inside', () => {
     const out: PeekState = { phase: 'out', lastInside: 1000 }
     expect(stepPeek(out, sample({ now: 1200, overHandle: false })).effect).toBe(null)
-    expect(stepPeek(out, sample({ now: 1000 + MINI_PEEK_GRACE_MS, overHandle: false }))).toEqual({ state: { phase: 'idle' }, effect: 'tuck' })
-    expect(stepPeek(out, sample({ now: 5000, overHandle: false, overWindow: true }))).toEqual({ state: { phase: 'out', lastInside: 5000 }, effect: null })
+    expect(stepPeek(out, sample({ now: 1000 + MINI_PEEK_GRACE_MS, overHandle: false }))).toEqual({
+      state: { phase: 'idle' },
+      effect: 'tuck'
+    })
+    expect(stepPeek(out, sample({ now: 5000, overHandle: false, overWindow: true }))).toEqual({
+      state: { phase: 'out', lastInside: 5000 },
+      effect: null
+    })
   })
 })

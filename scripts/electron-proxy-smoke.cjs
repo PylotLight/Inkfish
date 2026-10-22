@@ -18,24 +18,45 @@ const temp = mkdtempSync(path.join(tmpdir(), 'inkfish-proxy-smoke-'))
 const userData = path.join(temp, 'profile')
 const vault = path.join(temp, 'vault')
 const bridgeModule = path.join(temp, 'model-download-proxy.cjs')
-const bundle = spawnSync('bun', ['build', path.join(root, 'src/main/model-download-proxy.ts'), '--target=node', '--format=cjs', '--outfile', bridgeModule], { encoding: 'utf8' })
+const bundle = spawnSync(
+  'bun',
+  [
+    'build',
+    path.join(root, 'src/main/model-download-proxy.ts'),
+    '--target=node',
+    '--format=cjs',
+    '--outfile',
+    bridgeModule
+  ],
+  { encoding: 'utf8' }
+)
 assert.equal(bundle.status, 0, bundle.stderr)
-mkdirSync(userData, { recursive: true }); mkdirSync(vault, { recursive: true })
+mkdirSync(userData, { recursive: true })
+mkdirSync(vault, { recursive: true })
 
 const settings = {
   primary: { enabled: true, host: '127.0.0.1', port: 0, bypassLocalNetwork: false },
-  proxies: [], rules: [], killSwitch: false
+  proxies: [],
+  rules: [],
+  killSwitch: false
 }
 let child
 let localServer
 let stopping = false
 let success = false
 const socksDestinations = []
-const fail = (e) => { if (!stopping) { console.error(e?.stack || e); if (child) child.kill('SIGTERM') } }
+const fail = (e) => {
+  if (!stopping) {
+    console.error(e?.stack || e)
+    if (child) child.kill('SIGTERM')
+  }
+}
 
 // Child is the Electron main process. Set profile paths before importing the real entry point.
 const runner = path.join(temp, 'runner.cjs')
-require('node:fs').writeFileSync(runner, `
+require('node:fs').writeFileSync(
+  runner,
+  `
 const { app, BrowserWindow, dialog, session } = require('electron');
 const fs = require('node:fs');
 app.setPath('userData', process.env.INKFISH_SMOKE_USERDATA);
@@ -98,76 +119,162 @@ app.whenReady().then(async()=>{
    mark({initial,saved,invalid,overLimit,networkVisible,nativeDownload,resolver,fetchResult,test,killFetch});
  } catch(e) { process.stderr.write('SMOKE_FAILURE '+(e.stack||e)+'\\n'); app.quit(); }
 });
-`)
+`
+)
 
 function socksMock() {
   let receivedHost = null
-  localServer = net.createServer(socket => {
-    let buf = Buffer.alloc(0), state = 0
-    socket.on('data', chunk => {
+  localServer = net.createServer((socket) => {
+    let buf = Buffer.alloc(0),
+      state = 0
+    socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk])
       try {
-        if (state === 0) { if (buf.length < 2) return; const n=buf[1]; if(buf.length<2+n)return; buf=buf.subarray(2+n); socket.write(Buffer.from([5,0])); state=1 }
-        if (state === 1) {
-          if(buf.length<5)return
-          const atyp=buf[3]; let len, off
-          if(atyp===3){len=buf[4];off=5;if(buf.length<off+len+2)return;receivedHost=buf.subarray(off,off+len).toString();off+=len}
-          else if(atyp===1){if(buf.length<10)return;receivedHost=[...buf.subarray(4,8)].join('.');off=8}
-          else { if(buf.length<22)return; receivedHost=buf.subarray(4,20).toString('hex');off=20 }
-          const port=buf.readUInt16BE(off); buf=buf.subarray(off+2); state=2
-          const reply=Buffer.from([5,0,0,1,127,0,0,1,0,80]); socket.write(reply)
-          socket.write(`HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nproxy-success`)
-          socket.end(); socksDestinations.push(receivedHost); process.stdout.write('SMOKE_SOCKS '+JSON.stringify({host:receivedHost,port})+'\n')
+        if (state === 0) {
+          if (buf.length < 2) return
+          const n = buf[1]
+          if (buf.length < 2 + n) return
+          buf = buf.subarray(2 + n)
+          socket.write(Buffer.from([5, 0]))
+          state = 1
         }
-      } catch(e) { socket.destroy() }
+        if (state === 1) {
+          if (buf.length < 5) return
+          const atyp = buf[3]
+          let len, off
+          if (atyp === 3) {
+            len = buf[4]
+            off = 5
+            if (buf.length < off + len + 2) return
+            receivedHost = buf.subarray(off, off + len).toString()
+            off += len
+          } else if (atyp === 1) {
+            if (buf.length < 10) return
+            receivedHost = [...buf.subarray(4, 8)].join('.')
+            off = 8
+          } else {
+            if (buf.length < 22) return
+            receivedHost = buf.subarray(4, 20).toString('hex')
+            off = 20
+          }
+          const port = buf.readUInt16BE(off)
+          buf = buf.subarray(off + 2)
+          state = 2
+          const reply = Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 80])
+          socket.write(reply)
+          socket.write(`HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nproxy-success`)
+          socket.end()
+          socksDestinations.push(receivedHost)
+          process.stdout.write('SMOKE_SOCKS ' + JSON.stringify({ host: receivedHost, port }) + '\n')
+        }
+      } catch (e) {
+        socket.destroy()
+      }
     })
   })
-  return new Promise((resolve,reject)=>localServer.once('error',reject).listen(0,'127.0.0.1',()=>resolve(localServer.address().port)))
+  return new Promise((resolve, reject) =>
+    localServer.once('error', reject).listen(0, '127.0.0.1', () => resolve(localServer.address().port))
+  )
 }
 
-;(async()=>{
- try {
-  const socksPort=await socksMock()
-  const deadProbe=net.createServer()
-  const deadPort=await new Promise((resolve,reject)=>deadProbe.once('error',reject).listen(0,'127.0.0.1',()=>{const p=deadProbe.address().port;deadProbe.close(()=>resolve(p))}))
-  child=spawn(require('electron'),[runner],{cwd:root,env:{...process.env,ELECTRON_DISABLE_SECURITY_WARNINGS:'true',INKFISH_SMOKE_USERDATA:userData,INKFISH_VAULT:vault,INKFISH_SMOKE_MAIN:main,INKFISH_SMOKE_BRIDGE:bridgeModule,INKFISH_SMOKE_SOCKS_PORT:String(socksPort),INKFISH_SMOKE_DEAD_PORT:String(deadPort)},stdio:['ignore','pipe','pipe']})
-  let out='',err=''
-  child.stdout.on('data',d=>{out+=d.toString();process.stdout.write(d); if(out.includes('SMOKE_RESULT ')) success=true})
-  child.stderr.on('data',d=>{err+=d.toString();process.stderr.write(d)})
-  const timer=setTimeout(()=>child.kill('SIGKILL'),45000)
-  child.on('exit',code=>{
-    clearTimeout(timer); stopping=true
-    try {
-      if(code!==0||!success) throw Error(`Electron smoke failed (exit ${code}).\n${err}`)
-      const result=JSON.parse(out.match(/SMOKE_RESULT (.+)/)[1])
-      assert.equal(result.networkVisible,true)
-      assert.equal(result.nativeDownload.body,'proxy-success')
-      assert.ok(socksDestinations.includes('native-model.invalid'))
-      assert.equal(result.invalid.rejected,true)
-      assert.equal(result.fetchResult.text,'proxy-success')
-      assert.match(result.resolver.exact,/DIRECT/)
-      assert.match(result.resolver.wildcard,/SOCKS5 127\.0\.0\.1:/)
-      assert.doesNotMatch(result.resolver.wildcard,/DIRECT/)
-      assert.match(result.resolver.named,/SOCKS5 127\.0\.0\.1:/)
-      assert.equal(result.test.reachable,true)
-      assert.equal(result.overLimit,true)
-      assert.equal(result.killFetch.blocked,true)
-      const persisted=JSON.parse(readFileSync(path.join(userData,'proxy.json'),'utf8'))
-      assert.equal(persisted.primary.port,deadPort)
-      assert.equal(persisted.killSwitch,true)
-      const probeEnv={...process.env,ELECTRON_DISABLE_SECURITY_WARNINGS:'true',INKFISH_SMOKE_USERDATA:userData,INKFISH_VAULT:vault,INKFISH_SMOKE_MAIN:main,INKFISH_SMOKE_MODE:'restore'}
-      const restart=spawnSync(require('electron'),[runner],{cwd:root,env:probeEnv,encoding:'utf8',timeout:20000})
-      assert.equal(restart.status,0,restart.stderr)
-      const restored=JSON.parse(restart.stdout.match(/SMOKE_RESULT (.+)/)[1]).restored
-      assert.deepEqual(restored,persisted,'fresh launch restores saved routing before windows load')
-      require('node:fs').writeFileSync(path.join(userData,'proxy.json'),'{broken json')
-      const corrupt=spawnSync(require('electron'),[runner],{cwd:root,env:probeEnv,encoding:'utf8',timeout:20000})
-      assert.match(corrupt.stderr,/SMOKE_DIALOG_ERROR Inkfish could not start safely: Saved SOCKS settings/)
-      assert.doesNotMatch(corrupt.stdout,/SMOKE_RESULT/)
-      assert.equal(corrupt.signal,null,'corrupt saved settings exit without hanging')
-      console.log('PASS: Network UI Save/Test, native model SOCKS download bridge, proxy IPC, unsafe input rejection, SOCKS remote DNS, kill switch, fresh-launch restore and corrupt-config refusal; no external network used.')
-    } catch(e) { console.error(e.stack||e); process.exitCode=1 }
-    localServer?.close(); rmSync(temp,{recursive:true,force:true})
-  })
- } catch(e) { stopping=true; localServer?.close(); rmSync(temp,{recursive:true,force:true}); throw e }
+;(async () => {
+  try {
+    const socksPort = await socksMock()
+    const deadProbe = net.createServer()
+    const deadPort = await new Promise((resolve, reject) =>
+      deadProbe.once('error', reject).listen(0, '127.0.0.1', () => {
+        const p = deadProbe.address().port
+        deadProbe.close(() => resolve(p))
+      })
+    )
+    child = spawn(require('electron'), [runner], {
+      cwd: root,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        INKFISH_SMOKE_USERDATA: userData,
+        INKFISH_VAULT: vault,
+        INKFISH_SMOKE_MAIN: main,
+        INKFISH_SMOKE_BRIDGE: bridgeModule,
+        INKFISH_SMOKE_SOCKS_PORT: String(socksPort),
+        INKFISH_SMOKE_DEAD_PORT: String(deadPort)
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let out = '',
+      err = ''
+    child.stdout.on('data', (d) => {
+      out += d.toString()
+      process.stdout.write(d)
+      if (out.includes('SMOKE_RESULT ')) success = true
+    })
+    child.stderr.on('data', (d) => {
+      err += d.toString()
+      process.stderr.write(d)
+    })
+    const timer = setTimeout(() => child.kill('SIGKILL'), 45000)
+    child.on('exit', (code) => {
+      clearTimeout(timer)
+      stopping = true
+      try {
+        if (code !== 0 || !success) throw Error(`Electron smoke failed (exit ${code}).\n${err}`)
+        const result = JSON.parse(out.match(/SMOKE_RESULT (.+)/)[1])
+        assert.equal(result.networkVisible, true)
+        assert.equal(result.nativeDownload.body, 'proxy-success')
+        assert.ok(socksDestinations.includes('native-model.invalid'))
+        assert.equal(result.invalid.rejected, true)
+        assert.equal(result.fetchResult.text, 'proxy-success')
+        assert.match(result.resolver.exact, /DIRECT/)
+        assert.match(result.resolver.wildcard, /SOCKS5 127\.0\.0\.1:/)
+        assert.doesNotMatch(result.resolver.wildcard, /DIRECT/)
+        assert.match(result.resolver.named, /SOCKS5 127\.0\.0\.1:/)
+        assert.equal(result.test.reachable, true)
+        assert.equal(result.overLimit, true)
+        assert.equal(result.killFetch.blocked, true)
+        const persisted = JSON.parse(readFileSync(path.join(userData, 'proxy.json'), 'utf8'))
+        assert.equal(persisted.primary.port, deadPort)
+        assert.equal(persisted.killSwitch, true)
+        const probeEnv = {
+          ...process.env,
+          ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+          INKFISH_SMOKE_USERDATA: userData,
+          INKFISH_VAULT: vault,
+          INKFISH_SMOKE_MAIN: main,
+          INKFISH_SMOKE_MODE: 'restore'
+        }
+        const restart = spawnSync(require('electron'), [runner], {
+          cwd: root,
+          env: probeEnv,
+          encoding: 'utf8',
+          timeout: 20000
+        })
+        assert.equal(restart.status, 0, restart.stderr)
+        const restored = JSON.parse(restart.stdout.match(/SMOKE_RESULT (.+)/)[1]).restored
+        assert.deepEqual(restored, persisted, 'fresh launch restores saved routing before windows load')
+        require('node:fs').writeFileSync(path.join(userData, 'proxy.json'), '{broken json')
+        const corrupt = spawnSync(require('electron'), [runner], {
+          cwd: root,
+          env: probeEnv,
+          encoding: 'utf8',
+          timeout: 20000
+        })
+        assert.match(corrupt.stderr, /SMOKE_DIALOG_ERROR Inkfish could not start safely: Saved SOCKS settings/)
+        assert.doesNotMatch(corrupt.stdout, /SMOKE_RESULT/)
+        assert.equal(corrupt.signal, null, 'corrupt saved settings exit without hanging')
+        console.log(
+          'PASS: Network UI Save/Test, native model SOCKS download bridge, proxy IPC, unsafe input rejection, SOCKS remote DNS, kill switch, fresh-launch restore and corrupt-config refusal; no external network used.'
+        )
+      } catch (e) {
+        console.error(e.stack || e)
+        process.exitCode = 1
+      }
+      localServer?.close()
+      rmSync(temp, { recursive: true, force: true })
+    })
+  } catch (e) {
+    stopping = true
+    localServer?.close()
+    rmSync(temp, { recursive: true, force: true })
+    throw e
+  }
 })().catch(fail)

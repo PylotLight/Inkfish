@@ -182,7 +182,10 @@ export function parseEntries(body: string): DailyEntry[] {
  * until the next entry start; anything in between (continuation lines, notes typed under an
  * entry) belongs to the block above it. Used by the sync merge.
  */
-export function splitEntries(body: string): { head: string; blocks: Array<{ time: string; text: string; bullet: boolean }> } {
+export function splitEntries(body: string): {
+  head: string
+  blocks: Array<{ time: string; text: string; bullet: boolean }>
+} {
   const lines = body.split('\n')
   const headLines: string[] = []
   const blocks: Array<{ time: string; lines: string[]; bullet: boolean }> = []

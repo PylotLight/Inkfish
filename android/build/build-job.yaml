@@ -41,10 +41,10 @@ spec:
           image: reactnativecommunity/react-native-android:v21.1
           resources:
             requests:
-              cpu: "2"
+              cpu: '2'
               memory: 4Gi
             limits:
-              cpu: "6"
+              cpu: '6'
               memory: 12Gi
           volumeMounts:
             - name: cache
@@ -58,7 +58,7 @@ spec:
             - name: BRANCH
               value: main
             - name: CI
-              value: "1"
+              value: '1'
             - name: GRADLE_USER_HOME
               value: /cache/gradle
             - name: KEYSTORE_FILE
@@ -78,7 +78,7 @@ spec:
                 secretKeyRef:
                   name: android-release-keystore
                   key: key-alias
-          command: ["/bin/bash", "-c"]
+          command: ['/bin/bash', '-c']
           args:
             - |
               set -euo pipefail

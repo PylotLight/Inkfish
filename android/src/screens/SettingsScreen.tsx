@@ -1,52 +1,58 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { useTheme, THEME_SWATCH, ACCENT_SWATCH } from '../theme';
-import { ScreenHead } from '../components/ScreenHead';
-import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs';
-import { useStore } from '../lib/store';
-import { useUpdates } from '../lib/updates';
-import { useSync } from '../lib/syncing';
-import { SyncDetails } from '../components/SyncDetails';
-import { PairScanner } from '../components/PairScanner';
-import { when } from '../lib/when';
-import { summarize } from '../lib/sync';
-import { vaultRootUri } from '../lib/vault';
-import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/trash';
+import React, { useCallback, useEffect, useState } from 'react'
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { useTheme, THEME_SWATCH, ACCENT_SWATCH } from '../theme'
+import { ScreenHead } from '../components/ScreenHead'
+import { ACCENTS, TEXT_SIZES, THEMES, usePrefs } from '../lib/prefs'
+import { useStore } from '../lib/store'
+import { useUpdates } from '../lib/updates'
+import { useSync } from '../lib/syncing'
+import { SyncDetails } from '../components/SyncDetails'
+import { PairScanner } from '../components/PairScanner'
+import { when } from '../lib/when'
+import { summarize } from '../lib/sync'
+import { vaultRootUri } from '../lib/vault'
+import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/trash'
 
 /**
  * Settings — Obsidian-style rows: label left, control right. Theme and accent
  * are colour swatches you can see, not a run of words to read.
  */
 export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const { prefs, update } = usePrefs();
-  const { inbox, notes, projects, refresh, error } = useStore();
-  const [scanned, setScanned] = useState(false);
-  const upd = useUpdates();
-  const sync = useSync();
-  const [details, setDetails] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [trash, setTrash] = useState<TrashItem[]>([]);
-  const [showAllTrash, setShowAllTrash] = useState(false);
-  const [trashBusy, setTrashBusy] = useState(false);
+  const { ui, c } = useTheme()
+  const { prefs, update } = usePrefs()
+  const { inbox, notes, projects, refresh, error } = useStore()
+  const [scanned, setScanned] = useState(false)
+  const upd = useUpdates()
+  const sync = useSync()
+  const [details, setDetails] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [trash, setTrash] = useState<TrashItem[]>([])
+  const [showAllTrash, setShowAllTrash] = useState(false)
+  const [trashBusy, setTrashBusy] = useState(false)
 
-  const loadTrash = useCallback(() => void listTrash().then(setTrash).catch(() => setTrash([])), []);
+  const loadTrash = useCallback(
+    () =>
+      void listTrash()
+        .then(setTrash)
+        .catch(() => setTrash([])),
+    []
+  )
   // Reload when sync finishes (it may have trashed something).
-  useEffect(loadTrash, [loadTrash, sync.lastSync]);
+  useEffect(loadTrash, [loadTrash, sync.lastSync])
 
   const restore = async (items: TrashItem[]): Promise<void> => {
-    setTrashBusy(true);
+    setTrashBusy(true)
     try {
-      const n = await restoreTrash(items);
-      await refresh(); // the change nudges a sync, so the Mac gets them back too
-      if (items.length > 1) Alert.alert('Restored', `${n} item${n === 1 ? '' : 's'} back where they were.`);
+      const n = await restoreTrash(items)
+      await refresh() // the change nudges a sync, so the Mac gets them back too
+      if (items.length > 1) Alert.alert('Restored', `${n} item${n === 1 ? '' : 's'} back where they were.`)
     } catch (e) {
-      Alert.alert("Couldn't restore", e instanceof Error ? e.message : String(e));
+      Alert.alert("Couldn't restore", e instanceof Error ? e.message : String(e))
     } finally {
-      setTrashBusy(false);
-      loadTrash();
+      setTrashBusy(false)
+      loadTrash()
     }
-  };
+  }
 
   const forget = (items: TrashItem[], label: string): void =>
     Alert.alert(`Delete ${label} forever?`, "This can't be undone.", [
@@ -55,14 +61,14 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          setTrashBusy(true);
+          setTrashBusy(true)
           void deleteTrash(items).finally(() => {
-            setTrashBusy(false);
-            loadTrash();
-          });
+            setTrashBusy(false)
+            loadTrash()
+          })
         }
       }
-    ]);
+    ])
 
   const seg = <T extends string | boolean>(
     opts: ReadonlyArray<{ id: T; name: string }>,
@@ -76,7 +82,7 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         </Pressable>
       ))}
     </View>
-  );
+  )
 
   return (
     <ScrollView style={ui.screen} contentContainerStyle={ui.scrollPad}>
@@ -87,8 +93,19 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
       <Text style={[ui.title, { marginTop: 8 }]}>Theme</Text>
       <View style={[ui.row, { gap: 14, marginTop: 10, flexWrap: 'wrap' }]}>
         {THEMES.map((t) => (
-          <Pressable key={t.id} onPress={() => update({ theme: t.id })} style={{ alignItems: 'center', gap: 6 }} accessibilityLabel={t.name}>
-            <View style={[ui.swatch, { width: 40, height: 40, borderRadius: 12, backgroundColor: THEME_SWATCH[t.id] }, prefs.theme === t.id && ui.swatchOn]} />
+          <Pressable
+            key={t.id}
+            onPress={() => update({ theme: t.id })}
+            style={{ alignItems: 'center', gap: 6 }}
+            accessibilityLabel={t.name}
+          >
+            <View
+              style={[
+                ui.swatch,
+                { width: 40, height: 40, borderRadius: 12, backgroundColor: THEME_SWATCH[t.id] },
+                prefs.theme === t.id && ui.swatchOn
+              ]}
+            />
             <Text style={[ui.meta, { marginTop: 0 }, prefs.theme === t.id && { color: c.text }]}>{t.name}</Text>
           </Pressable>
         ))}
@@ -99,7 +116,9 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <View style={[ui.row, { gap: 12 }]}>
           {ACCENTS.map((a) => (
             <Pressable key={a.id} onPress={() => update({ accent: a.id })} hitSlop={6} accessibilityLabel={a.name}>
-              <View style={[ui.swatch, { backgroundColor: ACCENT_SWATCH[a.id] }, prefs.accent === a.id && ui.swatchOn]} />
+              <View
+                style={[ui.swatch, { backgroundColor: ACCENT_SWATCH[a.id] }, prefs.accent === a.id && ui.swatchOn]}
+              />
             </Pressable>
           ))}
         </View>
@@ -112,7 +131,14 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
 
       <View style={[ui.row, { justifyContent: 'space-between', marginTop: 14 }]}>
         <Text style={ui.title}>Toolbar</Text>
-        {seg([{ id: true, name: 'Glass' }, { id: false, name: 'Solid' }] as const, prefs.blur, (v) => update({ blur: v }))}
+        {seg(
+          [
+            { id: true, name: 'Glass' },
+            { id: false, name: 'Solid' }
+          ] as const,
+          prefs.blur,
+          (v) => update({ blur: v })
+        )}
       </View>
 
       <Text style={ui.label}>Vault</Text>
@@ -122,10 +148,7 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
       <Text style={[ui.meta, { marginTop: 4 }]} selectable numberOfLines={1} ellipsizeMode="middle">
         {vaultRootUri().replace(/^file:\/\//, '')}
       </Text>
-      <Pressable
-        onPress={() => void refresh().then(() => setScanned(true))}
-        style={[ui.quiet, { marginTop: 4 }]}
-      >
+      <Pressable onPress={() => void refresh().then(() => setScanned(true))} style={[ui.quiet, { marginTop: 4 }]}>
         <Text style={ui.quietText}>{scanned ? 'Re-scanned' : 'Re-scan files'}</Text>
       </Pressable>
 
@@ -140,22 +163,36 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
               style={ui.quiet}
             >
               <Text style={ui.quietText}>
-                {sync.phase === 'finding' ? 'Looking…' : sync.phase === 'syncing' ? 'Syncing…' : sync.phase === 'held' ? 'Review' : 'Sync now'}
+                {sync.phase === 'finding'
+                  ? 'Looking…'
+                  : sync.phase === 'syncing'
+                    ? 'Syncing…'
+                    : sync.phase === 'held'
+                      ? 'Review'
+                      : 'Sync now'}
               </Text>
             </Pressable>
           </View>
-          <Text style={[ui.meta, { marginTop: 0 }, (sync.phase === 'error' || sync.phase === 'held') && { color: c.danger }]}>
+          <Text
+            style={[
+              ui.meta,
+              { marginTop: 0 },
+              (sync.phase === 'error' || sync.phase === 'held') && { color: c.danger }
+            ]}
+          >
             {sync.phase === 'offline'
               ? `${sync.mac.name} isn't on this Wi-Fi${sync.lastSync ? ` · last synced ${when(sync.lastSync)}` : ''}`
               : sync.phase === 'held' && sync.held
                 ? `Paused: ${sync.held.local.length + sync.held.remote.length} files would be deleted. Tap Review to choose.`
                 : sync.phase === 'error'
-                ? `Sync failed: ${sync.error}`
-                : sync.lastSync
-                  ? `Synced ${when(sync.lastSync)}${
-                      sync.lastReport?.conflicts.length ? ` · ${sync.lastReport.conflicts.length} conflict copy saved` : ''
-                    }`
-                  : 'Paired · not synced yet'}
+                  ? `Sync failed: ${sync.error}`
+                  : sync.lastSync
+                    ? `Synced ${when(sync.lastSync)}${
+                        sync.lastReport?.conflicts.length
+                          ? ` · ${sync.lastReport.conflicts.length} conflict copy saved`
+                          : ''
+                      }`
+                    : 'Paired · not synced yet'}
           </Text>
           <Pressable
             onPress={() =>
@@ -191,17 +228,20 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
           {sync.log.length > 0 && (
             <View style={{ marginTop: 10 }}>
               <Text style={[ui.meta, { marginBottom: 2 }]}>Recent syncs</Text>
-              {[...sync.log].reverse().slice(0, 8).map((e, i) => (
-                <View key={`${e.at}-${i}`} style={[ui.row, { justifyContent: 'space-between', paddingVertical: 5 }]}>
-                  <Text
-                    style={[ui.meta, { marginTop: 0, flex: 1, color: e.kind === 'error' ? c.danger : c.muted }]}
-                    numberOfLines={e.kind === 'error' ? 3 : 1}
-                  >
-                    {summarize(e)}
-                  </Text>
-                  <Text style={[ui.meta, { marginTop: 0, marginLeft: 8 }]}>{when(e.at)}</Text>
-                </View>
-              ))}
+              {[...sync.log]
+                .reverse()
+                .slice(0, 8)
+                .map((e, i) => (
+                  <View key={`${e.at}-${i}`} style={[ui.row, { justifyContent: 'space-between', paddingVertical: 5 }]}>
+                    <Text
+                      style={[ui.meta, { marginTop: 0, flex: 1, color: e.kind === 'error' ? c.danger : c.muted }]}
+                      numberOfLines={e.kind === 'error' ? 3 : 1}
+                    >
+                      {summarize(e)}
+                    </Text>
+                    <Text style={[ui.meta, { marginTop: 0, marginLeft: 8 }]}>{when(e.at)}</Text>
+                  </View>
+                ))}
             </View>
           )}
         </>
@@ -223,15 +263,17 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         visible={scanning}
         onClose={() => setScanning(false)}
         onCode={async (data) => {
-          const name = await sync.pair(data);
-          setScanning(false);
-          Alert.alert('Paired', `Syncing with ${name}.`);
+          const name = await sync.pair(data)
+          setScanning(false)
+          Alert.alert('Paired', `Syncing with ${name}.`)
         }}
       />
 
       <Text style={ui.label}>Trash</Text>
       <View style={[ui.row, { justifyContent: 'space-between' }]}>
-        <Text style={ui.title}>{trash.length ? `${trash.length} deleted item${trash.length === 1 ? '' : 's'}` : 'Empty'}</Text>
+        <Text style={ui.title}>
+          {trash.length ? `${trash.length} deleted item${trash.length === 1 ? '' : 's'}` : 'Empty'}
+        </Text>
         {trash.length > 1 ? (
           <View style={[ui.row, { gap: 14 }]}>
             <Pressable onPress={() => void restore(trash)} disabled={trashBusy} style={ui.quiet}>
@@ -244,7 +286,8 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         ) : null}
       </View>
       <Text style={[ui.meta, { marginTop: 0 }]}>
-        Notes removed by sync stay here for 7 days. Restoring puts them back and sends them to your Mac on the next sync.
+        Notes removed by sync stay here for 7 days. Restoring puts them back and sends them to your Mac on the next
+        sync.
       </Text>
       {(showAllTrash ? trash : trash.slice(0, 12)).map((it) => (
         <View key={it.id} style={[ui.row, { justifyContent: 'space-between', marginTop: 10, gap: 12 }]}>
@@ -275,10 +318,16 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
         <Text style={ui.title}>Version {upd.version}</Text>
         {upd.status === 'available' || upd.status === 'ready' ? (
           <Pressable onPress={() => void upd.update()} style={ui.quiet}>
-            <Text style={ui.quietText}>{upd.status === 'ready' ? 'Install' : `Update to ${upd.release?.version}${upd.release?.prerelease ? ' (beta)' : ''}`}</Text>
+            <Text style={ui.quietText}>
+              {upd.status === 'ready'
+                ? 'Install'
+                : `Update to ${upd.release?.version}${upd.release?.prerelease ? ' (beta)' : ''}`}
+            </Text>
           </Pressable>
         ) : upd.status === 'downloading' ? (
-          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Downloading {Math.round(upd.progress * 100)}%</Text>
+          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>
+            Downloading {Math.round(upd.progress * 100)}%
+          </Text>
         ) : (
           <Pressable onPress={() => void upd.check()} disabled={upd.status === 'checking'} style={ui.quiet}>
             <Text style={ui.quietText}>{upd.status === 'checking' ? 'Checking…' : 'Check now'}</Text>
@@ -295,23 +344,41 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
               : 'Updates come from GitHub releases'}
       </Text>
       {upd.release?.notes && (upd.status === 'available' || upd.status === 'ready') ? (
-        <Text style={[ui.meta, { marginTop: 8 }]} numberOfLines={6}>{upd.release.notes}</Text>
+        <Text style={[ui.meta, { marginTop: 8 }]} numberOfLines={6}>
+          {upd.release.notes}
+        </Text>
       ) : null}
       <View style={[ui.row, { justifyContent: 'space-between', marginTop: 12 }]}>
         <Text style={ui.title}>Check automatically</Text>
-        {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.autoUpdate, (v) => update({ autoUpdate: v }))}
+        {seg(
+          [
+            { id: true, name: 'On' },
+            { id: false, name: 'Off' }
+          ] as const,
+          prefs.autoUpdate,
+          (v) => update({ autoUpdate: v })
+        )}
       </View>
       <View style={[ui.row, { justifyContent: 'space-between', marginTop: 12 }]}>
         <Text style={ui.title}>Beta updates</Text>
-        {seg([{ id: true, name: 'On' }, { id: false, name: 'Off' }] as const, prefs.betaUpdates, (v) => update({ betaUpdates: v }))}
+        {seg(
+          [
+            { id: true, name: 'On' },
+            { id: false, name: 'Off' }
+          ] as const,
+          prefs.betaUpdates,
+          (v) => update({ betaUpdates: v })
+        )}
       </View>
       <Text style={[ui.meta, { marginTop: 0 }]}>
-        {prefs.betaUpdates ? 'Also offers test builds (pre-releases like 0.2.8-beta.1). They can be rough.' : 'Full releases only.'}
+        {prefs.betaUpdates
+          ? 'Also offers test builds (pre-releases like 0.2.8-beta.1). They can be rough.'
+          : 'Full releases only.'}
       </Text>
 
       <Text style={[ui.meta, { marginTop: 28, color: c.faint }]}>
         On this phone: voice memos are transcribed on Mac, search matches text, and routing uses folder keywords.
       </Text>
     </ScrollView>
-  );
+  )
 }

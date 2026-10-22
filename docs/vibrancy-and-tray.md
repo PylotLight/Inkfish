@@ -30,11 +30,11 @@ so you can compare `fullscreen-ui`, `sidebar`, `hud`, etc. against a bright wall
 
 ## Hiding semantics (macOS)
 
-| Action | API | Effect |
-|--------|-----|--------|
-| Hide window | `win.hide()` | Window gone, dock icon stays |
-| Hide app | `app.hide()` | ⌘H behavior — app deactivates |
-| Tray-only mode | `app.dock.hide()` | Dock icon removed entirely |
+| Action         | API               | Effect                        |
+| -------------- | ----------------- | ----------------------------- |
+| Hide window    | `win.hide()`      | Window gone, dock icon stays  |
+| Hide app       | `app.hide()`      | ⌘H behavior — app deactivates |
+| Tray-only mode | `app.dock.hide()` | Dock icon removed entirely    |
 
 Restoring always calls `app.show()` first (see `showWindow()`), so the window can't get
 stuck hidden after `app.hide()` / `dock.hide()`. These are dev/prod identical — no

@@ -64,7 +64,9 @@ export function watchAppWindow(contents: WebContents): void {
   const recover = (why: string): void => {
     if (contents.isDestroyed()) return
     if (!budget.tryTake()) {
-      console.error(`[crash guard] ${describe(contents)} ${why} again; not reloading it (more than 3 times in a minute).`)
+      console.error(
+        `[crash guard] ${describe(contents)} ${why} again; not reloading it (more than 3 times in a minute).`
+      )
       return
     }
     setTimeout(() => {
@@ -81,7 +83,9 @@ export function watchAppWindow(contents: WebContents): void {
     clearHang()
     if (details.reason === 'clean-exit') return
     countStabilityEvent(counters, 'rendererGone', `${describe(contents)} ${details.reason} (exit ${details.exitCode})`)
-    console.warn(`[crash guard] ${describe(contents)} renderer gone (${details.reason}, exit ${details.exitCode}); reloading it`)
+    console.warn(
+      `[crash guard] ${describe(contents)} renderer gone (${details.reason}, exit ${details.exitCode}); reloading it`
+    )
     recover(details.reason)
   })
   contents.on('unresponsive', () => {

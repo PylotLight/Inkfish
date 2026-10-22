@@ -221,13 +221,16 @@ function ModelRow({
                 value={out}
                 placeholder="e.g. 16384"
                 onChange={(e) => setOut(e.target.value)}
-                onBlur={() => numOrUndef(out) !== model.maxOutputTokens && onChange({ maxOutputTokens: numOrUndef(out) })}
+                onBlur={() =>
+                  numOrUndef(out) !== model.maxOutputTokens && onChange({ maxOutputTokens: numOrUndef(out) })
+                }
                 aria-label="Max output tokens"
               />
             </label>
             <label className="ai-model-field">
               <span className={`ai-model-flabel${mark('reasoningLevels')}`}>
-                Reasoning levels <Info text="Comma-separated levels this model accepts. Leave empty for models without reasoning." />
+                Reasoning levels{' '}
+                <Info text="Comma-separated levels this model accepts. Leave empty for models without reasoning." />
               </span>
               <input
                 className="text-input"
@@ -236,7 +239,8 @@ function ModelRow({
                 spellCheck={false}
                 onChange={(e) => setLevels(e.target.value)}
                 onBlur={() =>
-                  levels !== (model.reasoningLevels ?? []).join(', ') && onChange({ reasoningLevels: parseLevels(levels) ?? [] })
+                  levels !== (model.reasoningLevels ?? []).join(', ') &&
+                  onChange({ reasoningLevels: parseLevels(levels) ?? [] })
                 }
                 aria-label="Reasoning levels"
               />
@@ -285,7 +289,11 @@ function ModelRow({
           <CapBoxes label="Input capabilities" value={input} onChange={(v) => onChange({ input: v })} />
           <CapBoxes label="Output capabilities" value={output} onChange={(v) => onChange({ output: v })} />
           <label className="ai-cap ai-tools">
-            <input type="checkbox" checked={!!model.toolCalls} onChange={(e) => onChange({ toolCalls: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={!!model.toolCalls}
+              onChange={(e) => onChange({ toolCalls: e.target.checked })}
+            />
             Tool calls
           </label>
           <div className="ai-model-foot">
@@ -305,11 +313,18 @@ function ModelRow({
             </span>
           </div>
           {test && test !== 'running' && (
-            <p className={`small setting-hint${test.ok ? ' muted' : ' error-text'}`} style={{ overflowWrap: 'anywhere' }}>
+            <p
+              className={`small setting-hint${test.ok ? ' muted' : ' error-text'}`}
+              style={{ overflowWrap: 'anywhere' }}
+            >
               {test.ok
                 ? `OK in ${(test.ms / 1000).toFixed(1)} s${test.endpoint ? ` via ${test.endpoint}` : ''} · “${test.detail}”`
                 : test.detail}{' '}
-              {!test.ok && <CopyDetails text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })} />}
+              {!test.ok && (
+                <CopyDetails
+                  text={errorDetailsText(test.error ?? null, test.detail, { test: true, endpoint: test.endpoint })}
+                />
+              )}
             </p>
           )}
         </div>
@@ -340,7 +355,8 @@ function Picker({
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase()
     return fresh.filter(
-      (m) => (showAll || !m.nonChat) && (!s || m.id.toLowerCase().includes(s) || (m.name ?? '').toLowerCase().includes(s))
+      (m) =>
+        (showAll || !m.nonChat) && (!s || m.id.toLowerCase().includes(s) || (m.name ?? '').toLowerCase().includes(s))
     )
   }, [fresh, q, showAll])
   const already = result.models.length - fresh.length
@@ -363,7 +379,11 @@ function Picker({
           autoFocus
           aria-label="Search models"
         />
-        <button className="btn ghost sm" onClick={() => setPicked(new Set(shown.map((m) => m.id)))} disabled={!shown.length}>
+        <button
+          className="btn ghost sm"
+          onClick={() => setPicked(new Set(shown.map((m) => m.id)))}
+          disabled={!shown.length}
+        >
           Select all
         </button>
       </div>
@@ -418,7 +438,11 @@ function Picker({
         <button className="btn ghost sm" onClick={onClose}>
           Cancel
         </button>
-        <button className="btn sm mint" disabled={!picked.size} onClick={() => onAdd(result.models.filter((m) => picked.has(m.id)))}>
+        <button
+          className="btn sm mint"
+          disabled={!picked.size}
+          onClick={() => onAdd(result.models.filter((m) => picked.has(m.id)))}
+        >
           Add {picked.size || ''} model{picked.size === 1 ? '' : 's'}
         </button>
       </div>
@@ -426,7 +450,12 @@ function Picker({
   )
 }
 
-export default function AiModelsSettings({ settings, save, initialFound = null, initialOpen = null }: Props): React.JSX.Element {
+export default function AiModelsSettings({
+  settings,
+  save,
+  initialFound = null,
+  initialOpen = null
+}: Props): React.JSX.Element {
   const [open, setOpen] = useState<string | null>(initialOpen)
   const [finding, setFinding] = useState(false)
   const [found, setFound] = useState<DiscoveryResult | null>(initialFound)
@@ -476,7 +505,9 @@ export default function AiModelsSettings({ settings, save, initialFound = null, 
     if (!to) return 'Model ID cannot be empty.'
     if (to !== from && have.has(to)) return `${to} is already in the list.`
     const next = models.map((m) => (m.id === from ? { ...m, id: to } : m))
-    const actionModels = Object.fromEntries(Object.entries(settings.actionModels).map(([a, id]) => [a, id === from ? to : id]))
+    const actionModels = Object.fromEntries(
+      Object.entries(settings.actionModels).map(([a, id]) => [a, id === from ? to : id])
+    )
     setModels(next, { actionModels, ...(settings.model === from ? { model: to } : {}) })
     setOpen(to)
     return null
@@ -572,10 +603,16 @@ export default function AiModelsSettings({ settings, save, initialFound = null, 
           Default model
           <span className="muted small setting-hint">
             Used for every action unless one has its own.
-            {active?.contextWindow ? ` Long notes are split to fit its ${formatTokens(active.contextWindow)} context.` : ''}
+            {active?.contextWindow
+              ? ` Long notes are split to fit its ${formatTokens(active.contextWindow)} context.`
+              : ''}
           </span>
         </div>
-        <select value={settings.model} onChange={(e) => void save({ model: e.target.value })} aria-label="Default model">
+        <select
+          value={settings.model}
+          onChange={(e) => void save({ model: e.target.value })}
+          aria-label="Default model"
+        >
           {models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name || m.id}
@@ -585,7 +622,11 @@ export default function AiModelsSettings({ settings, save, initialFound = null, 
       </div>
 
       <div className="setting-row stacked">
-        <button className="link-btn ai-per-action-toggle" onClick={() => setShowPerAction((v) => !v)} aria-expanded={showPerAction}>
+        <button
+          className="link-btn ai-per-action-toggle"
+          onClick={() => setShowPerAction((v) => !v)}
+          aria-expanded={showPerAction}
+        >
           {showPerAction ? '▾' : '▸'} Per-action models{perAction.length ? ` (${perAction.length})` : ''}
         </button>
         {showPerAction && (

@@ -15,7 +15,8 @@ describe('delete glance position', () => {
 })
 
 describe('delete glance keys', () => {
-  const el = (tag: string, cls: string[] = []): Element => ({ tagName: tag, classList: { contains: (c: string) => cls.includes(c) } }) as unknown as Element
+  const el = (tag: string, cls: string[] = []): Element =>
+    ({ tagName: tag, classList: { contains: (c: string) => cls.includes(c) } }) as unknown as Element
   const cancel = el('BUTTON', ['btn', 'ghost'])
   const del = el('BUTTON', ['btn', 'danger'])
   const pop = { contains: (n: unknown) => n === cancel || n === del } as unknown as Element

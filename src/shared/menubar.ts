@@ -53,8 +53,16 @@ export function parseMenuBarSettings(value: unknown): MenuBarSettings {
   }
 }
 
-export interface MenuBarRect { x: number; y: number; width: number; height: number }
-export interface MenuBarDisplay { bounds: MenuBarRect; workArea: MenuBarRect }
+export interface MenuBarRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+export interface MenuBarDisplay {
+  bounds: MenuBarRect
+  workArea: MenuBarRect
+}
 
 /** Gap between the icon (the menu bar) and the popout. */
 export const MENU_BAR_GAP = 6
@@ -74,7 +82,8 @@ export function menuBarPopoutBounds(
   size: { width: number; height: number },
   display: MenuBarDisplay
 ): { bounds: MenuBarRect; side: 'below' | 'above' } {
-  const icon = anchor && anchor.width > 0 && anchor.height > 0 ? anchor : { x: cursor.x, y: cursor.y, width: 0, height: 0 }
+  const icon =
+    anchor && anchor.width > 0 && anchor.height > 0 ? anchor : { x: cursor.x, y: cursor.y, width: 0, height: 0 }
   const wa = display.workArea
   const width = Math.round(Math.min(Math.max(1, wa.width - 2 * MENU_BAR_MARGIN), size.width))
   const height = Math.round(Math.min(Math.max(1, wa.height - 2 * MENU_BAR_GAP), size.height))

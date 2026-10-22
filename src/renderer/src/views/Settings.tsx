@@ -133,7 +133,19 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'network' | 'appearance' | 'shortcuts' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
+type SettingsTab =
+  | 'network'
+  | 'appearance'
+  | 'shortcuts'
+  | 'audio'
+  | 'voice'
+  | 'notes'
+  | 'sync'
+  | 'trash'
+  | 'apple-intelligence'
+  | 'ai'
+  | 'mini-window'
+  | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
@@ -199,7 +211,10 @@ export default function SettingsView({
       .catch(() => setAiHost(null))
   }, [tab])
   useEffect(() => {
-    void window.api.updates.get().then((u) => setUpdateBadge(u.showBadge)).catch(() => undefined)
+    void window.api.updates
+      .get()
+      .then((u) => setUpdateBadge(u.showBadge))
+      .catch(() => undefined)
     return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
   }, [])
 
@@ -473,7 +488,6 @@ export default function SettingsView({
                     <span className="knob" />
                   </button>
                 </div>
-
               </section>
 
               <section className="settings-group">
@@ -535,8 +549,9 @@ export default function SettingsView({
                 <div className="setting-label">
                   Name files from title
                   <span className="muted small setting-hint">
-                    Untitled notes take their file name from their first # heading and keep following it (links to them are
-                    updated), and editing the big title renames the file. Rename a file by hand and it keeps that name.
+                    Untitled notes take their file name from their first # heading and keep following it (links to them
+                    are updated), and editing the big title renames the file. Rename a file by hand and it keeps that
+                    name.
                   </span>
                 </div>
                 <button
@@ -553,8 +568,8 @@ export default function SettingsView({
                 <div className="setting-label">
                   Also rename notes named after their heading
                   <span className="muted small setting-hint">
-                    Off: notes you brought in (an Obsidian vault) keep their names even when the file matches its # heading.
-                    On: any note still named after its heading follows it when you edit the heading.
+                    Off: notes you brought in (an Obsidian vault) keep their names even when the file matches its #
+                    heading. On: any note still named after its heading follows it when you edit the heading.
                   </span>
                 </div>
                 <button

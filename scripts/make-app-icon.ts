@@ -46,8 +46,5 @@ const sizes: Array<{ px: number; type: string }> = [
   { px: 512, type: 'ic09' },
   { px: 1024, type: 'ic10' }
 ]
-writeFileSync(
-  join(buildDir, 'icon.icns'),
-  icns(sizes.map(({ px, type }) => ({ type, png: at(px) })))
-)
+writeFileSync(join(buildDir, 'icon.icns'), icns(sizes.map(({ px, type }) => ({ type, png: at(px) }))))
 console.log('[icon] wrote build/icon.icns (16–1024, PNG-compressed entries)')

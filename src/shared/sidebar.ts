@@ -19,7 +19,12 @@ export const SIDE_TOGGLE = { left: 9, top: 6, width: 30, height: 28 } as const
 /** Collapsed icon ribbon width (px). */
 export const SIDE_RIBBON_WIDTH = 48
 
-export function sideTogglePos(platform: string | undefined): { left: number; top: number; width: number; height: number } {
+export function sideTogglePos(platform: string | undefined): {
+  left: number
+  top: number
+  width: number
+  height: number
+} {
   return platform === 'darwin' ? SIDE_TOGGLE_MAC : SIDE_TOGGLE
 }
 

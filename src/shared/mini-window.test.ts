@@ -27,7 +27,7 @@ import {
 const wa = { x: 0, y: 25, width: 1440, height: 875 }
 
 describe('settings', () => {
-  test('defaults, and the default toggle is not 1Password\'s ⌘⇧Space', () => {
+  test("defaults, and the default toggle is not 1Password's ⌘⇧Space", () => {
     expect(parseMiniWindowSettings(undefined)).toEqual(DEFAULT_MINI_WINDOW_SETTINGS)
     expect(shortcutClash(DEFAULT_MINI_WINDOW_SETTINGS.shortcut, true)).toBeNull()
     expect(shortcutClash(DEFAULT_MINI_WINDOW_SETTINGS.shortcut, false)).toBeNull()
@@ -52,7 +52,7 @@ describe('accelerators', () => {
     expect(normalizeAccelerator('shift+m')).toBeNull()
     expect(normalizeAccelerator('m')).toBeNull()
   })
-  test('clash warnings: 1Password, Spotlight, Inkfish\'s own keys', () => {
+  test("clash warnings: 1Password, Spotlight, Inkfish's own keys", () => {
     expect(shortcutClash('Command+Shift+Space', true)).toBe('1Password Quick Access')
     expect(shortcutClash('CommandOrControl+Shift+Space', true)).toBe('1Password Quick Access')
     expect(shortcutClash('Control+Shift+Space', false)).toBe('1Password Quick Access')
@@ -69,9 +69,15 @@ describe('accelerators', () => {
     expect(formatAccelerator('', true)).toBe('Off')
   })
   test('pop key is ⌘⇧M / Ctrl+Shift+M only', () => {
-    expect(isPopKey({ key: 'M', code: 'KeyM', metaKey: true, ctrlKey: false, shiftKey: true, altKey: false })).toBe(true)
-    expect(isPopKey({ key: 'm', code: 'KeyM', metaKey: false, ctrlKey: true, shiftKey: true, altKey: false })).toBe(true)
-    expect(isPopKey({ key: 'm', code: 'KeyM', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false })).toBe(false)
+    expect(isPopKey({ key: 'M', code: 'KeyM', metaKey: true, ctrlKey: false, shiftKey: true, altKey: false })).toBe(
+      true
+    )
+    expect(isPopKey({ key: 'm', code: 'KeyM', metaKey: false, ctrlKey: true, shiftKey: true, altKey: false })).toBe(
+      true
+    )
+    expect(isPopKey({ key: 'm', code: 'KeyM', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false })).toBe(
+      false
+    )
   })
 })
 
@@ -83,16 +89,28 @@ describe('geometry', () => {
       y: wa.y + MINI_WINDOW_MARGIN,
       ...MINI_WINDOW_DEFAULT_SIZE
     })
-    expect(initialMiniBounds(wa, { x: 5000, y: -50, width: 300, height: 300 })).toEqual({ x: 1140, y: 25, width: 300, height: 300 })
+    expect(initialMiniBounds(wa, { x: 5000, y: -50, width: 300, height: 300 })).toEqual({
+      x: 1140,
+      y: 25,
+      width: 300,
+      height: 300
+    })
     expect(clampMiniBounds({ x: 0, y: 0, width: 10, height: 10 }, wa).width).toBe(240)
   })
   test('corner snap only near both edges', () => {
-    expect(snapMiniToCorner({ x: 10, y: 40, width: 300, height: 300 }, wa)).toEqual({ x: 16, y: 41, width: 300, height: 300 })
+    expect(snapMiniToCorner({ x: 10, y: 40, width: 300, height: 300 }, wa)).toEqual({
+      x: 16,
+      y: 41,
+      width: 300,
+      height: 300
+    })
     expect(snapMiniToCorner({ x: 10, y: 300, width: 300, height: 300 }, wa)).toBeNull()
   })
   test('display keys + geometry parsing drop junk', () => {
     expect(miniDisplayKey(wa)).toBe('0,25,1440x875')
-    expect(parseMiniGeometry({ a: { x: 1, y: 2, width: 3, height: 4 }, b: { x: 'no' } })).toEqual({ a: { x: 1, y: 2, width: 3, height: 4 } })
+    expect(parseMiniGeometry({ a: { x: 1, y: 2, width: 3, height: 4 }, b: { x: 'no' } })).toEqual({
+      a: { x: 1, y: 2, width: 3, height: 4 }
+    })
   })
   test('slots and cascade', () => {
     expect(freeMiniSlot([0, 1, 3])).toBe(2)
@@ -113,8 +131,14 @@ describe('live sync', () => {
     expect(minimalEdit('hello world', 'hello brave world')).toEqual({ from: 6, to: 6, insert: 'brave ' })
     expect(minimalEdit('abc', 'abc')).toBeNull()
     expect(minimalEdit('aaa', 'aa')).toEqual({ from: 2, to: 3, insert: '' })
-    const apply = (s: string, e: { from: number; to: number; insert: string }): string => s.slice(0, e.from) + e.insert + s.slice(e.to)
-    for (const [x, y] of [['', 'x'], ['x', ''], ['abcabc', 'abXabc'], ['- [ ] a\n', '- [x] a\n']] as const) {
+    const apply = (s: string, e: { from: number; to: number; insert: string }): string =>
+      s.slice(0, e.from) + e.insert + s.slice(e.to)
+    for (const [x, y] of [
+      ['', 'x'],
+      ['x', ''],
+      ['abcabc', 'abXabc'],
+      ['- [ ] a\n', '- [x] a\n']
+    ] as const) {
       expect(apply(x, minimalEdit(x, y)!)).toBe(y)
     }
   })

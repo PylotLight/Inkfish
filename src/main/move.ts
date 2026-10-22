@@ -131,12 +131,23 @@ function notesMoved(root: string, rel: string, next: string, isDir: boolean): Ar
  * notes' own `./pic.png` / `../x.md` refs, and other notes' relative links and `[[dir/Note]]`
  * wikilinks into what moved. Vault-root refs (`assets/…`) never need touching.
  */
-export async function moveEntry(rel: string, destDirRel: string, paths: VaultPaths, lookup: LookupFn = scanLookup(paths.root)): Promise<MoveEntryResult> {
+export async function moveEntry(
+  rel: string,
+  destDirRel: string,
+  paths: VaultPaths,
+  lookup: LookupFn = scanLookup(paths.root)
+): Promise<MoveEntryResult> {
   const root = paths.root
   const isDir = statSync(join(root, rel)).isDirectory()
   const links = lookup(linkNeedles(rel, isDir))
   const next = movePath(rel, destDirRel, paths, { onConflict: 'rename' })
-  const result: MoveEntryResult = { rel: next, renamed: baseOf(next) !== baseOf(rel), moved: [], rewritten: [], move: null }
+  const result: MoveEntryResult = {
+    rel: next,
+    renamed: baseOf(next) !== baseOf(rel),
+    moved: [],
+    rewritten: [],
+    move: null
+  }
   if (next === rel) return result
   result.moved = notesMoved(root, rel, next, isDir)
   const fix = await fixLinksAfterMove(root, rel, next, result.moved, links)
@@ -149,7 +160,12 @@ export async function moveEntry(rel: string, destDirRel: string, paths: VaultPat
  * Hand rename (sidebar inline rename, Rename… prompt) of a note or folder, in place — then the same
  * link fix-up as a title rename or a move, so `[[Old]]` and `[x](Old.md)` follow the new name.
  */
-export async function renameEntry(rel: string, newName: string, paths: VaultPaths, lookup: LookupFn = scanLookup(paths.root)): Promise<MoveEntryResult> {
+export async function renameEntry(
+  rel: string,
+  newName: string,
+  paths: VaultPaths,
+  lookup: LookupFn = scanLookup(paths.root)
+): Promise<MoveEntryResult> {
   const root = paths.root
   const isDir = statSync(join(root, rel)).isDirectory()
   const links = lookup(linkNeedles(rel, isDir))
@@ -178,7 +194,12 @@ export interface TitleRenameResult {
  * note's own name is allowed). Then links into it are pointed at the new name (fixLinksAfterMove,
  * candidates from the index). Empty / unusable title → no-op.
  */
-export async function renameToTitle(rel: string, title: string, paths: VaultPaths, lookup: LookupFn = scanLookup(paths.root)): Promise<TitleRenameResult> {
+export async function renameToTitle(
+  rel: string,
+  title: string,
+  paths: VaultPaths,
+  lookup: LookupFn = scanLookup(paths.root)
+): Promise<TitleRenameResult> {
   const root = paths.root
   const stem = sanitizeFileTitle(title)
   const res: TitleRenameResult = { rel, rewritten: [], move: null }
@@ -195,7 +216,11 @@ export async function renameToTitle(rel: string, title: string, paths: VaultPath
   // Every OTHER entry in the folder is taken, compared case- and normalization-insensitively (APFS).
   // Only this file's own exact name is excluded: on a case-sensitive disk (Linux, a case-sensitive
   // APFS volume) a `Foo.md` beside our `foo.md` is a different file and must never be overwritten.
-  const taken = new Set(readdirSync(join(root, dir)).filter((n) => n !== ownName).map(fold))
+  const taken = new Set(
+    readdirSync(join(root, dir))
+      .filter((n) => n !== ownName)
+      .map(fold)
+  )
   const name = uniqueName(want, (n) => taken.has(fold(n)))
   if (name.normalize('NFC') === ownName.normalize('NFC')) return res
   const next = joinRel(dir, name)

@@ -6,7 +6,16 @@
  * that was read lazily for a visible day, so a vault with 2k notes / hundreds of days never
  * reads every file just to draw the list.
  */
-import { dailyTitle, dayOfPath, localDay, parseDay, parseEntries, shiftDay, stripLegacyTitle, type DailyEntry } from './daily'
+import {
+  dailyTitle,
+  dayOfPath,
+  localDay,
+  parseDay,
+  parseEntries,
+  shiftDay,
+  stripLegacyTitle,
+  type DailyEntry
+} from './daily'
 
 /** Minimal index row the journal needs (desktop `NoteEntry` and Android `NoteEntry` both fit). */
 export interface DayIndexRow {
@@ -77,11 +86,7 @@ export function summarizeDay(body: string, max = 3): DaySummary {
       text: ''
     }
   }
-  const text = clean
-    .split('\n')
-    .map(plainLine)
-    .filter(Boolean)
-    .join(' · ')
+  const text = clean.split('\n').map(plainLine).filter(Boolean).join(' · ')
   return { count: 0, entries: [], text: text.slice(0, 240) }
 }
 
@@ -91,8 +96,18 @@ export function monthKey(day: string): string {
 }
 
 const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December'
 ]
 
 /** `2026-10` → `October 2026` (fixed English, like `dailyTitle`). */
@@ -111,8 +126,7 @@ export function shiftMonth(key: string, n: number): string {
 }
 
 export type JournalRow<T> =
-  | { kind: 'month'; key: string; label: string; count: number }
-  | { kind: 'day'; day: string; item: T }
+  { kind: 'month'; key: string; label: string; count: number } | { kind: 'day'; day: string; item: T }
 
 /**
  * Flat rows for a virtualized list: a month header, then that month's days. Input order is kept
@@ -146,7 +160,7 @@ export function monthCounts(days: readonly string[]): Array<{ key: string; label
 /** Words a day answers to besides its text: ISO date, friendly title, full month name, year. */
 function dayWords(day: string, now: Date): string {
   const d = parseDay(day)
-  const month = d ? MONTH_NAMES[d.getMonth()] ?? '' : ''
+  const month = d ? (MONTH_NAMES[d.getMonth()] ?? '') : ''
   return `${day} ${dailyTitle(day, now)} ${month} ${d?.getFullYear() ?? ''}`.toLowerCase()
 }
 

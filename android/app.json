@@ -7,20 +7,14 @@
     "scheme": "inkfish",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "package": "com.pylotlight.inkfish",
       "versionCode": 1,
-      "permissions": [
-        "RECORD_AUDIO",
-        "REQUEST_INSTALL_PACKAGES",
-        "CAMERA"
-      ],
+      "permissions": ["RECORD_AUDIO", "REQUEST_INSTALL_PACKAGES", "CAMERA"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-foreground.png",
         "backgroundColor": "#121621"
@@ -36,10 +30,7 @@
       [
         "expo-share-intent",
         {
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ],
+          "androidIntentFilters": ["text/*", "image/*"],
           "disableIOS": true
         }
       ],

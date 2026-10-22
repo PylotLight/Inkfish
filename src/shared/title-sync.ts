@@ -119,7 +119,12 @@ export interface AutoRenameOptions {
  * title when the note was opened); `title` = the title now. Only `Untitled…` notes and (per
  * `opts`) notes Inkfish named / any heading-named note follow their title.
  */
-export function autoRenameTarget(path: string, baseTitle: string, title: string, opts: AutoRenameOptions = {}): string | null {
+export function autoRenameTarget(
+  path: string,
+  baseTitle: string,
+  title: string,
+  opts: AutoRenameOptions = {}
+): string | null {
   if (!isTitleSyncPath(path)) return null
   const next = sanitizeFileTitle(title)
   if (!next) return null // empty title keeps the current name
@@ -159,20 +164,23 @@ export function rewriteWikiLinks(
   const parts = md.split(/(^(?:```|~~~)[^\n]*\n[\s\S]*?^(?:```|~~~)[ \t]*$)/m)
   const out = parts.map((part, i) => {
     if (i % 2 === 1) return part
-    return part.replace(/(!?)\[\[([^\]|#\n]+)((?:#[^\]|\n]*)?)((?:\|[^\]\n]*)?)\]\]/g, (whole, bang: string, target: string, heading: string, alias: string) => {
-      const t = target.trim()
-      const hasExt = /\.md$/i.test(t)
-      const bare = hasExt ? t.slice(0, -3) : t
-      let next: string | null = null
-      if (bare.includes('/')) {
-        if (bare.replace(/^\/+/, '').toLowerCase() === oldNoExt.toLowerCase()) next = newNoExt
-      } else if (bareUnique && bare.toLowerCase() === oldStem.toLowerCase()) {
-        next = newAmbiguous && newNoExt.includes('/') ? newNoExt : newStem
+    return part.replace(
+      /(!?)\[\[([^\]|#\n]+)((?:#[^\]|\n]*)?)((?:\|[^\]\n]*)?)\]\]/g,
+      (whole, bang: string, target: string, heading: string, alias: string) => {
+        const t = target.trim()
+        const hasExt = /\.md$/i.test(t)
+        const bare = hasExt ? t.slice(0, -3) : t
+        let next: string | null = null
+        if (bare.includes('/')) {
+          if (bare.replace(/^\/+/, '').toLowerCase() === oldNoExt.toLowerCase()) next = newNoExt
+        } else if (bareUnique && bare.toLowerCase() === oldStem.toLowerCase()) {
+          next = newAmbiguous && newNoExt.includes('/') ? newNoExt : newStem
+        }
+        if (next === null) return whole
+        changed++
+        return `${bang}[[${next}${hasExt ? '.md' : ''}${heading}${alias}]]`
       }
-      if (next === null) return whole
-      changed++
-      return `${bang}[[${next}${hasExt ? '.md' : ''}${heading}${alias}]]`
-    })
+    )
   })
   return { text: out.join(''), changed }
 }
@@ -218,7 +226,10 @@ export function createTitleSync(opts: {
     schedule(id, markdown) {
       text.set(id, markdown)
       stop(id)
-      timers.set(id, setTimer(() => fire(id), delay))
+      timers.set(
+        id,
+        setTimer(() => fire(id), delay)
+      )
     },
     flush(id) {
       if (id !== undefined) fire(id)
@@ -236,7 +247,11 @@ export function createTitleSync(opts: {
       text.delete(from)
       if (md === undefined) return
       text.set(to, md)
-      if (had) timers.set(to, setTimer(() => fire(to), delay))
+      if (had)
+        timers.set(
+          to,
+          setTimer(() => fire(to), delay)
+        )
     },
     pending: (id) => text.get(id)
   }

@@ -4,9 +4,22 @@
       "id": "openai/gpt-6.1-sol",
       "name": "OpenAI: GPT-6.1 Sol",
       "context_length": 1100000,
-      "architecture": { "modality": "text+image+file->text", "input_modalities": ["text", "image", "file"], "output_modalities": ["text"], "tokenizer": "GPT" },
+      "architecture": {
+        "modality": "text+image+file->text",
+        "input_modalities": ["text", "image", "file"],
+        "output_modalities": ["text"],
+        "tokenizer": "GPT"
+      },
       "top_provider": { "context_length": 1100000, "max_completion_tokens": 128000, "is_moderated": true },
-      "supported_parameters": ["max_tokens", "temperature", "tools", "tool_choice", "reasoning", "include_reasoning", "response_format"]
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning",
+        "response_format"
+      ]
     },
     {
       "id": "meta-llama/llama-3.1-8b-instruct",

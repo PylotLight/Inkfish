@@ -12,12 +12,12 @@ const sockets: Socket[] = []
 const settings = (
   rules: ProxySettings['rules'] = [],
   proxies: ProxySettings['proxies'] = [],
-  primaryEnabled = false,
+  primaryEnabled = false
 ): ProxySettings => ({
   ...DEFAULT_PROXY_SETTINGS,
   primary: { ...DEFAULT_PROXY_SETTINGS.primary, enabled: primaryEnabled, bypassLocalNetwork: false },
   proxies,
-  rules,
+  rules
 })
 
 async function listen(server: Server | HttpServer): Promise<number> {
@@ -73,7 +73,10 @@ describe('model download proxy', () => {
     const originPort = await listen(origin)
     const bridge = await bridgeFor(settings())
 
-    const response = await rawRequest(portOf(bridge), get(`http://127.0.0.1:${originPort}/model`, `127.0.0.1:${originPort}`, 'Range: bytes=3-5\r\n'))
+    const response = await rawRequest(
+      portOf(bridge),
+      get(`http://127.0.0.1:${originPort}/model`, `127.0.0.1:${originPort}`, 'Range: bytes=3-5\r\n')
+    )
     expect(response.toString()).toContain('206')
     expect(response.toString().toLowerCase()).toContain('content-range: bytes 3-5/6')
     expect(response.toString()).toContain('def')
@@ -81,8 +84,8 @@ describe('model download proxy', () => {
 
   test('uses remote DNS in SOCKS CONNECT and forwards tunnel bytes', async () => {
     let target = ''
-    const socks = createServer(socket => {
-      socket.once('data', greeting => {
+    const socks = createServer((socket) => {
+      socket.once('data', (greeting) => {
         expect([...greeting]).toEqual([5, 1, 0])
         socket.write(Buffer.from([5, 0]))
         socket.once('data', (request: Buffer) => {
@@ -90,7 +93,7 @@ describe('model download proxy', () => {
           const length = request[4]!
           target = request.subarray(5, 5 + length).toString()
           socket.write(Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 1]))
-          socket.once('data', data => {
+          socket.once('data', (data) => {
             expect(data.toString()).toContain('hello')
             socket.end('world')
           })
@@ -98,12 +101,17 @@ describe('model download proxy', () => {
       })
     })
     const socksPort = await listen(socks)
-    const bridge = await bridgeFor(settings(
-      [{ pattern: 'example.test', route: 'proxy:Remote' }],
-      [{ name: 'Remote', host: '127.0.0.1', port: socksPort }],
-    ))
+    const bridge = await bridgeFor(
+      settings(
+        [{ pattern: 'example.test', route: 'proxy:Remote' }],
+        [{ name: 'Remote', host: '127.0.0.1', port: socksPort }]
+      )
+    )
 
-    const response = await rawRequest(portOf(bridge), Buffer.from('CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\nConnection: close\r\n\r\nhello'))
+    const response = await rawRequest(
+      portOf(bridge),
+      Buffer.from('CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\nConnection: close\r\n\r\nhello')
+    )
     expect(target).toBe('example.test')
     expect(response.toString()).toContain('200 Connection Established')
     expect(response.toString()).toContain('world')
@@ -111,37 +119,53 @@ describe('model download proxy', () => {
 
   test('returns 502 for failed SOCKS negotiation without direct local fallback', async () => {
     let directHits = 0
-    const destination = createHttpServer((_req, res) => { directHits++; res.end('must not reach direct destination') })
+    const destination = createHttpServer((_req, res) => {
+      directHits++
+      res.end('must not reach direct destination')
+    })
     const destinationPort = await listen(destination)
-    const socks = createServer(socket => {
+    const socks = createServer((socket) => {
       socket.once('data', () => socket.end(Buffer.from([5, 2])))
     })
     const socksPort = await listen(socks)
-    const bridge = await bridgeFor(settings(
-      [{ pattern: 'forbidden.test', route: 'proxy:Broken' }],
-      [{ name: 'Broken', host: '127.0.0.1', port: socksPort }],
-      true,
-    ))
+    const bridge = await bridgeFor(
+      settings(
+        [{ pattern: 'forbidden.test', route: 'proxy:Broken' }],
+        [{ name: 'Broken', host: '127.0.0.1', port: socksPort }],
+        true
+      )
+    )
 
-    const response = await rawRequest(portOf(bridge), get(`http://forbidden.test:${destinationPort}/private`, `forbidden.test:${destinationPort}`))
+    const response = await rawRequest(
+      portOf(bridge),
+      get(`http://forbidden.test:${destinationPort}/private`, `forbidden.test:${destinationPort}`)
+    )
     expect(response.toString()).toContain('502')
     expect(directHits).toBe(0)
   })
 
   test('returns 502 when the selected SOCKS endpoint is dead and never falls back locally', async () => {
     let directHits = 0
-    const destination = createHttpServer((_req, res) => { directHits++; res.end('unexpected') })
+    const destination = createHttpServer((_req, res) => {
+      directHits++
+      res.end('unexpected')
+    })
     const destinationPort = await listen(destination)
     const dead = createServer()
     const deadPort = await listen(dead)
-    await new Promise<void>(resolve => dead.close(() => resolve()))
-    const bridge = await bridgeFor(settings(
-      [{ pattern: 'forbidden.test', route: 'proxy:Dead' }],
-      [{ name: 'Dead', host: '127.0.0.1', port: deadPort }],
-      true,
-    ))
+    await new Promise<void>((resolve) => dead.close(() => resolve()))
+    const bridge = await bridgeFor(
+      settings(
+        [{ pattern: 'forbidden.test', route: 'proxy:Dead' }],
+        [{ name: 'Dead', host: '127.0.0.1', port: deadPort }],
+        true
+      )
+    )
 
-    const response = await rawRequest(portOf(bridge), get(`http://forbidden.test:${destinationPort}/private`, `forbidden.test:${destinationPort}`))
+    const response = await rawRequest(
+      portOf(bridge),
+      get(`http://forbidden.test:${destinationPort}/private`, `forbidden.test:${destinationPort}`)
+    )
     expect(response.toString()).toContain('502')
     expect(directHits).toBe(0)
   })
@@ -149,7 +173,7 @@ describe('model download proxy', () => {
   test('routes named-proxy CONNECT by hostname and parses port 443', async () => {
     let requestedHost = ''
     let requestedPort = 0
-    const socks = createServer(socket => {
+    const socks = createServer((socket) => {
       socket.once('data', () => {
         socket.write(Buffer.from([5, 0]))
         socket.once('data', (request: Buffer) => {
@@ -160,12 +184,17 @@ describe('model download proxy', () => {
       })
     })
     const socksPort = await listen(socks)
-    const bridge = await bridgeFor(settings(
-      [{ pattern: 'cdn.example.test', route: 'proxy:CDN' }],
-      [{ name: 'CDN', host: '127.0.0.1', port: socksPort }],
-    ))
+    const bridge = await bridgeFor(
+      settings(
+        [{ pattern: 'cdn.example.test', route: 'proxy:CDN' }],
+        [{ name: 'CDN', host: '127.0.0.1', port: socksPort }]
+      )
+    )
 
-    const response = await rawRequest(portOf(bridge), Buffer.from('CONNECT cdn.example.test:443 HTTP/1.1\r\nHost: cdn.example.test:443\r\nConnection: close\r\n\r\n'))
+    const response = await rawRequest(
+      portOf(bridge),
+      Buffer.from('CONNECT cdn.example.test:443 HTTP/1.1\r\nHost: cdn.example.test:443\r\nConnection: close\r\n\r\n')
+    )
     expect(response.toString()).toContain('200 Connection Established')
     expect(requestedHost).toBe('cdn.example.test')
     expect(requestedPort).toBe(443)
@@ -173,16 +202,18 @@ describe('model download proxy', () => {
 
   test('close aborts an established CONNECT tunnel and an in-progress SOCKS handshake', async () => {
     const upstreamSockets: Socket[] = []
-    const socks = createServer(socket => {
+    const socks = createServer((socket) => {
       upstreamSockets.push(socket)
       socket.once('data', () => socket.write(Buffer.from([5, 0])))
       // Deliberately withhold the destination reply, leaving negotiation in progress.
     })
     const socksPort = await listen(socks)
-    const bridge = await bridgeFor(settings(
-      [{ pattern: 'example.test', route: 'proxy:Hold' }],
-      [{ name: 'Hold', host: '127.0.0.1', port: socksPort }],
-    ))
+    const bridge = await bridgeFor(
+      settings(
+        [{ pattern: 'example.test', route: 'proxy:Hold' }],
+        [{ name: 'Hold', host: '127.0.0.1', port: socksPort }]
+      )
+    )
 
     const established = netConnect(portOf(bridge), '127.0.0.1')
     const handshaking = netConnect(portOf(bridge), '127.0.0.1')
@@ -191,18 +222,25 @@ describe('model download proxy', () => {
     const connectRequest = Buffer.from('CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n')
     established.write(connectRequest)
     handshaking.write(connectRequest)
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 40)
       const check = (): void => {
-        if (upstreamSockets.length >= 2) { clearTimeout(timer); resolve() }
+        if (upstreamSockets.length >= 2) {
+          clearTimeout(timer)
+          resolve()
+        }
       }
       socks.on('connection', check)
     })
     bridge.close()
-    const closed = await Promise.all(upstreamSockets.map(socket => Promise.race([
-      once(socket, 'close').then(() => true),
-      new Promise<boolean>(resolve => setTimeout(() => resolve(false), 300)),
-    ])))
+    const closed = await Promise.all(
+      upstreamSockets.map((socket) =>
+        Promise.race([
+          once(socket, 'close').then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 300))
+        ])
+      )
+    )
     expect(closed).toEqual([true, true])
   })
 
@@ -216,14 +254,23 @@ describe('model download proxy', () => {
     await once(blocker, 'connect')
     blocked = true
 
-    const response = await rawRequest(portOf(bridge), get(`http://127.0.0.1:${destinationPort}/`, `127.0.0.1:${destinationPort}`))
+    const response = await rawRequest(
+      portOf(bridge),
+      get(`http://127.0.0.1:${destinationPort}/`, `127.0.0.1:${destinationPort}`)
+    )
     expect(response.toString()).toContain('403')
   })
 
   test('rejects malformed CONNECT authorities and unsupported HTTP methods', async () => {
     const bridge = await bridgeFor(settings())
-    const malformed = await rawRequest(portOf(bridge), Buffer.from('CONNECT example.test HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n'))
-    const unsupported = await rawRequest(portOf(bridge), Buffer.from('POST http://example.test/model HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n'))
+    const malformed = await rawRequest(
+      portOf(bridge),
+      Buffer.from('CONNECT example.test HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n')
+    )
+    const unsupported = await rawRequest(
+      portOf(bridge),
+      Buffer.from('POST http://example.test/model HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n')
+    )
     expect(malformed.toString()).toContain('400')
     expect(unsupported.toString()).toContain('405')
   })
@@ -236,7 +283,10 @@ describe('model download proxy', () => {
     const originPort = await listen(origin)
     const bridge = await bridgeFor(settings())
 
-    const response = await rawRequest(portOf(bridge), get(`http://127.0.0.1:${originPort}/model`, `127.0.0.1:${originPort}`))
+    const response = await rawRequest(
+      portOf(bridge),
+      get(`http://127.0.0.1:${originPort}/model`, `127.0.0.1:${originPort}`)
+    )
     expect(response.toString()).toContain('302')
     expect(response.toString().toLowerCase()).toContain('location: https://cdn.example.test/model')
   })

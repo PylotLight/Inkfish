@@ -1,4 +1,16 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+  type Dirent
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
@@ -317,7 +329,10 @@ export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths())
 /** New subfolder. Returns vaultRel. Never forks a case-variant sibling
  * (`Personal` when `personal` exists) — it reuses the existing dir. */
 export function createDir(parentRel: string, name: string, paths: VaultPaths = vaultPaths()): string {
-  const clean = name.trim().replace(/[/\\]+/g, '-').slice(0, 80)
+  const clean = name
+    .trim()
+    .replace(/[/\\]+/g, '-')
+    .slice(0, 80)
   if (!clean) throw new Error('folder name is empty')
   const parent = resolveDirRel(parentRel, paths)
   const parentAbs = join(paths.root, parent)
@@ -332,14 +347,15 @@ export function createDir(parentRel: string, name: string, paths: VaultPaths = v
 
 /** Rename a file (keeps ext unless newName has one) or dir. Returns new vaultRel. */
 export function renamePath(rel: string, newName: string, paths: VaultPaths = vaultPaths()): string {
-  const clean = newName.trim().replace(/[/\\]+/g, '-').slice(0, 120)
+  const clean = newName
+    .trim()
+    .replace(/[/\\]+/g, '-')
+    .slice(0, 120)
   if (!clean) throw new Error('name is empty')
   const abs = join(paths.root, rel)
   assertInside(paths.root, abs, rel)
   const st = statSync(abs)
-  const target = st.isDirectory()
-    ? clean
-    : extname(clean) ? clean : `${clean}.md`
+  const target = st.isDirectory() ? clean : extname(clean) ? clean : `${clean}.md`
   const dest = join(dirname(abs), target)
   assertInside(paths.root, dest, target)
   if (existsSync(dest)) {
@@ -359,7 +375,12 @@ export interface MoveOptions {
 }
 
 /** Move a file or dir into another folder ('' = root). Returns new vaultRel. */
-export function movePath(rel: string, destDirRel: string, paths: VaultPaths = vaultPaths(), opts: MoveOptions = {}): string {
+export function movePath(
+  rel: string,
+  destDirRel: string,
+  paths: VaultPaths = vaultPaths(),
+  opts: MoveOptions = {}
+): string {
   const abs = join(paths.root, rel)
   assertInside(paths.root, abs, rel)
   if (!existsSync(abs)) throw new Error(`${rel} not found`)
@@ -390,10 +411,7 @@ export function movePath(rel: string, destDirRel: string, paths: VaultPaths = va
 /** Survivor for a case-duplicate group: the already-lowercase member when
  * there is one, else the code-unit-smallest (deterministic everywhere). */
 function pickSurvivor(names: string[]): string {
-  return (
-    names.find((n) => n === foldName(n)) ??
-    [...names].sort()[0]!
-  )
+  return names.find((n) => n === foldName(n)) ?? [...names].sort()[0]!
 }
 
 function sameBytes(a: string, b: string): boolean {
@@ -444,7 +462,9 @@ function mergeDirInto(srcDir: string, dstDir: string): { files: number } {
           } catch {
             return null
           }
-          return kids.find((k) => k.isFile() && k.name !== e.name && foldName(k.name) === foldName(e.name))?.name ?? null
+          return (
+            kids.find((k) => k.isFile() && k.name !== e.name && foldName(k.name) === foldName(e.name))?.name ?? null
+          )
         })()
     if (!hit) {
       renameSync(from, dest)
@@ -785,7 +805,10 @@ export function isStagingRel(rel: string): boolean {
  *  in Melbourne `toISOString()` filed everything before 11am under yesterday. */
 export const localDay = sharedLocalDay
 
-export function dailyFile(date: Date = new Date(), paths: VaultPaths = vaultPaths()): { abs: string; vaultRel: string } {
+export function dailyFile(
+  date: Date = new Date(),
+  paths: VaultPaths = vaultPaths()
+): { abs: string; vaultRel: string } {
   const day = localDay(date)
   const abs = join(paths.dailyDir, `${day}.md`)
   // Staging rel namespace (`daily/<day>.md`) — stable even though the file
@@ -993,9 +1016,7 @@ export function slugify(s: string, max = 48): string {
 // --- frontmatter ---------------------------------------------------------------
 
 function fmEscape(v: string): string {
-  return v.includes(':') || v.includes('#') || v.includes('"')
-    ? `"${v.replace(/"/g, '\\"')}"`
-    : v
+  return v.includes(':') || v.includes('#') || v.includes('"') ? `"${v.replace(/"/g, '\\"')}"` : v
 }
 
 export function stringifyFrontmatter(data: Record<string, unknown>): string {
@@ -1104,11 +1125,7 @@ export function readInboxItem(id: string, paths: VaultPaths = vaultPaths()): Inb
   }
 }
 
-export function setInboxStatus(
-  id: string,
-  status: NoteStatus,
-  paths: VaultPaths = vaultPaths()
-): boolean {
+export function setInboxStatus(id: string, status: NoteStatus, paths: VaultPaths = vaultPaths()): boolean {
   const file = join(paths.inboxDir, `${id}.md`)
   if (!existsSync(file)) return false
   const [fm, body] = parseFrontmatter(readFileSync(file, 'utf8'))
@@ -1248,7 +1265,8 @@ function undoneDir(): string {
 }
 
 /** Undo a routing: inbox item back to `inbox`, processed file moved aside. */
-export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {  // Find processed notes pointing at this inbox id and archive them.
+export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
+  // Find processed notes pointing at this inbox id and archive them.
   // Only routed notes carry an `inbox:` frontmatter ref, so walking the
   // vault is safe — user files never match.
   let found = false
@@ -1287,18 +1305,10 @@ export function deleteInboxItem(inboxId: string, paths: VaultPaths = vaultPaths(
 
 // --- assets ---------------------------------------------------------------------
 
-export function saveAsset(
-  fileName: string,
-  data: Buffer,
-  paths: VaultPaths = vaultPaths()
-): string {
+export function saveAsset(fileName: string, data: Buffer, paths: VaultPaths = vaultPaths()): string {
   ensureVault(paths)
   const now = new Date()
-  const dir = join(
-    paths.assetsDir,
-    String(now.getFullYear()),
-    String(now.getMonth() + 1).padStart(2, '0')
-  )
+  const dir = join(paths.assetsDir, String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'))
   mkdirSync(dir, { recursive: true })
   const safe = `${newId('a')}${extname(fileName) || '.bin'}`
   writeFileSync(join(dir, safe), data)
@@ -1330,10 +1340,14 @@ export function writeMeetingNote(input: MeetingSaveInput, paths: VaultPaths = va
   const pad = (n: number): string => String(n).padStart(2, '0')
   const day = `${started.getFullYear()}-${pad(started.getMonth() + 1)}-${pad(started.getDate())}`
   const title = input.title.trim() || 'Meeting'
-  const base = `${day} ${pad(started.getHours())}${pad(started.getMinutes())} ${title.replace(/[/\\:]+/g, '-')}`.slice(0, 110)
+  const base = `${day} ${pad(started.getHours())}${pad(started.getMinutes())} ${title.replace(/[/\\:]+/g, '-')}`.slice(
+    0,
+    110
+  )
   const prev = input.replaceRel ? join(paths.root, input.replaceRel) : null
   if (prev) assertInside(paths.root, prev, input.replaceRel as string)
-  const name = prev && dirname(prev) === dir && basename(prev) === `${base}.md` ? `${base}.md` : uniqueFile(dir, base, '.md')
+  const name =
+    prev && dirname(prev) === dir && basename(prev) === `${base}.md` ? `${base}.md` : uniqueFile(dir, base, '.md')
   const abs = join(dir, name)
   const fm = stringifyFrontmatter({
     kind: 'meeting',
@@ -1364,27 +1378,27 @@ export function parseVtt(text: string): Array<{ at: string; speaker: string; lin
     .map((b) => b.trim())
     .filter(Boolean)
   for (const block of body) {
-    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean)
+    const lines = block
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
     if (lines.length === 0) continue
     const timeIdx = lines.findIndex((l) => l.includes('-->'))
     const first = lines[0] ?? ''
-    const at = timeIdx >= 0 ? (lines[timeIdx] ?? '').split('-->')[0]?.trim() ?? '' : ''
+    const at = timeIdx >= 0 ? ((lines[timeIdx] ?? '').split('-->')[0]?.trim() ?? '') : ''
     const content = (timeIdx >= 0 ? lines.slice(timeIdx + 1) : lines).join(' ')
     if (!content || /^NOTE/i.test(first)) continue
     const m = /^<v\s+([^>]+)>(.*)<\/v>\s*$/i.exec(content) ?? /^([^:]{1,40}):\s+(.*)$/.exec(content)
     out.push({
       at,
-      speaker: m ? m[1]?.trim() ?? '' : '',
+      speaker: m ? (m[1]?.trim() ?? '') : '',
       line: m ? (m[2] ?? '').trim() : content
     })
   }
   return out
 }
 
-export function meetingToMarkdown(
-  cues: Array<{ at: string; speaker: string; line: string }>,
-  title: string
-): string {
+export function meetingToMarkdown(cues: Array<{ at: string; speaker: string; line: string }>, title: string): string {
   const attendees = [...new Set(cues.map((c) => c.speaker).filter(Boolean))]
   const transcript = cues
     .map((c) => `- ${c.at ? `**${c.at}** ` : ''}${c.speaker ? `**${c.speaker}:** ` : ''}${c.line}`)

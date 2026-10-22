@@ -126,6 +126,7 @@ export function redundantCopies(m: Manifest, opts: { bumps?: boolean } = {}): st
 
 /** Does a conflict copy of `path` already hold `hash` (on any of the manifests)? */
 export function copyExists(path: string, hash: string, ...ms: Manifest[]): boolean {
-  for (const m of ms) for (const [p, e] of Object.entries(m)) if (e.hash === hash && conflictOriginal(p) === path) return true
+  for (const m of ms)
+    for (const [p, e] of Object.entries(m)) if (e.hash === hash && conflictOriginal(p) === path) return true
   return false
 }

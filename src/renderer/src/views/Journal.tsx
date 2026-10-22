@@ -99,7 +99,14 @@ export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX
   const visibleDays = useMemo(() => filtered.slice(0, limit), [filtered, limit])
   const rows = useMemo(() => groupByMonth(visibleDays), [visibleDays])
   const months = useMemo(() => monthCounts(days.map((d) => d.day)), [days])
-  const run = useMemo(() => streak(days.map((d) => d.day), today), [days, today])
+  const run = useMemo(
+    () =>
+      streak(
+        days.map((d) => d.day),
+        today
+      ),
+    [days, today]
+  )
   const remaining = filtered.length - visibleDays.length
 
   /** Make sure `day` is mounted (extend the window), select it and scroll to it. */
@@ -191,7 +198,8 @@ export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX
     const onKey = (e: KeyboardEvent): void => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable))
+        return
       if (document.querySelector('.modal-backdrop, .ctx-scrim')) return
       const k = e.key
       if (k === 'j' || k === 'ArrowDown') {
@@ -278,7 +286,12 @@ export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX
       </header>
 
       <div className="journal-grid">
-        <div className="journal-timeline" role="listbox" aria-label="Daily notes" aria-activedescendant={sel ? `jday-${sel}` : undefined}>
+        <div
+          className="journal-timeline"
+          role="listbox"
+          aria-label="Daily notes"
+          aria-activedescendant={sel ? `jday-${sel}` : undefined}
+        >
           {days.length === 0 && (
             <p className="muted small">Days you log show up here — hit Today (⌘⇧D) or capture → Today to start one.</p>
           )}
@@ -350,14 +363,24 @@ export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX
 
 /** Wrap matched words in <mark> (plain text in, React nodes out). */
 function highlight(text: string, query: string): React.ReactNode {
-  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 1)
+  const words = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 1)
   if (!words.length) return text
   const re = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
   return text.split(re).map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : p))
 }
 
 const DayRow = memo(function DayRow({
-  day, body, today, selected, query, register, onSelect, onOpen
+  day,
+  body,
+  today,
+  selected,
+  query,
+  register,
+  onSelect,
+  onOpen
 }: {
   day: Day
   body: string | undefined
@@ -424,7 +447,12 @@ const WD = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 /** Small month calendar: days with a note are tinted by how much is in them (file size). */
 function MonthCalendar({
-  month, byDay, today, selected, onMonth, onPick
+  month,
+  byDay,
+  today,
+  selected,
+  onMonth,
+  onPick
 }: {
   month: string
   byDay: Map<string, Day>
@@ -437,13 +465,24 @@ function MonthCalendar({
   return (
     <section className="jcal" aria-label={`Calendar, ${monthLabel(month)}`}>
       <div className="jcal-head">
-        <button className="jcal-nav" onClick={() => onMonth(-1)} aria-label="Previous month">‹</button>
+        <button className="jcal-nav" onClick={() => onMonth(-1)} aria-label="Previous month">
+          ‹
+        </button>
         <span className="jcal-title">{monthLabel(month)}</span>
-        <button className="jcal-nav" onClick={() => onMonth(1)} aria-label="Next month" disabled={month >= monthKey(today)}>›</button>
+        <button
+          className="jcal-nav"
+          onClick={() => onMonth(1)}
+          aria-label="Next month"
+          disabled={month >= monthKey(today)}
+        >
+          ›
+        </button>
       </div>
       <div className="jcal-grid">
         {WD.map((w, i) => (
-          <span key={`h${i}`} className="jcal-wd" aria-hidden>{w}</span>
+          <span key={`h${i}`} className="jcal-wd" aria-hidden>
+            {w}
+          </span>
         ))}
         {weeks.flat().map((cell, i) => {
           if (!cell) return <span key={`p${i}`} className="jcal-cell is-pad" />

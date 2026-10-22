@@ -59,7 +59,9 @@ describe('mergeLinkMoves (save path: stale text from a window)', () => {
       to: 'notes/Ideas 2026.md',
       notes: [{ from: 'notes/Ideas.md', to: 'notes/Ideas 2026.md', bareUnique: true, newAmbiguous: false }]
     }
-    expect(mergeLinkMoves('[[Untitled]]', 'other.md', [rename, second], vault(['notes/Ideas 2026.md']))).toBe('[[Ideas 2026]]')
+    expect(mergeLinkMoves('[[Untitled]]', 'other.md', [rename, second], vault(['notes/Ideas 2026.md']))).toBe(
+      '[[Ideas 2026]]'
+    )
   })
   test("the moved note's own relative links: fixed once, never twice", () => {
     const move: LinkMove = {

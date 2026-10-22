@@ -10,8 +10,14 @@ export const proxyChangeListeners = new Set<() => void>()
 
 export function onProxyChanging(listener: () => void): () => void {
   proxyChangeListeners.add(listener)
-  return () => { proxyChangeListeners.delete(listener) }
+  return () => {
+    proxyChangeListeners.delete(listener)
+  }
 }
 
-export function getProxySettings(): ProxySettings { return cloneProxySettings(proxyState.settings) }
-export function isProxyTransitioning(): boolean { return proxyState.transitioning || proxyState.blocked }
+export function getProxySettings(): ProxySettings {
+  return cloneProxySettings(proxyState.settings)
+}
+export function isProxyTransitioning(): boolean {
+  return proxyState.transitioning || proxyState.blocked
+}

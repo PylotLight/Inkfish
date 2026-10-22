@@ -142,9 +142,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
     `)
     const getStmt = db.prepare('SELECT * FROM notes WHERE id = ?')
     const listStmt = db.prepare('SELECT * FROM notes ORDER BY updatedAt DESC LIMIT ?')
-    const listByProject = db.prepare(
-      'SELECT * FROM notes WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?'
-    )
+    const listByProject = db.prepare('SELECT * FROM notes WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?')
     const listInbox = db.prepare(
       "SELECT * FROM notes WHERE status IN ('inbox','processing') ORDER BY updatedAt DESC LIMIT ?"
     )
@@ -156,8 +154,19 @@ function createSqliteBackend(dbPath: string): Backend | null {
     return {
       upsert: (r) =>
         upsertStmt.run(
-          r.id, r.path, r.title, r.kind, r.status, r.projectId, r.inboxId,
-          r.tags, r.body, r.createdAt, r.updatedAt, r.size, r.embedding
+          r.id,
+          r.path,
+          r.title,
+          r.kind,
+          r.status,
+          r.projectId,
+          r.inboxId,
+          r.tags,
+          r.body,
+          r.createdAt,
+          r.updatedAt,
+          r.size,
+          r.embedding
         ),
       remove: (id) => void delStmt.run(id),
       get: (id) => rows<NoteRow | undefined>(getStmt.get(id)) ?? null,
@@ -349,9 +358,19 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
     if (!Number.isFinite(createdAt)) createdAt = Date.now()
   }
   const row: NoteRow = {
-    id, path: vaultRel, title: titleFromBody(body), kind, status,
-    projectId, inboxId, tags: JSON.stringify(tagList),
-    body, createdAt, updatedAt: mtime, size, embedding: null
+    id,
+    path: vaultRel,
+    title: titleFromBody(body),
+    kind,
+    status,
+    projectId,
+    inboxId,
+    tags: JSON.stringify(tagList),
+    body,
+    createdAt,
+    updatedAt: mtime,
+    size,
+    embedding: null
   }
   must().upsert(row)
   return rowToEntry(row)
@@ -400,10 +419,7 @@ export function reindexVault(root: string): number {
 /** Index staging (app-data `inbox/` + `daily/`) under the same rel namespace
  * (`inbox/<id>.md`, `daily/YYYY-MM-DD.md`). Does NOT clear — call after
  * `reindexVault` so one boot covers both. */
-export function reindexStaging(paths: {
-  inboxDir: string
-  dailyDir: string
-}): number {
+export function reindexStaging(paths: { inboxDir: string; dailyDir: string }): number {
   let n = 0
   const flat = (dir: string, prefix: string): void => {
     let entries: Dirent<string>[]
@@ -518,9 +534,12 @@ export function relatedNotes(noteId: string, limit = 5): NoteEntry[] {
     if (cand.id === noteId || !cand.embedding) continue
     const b: number[] = JSON.parse(cand.embedding)
     if (b.length !== a.length) continue
-    let dot = 0, na = 0, nb = 0
+    let dot = 0,
+      na = 0,
+      nb = 0
     for (let i = 0; i < a.length; i++) {
-      const x = a[i] ?? 0, y = b[i] ?? 0
+      const x = a[i] ?? 0,
+        y = b[i] ?? 0
       dot += x * y
       na += x * x
       nb += y * y
@@ -531,5 +550,8 @@ export function relatedNotes(noteId: string, limit = 5): NoteEntry[] {
       if (s >= 0.2) scored.push({ r: cand, s })
     }
   }
-  return scored.sort((x, y) => y.s - x.s).slice(0, limit).map(({ r }) => rowToEntry(r))
+  return scored
+    .sort((x, y) => y.s - x.s)
+    .slice(0, limit)
+    .map(({ r }) => rowToEntry(r))
 }

@@ -56,15 +56,38 @@ export function isMiniWindowPeekDelay(value: unknown): value is number {
 }
 
 const MODIFIERS = new Map<string, string>([
-  ['commandorcontrol', 'CommandOrControl'], ['cmdorctrl', 'CommandOrControl'],
-  ['command', 'Command'], ['cmd', 'Command'], ['super', 'Super'], ['meta', 'Super'],
-  ['control', 'Control'], ['ctrl', 'Control'],
-  ['alt', 'Alt'], ['option', 'Alt'], ['altgr', 'AltGr'],
+  ['commandorcontrol', 'CommandOrControl'],
+  ['cmdorctrl', 'CommandOrControl'],
+  ['command', 'Command'],
+  ['cmd', 'Command'],
+  ['super', 'Super'],
+  ['meta', 'Super'],
+  ['control', 'Control'],
+  ['ctrl', 'Control'],
+  ['alt', 'Alt'],
+  ['option', 'Alt'],
+  ['altgr', 'AltGr'],
   ['shift', 'Shift']
 ])
 const NAMED_KEYS = new Set([
-  'Space', 'Tab', 'Backspace', 'Delete', 'Insert', 'Return', 'Enter', 'Up', 'Down', 'Left', 'Right',
-  'Home', 'End', 'PageUp', 'PageDown', 'Escape', 'Esc', 'Plus'
+  'Space',
+  'Tab',
+  'Backspace',
+  'Delete',
+  'Insert',
+  'Return',
+  'Enter',
+  'Up',
+  'Down',
+  'Left',
+  'Right',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Escape',
+  'Esc',
+  'Plus'
 ])
 const MODIFIER_ORDER = ['CommandOrControl', 'Command', 'Super', 'Control', 'Alt', 'AltGr', 'Shift']
 
@@ -75,7 +98,10 @@ const MODIFIER_ORDER = ['CommandOrControl', 'Command', 'Super', 'Control', 'Alt'
  */
 export function normalizeAccelerator(input: unknown): string | null {
   if (typeof input !== 'string') return null
-  const parts = input.split('+').map((part) => part.trim()).filter(Boolean)
+  const parts = input
+    .split('+')
+    .map((part) => part.trim())
+    .filter(Boolean)
   if (parts.length < 2 || parts.length > 5) return null
   const modifiers = new Set<string>()
   let key: string | null = null
@@ -101,7 +127,10 @@ export function normalizeAccelerator(input: unknown): string | null {
 }
 
 /** Settings as stored (or sent from Settings): anything unreadable falls back to the defaults. */
-export function parseMiniWindowSettings(value: unknown, defaults: MiniWindowSettings = DEFAULT_MINI_WINDOW_SETTINGS): MiniWindowSettings {
+export function parseMiniWindowSettings(
+  value: unknown,
+  defaults: MiniWindowSettings = DEFAULT_MINI_WINDOW_SETTINGS
+): MiniWindowSettings {
   const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const d = defaults
   // An explicit '' turns the shortcut off; missing or invalid keeps the default.
@@ -154,11 +183,20 @@ export const KNOWN_SHORTCUTS: ReadonlyArray<{ accelerator: string; owner: string
 export function shortcutClash(accelerator: string, isMac: boolean, known = KNOWN_SHORTCUTS): string | null {
   const wanted = acceleratorKeys(accelerator, isMac)
   if (!wanted) return null
-  const hit = known.find((k) => (k.mac === undefined || k.mac === isMac) && acceleratorKeys(k.accelerator, isMac) === wanted)
+  const hit = known.find(
+    (k) => (k.mac === undefined || k.mac === isMac) && acceleratorKeys(k.accelerator, isMac) === wanted
+  )
   return hit?.owner ?? null
 }
 
-export interface ShortcutKeyEvent { key: string; code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }
+export interface ShortcutKeyEvent {
+  key: string
+  code: string
+  metaKey: boolean
+  ctrlKey: boolean
+  altKey: boolean
+  shiftKey: boolean
+}
 
 /** A key press in Settings' shortcut field as an accelerator ("Command+Shift+Space"), or null while only modifiers are down. */
 export function acceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boolean): string | null {
@@ -178,9 +216,19 @@ export function rawAcceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boole
   else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(event.code)) key = event.code
   else {
     const named: Record<string, string> = {
-      ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return',
-      Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Home: 'Home', End: 'End',
-      PageUp: 'PageUp', PageDown: 'PageDown'
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right',
+      Enter: 'Return',
+      Escape: 'Escape',
+      Tab: 'Tab',
+      Backspace: 'Backspace',
+      Delete: 'Delete',
+      Home: 'Home',
+      End: 'End',
+      PageUp: 'PageUp',
+      PageDown: 'PageDown'
     }
     key = named[event.key] ?? null
   }
@@ -203,7 +251,14 @@ export function formatAccelerator(accelerator: string, isMac: boolean): string {
   if (!accelerator) return 'Off'
   const parts = accelerator.split('+')
   if (isMac) {
-    const symbols: Record<string, string> = { CommandOrControl: '⌘', Command: '⌘', Control: '⌃', Alt: '⌥', Shift: '⇧', Super: '⌘' }
+    const symbols: Record<string, string> = {
+      CommandOrControl: '⌘',
+      Command: '⌘',
+      Control: '⌃',
+      Alt: '⌥',
+      Shift: '⇧',
+      Super: '⌘'
+    }
     return parts.map((part) => symbols[part] ?? part).join('')
   }
   const names: Record<string, string> = { CommandOrControl: 'Ctrl', Control: 'Ctrl', Command: 'Super', Super: 'Super' }
@@ -211,14 +266,26 @@ export function formatAccelerator(accelerator: string, isMac: boolean): string {
 }
 
 /** Is this keydown the in-app pop-out / return key (⌘⇧M, Ctrl+Shift+M)? */
-export function isPopKey(e: { key: string; code?: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }): boolean {
+export function isPopKey(e: {
+  key: string
+  code?: string
+  metaKey: boolean
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+}): boolean {
   return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && (e.code === 'KeyM' || e.key.toLowerCase() === 'm')
 }
 
 // ---------------------------------------------------------------------------
 // Geometry
 
-export interface MiniRect { x: number; y: number; width: number; height: number }
+export interface MiniRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 export const MINI_WINDOW_DEFAULT_SIZE = { width: 360, height: 440 }
 export const MINI_WINDOW_MIN_SIZE = { width: 240, height: 160 }
@@ -273,7 +340,11 @@ export function initialMiniBounds(workArea: MiniRect, saved: MiniRect | undefine
 }
 
 /** Dropped near a corner of the work area: the bounds snapped into it (MINI_WINDOW_MARGIN from both edges), else null. */
-export function snapMiniToCorner(rect: MiniRect, workArea: MiniRect, distance = MINI_WINDOW_SNAP_DISTANCE): MiniRect | null {
+export function snapMiniToCorner(
+  rect: MiniRect,
+  workArea: MiniRect,
+  distance = MINI_WINDOW_SNAP_DISTANCE
+): MiniRect | null {
   const left = rect.x - workArea.x
   const top = rect.y - workArea.y
   const right = workArea.x + workArea.width - (rect.x + rect.width)
@@ -307,11 +378,17 @@ export function freeMiniSlot(used: readonly number[], max = MINI_WINDOW_MAX): nu
  * `rect` (fitted to the work area), stepped diagonally by MINI_WINDOW_CASCADE_STEP until no window in
  * `others` sits at (about) the same spot. It steps toward the middle of the work area.
  */
-export function cascadeMiniBounds(rect: MiniRect, others: readonly MiniRect[], workArea: MiniRect, step = MINI_WINDOW_CASCADE_STEP): MiniRect {
+export function cascadeMiniBounds(
+  rect: MiniRect,
+  others: readonly MiniRect[],
+  workArea: MiniRect,
+  step = MINI_WINDOW_CASCADE_STEP
+): MiniRect {
   let current = clampMiniBounds(rect, workArea)
   const dx = current.x + current.width / 2 > workArea.x + workArea.width / 2 ? -step : step
   const dy = current.y + current.height / 2 > workArea.y + workArea.height / 2 ? -step : step
-  const taken = (r: MiniRect): boolean => others.some((other) => Math.abs(other.x - r.x) < step / 2 && Math.abs(other.y - r.y) < step / 2)
+  const taken = (r: MiniRect): boolean =>
+    others.some((other) => Math.abs(other.x - r.x) < step / 2 && Math.abs(other.y - r.y) < step / 2)
   for (let i = 0; i < 64 && taken(current); i++) {
     const next = clampMiniBounds({ ...current, x: current.x + dx, y: current.y + dy }, workArea)
     if (next.x === current.x && next.y === current.y) break
@@ -321,7 +398,10 @@ export function cascadeMiniBounds(rect: MiniRect, others: readonly MiniRect[], w
 }
 
 /** Per-window remembered state, one record per slot (`{ slots: [...] }`). */
-export function parseMiniSlots<T>(value: unknown, parseOne: (value: unknown) => Record<string, T>): Array<Record<string, T>> {
+export function parseMiniSlots<T>(
+  value: unknown,
+  parseOne: (value: unknown) => Record<string, T>
+): Array<Record<string, T>> {
   if (typeof value !== 'object' || value === null) return []
   const slots = (value as Record<string, unknown>).slots
   if (Array.isArray(slots)) return slots.slice(0, MINI_WINDOW_MAX).map((slot) => parseOne(slot))
@@ -329,7 +409,11 @@ export function parseMiniSlots<T>(value: unknown, parseOne: (value: unknown) => 
 }
 
 /** One slot's record set to `record` (others kept), ready to write back as `{ slots }`. */
-export function withMiniSlot<T>(slots: ReadonlyArray<Record<string, T>>, slot: number, record: Record<string, T>): { slots: Array<Record<string, T>> } {
+export function withMiniSlot<T>(
+  slots: ReadonlyArray<Record<string, T>>,
+  slot: number,
+  record: Record<string, T>
+): { slots: Array<Record<string, T>> } {
   const next = slots.map((entry) => ({ ...entry }))
   while (next.length <= slot) next.push({})
   next[slot] = record

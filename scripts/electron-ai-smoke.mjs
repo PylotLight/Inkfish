@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url'
 // forks the BUILT out/main/ai-handler.js, registers it with session.registerLocalAIHandler, points it
 // at a fake OpenAI-compatible server on loopback, and drives the renderer's Prompt API.
 //   bun run build && bun run test:electron-ai      (headless Linux: add --ozone-platform=headless)
-const HANDLER = process.env.HANDLER || join(dirname(fileURLToPath(import.meta.url)), '..', 'out', 'main', 'ai-handler.js')
+const HANDLER =
+  process.env.HANDLER || join(dirname(fileURLToPath(import.meta.url)), '..', 'out', 'main', 'ai-handler.js')
 const DIR = mkdtempSync(join(tmpdir(), 'inkfish-ai-smoke-'))
 const seen = []
 const srv = http.createServer((req, res) => {
@@ -21,12 +22,24 @@ const srv = http.createServer((req, res) => {
     // 'luna' is responses-only (like openai.gpt-6-luna behind LiteLLM); 'broken' always fails.
     if (body.model === 'broken') {
       res.writeHead(418, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: 'teapot says no to sk-smoke', type: 'invalid_request_error', code: 'teapot' } }))
+      res.end(
+        JSON.stringify({
+          error: { message: 'teapot says no to sk-smoke', type: 'invalid_request_error', code: 'teapot' }
+        })
+      )
       return
     }
     if (req.url.endsWith('/chat/completions') && body.model === 'luna') {
       res.writeHead(400, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: 'This model is only supported in v1/responses and not in v1/chat/completions.', type: 'invalid_request_error', code: 'unsupported_api_for_model' } }))
+      res.end(
+        JSON.stringify({
+          error: {
+            message: 'This model is only supported in v1/responses and not in v1/chat/completions.',
+            type: 'invalid_request_error',
+            code: 'unsupported_api_for_model'
+          }
+        })
+      )
       return
     }
     if (req.url.endsWith('/responses')) {
@@ -58,19 +71,19 @@ app.whenReady().then(async () => {
   child.postMessage({
     type: 'config',
     config: {
-        kind: 'openai',
-        baseUrl: `http://127.0.0.1:${port}/v1`,
-        model: 'm',
-        apiKey: 'sk-smoke',
-        // Settings › AI › Models: 'v' is a vision model with limits + a reasoning level.
-        models: [
-          { id: 'm' },
-          { id: 'v', contextWindow: 32000, maxOutputTokens: 4000, reasoning: 'low', input: ['text', 'image'] },
-          { id: 'luna', reasoning: 'medium' },
-          { id: 'broken' }
-        ]
-      }
-    })
+      kind: 'openai',
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      model: 'm',
+      apiKey: 'sk-smoke',
+      // Settings › AI › Models: 'v' is a vision model with limits + a reasoning level.
+      models: [
+        { id: 'm' },
+        { id: 'v', contextWindow: 32000, maxOutputTokens: 4000, reasoning: 'low', input: ['text', 'image'] },
+        { id: 'luna', reasoning: 'medium' },
+        { id: 'broken' }
+      ]
+    }
+  })
   session.defaultSession.registerLocalAIHandler(child)
   const w = new BrowserWindow({ show: false, webPreferences: { enableBlinkFeatures: 'AIPromptAPI' } })
   writeFileSync(join(DIR, 'blank.html'), '<html><body>x</body></html>')
@@ -105,7 +118,9 @@ app.whenReady().then(async () => {
       `LanguageModel.create({initialPrompts:[{role:'system',content:'[[inkfish-run {"model":"broken"}]]\\nsys'}]}).then(m => m.prompt('hi')).then(r => 'ok:' + r, e => e.name + ': ' + e.message)`
     )
     await new Promise((r) => setTimeout(r, 200))
-    results.fromHandler = fromHandler.map((m) => (m.type === 'error' ? { type: m.type, status: m.detail?.status, endpoint: m.detail?.endpoint } : m))
+    results.fromHandler = fromHandler.map((m) =>
+      m.type === 'error' ? { type: m.type, status: m.detail?.status, endpoint: m.detail?.endpoint } : m
+    )
     // Origin gate: an opaque data: page must not get a session.
     const d = new BrowserWindow({ show: false, webPreferences: { enableBlinkFeatures: 'AIPromptAPI' } })
     await d.loadURL('data:text/html,<p>x</p>')
@@ -131,7 +146,9 @@ app.whenReady().then(async () => {
     input: s.body.input,
     messages: (s.body.messages ?? []).map((m) => ({
       role: m.role,
-      content: Array.isArray(m.content) ? m.content.map((p) => (p.type === 'image_url' ? `image_url:${p.image_url.url.slice(0, 22)}…` : p.text)) : m.content
+      content: Array.isArray(m.content)
+        ? m.content.map((p) => (p.type === 'image_url' ? `image_url:${p.image_url.url.slice(0, 22)}…` : p.text))
+        : m.content
     }))
   }))
   const v = results.server.find((s) => s.model === 'v')

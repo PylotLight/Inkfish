@@ -26,7 +26,9 @@ export function isSafeToDelete(config, path, home = homedir()) {
   const p = normalize(path)
   if (!p.startsWith(home + sep) || p.includes(`${sep}..${sep}`)) return false
   const last = (p.split(sep).pop() ?? '').toLowerCase()
-  const names = [config.id, config.displayName, config.uninstall?.bundleId].filter(Boolean).map((s) => String(s).toLowerCase())
+  const names = [config.id, config.displayName, config.uninstall?.bundleId]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase())
   return names.some((n) => last.includes(n))
 }
 
@@ -40,13 +42,18 @@ export function uninstallPlan(config, { env = process.env, home = homedir(), exi
   const cache = cacheRoot(config, env, home)
   const data = (u.userData ?? []).map((entry) => {
     const path = expandHome(entry.path, home)
-    return { path: path ?? entry.path, what: entry.what ?? '', exists: Boolean(path && exists(path)), safe: Boolean(path && isSafeToDelete(config, path, home)) }
+    return {
+      path: path ?? entry.path,
+      what: entry.what ?? '',
+      exists: Boolean(path && exists(path)),
+      safe: Boolean(path && isSafeToDelete(config, path, home))
+    }
   })
   return {
     cache: { path: cache, exists: exists(cache) },
     data,
     keychain: (u.keychain ?? []).map((k) => ({ ...k })),
-    notes: [...(u.notes ?? [])],
+    notes: [...(u.notes ?? [])]
   }
 }
 
@@ -62,15 +69,27 @@ const CACHE_ENTRY = /^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|\.download-[\w-]+\.zi
 export function removeCacheDir(root) {
   /** @type {string[]} */
   let names = []
-  try { names = readdirSync(root) } catch { return { removed: [], kept: [], removedRoot: false } }
+  try {
+    names = readdirSync(root)
+  } catch {
+    return { removed: [], kept: [], removedRoot: false }
+  }
   const removed = []
   const kept = []
   for (const n of names) {
-    if (CACHE_ENTRY.test(n)) { rmSync(`${root}/${n}`, { recursive: true, force: true }); removed.push(n) } else kept.push(n)
+    if (CACHE_ENTRY.test(n)) {
+      rmSync(`${root}/${n}`, { recursive: true, force: true })
+      removed.push(n)
+    } else kept.push(n)
   }
   let removedRoot = false
   if (!kept.length) {
-    try { rmdirSync(root); removedRoot = true } catch { /* not empty after all / gone */ }
+    try {
+      rmdirSync(root)
+      removedRoot = true
+    } catch {
+      /* not empty after all / gone */
+    }
   }
   return { removed, kept, removedRoot }
 }
@@ -195,19 +214,28 @@ export async function runUninstall(config, o) {
       for (const k of kc) o.ui.line(`  keychain: ${k.service}`)
       if (!o.yes) {
         const ok = await confirm('delete all of it?')
-        if (!ok) { o.ui.warn('nothing deleted (pass --yes to skip this question)'); return 1 }
+        if (!ok) {
+          o.ui.warn('nothing deleted (pass --yes to skip this question)')
+          return 1
+        }
       }
     }
   }
 
   // the launcher's own download cache
   const root = plan.cache.path
-  if (root === '/' || root === home || !root.includes(config.id)) { o.ui.error(`refusing to delete ${root}`); return 1 }
+  if (root === '/' || root === home || !root.includes(config.id)) {
+    o.ui.error(`refusing to delete ${root}`)
+    return 1
+  }
   if (plan.cache.exists) {
     const bytes = size(root)
     const r = removeCacheDir(root)
     o.ui.step(`removed the launcher cache ${t(root)}${Number.isFinite(bytes) ? ` (${fmt(bytes)})` : ''}`)
-    if (r.kept.length) o.ui.warn(`left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${t(root)} the launcher didn't put there`)
+    if (r.kept.length)
+      o.ui.warn(
+        `left ${r.kept.length} thing${r.kept.length === 1 ? '' : 's'} in ${t(root)} the launcher didn't put there`
+      )
   } else {
     o.ui.step(`launcher cache ${t(root)} is already gone`)
   }
@@ -216,7 +244,10 @@ export async function runUninstall(config, o) {
     if (o.platform === 'darwin' && u.bundleId) exec('defaults', ['delete', u.bundleId]) // flushes cfprefsd's copy too
     for (const d of plan.data) {
       if (!d.exists) continue
-      if (!d.safe) { o.ui.warn(`skipped ${t(d.path)} (doesn't look like ${config.displayName}'s, delete it by hand)`); continue }
+      if (!d.safe) {
+        o.ui.warn(`skipped ${t(d.path)} (doesn't look like ${config.displayName}'s, delete it by hand)`)
+        continue
+      }
       rmSync(d.path, { recursive: true, force: true })
       o.ui.step(`removed ${t(d.path)}`)
     }

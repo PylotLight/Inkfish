@@ -31,7 +31,13 @@ const proc = (p: Partial<AudioProcess> & { pid: number; appId: string }): AudioP
 
 const TEAMS = '/Applications/Microsoft Teams.app'
 const procs: AudioProcess[] = [
-  proc({ pid: 10, appId: 'com.microsoft.teams2', bundleId: 'com.microsoft.teams2', appName: 'Microsoft Teams', appPath: TEAMS }),
+  proc({
+    pid: 10,
+    appId: 'com.microsoft.teams2',
+    bundleId: 'com.microsoft.teams2',
+    appName: 'Microsoft Teams',
+    appPath: TEAMS
+  }),
   proc({
     pid: 12,
     appId: 'com.microsoft.teams2',
@@ -41,7 +47,13 @@ const procs: AudioProcess[] = [
     outputting: true
   }),
   proc({ pid: 11, appId: 'com.microsoft.teams2', bundleId: 'com.microsoft.teams2.helper.renderer', appPath: TEAMS }),
-  proc({ pid: 20, appId: 'com.spotify.client', appName: 'Spotify', appPath: '/Applications/Spotify.app', outputting: true }),
+  proc({
+    pid: 20,
+    appId: 'com.spotify.client',
+    appName: 'Spotify',
+    appPath: '/Applications/Spotify.app',
+    outputting: true
+  }),
   proc({ pid: 30, appId: 'com.google.Chrome', appName: 'Google Chrome', appPath: '/Applications/Google Chrome.app' }),
   proc({ pid: 40, appId: 'com.apple.mediaremoted' }), // daemon, silent → hidden
   proc({ pid: 41, appId: 'com.apple.avconferenced', outputting: true }), // daemon, playing → shown
@@ -113,7 +125,10 @@ describe('autoPick', () => {
   })
 
   test('meeting app that is not playing yet is not picked', () => {
-    const apps = [app({ id: 'us.zoom.xos', kind: 'meeting' }), app({ id: 'com.spotify.client', kind: 'other', outputting: true })]
+    const apps = [
+      app({ id: 'us.zoom.xos', kind: 'meeting' }),
+      app({ id: 'com.spotify.client', kind: 'other', outputting: true })
+    ]
     expect(autoPick(apps)).toBeNull()
   })
 
@@ -146,7 +161,9 @@ describe('resolveSource', () => {
   })
   test('auto-pick off, or nothing meeting-like playing, or no list → all', () => {
     expect(resolveSource({ ...DEFAULT_PREFS, autoPick: false }, apps)).toEqual({ source: { mode: 'all' }, auto: false })
-    expect(resolveSource(DEFAULT_PREFS, [app({ id: 'x', kind: 'other', outputting: true })]).source).toEqual({ mode: 'all' })
+    expect(resolveSource(DEFAULT_PREFS, [app({ id: 'x', kind: 'other', outputting: true })]).source).toEqual({
+      mode: 'all'
+    })
     expect(resolveSource(DEFAULT_PREFS, null).source).toEqual({ mode: 'all' })
   })
 })
@@ -174,9 +191,24 @@ describe('picker state', () => {
   test('describeSource', () => {
     expect(describeSource({ mode: 'all' })).toBe('All system audio')
     expect(describeSource({ mode: 'apps', apps: [{ id: 'a', name: 'Teams' }] })).toBe('Teams')
-    expect(describeSource({ mode: 'apps', apps: [{ id: 'a', name: 'Zoom' }, { id: 'b', name: 'Chrome' }] })).toBe('Zoom + Chrome')
     expect(
-      describeSource({ mode: 'apps', apps: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }] })
+      describeSource({
+        mode: 'apps',
+        apps: [
+          { id: 'a', name: 'Zoom' },
+          { id: 'b', name: 'Chrome' }
+        ]
+      })
+    ).toBe('Zoom + Chrome')
+    expect(
+      describeSource({
+        mode: 'apps',
+        apps: [
+          { id: 'a', name: 'A' },
+          { id: 'b', name: 'B' },
+          { id: 'c', name: 'C' }
+        ]
+      })
     ).toBe('A + 2 more')
   })
 })
@@ -199,7 +231,11 @@ describe('persistence', () => {
     expect(loadPrefs(memStore({ [PREFS_KEY]: '{not json' }))).toEqual(DEFAULT_PREFS)
     expect(loadPrefs(memStore({ [PREFS_KEY]: '{"source":{"mode":"apps","apps":[]}}' })).source).toEqual({ mode: 'all' })
     expect(
-      loadPrefs(memStore({ [PREFS_KEY]: '{"source":{"mode":"apps","apps":[{"id":"a"},{"id":"b","name":"B"},null]},"autoPick":"yes"}' }))
+      loadPrefs(
+        memStore({
+          [PREFS_KEY]: '{"source":{"mode":"apps","apps":[{"id":"a"},{"id":"b","name":"B"},null]},"autoPick":"yes"}'
+        })
+      )
     ).toEqual({ source: { mode: 'apps', apps: [{ id: 'b', name: 'B' }] }, autoPick: true })
   })
 
@@ -231,7 +267,15 @@ describe('helper protocol', () => {
       })
     ).toEqual(['tap', '--apps', 'com.microsoft.teams2,us.zoom.xos'])
     // ids that would break the comma list are dropped; nothing left → all
-    expect(tapArgs({ mode: 'apps', apps: [{ id: 'a,b', name: 'x' }, { id: ' ', name: 'y' }] })).toEqual(['tap'])
+    expect(
+      tapArgs({
+        mode: 'apps',
+        apps: [
+          { id: 'a,b', name: 'x' },
+          { id: ' ', name: 'y' }
+        ]
+      })
+    ).toEqual(['tap'])
   })
 
   test('parseSourcesLine', () => {
@@ -253,9 +297,12 @@ describe('helper protocol', () => {
     expect(describeLive({ mode: 'apps', apps: [], waiting: true, error: '' }, wanted)).toBe(
       'Waiting for Microsoft Teams audio…'
     )
-    expect(describeLive({ mode: 'apps', apps: [{ id: 't', name: 'Microsoft Teams', pids: [1] }], waiting: false, error: '' }, wanted)).toBe(
-      'Microsoft Teams'
-    )
+    expect(
+      describeLive(
+        { mode: 'apps', apps: [{ id: 't', name: 'Microsoft Teams', pids: [1] }], waiting: false, error: '' },
+        wanted
+      )
+    ).toBe('Microsoft Teams')
     expect(describeLive({ mode: 'apps', apps: [], waiting: true, error: 'tap refused' }, wanted)).toBe('tap refused')
     expect(describeLive({ mode: 'all', apps: [], waiting: false, error: '' }, { mode: 'all' })).toBe('All system audio')
   })

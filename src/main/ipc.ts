@@ -1,6 +1,26 @@
 import { getProxySettings, setProxySettings, testLocalProxy } from './proxy'
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from 'electron'
-import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncBadge, syncStatus, unpair, type SyncStatus } from './sync'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Notification,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebContents
+} from 'electron'
+import {
+  cancelPairing,
+  renameDevice,
+  readSyncLog,
+  startPairing,
+  startSync,
+  syncBadge,
+  syncStatus,
+  unpair,
+  type SyncStatus
+} from './sync'
 import type { SyncBadge } from '../shared/sync-badge'
 import type { SyncLogEntry } from '../shared/sync'
 import { keepFrontmatter } from '../shared/autosave'
@@ -559,7 +579,10 @@ export function registerIpc(): void {
     const abs = resolveNoteAbs(doc.path, paths)
     if (!existsSync(abs)) return null
     const existing = readFileSync(abs, 'utf8')
-    const next = setTags(existing, tags.filter((t): t is string => typeof t === 'string'))
+    const next = setTags(
+      existing,
+      tags.filter((t): t is string => typeof t === 'string')
+    )
     if (next !== existing) {
       writeFileSync(abs, next, 'utf8')
       removeNote(id)
@@ -615,53 +638,59 @@ export function registerIpc(): void {
     createDir(parentRel, name, requireNotes())
   )
   // Hand rename (sidebar inline rename / Rename… prompt): same link fix-up as a title rename.
-  ipcMain.handle('files:rename', async (_e: IpcMainInvokeEvent, rel: unknown, newName: unknown): Promise<MoveEntryResult> => {
-    if (typeof rel !== 'string' || typeof newName !== 'string') throw new Error('bad rename')
-    const paths = requireNotes()
-    const res = await renameEntry(rel, newName, paths, linkLookup)
-    if (res.rel === rel) return res
-    // Ids are paths — carry title overrides across (whole subtree for dirs).
-    migrateTitles(rel, res.rel)
-    // A file renamed by hand stops following its title; a renamed folder's notes keep their marks.
-    migrateTitleNamed(rel, res.rel, res.rel.toLowerCase().endsWith('.md'))
-    reindexMoved(paths.root, rel, res.rel)
-    remapMiniNotes(rel, res.rel)
-    publishRewritten(res.rewritten, paths.root, res.move)
-    return res
-  })
+  ipcMain.handle(
+    'files:rename',
+    async (_e: IpcMainInvokeEvent, rel: unknown, newName: unknown): Promise<MoveEntryResult> => {
+      if (typeof rel !== 'string' || typeof newName !== 'string') throw new Error('bad rename')
+      const paths = requireNotes()
+      const res = await renameEntry(rel, newName, paths, linkLookup)
+      if (res.rel === rel) return res
+      // Ids are paths — carry title overrides across (whole subtree for dirs).
+      migrateTitles(rel, res.rel)
+      // A file renamed by hand stops following its title; a renamed folder's notes keep their marks.
+      migrateTitleNamed(rel, res.rel, res.rel.toLowerCase().endsWith('.md'))
+      reindexMoved(paths.root, rel, res.rel)
+      remapMiniNotes(rel, res.rel)
+      publishRewritten(res.rewritten, paths.root, res.move)
+      return res
+    }
+  )
   ipcMain.handle('notes:title-named', (): string[] => loadTitleNamed())
   // Filename follows the note title (header inline title + auto-named notes): in-place rename,
   // collision-safe, inbound links/[[wikilinks]] fixed. Targeted reindex — this runs while typing.
-  ipcMain.handle('files:rename-to-title', async (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): Promise<TitleRenameResult> => {
-    if (typeof rel !== 'string' || typeof title !== 'string') throw new Error('bad rename')
-    const paths = requireNotes()
-    const before = getNote(rel, paths.root)
-    // Backlinks come from the index (no full-vault read); only the linking notes are opened.
-    const res = await renameToTitle(rel, title, paths, linkLookup)
-    // The file name IS the title now — a stale custom display title would hide it. Overrides are
-    // keyed by note id, which is the front matter `id:` when the note has one (not its path), so
-    // clear both. Also when the name already fit (header title typed back to the file name).
-    const clearOverride = (id: string | undefined): void => {
-      if (id && loadTitles()[id] !== undefined) setTitleOverride(id, '')
-    }
-    if (res.rel === rel) {
-      if (sanitizeFileTitle(title)) {
-        clearOverride(rel)
-        clearOverride(before?.id)
+  ipcMain.handle(
+    'files:rename-to-title',
+    async (_e: IpcMainInvokeEvent, rel: unknown, title: unknown): Promise<TitleRenameResult> => {
+      if (typeof rel !== 'string' || typeof title !== 'string') throw new Error('bad rename')
+      const paths = requireNotes()
+      const before = getNote(rel, paths.root)
+      // Backlinks come from the index (no full-vault read); only the linking notes are opened.
+      const res = await renameToTitle(rel, title, paths, linkLookup)
+      // The file name IS the title now — a stale custom display title would hide it. Overrides are
+      // keyed by note id, which is the front matter `id:` when the note has one (not its path), so
+      // clear both. Also when the name already fit (header title typed back to the file name).
+      const clearOverride = (id: string | undefined): void => {
+        if (id && loadTitles()[id] !== undefined) setTitleOverride(id, '')
       }
+      if (res.rel === rel) {
+        if (sanitizeFileTitle(title)) {
+          clearOverride(rel)
+          clearOverride(before?.id)
+        }
+        return res
+      }
+      migrateTitles(rel, res.rel)
+      // Inkfish named this file from its title: it keeps following it (Untitled or not).
+      markTitleNamed(res.rel, true, rel)
+      clearOverride(res.rel)
+      clearOverride(before?.id)
+      removeNote(before?.id ?? rel)
+      indexFile(join(paths.root, res.rel), res.rel)
+      remapMiniNotes(rel, res.rel)
+      publishRewritten(res.rewritten, paths.root, res.move)
       return res
     }
-    migrateTitles(rel, res.rel)
-    // Inkfish named this file from its title: it keeps following it (Untitled or not).
-    markTitleNamed(res.rel, true, rel)
-    clearOverride(res.rel)
-    clearOverride(before?.id)
-    removeNote(before?.id ?? rel)
-    indexFile(join(paths.root, res.rel), res.rel)
-    remapMiniNotes(rel, res.rel)
-    publishRewritten(res.rewritten, paths.root, res.move)
-    return res
-  })
+  )
   ipcMain.handle('files:move', (_e: IpcMainInvokeEvent, rel: string, destDirRel: string): string => {
     const paths = requireNotes()
     const next = movePath(rel, destDirRel, paths)
@@ -672,19 +701,22 @@ export function registerIpc(): void {
     return next
   })
   // Sidebar drag & drop / folder picker: collision-safe move + relative link fix-ups.
-  ipcMain.handle('files:move-to', async (_e: IpcMainInvokeEvent, rel: unknown, destDirRel: unknown): Promise<MoveEntryResult> => {
-    if (typeof rel !== 'string' || typeof destDirRel !== 'string') throw new Error('bad move')
-    const paths = requireNotes()
-    const res = await moveEntry(rel, destDirRel, paths, linkLookup)
-    if (res.rel === rel) return res
-    migrateTitles(rel, res.rel)
-    migrateTitleNamed(rel, res.rel)
-    reindexMoved(paths.root, rel, res.rel)
-    remapMiniNotes(rel, res.rel)
-    // Notes whose links changed: every window drops its cached copy for the new text.
-    publishRewritten(res.rewritten, paths.root, res.move)
-    return res
-  })
+  ipcMain.handle(
+    'files:move-to',
+    async (_e: IpcMainInvokeEvent, rel: unknown, destDirRel: unknown): Promise<MoveEntryResult> => {
+      if (typeof rel !== 'string' || typeof destDirRel !== 'string') throw new Error('bad move')
+      const paths = requireNotes()
+      const res = await moveEntry(rel, destDirRel, paths, linkLookup)
+      if (res.rel === rel) return res
+      migrateTitles(rel, res.rel)
+      migrateTitleNamed(rel, res.rel)
+      reindexMoved(paths.root, rel, res.rel)
+      remapMiniNotes(rel, res.rel)
+      // Notes whose links changed: every window drops its cached copy for the new text.
+      publishRewritten(res.rewritten, paths.root, res.move)
+      return res
+    }
+  )
   ipcMain.handle('files:trash', (_e: IpcMainInvokeEvent, rel: string) => {
     const paths = requireNotes()
     const entry = trashPath(rel, paths)

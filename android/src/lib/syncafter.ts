@@ -12,22 +12,27 @@
  * pull schedules a pointless follow-up sync: `quietMs` is how long the
  * provider ignores note changes after it refreshes.
  */
-import type { SyncReport } from './sync';
+import type { SyncReport } from './sync'
 
 export interface AfterSync {
-  refresh: boolean;
+  refresh: boolean
   /** Renames to replay on open views (`recordMoves`). */
-  moves: Array<{ from: string; to: string }>;
+  moves: Array<{ from: string; to: string }>
   /** Extra detail for the sync log row, if any. */
-  note: string | null;
-  quietMs: number;
+  note: string | null
+  quietMs: number
 }
 
-export const QUIET_AFTER_SYNC_MS = 2500;
+export const QUIET_AFTER_SYNC_MS = 2500
 
 export function afterSync(report: SyncReport): AfterSync {
-  const parts: string[] = [];
-  if (report.adopted) parts.push(`${report.adopted} renamed to match the Mac`);
-  if (report.cleaned) parts.push(`${report.cleaned} duplicate cop${report.cleaned === 1 ? 'y' : 'ies'} trashed`);
-  return { refresh: true, moves: report.movedLocal ?? [], note: parts.length ? parts.join(' · ') : null, quietMs: QUIET_AFTER_SYNC_MS };
+  const parts: string[] = []
+  if (report.adopted) parts.push(`${report.adopted} renamed to match the Mac`)
+  if (report.cleaned) parts.push(`${report.cleaned} duplicate cop${report.cleaned === 1 ? 'y' : 'ies'} trashed`)
+  return {
+    refresh: true,
+    moves: report.movedLocal ?? [],
+    note: parts.length ? parts.join(' · ') : null,
+    quietMs: QUIET_AFTER_SYNC_MS
+  }
 }

@@ -62,7 +62,9 @@ describe('detected vs edited', () => {
     expect(editModel(m, { reasoning: 'high' }).reasoning).toBe('high')
     expect(editModel(m, { reasoning: 'ultra' }).reasoning).toBeUndefined()
     const set = editModel(m, { reasoning: 'high' })
-    expect(applyDetection(set, { id: 'm', sources: ['x'], reasoningLevels: ['low'] }, { force: true }).reasoning).toBeUndefined()
+    expect(
+      applyDetection(set, { id: 'm', sources: ['x'], reasoningLevels: ['low'] }, { force: true }).reasoning
+    ).toBeUndefined()
     expect(editModel(set, { reasoning: undefined }).reasoning).toBeUndefined()
   })
 
@@ -86,7 +88,9 @@ describe('detected vs edited', () => {
   })
 
   test('parseModels dedupes by id and drops entries without one', () => {
-    expect(parseModels([{ id: 'a' }, { id: 'a', name: 'dup' }, { name: 'no id' }, null]).map((m) => m.id)).toEqual(['a'])
+    expect(parseModels([{ id: 'a' }, { id: 'a', name: 'dup' }, { name: 'no id' }, null]).map((m) => m.id)).toEqual([
+      'a'
+    ])
   })
 
   test('parseLevels', () => {
@@ -105,7 +109,11 @@ describe('migration + settings', () => {
   })
 
   test('active model is always in the list; dangling per-action ids are dropped', () => {
-    const s = parseAiSettings({ model: 'x', models: [{ id: 'a' }], actionModels: { tidy: 'a', typos: 'gone', bogus: 'a' } })
+    const s = parseAiSettings({
+      model: 'x',
+      models: [{ id: 'a' }],
+      actionModels: { tidy: 'a', typos: 'gone', bogus: 'a' }
+    })
     expect(s.models.map((m) => m.id)).toEqual(['x', 'a'])
     expect(s.actionModels).toEqual({ tidy: 'a' })
   })
@@ -115,7 +123,11 @@ describe('migration + settings', () => {
   })
 
   test('resolveModel: action model, else default; unknown id → bare model', () => {
-    const s = parseAiSettings({ model: 'a', models: [{ id: 'a', contextWindow: 1000 }, { id: 'b' }], actionModels: { summarize: 'b' } })
+    const s = parseAiSettings({
+      model: 'a',
+      models: [{ id: 'a', contextWindow: 1000 }, { id: 'b' }],
+      actionModels: { summarize: 'b' }
+    })
     expect(resolveModel(s, 'summarize').id).toBe('b')
     expect(resolveModel(s, 'tidy')).toEqual({ id: 'a', contextWindow: 1000 })
     expect(resolveModel(s).id).toBe('a')
@@ -134,7 +146,9 @@ describe('limits', () => {
   test('inputBudget: rewrite actions bound by context/2 and max output; summaries keep a reserve', () => {
     expect(inputBudget({}, 100, true)).toBeUndefined()
     expect(inputBudget({ contextWindow: 128_000, maxOutputTokens: 4096 }, 200, true)).toBe(Math.floor(4096 / 1.1))
-    expect(inputBudget({ contextWindow: 8192, maxOutputTokens: 100_000 }, 200, true)).toBe(Math.floor((8192 - 200 - 256) / 2.1))
+    expect(inputBudget({ contextWindow: 8192, maxOutputTokens: 100_000 }, 200, true)).toBe(
+      Math.floor((8192 - 200 - 256) / 2.1)
+    )
     expect(inputBudget({ contextWindow: 128_000, maxOutputTokens: 4096 }, 200, false)).toBe(128_000 - 200 - 4096 - 256)
     expect(inputBudget({ maxOutputTokens: 4096 }, 200, false)).toBeUndefined()
   })

@@ -50,7 +50,10 @@ export function createLanguageModelClass<B extends LanguageModelBase>(
         run = u.run
         history[0] = { ...first, content: u.system }
       }
-      const model = new InkfishLanguageModel({ contextUsage: 0, contextWindow: getModel(run)?.contextWindow ?? CONTEXT_WINDOW })
+      const model = new InkfishLanguageModel({
+        contextUsage: 0,
+        contextWindow: getModel(run)?.contextWindow ?? CONTEXT_WINDOW
+      })
       model.run = run
       model.history = history
       model.contextUsage = estimateTokens(model.history)
@@ -89,7 +92,9 @@ export function createLanguageModelClass<B extends LanguageModelBase>(
             }
             // Electron reduces a stream error to kErrorUnknown, so Inkfish's own sessions get the
             // real error as a sentinel chunk instead (see shared/ai-errors.ts).
-            const detail = scrubDetail(toErrorDetail(err, { provider: provider.kind === 'anthropic' ? 'Anthropic' : 'AI provider' }))
+            const detail = scrubDetail(
+              toErrorDetail(err, { provider: provider.kind === 'anthropic' ? 'Anthropic' : 'AI provider' })
+            )
             onError(detail)
             if (this.run.errors === 'inline') {
               controller.enqueue(encodeErrorSentinel(detail))

@@ -4,8 +4,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import config from '../app.config.mjs'
 import {
-  appPath, assertChecksum, cacheRoot, findInChecksumList, normalizeVersion, parseArgs, parseSha256,
-  platformSupport, releaseAssetUrl, resolveVersionRequest, sha256File, tildify,
+  appPath,
+  assertChecksum,
+  cacheRoot,
+  findInChecksumList,
+  normalizeVersion,
+  parseArgs,
+  parseSha256,
+  platformSupport,
+  releaseAssetUrl,
+  resolveVersionRequest,
+  sha256File,
+  tildify
 } from '../lib/core.mjs'
 
 const HELLO_SHA = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824' // sha256("hello")
@@ -15,14 +25,20 @@ describe('version resolution', () => {
     expect(resolveVersionRequest({ packageVersion: '0.2.10' })).toEqual({ kind: 'pinned', version: '0.2.10' })
   })
   test('--latest wins over the package version', () => {
-    expect(resolveVersionRequest({ packageVersion: '0.2.10', latest: true })).toEqual({ kind: 'latest', reason: 'flag' })
+    expect(resolveVersionRequest({ packageVersion: '0.2.10', latest: true })).toEqual({
+      kind: 'latest',
+      reason: 'flag'
+    })
   })
   test('an unpublished dev copy asks for the latest release', () => {
     expect(resolveVersionRequest({ packageVersion: '0.0.0-dev' })).toEqual({ kind: 'latest', reason: 'dev' })
     expect(resolveVersionRequest({ packageVersion: 'garbage' })).toEqual({ kind: 'latest', reason: 'dev' })
   })
   test('prereleases stay pinned', () => {
-    expect(resolveVersionRequest({ packageVersion: '0.2.0-beta.1' })).toEqual({ kind: 'pinned', version: '0.2.0-beta.1' })
+    expect(resolveVersionRequest({ packageVersion: '0.2.0-beta.1' })).toEqual({
+      kind: 'pinned',
+      version: '0.2.0-beta.1'
+    })
   })
   test('normalizeVersion strips the v', () => {
     expect(normalizeVersion('v0.2.10')).toBe('0.2.10')
@@ -52,7 +68,9 @@ describe('checksums', () => {
     expect(assertChecksum(actual, `sha256:${HELLO_SHA}`)).toBe(true)
   })
   test('a mismatch throws with both values', () => {
-    expect(() => assertChecksum(HELLO_SHA, 'b'.repeat(64), 'x.zip')).toThrow(/SHA-256 mismatch for x\.zip[\s\S]*expected b{64}[\s\S]*got +2cf24d/)
+    expect(() => assertChecksum(HELLO_SHA, 'b'.repeat(64), 'x.zip')).toThrow(
+      /SHA-256 mismatch for x\.zip[\s\S]*expected b{64}[\s\S]*got +2cf24d/
+    )
     expect(() => assertChecksum(HELLO_SHA, null)).toThrow(/missing or malformed/)
   })
 })
@@ -77,7 +95,9 @@ describe('cache path', () => {
 
 describe('config + platform', () => {
   test('asset URL matches the release workflow + Cask naming', () => {
-    expect(releaseAssetUrl(config, '0.2.10')).toBe('https://github.com/PylotLight/Inkfish/releases/download/v0.2.10/Inkfish-0.2.10-mac-arm64.zip')
+    expect(releaseAssetUrl(config, '0.2.10')).toBe(
+      'https://github.com/PylotLight/Inkfish/releases/download/v0.2.10/Inkfish-0.2.10-mac-arm64.zip'
+    )
   })
   test('only darwin-arm64 is supported', () => {
     expect(platformSupport(config, 'darwin', 'arm64')).toBeNull()

@@ -48,7 +48,16 @@ describe('Prompt API origin gate', () => {
 
 describe('helpers', () => {
   test('messageText keeps text parts only', () => {
-    expect(messageText({ role: 'user', content: [{ type: 'text', value: 'a' }, { type: 'image', value: 'x' }, { type: 'text', value: 'b' }] })).toBe('ab')
+    expect(
+      messageText({
+        role: 'user',
+        content: [
+          { type: 'text', value: 'a' },
+          { type: 'image', value: 'x' },
+          { type: 'text', value: 'b' }
+        ]
+      })
+    ).toBe('ab')
   })
   test('estimateTokens ≈ chars/4', () => {
     expect(estimateTokens([{ role: 'user', content: '12345678' }])).toBe(2)

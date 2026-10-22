@@ -1,7 +1,14 @@
 {
   "object": "list",
   "data": [
-    { "id": "llama-3.3-70b-versatile", "object": "model", "owned_by": "Meta", "active": true, "context_window": 131072, "max_completion_tokens": 32768 },
+    {
+      "id": "llama-3.3-70b-versatile",
+      "object": "model",
+      "owned_by": "Meta",
+      "active": true,
+      "context_window": 131072,
+      "max_completion_tokens": 32768
+    },
     { "id": "whisper-large-v3", "object": "model", "owned_by": "OpenAI", "active": true, "context_window": 448 }
   ]
 }

@@ -96,7 +96,11 @@ export default function CommandPalette({
   }
 
   const placeholder =
-    mode === 'notes' ? 'Open a note…' : mode === 'commands' ? 'Run a command…' : 'Find a note or command…  (> for commands)'
+    mode === 'notes'
+      ? 'Open a note…'
+      : mode === 'commands'
+        ? 'Run a command…'
+        : 'Find a note or command…  (> for commands)'
 
   return (
     <div className="modal-backdrop palette-backdrop" onMouseDown={onClose}>

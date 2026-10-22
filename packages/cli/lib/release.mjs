@@ -36,7 +36,11 @@ function apiHeaders(env, userAgent) {
  * @param {string} which
  * @param {{ fetchImpl?: typeof fetch, env?: Record<string, string | undefined>, userAgent?: string, signal?: AbortSignal }} [opts]
  */
-export async function fetchRelease(config, which, { fetchImpl = fetch, env = process.env, userAgent = config.id, signal } = {}) {
+export async function fetchRelease(
+  config,
+  which,
+  { fetchImpl = fetch, env = process.env, userAgent = config.id, signal } = {}
+) {
   const path = which === 'latest' ? 'latest' : `tags/${which}`
   const url = `https://api.github.com/repos/${config.repo}/releases/${path}`
   const res = await fetchImpl(url, { headers: apiHeaders(env, userAgent), signal })
@@ -80,7 +84,7 @@ export async function targetFromRelease(config, release, { fetchImpl = fetch, si
     url: asset.browser_download_url || releaseAssetUrl(config, version),
     sha256,
     checksumSource: sha256 ? checksumSource : 'none',
-    size: Number(asset.size) || null,
+    size: Number(asset.size) || null
   }
 }
 
@@ -91,21 +95,49 @@ export async function targetFromRelease(config, release, { fetchImpl = fetch, si
  * @param {{ manifest?: ReturnType<typeof readManifest>, env?: Record<string, string | undefined>, fetchImpl?: typeof fetch, signal?: AbortSignal, userAgent?: string }} [opts]
  * @returns {Promise<Target>}
  */
-export async function resolveTarget(config, request, { manifest = null, env = process.env, fetchImpl = fetch, signal, userAgent } = {}) {
+export async function resolveTarget(
+  config,
+  request,
+  { manifest = null, env = process.env, fetchImpl = fetch, signal, userAgent } = {}
+) {
   const urlOverride = env[`${config.envPrefix}_ASSET_URL`]
   const shaOverride = parseSha256(env[`${config.envPrefix}_SHA256`])
   if (urlOverride) {
-    const version = request.kind === 'pinned' ? request.version : normalizeVersion(env[`${config.envPrefix}_VERSION`]) ?? '0.0.0-local'
-    return { version, assetName: config.assetName(version), url: urlOverride, sha256: shaOverride, checksumSource: shaOverride ? `${config.envPrefix}_SHA256` : 'none', size: null }
+    const version =
+      request.kind === 'pinned'
+        ? request.version
+        : (normalizeVersion(env[`${config.envPrefix}_VERSION`]) ?? '0.0.0-local')
+    return {
+      version,
+      assetName: config.assetName(version),
+      url: urlOverride,
+      sha256: shaOverride,
+      checksumSource: shaOverride ? `${config.envPrefix}_SHA256` : 'none',
+      size: null
+    }
   }
   const opts = { fetchImpl, signal, userAgent }
   if (request.kind === 'pinned') {
     const version = request.version
     if (shaOverride) {
-      return { version, assetName: config.assetName(version), url: releaseAssetUrl(config, version), sha256: shaOverride, checksumSource: `${config.envPrefix}_SHA256`, size: null }
+      return {
+        version,
+        assetName: config.assetName(version),
+        url: releaseAssetUrl(config, version),
+        sha256: shaOverride,
+        checksumSource: `${config.envPrefix}_SHA256`,
+        size: null
+      }
     }
     if (manifest && manifest.version === version) {
-      return { version, assetName: config.assetName(version), url: releaseAssetUrl(config, version), sha256: manifest.sha256, checksumSource: 'the npm package (recorded at publish)', size: manifest.size }
+      return {
+        version,
+        assetName: config.assetName(version),
+        url: releaseAssetUrl(config, version),
+        sha256: manifest.sha256,
+        checksumSource: 'the npm package (recorded at publish)',
+        size: manifest.size
+      }
     }
     const release = await fetchRelease(config, `v${version}`, { fetchImpl, env, signal, userAgent })
     if (!release) throw new Error(`no GitHub release v${version} in ${config.repo}`)

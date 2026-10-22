@@ -92,7 +92,8 @@ function unregister(accel: string): void {
 function state(): ShortcutState {
   const s = getShortcutSettings()
   const registered = {} as Record<ShortcutId, boolean>
-  for (const id of SHORTCUT_IDS) registered[id] = !!live[id] && live[id] === s[id] && globalShortcut.isRegistered(live[id])
+  for (const id of SHORTCUT_IDS)
+    registered[id] = !!live[id] && live[id] === s[id] && globalShortcut.isRegistered(live[id])
   return { settings: s, defaults: DEFAULTS, registered, errors: { ...errors }, disabled: DISABLED }
 }
 
@@ -138,7 +139,10 @@ export function setShortcut(id: ShortcutId, input: string): ShortcutSetResult {
  * Register the saved capture shortcuts at launch. A key another app holds is skipped with a
  * warning (the setting is kept, Settings shows it isn't active). Unregisters automatically on quit.
  */
-export function registerCaptureShortcuts(fns: Record<ShortcutId, () => void>, others?: () => Record<string, string>): void {
+export function registerCaptureShortcuts(
+  fns: Record<ShortcutId, () => void>,
+  others?: () => Record<string, string>
+): void {
   Object.assign(handlers, fns)
   if (others) otherShortcuts = others
   if (DISABLED) return
@@ -181,7 +185,8 @@ export function registerShortcutIpc(): void {
   ipcMain.on('shortcuts:recording', (_e, on: unknown) => suspend(on === true))
   ipcMain.handle('shortcuts:get', (): ShortcutState => state())
   ipcMain.handle('shortcuts:set', (_e: IpcMainInvokeEvent, id: unknown, accel: unknown): ShortcutSetResult => {
-    if (!SHORTCUT_IDS.includes(id as ShortcutId) || typeof accel !== 'string') return { ...state(), error: 'Bad request.' }
+    if (!SHORTCUT_IDS.includes(id as ShortcutId) || typeof accel !== 'string')
+      return { ...state(), error: 'Bad request.' }
     return setShortcut(id as ShortcutId, accel)
   })
 }

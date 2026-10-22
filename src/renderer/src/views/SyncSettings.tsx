@@ -95,8 +95,8 @@ export default function SyncSettings(): React.JSX.Element {
             <div className="sync-pair">
               <div className="sync-qr" dangerouslySetInnerHTML={{ __html: pairing.svg }} />
               <p className="muted small setting-hint">
-                On Android open Inkfish › Settings › Sync › Pair with Mac and scan this. Same Wi-Fi as this Mac.
-                Expires in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}.
+                On Android open Inkfish › Settings › Sync › Pair with Mac and scan this. Same Wi-Fi as this Mac. Expires
+                in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}.
               </p>
               <div className="row" style={{ marginTop: 0 }}>
                 <button className="btn ghost sm" onClick={() => window.api.sync.pair().then(setSt)}>
@@ -151,23 +151,32 @@ export default function SyncSettings(): React.JSX.Element {
       <section className="settings-group">
         <h4>Recent syncs</h4>
         {log.length ? (
-          [...log].reverse().slice(0, 10).map((e, i) => (
-            <div key={`${e.at}-${i}`} className="setting-row inline">
-              <div className="setting-label">
-                {e.peer || 'This Mac'}
-                <span className="muted small setting-hint">
-                  {summarize(e)} · {when(e.at)}
+          [...log]
+            .reverse()
+            .slice(0, 10)
+            .map((e, i) => (
+              <div key={`${e.at}-${i}`} className="setting-row inline">
+                <div className="setting-label">
+                  {e.peer || 'This Mac'}
+                  <span className="muted small setting-hint">
+                    {summarize(e)} · {when(e.at)}
+                  </span>
+                </div>
+                <span
+                  className="muted small"
+                  style={e.kind === 'error' ? { color: 'var(--danger)' } : undefined}
+                  aria-live="polite"
+                >
+                  {e.kind === 'error'
+                    ? '● Failed'
+                    : e.kind === 'hold'
+                      ? '● Held'
+                      : e.kind === 'heal'
+                        ? '◆ Healed'
+                        : '● Ok'}
                 </span>
               </div>
-              <span
-                className="muted small"
-                style={e.kind === 'error' ? { color: 'var(--danger)' } : undefined}
-                aria-live="polite"
-              >
-                {e.kind === 'error' ? '● Failed' : e.kind === 'hold' ? '● Held' : e.kind === 'heal' ? '◆ Healed' : '● Ok'}
-              </span>
-            </div>
-          ))
+            ))
         ) : (
           <p className="muted small setting-hint">No syncs yet — pair a phone above.</p>
         )}

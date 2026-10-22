@@ -70,7 +70,10 @@ async function loadImages(refs: string[], notePath?: string | null): Promise<str
 
 /** A failed provider request with the handler's structured detail (status, endpoint, model). */
 export class AiRunError extends Error {
-  constructor(readonly detail: AiErrorDetail | null, message = detail ? formatAiError(detail) : 'The AI request failed.') {
+  constructor(
+    readonly detail: AiErrorDetail | null,
+    message = detail ? formatAiError(detail) : 'The AI request failed.'
+  ) {
     super(message)
     this.name = 'AiRunError'
   }
@@ -110,7 +113,8 @@ export async function ensureAiReady(): Promise<void> {
   const lm = languageModel()
   if (!lm) throw new AiNotConnectedError('This build has no Prompt API (LanguageModel). Update Inkfish.')
   const availability = await lm.availability()
-  if (availability !== 'available') throw new AiNotConnectedError(`AI provider is ${availability}. Check Settings › AI.`)
+  if (availability !== 'available')
+    throw new AiNotConnectedError(`AI provider is ${availability}. Check Settings › AI.`)
 }
 
 /** `Complete` over the Prompt API: one session per call, streamed, cancelled by `signal`. */
@@ -124,7 +128,9 @@ export function promptApiComplete(signal?: AbortSignal, opts: CompleteOptions = 
     // provider error, since Electron only passes kErrorUnknown through (shared/ai-errors.ts).
     const model = await lm
       .create({
-        initialPrompts: [{ role: 'system', content: tagSystemPrompt(prompt.system, { model: opts.model, errors: 'inline' }) }],
+        initialPrompts: [
+          { role: 'system', content: tagSystemPrompt(prompt.system, { model: opts.model, errors: 'inline' }) }
+        ],
         signal
       })
       .catch((e: unknown) => explainUnknown(e, since))
@@ -171,7 +177,10 @@ export async function runAiProcess(
   if (!status.connected) throw new AiNotConnectedError()
   const model = resolveModel(status.settings, input.action)
   const includeImages = status.settings.includeImages && supportsInput(model, 'image')
-  return processText({ ...input, model, includeImages }, promptApiComplete(signal, { model: model.id, notePath: ctx.notePath }))
+  return processText(
+    { ...input, model, includeImages },
+    promptApiComplete(signal, { model: model.id, notePath: ctx.notePath })
+  )
 }
 
 /** Plain message for any error from a run (abort is not an error to show). */

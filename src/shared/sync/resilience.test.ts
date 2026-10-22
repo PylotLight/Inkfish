@@ -88,7 +88,10 @@ function macServer(mac: CiFs, o: MacOpts = {}) {
       handle = make(opts)
     },
     remote: (f: Fetch = fetchFn, opts: { features?: string[]; attempts?: number } = {}) =>
-      httpRemote(f, '127.0.0.1', peer, PEER, random, { features: opts.features ?? ['progress', 'summary', 'chunks', 'expect'], retry: { ...fast, attempts: opts.attempts ?? 4 } })
+      httpRemote(f, '127.0.0.1', peer, PEER, random, {
+        features: opts.features ?? ['progress', 'summary', 'chunks', 'expect'],
+        retry: { ...fast, attempts: opts.attempts ?? 4 }
+      })
   }
 }
 
@@ -102,8 +105,11 @@ function blob(n: number, seed: number): Uint8Array {
   return b
 }
 
-const sync = (phone: Phone, remote: ReturnType<ReturnType<typeof macServer>['remote']>, state: MemState): Promise<SyncReport> =>
-  runSync({ fs: phone, remote, state, remoteName: 'Mac', chunk })
+const sync = (
+  phone: Phone,
+  remote: ReturnType<ReturnType<typeof macServer>['remote']>,
+  state: MemState
+): Promise<SyncReport> => runSync({ fs: phone, remote, state, remoteName: 'Mac', chunk })
 
 async function converged(phone: Phone, mac: CiFs, s: ReturnType<typeof macServer>, state: MemState): Promise<void> {
   const r = await sync(phone, s.remote(), state)
@@ -186,7 +192,13 @@ describe('fault injection', () => {
     const state = new MemState()
     const s = macServer(mac)
     const base = s.remote()
-    const lying = { ...base, get: async (ps: string[]) => Object.fromEntries(Object.entries(await base.get(ps)).map(([p, d]) => [p, p.endsWith('n2.md') ? utf8Encode('garbage') : d])) }
+    const lying = {
+      ...base,
+      get: async (ps: string[]) =>
+        Object.fromEntries(
+          Object.entries(await base.get(ps)).map(([p, d]) => [p, p.endsWith('n2.md') ? utf8Encode('garbage') : d])
+        )
+    }
     const r = await runSync({ fs: phone, remote: lying, state, remoteName: 'Mac' })
     expect(r.skipped).toBe(1)
     expect(phone.files.has('Work/n2.md')).toBe(false)
@@ -357,7 +369,10 @@ describe('edits racing the sync', () => {
     expect(mac.text('Work/a.md')).toBe('mac v2\n')
     expect(mac.text('Work/b.md')).toBe('b edited on mac\n') // the delete didn't eat the edit
     await sync(phone, s.remote(), state)
-    const all = mac.paths().map((p) => mac.text(p)).join('|')
+    const all = mac
+      .paths()
+      .map((p) => mac.text(p))
+      .join('|')
     expect(all).toContain('phone v2')
     expect(all).toContain('mac v2')
     await converged(phone, mac, s, state)
@@ -406,6 +421,10 @@ describe('retry policy', () => {
     ).rejects.toThrow('no')
     expect(calls).toBe(1)
     let n = 0
-    expect(await withRetry(async () => (++n < 3 ? Promise.reject(new HttpError(503, 'busy')) : 'ok'), { sleep: async () => undefined })).toBe('ok')
+    expect(
+      await withRetry(async () => (++n < 3 ? Promise.reject(new HttpError(503, 'busy')) : 'ok'), {
+        sleep: async () => undefined
+      })
+    ).toBe('ok')
   })
 })

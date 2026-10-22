@@ -83,7 +83,16 @@ export function progressShort(p: SyncProgress): string {
 }
 
 export function runFromReport(r: SyncReport, at: number, ms: number): PeerRun {
-  return { at, ms, pulled: r.pulled, pushed: r.pushed, merged: r.merged, moved: r.moved, deleted: r.deleted, conflicts: r.conflicts.length }
+  return {
+    at,
+    ms,
+    pulled: r.pulled,
+    pushed: r.pushed,
+    merged: r.merged,
+    moved: r.moved,
+    deleted: r.deleted,
+    conflicts: r.conflicts.length
+  }
 }
 
 /** "↓12 ↑3 · 2 moved · 1 conflict · 4.2s" or "failed: …" */
@@ -106,7 +115,8 @@ export function runLine(r: PeerRun): string {
 export function cleanRun(x: unknown, now: number): PeerRun | null {
   if (!x || typeof x !== 'object') return null
   const o = x as Record<string, unknown>
-  const n = (k: string): number => (typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0 ? Math.floor(o[k] as number) : 0)
+  const n = (k: string): number =>
+    typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0 ? Math.floor(o[k] as number) : 0
   const at = n('at')
   return {
     at: at && Math.abs(at - now) < 24 * 3600_000 ? at : now,
@@ -127,7 +137,8 @@ export function cleanProgress(x: unknown, now: number): LiveProgress | null {
   if (!x || typeof x !== 'object') return null
   const o = x as Record<string, unknown>
   if (!STAGES.has(o['stage'] as SyncStage)) return null
-  const n = (k: string): number => (typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0 ? (o[k] as number) : 0)
+  const n = (k: string): number =>
+    typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0 ? (o[k] as number) : 0
   // Times are re-based on our clock (the phone's may be skewed): keep only the durations.
   const sent = n('sentAt') || now
   const rebase = (t: number): number => (t ? now - Math.max(0, sent - t) : now)

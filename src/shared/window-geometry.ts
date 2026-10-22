@@ -52,7 +52,11 @@ function overlapArea(a: Rect, b: Rect): number {
  * overlaps most, shrinks it to fit, and nudges it fully on screen. Returns null when the
  * window would be off every display (monitor unplugged), so the caller uses defaults.
  */
-export function fitBoundsToDisplays(bounds: Rect, workAreas: Rect[], minimum: { width: number; height: number }): Rect | null {
+export function fitBoundsToDisplays(
+  bounds: Rect,
+  workAreas: Rect[],
+  minimum: { width: number; height: number }
+): Rect | null {
   let best: Rect | null = null
   let bestOverlap = 0
   for (const area of workAreas) {
@@ -89,7 +93,11 @@ export function boundsToShow(
     if (fitted) return fitted
   }
   const width = clamp(sane ? bounds.width : minimum.width, Math.min(minimum.width, fallback.width), fallback.width)
-  const height = clamp(sane ? bounds.height : minimum.height, Math.min(minimum.height, fallback.height), fallback.height)
+  const height = clamp(
+    sane ? bounds.height : minimum.height,
+    Math.min(minimum.height, fallback.height),
+    fallback.height
+  )
   return {
     x: Math.round(fallback.x + (fallback.width - width) / 2),
     y: Math.round(fallback.y + (fallback.height - height) / 2),

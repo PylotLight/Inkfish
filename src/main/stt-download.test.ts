@@ -28,13 +28,13 @@ afterEach(() => {
 test('prepareEngine routes a helper model download through active SOCKS and cleans up the bridge', async () => {
   let destination = ''
   let request = ''
-  server = createServer(socket => {
+  server = createServer((socket) => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
     socket.on('error', () => {})
     let pending = Buffer.alloc(0)
     let state = 0
-    socket.on('data', chunk => {
+    socket.on('data', (chunk) => {
       pending = Buffer.concat([pending, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)])
       if (state === 0) {
         if (pending.length < 2 || pending.length < 2 + pending[1]!) return
@@ -57,11 +57,13 @@ test('prepareEngine routes a helper model download through active SOCKS and clea
         pending = Buffer.alloc(0)
         if (!request.includes('\r\n\r\n')) return
         state = 3
-        socket.end('HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 3-7/8\r\nConnection: close\r\n\r\nmodel')
+        socket.end(
+          'HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 3-7/8\r\nConnection: close\r\n\r\nmodel'
+        )
       }
     })
   })
-  await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve))
   const address = server.address() as { port: number }
   proxyState.settings = cloneProxySettings(DEFAULT_PROXY_SETTINGS)
   proxyState.settings.primary = { enabled: true, host: '127.0.0.1', port: address.port, bypassLocalNetwork: false }
@@ -72,7 +74,9 @@ test('prepareEngine routes a helper model download through active SOCKS and clea
   const resultFile = join(temp, 'result.json')
   // Stand in for FluidAudio's documented http_proxy hook; exercise the real
   // prepareEngine spawn/env/progress/cleanup path without macOS frameworks.
-  writeFileSync(join(temp, 'bin', 'inkfish-stt'), `#!/usr/bin/env node
+  writeFileSync(
+    join(temp, 'bin', 'inkfish-stt'),
+    `#!/usr/bin/env node
 const http = require('node:http');
 const fs = require('node:fs');
 const proxy = process.env.http_proxy;
@@ -86,16 +90,18 @@ http.get(proxy, {path:'http://download.invalid/model.bin',headers:{Range:'bytes=
     process.stdout.write('{"ok":true}\\n');
   });
 }).on('error', () => process.exit(4));
-`, { mode: 0o755 })
+`,
+    { mode: 0o755 }
+  )
   Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
   Object.defineProperty(process, 'resourcesPath', { configurable: true, value: temp })
   const progress: string[] = []
-  await prepareEngine('test-model', p => progress.push(p.state))
+  await prepareEngine('test-model', (p) => progress.push(p.state))
   expect(destination).toBe('download.invalid')
   expect(request).toMatch(/range: bytes=3-/i)
   expect(progress).toContain('downloading')
   expect(progress.at(-1)).toBe('done')
-  expect(downloadProgress().find(p => p.id === 'test-model')).toBeUndefined()
+  expect(downloadProgress().find((p) => p.id === 'test-model')).toBeUndefined()
   const { proxy } = await Bun.file(resultFile).json()
   await expect(fetch(proxy)).rejects.toThrow()
 }, 10_000)

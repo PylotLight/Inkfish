@@ -74,8 +74,10 @@ export function appendCapped(log: SyncLogEntry[], e: SyncLogEntry): SyncLogEntry
 /** One-line summary for the log list, e.g. `↓12 ↑3 · 1 conflict` or the message. */
 export function summarize(e: SyncLogEntry): string {
   const times = e.repeat && e.repeat > 1 ? ` (×${e.repeat})` : ''
-  if (e.kind === 'apply' && e.files !== undefined) return `${e.files} file change${e.files === 1 ? '' : 's'}${e.peer ? ` from ${e.peer}` : ''}${times}`
-  if (e.message && (e.kind === 'error' || e.kind === 'hold' || e.kind === 'heal' || e.kind === 'apply')) return `${e.message}${times}`
+  if (e.kind === 'apply' && e.files !== undefined)
+    return `${e.files} file change${e.files === 1 ? '' : 's'}${e.peer ? ` from ${e.peer}` : ''}${times}`
+  if (e.message && (e.kind === 'error' || e.kind === 'hold' || e.kind === 'heal' || e.kind === 'apply'))
+    return `${e.message}${times}`
   const parts: string[] = []
   if (e.pulled) parts.push(`↓${e.pulled}`)
   if (e.pushed) parts.push(`↑${e.pushed}`)

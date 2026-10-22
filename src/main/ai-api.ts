@@ -1,4 +1,12 @@
-import { BrowserWindow, ipcMain, safeStorage, session, utilityProcess, type IpcMainInvokeEvent, type UtilityProcess } from 'electron'
+import {
+  BrowserWindow,
+  ipcMain,
+  safeStorage,
+  session,
+  utilityProcess,
+  type IpcMainInvokeEvent,
+  type UtilityProcess
+} from 'electron'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -33,7 +41,6 @@ import { appDataDir } from './vault'
  * version survives restarts and is marked stale when the raw note changes.
  */
 
-
 const RESPAWN_LIMIT = 3
 const RESPAWN_WINDOW_MS = 60_000
 
@@ -66,7 +73,6 @@ function persist(next: StoredAi): void {
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify(next, null, 2), { mode: 0o600 })
 }
-
 
 async function keychain(): Promise<boolean> {
   try {
@@ -109,7 +115,9 @@ export function rememberEndpoint(modelId: string, endpoint: AiEndpoint): void {
   if (!cur.models.some((m) => m.id === modelId)) return
   if (cur.models.find((m) => m.id === modelId)?.endpoint === endpoint) return
   persist({ ...cur, models: learnEndpoint(cur.models, modelId, endpoint) })
-  console.log(`[ai] ${modelId}: using ${endpoint === 'responses' ? 'the Responses API' : 'Chat Completions'} from now on (Auto)`)
+  console.log(
+    `[ai] ${modelId}: using ${endpoint === 'responses' ? 'the Responses API' : 'Chat Completions'} from now on (Auto)`
+  )
   // Keep the handler's copy in step (learned in Test connection, or confirm the child's own),
   // and open Settings windows, so a later save doesn't overwrite what was learned.
   void applyAi()
@@ -175,11 +183,19 @@ function ensureChild(): UtilityProcess | null {
   }
   respawns.push(now)
   const forked = utilityProcess.fork(path, [], { serviceName: 'Inkfish AI', stdio: 'inherit' })
-  forked.on('message', (msg: { type?: string; model?: unknown; endpoint?: unknown; detail?: AiErrorDetail; at?: number }) => {
-    if (msg?.type === 'learned' && typeof msg.model === 'string' && (msg.endpoint === 'chat' || msg.endpoint === 'responses'))
-      rememberEndpoint(msg.model, msg.endpoint)
-    else if (msg?.type === 'error' && msg.detail && typeof msg.detail.message === 'string') setLastError(msg.detail, Number(msg.at) || Date.now())
-  })
+  forked.on(
+    'message',
+    (msg: { type?: string; model?: unknown; endpoint?: unknown; detail?: AiErrorDetail; at?: number }) => {
+      if (
+        msg?.type === 'learned' &&
+        typeof msg.model === 'string' &&
+        (msg.endpoint === 'chat' || msg.endpoint === 'responses')
+      )
+        rememberEndpoint(msg.model, msg.endpoint)
+      else if (msg?.type === 'error' && msg.detail && typeof msg.detail.message === 'string')
+        setLastError(msg.detail, Number(msg.at) || Date.now())
+    }
+  )
   forked.once('exit', (code) => {
     if (child !== forked) return
     child = null
@@ -262,7 +278,13 @@ export async function testAi(patch?: unknown): Promise<AiTestResult> {
   const provider = createProvider(cfg)
   const endpointLabel = (): string | undefined => {
     const e = provider.lastRequest?.endpoint
-    return e === 'responses' ? 'Responses' : e === 'chat' ? 'Chat Completions' : e === 'messages' ? 'Messages' : undefined
+    return e === 'responses'
+      ? 'Responses'
+      : e === 'chat'
+        ? 'Chat Completions'
+        : e === 'messages'
+          ? 'Messages'
+          : undefined
   }
   const run = forced && forced !== 'auto' ? { model: modelId, api: forced } : { model: modelId }
   try {
@@ -275,10 +297,26 @@ export async function testAi(patch?: unknown): Promise<AiTestResult> {
       AbortSignal.timeout(30_000),
       run
     )
-    return { ok: true, ms: Date.now() - t0, detail: reply.trim().slice(0, 80) || '(empty reply)', model: modelId, endpoint: endpointLabel() }
+    return {
+      ok: true,
+      ms: Date.now() - t0,
+      detail: reply.trim().slice(0, 80) || '(empty reply)',
+      model: modelId,
+      endpoint: endpointLabel()
+    }
   } catch (err) {
-    const detail = scrubDetail(toErrorDetail(err, { provider: s.kind === 'anthropic' ? 'Anthropic' : 'AI provider', model: modelId }), cfg.apiKey)
-    return { ok: false, ms: Date.now() - t0, detail: formatAiError(detail), model: modelId, endpoint: endpointLabel(), error: detail }
+    const detail = scrubDetail(
+      toErrorDetail(err, { provider: s.kind === 'anthropic' ? 'Anthropic' : 'AI provider', model: modelId }),
+      cfg.apiKey
+    )
+    return {
+      ok: false,
+      ms: Date.now() - t0,
+      detail: formatAiError(detail),
+      model: modelId,
+      endpoint: endpointLabel(),
+      error: detail
+    }
   }
 }
 

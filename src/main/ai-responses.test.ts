@@ -22,7 +22,14 @@ import {
   visibleText,
   type AiErrorDetail
 } from '../shared/ai-errors'
-import { learnEndpoint, parseModel, resolveApi, tagSystemPrompt, untagSystemPrompt, type AiModel } from '../shared/ai-models'
+import {
+  learnEndpoint,
+  parseModel,
+  resolveApi,
+  tagSystemPrompt,
+  untagSystemPrompt,
+  type AiModel
+} from '../shared/ai-models'
 import { parseAiSettings } from '../shared/ai-api'
 import type { PromptMessage } from '../shared/ai-api'
 
@@ -44,7 +51,8 @@ function sseResponse(blocks: string[]): Response {
     { status: 200, headers: { 'content-type': 'text/event-stream' } }
   )
 }
-const ev = (type: string, extra: Record<string, unknown> = {}): string => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`
+const ev = (type: string, extra: Record<string, unknown> = {}): string =>
+  `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`
 
 async function* events(list: Array<Record<string, unknown>>): AsyncGenerator<{ event: string; data: string }> {
   for (const j of list) yield { event: String(j.type), data: JSON.stringify(j) }
@@ -85,11 +93,23 @@ describe('Responses SSE parser', () => {
   })
 
   test('proxy without deltas: text from output_text.done, or from the completed response', async () => {
-    expect(await collect(parseResponsesEvents(events([{ type: 'response.output_text.done', text: 'A' }, { type: 'response.completed' }]), CTX))).toEqual(['A'])
+    expect(
+      await collect(
+        parseResponsesEvents(
+          events([{ type: 'response.output_text.done', text: 'A' }, { type: 'response.completed' }]),
+          CTX
+        )
+      )
+    ).toEqual(['A'])
     const completedOnly = events([
       {
         type: 'response.completed',
-        response: { output: [{ type: 'reasoning', summary: [] }, { type: 'message', content: [{ type: 'output_text', text: 'B' }] }] }
+        response: {
+          output: [
+            { type: 'reasoning', summary: [] },
+            { type: 'message', content: [{ type: 'output_text', text: 'B' }] }
+          ]
+        }
       }
     ])
     expect(await collect(parseResponsesEvents(completedOnly, CTX))).toEqual(['B'])
@@ -101,13 +121,21 @@ describe('Responses SSE parser', () => {
         parseResponsesEvents(
           events([
             { type: 'response.output_text.delta', delta: 'x' },
-            { type: 'response.failed', response: { status: 'failed', error: { code: 'server_error', message: 'The model crashed' } } }
+            {
+              type: 'response.failed',
+              response: { status: 'failed', error: { code: 'server_error', message: 'The model crashed' } }
+            }
           ]),
           CTX
         )
       )
     )
-    expect(e.detail).toMatchObject({ kind: 'stream', code: 'server_error', message: 'The model crashed', endpoint: 'POST /responses' })
+    expect(e.detail).toMatchObject({
+      kind: 'stream',
+      code: 'server_error',
+      message: 'The model crashed',
+      endpoint: 'POST /responses'
+    })
     expect(e.message).toContain('The model crashed (POST /responses, openai.gpt-6-luna)')
   })
 
@@ -117,7 +145,10 @@ describe('Responses SSE parser', () => {
         parseResponsesEvents(
           events([
             { type: 'response.output_text.delta', delta: 'half a no' },
-            { type: 'response.incomplete', response: { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' } } }
+            {
+              type: 'response.incomplete',
+              response: { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' } }
+            }
           ]),
           CTX
         )
@@ -129,12 +160,25 @@ describe('Responses SSE parser', () => {
   })
 
   test('error event (top-level and nested), refusal, and a stream that ends with no text', async () => {
-    const top = await failure(collect(parseResponsesEvents(events([{ type: 'error', code: 'rate_limit_exceeded', message: 'Slow down' }]), CTX)))
+    const top = await failure(
+      collect(parseResponsesEvents(events([{ type: 'error', code: 'rate_limit_exceeded', message: 'Slow down' }]), CTX))
+    )
     expect(top.detail).toMatchObject({ code: 'rate_limit_exceeded', message: 'Slow down' })
-    const nested = await failure(collect(parseResponsesEvents(events([{ type: 'error', error: { message: 'boom', type: 'server_error' } }]), CTX)))
+    const nested = await failure(
+      collect(parseResponsesEvents(events([{ type: 'error', error: { message: 'boom', type: 'server_error' } }]), CTX))
+    )
     expect(nested.detail).toMatchObject({ message: 'boom', type: 'server_error' })
     const refusal = await failure(
-      collect(parseResponsesEvents(events([{ type: 'response.refusal.delta', delta: 'I can' }, { type: 'response.refusal.done', refusal: "I can't help" }, { type: 'response.completed' }]), CTX))
+      collect(
+        parseResponsesEvents(
+          events([
+            { type: 'response.refusal.delta', delta: 'I can' },
+            { type: 'response.refusal.done', refusal: "I can't help" },
+            { type: 'response.completed' }
+          ]),
+          CTX
+        )
+      )
     )
     expect(refusal.message).toContain("The model refused: I can't help")
     const empty = await failure(collect(parseResponsesEvents(events([{ type: 'response.created' }]), CTX)))
@@ -142,7 +186,9 @@ describe('Responses SSE parser', () => {
   })
 
   test('a proxy that drops the final event still returns the text it streamed', async () => {
-    expect(await collect(parseResponsesEvents(events([{ type: 'response.output_text.delta', delta: 'ok' }]), CTX))).toEqual(['ok'])
+    expect(
+      await collect(parseResponsesEvents(events([{ type: 'response.output_text.delta', delta: 'ok' }]), CTX))
+    ).toEqual(['ok'])
   })
 })
 
@@ -173,7 +219,18 @@ describe('Responses request body', () => {
   })
 
   test('vision model: input_image data URLs; reasoning → reasoning.effort; limits → max_output_tokens', () => {
-    const cfg = { ...base, models: [{ id: 'm', input: ['text', 'image'] as AiModel['input'], reasoning: 'high', contextWindow: 1000, maxOutputTokens: 4096 }] }
+    const cfg = {
+      ...base,
+      models: [
+        {
+          id: 'm',
+          input: ['text', 'image'] as AiModel['input'],
+          reasoning: 'high',
+          contextWindow: 1000,
+          maxOutputTokens: 4096
+        }
+      ]
+    }
     const b = responsesBody(cfg, msgs.slice(0, 2))
     expect((b.input as unknown[])[0]).toEqual({
       role: 'user',
@@ -191,7 +248,10 @@ describe('Responses request body', () => {
 
   test('per-run model picks its config', () => {
     const cfg = { ...base, models: [{ id: 'm' }, { id: 'r', maxOutputTokens: 300 }] }
-    expect(responsesBody(cfg, [{ role: 'user', content: 'x' }], { model: 'r' })).toMatchObject({ model: 'r', max_output_tokens: 300 })
+    expect(responsesBody(cfg, [{ role: 'user', content: 'x' }], { model: 'r' })).toMatchObject({
+      model: 'r',
+      max_output_tokens: 300
+    })
   })
 })
 
@@ -199,7 +259,8 @@ describe('Responses request body', () => {
 
 const RESPONSES_ONLY = {
   error: {
-    message: 'litellm.BadRequestError: OpenAIException - This model is only supported in v1/responses and not in v1/chat/completions.',
+    message:
+      'litellm.BadRequestError: OpenAIException - This model is only supported in v1/responses and not in v1/chat/completions.',
     type: 'invalid_request_error',
     param: 'model',
     code: '400'
@@ -216,17 +277,33 @@ function server(handler: (path: string, body: Record<string, unknown>) => Respon
   }
   return { calls, fetchFn }
 }
-const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+const json = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 const responsesOk = (): Response =>
-  sseResponse([ev('response.created'), ev('response.output_text.delta', { delta: 'O' }), ev('response.output_text.delta', { delta: 'K' }), ev('response.completed')])
-const chatOk = (): Response => sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { content: 'OK' } }] })}\n\n`, 'data: [DONE]\n\n'])
+  sseResponse([
+    ev('response.created'),
+    ev('response.output_text.delta', { delta: 'O' }),
+    ev('response.output_text.delta', { delta: 'K' }),
+    ev('response.completed')
+  ])
+const chatOk = (): Response =>
+  sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { content: 'OK' } }] })}\n\n`, 'data: [DONE]\n\n'])
 
 describe('OpenAI-compatible provider: API selection', () => {
   const user = [{ role: 'user' as const, content: 'hi' }]
 
   test('model API = Responses → POST /responses with the bearer key', async () => {
     const s = server((path) => (path.endsWith('/responses') ? responsesOk() : json(500, {})))
-    const p = createProvider({ kind: 'openai', baseUrl: 'http://nas:4000/v1', model: 'luna', apiKey: KEY, models: [{ id: 'luna', api: 'responses' }] }, s.fetchFn)
+    const p = createProvider(
+      {
+        kind: 'openai',
+        baseUrl: 'http://nas:4000/v1',
+        model: 'luna',
+        apiKey: KEY,
+        models: [{ id: 'luna', api: 'responses' }]
+      },
+      s.fetchFn
+    )
     expect(await complete(p, user)).toBe('OK')
     expect(s.calls.map((c) => c.path)).toEqual(['/v1/responses'])
     expect(s.calls[0]!.auth).toBe(`Bearer ${KEY}`)
@@ -235,7 +312,17 @@ describe('OpenAI-compatible provider: API selection', () => {
 
   test('provider default Responses applies to models without their own setting; a model can opt back to chat', async () => {
     const s = server((path) => (path.endsWith('/responses') ? responsesOk() : chatOk()))
-    const p = createProvider({ kind: 'openai', baseUrl: 'http://x/v1', model: 'a', api: 'responses', apiKey: null, models: [{ id: 'a' }, { id: 'b', api: 'chat' }] }, s.fetchFn)
+    const p = createProvider(
+      {
+        kind: 'openai',
+        baseUrl: 'http://x/v1',
+        model: 'a',
+        api: 'responses',
+        apiKey: null,
+        models: [{ id: 'a' }, { id: 'b', api: 'chat' }]
+      },
+      s.fetchFn
+    )
     await complete(p, user)
     await complete(p, user, undefined, { model: 'b' })
     expect(s.calls.map((c) => c.path)).toEqual(['/v1/responses', '/v1/chat/completions'])
@@ -268,7 +355,10 @@ describe('OpenAI-compatible provider: API selection', () => {
     await failure(complete(p, user))
     expect(s.calls.length).toBe(1)
     const s2 = server((path) => (path.endsWith('/responses') ? responsesOk() : json(400, RESPONSES_ONLY)))
-    const p2 = createProvider({ kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null, models: [{ id: 'm', api: 'chat' }] }, s2.fetchFn)
+    const p2 = createProvider(
+      { kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null, models: [{ id: 'm', api: 'chat' }] },
+      s2.fetchFn
+    )
     const e = await failure(complete(p2, user))
     expect(s2.calls.length).toBe(1)
     expect(e.message).toContain('only supported in v1/responses')
@@ -276,7 +366,9 @@ describe('OpenAI-compatible provider: API selection', () => {
   })
 
   test('Auto: both endpoints fail → the last error, with the first attempt attached', async () => {
-    const s = server((path) => (path.endsWith('/responses') ? json(401, { error: { message: 'bad key' } }) : json(400, RESPONSES_ONLY)))
+    const s = server((path) =>
+      path.endsWith('/responses') ? json(401, { error: { message: 'bad key' } }) : json(400, RESPONSES_ONLY)
+    )
     const p = createProvider({ kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null }, s.fetchFn)
     const e = await failure(complete(p, user))
     expect(e.detail).toMatchObject({ status: 401, endpoint: 'POST /responses', hint: 'check the API key' })
@@ -288,7 +380,14 @@ describe('OpenAI-compatible provider: API selection', () => {
     const s = server((path) => (path.endsWith('/responses') ? new Response('Not Found', { status: 404 }) : chatOk()))
     const learned: string[] = []
     const p = createProvider(
-      { kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null, models: [{ id: 'm', endpoint: 'responses' }], onLearn: (_i, e) => learned.push(e) },
+      {
+        kind: 'openai',
+        baseUrl: 'http://x/v1',
+        model: 'm',
+        apiKey: null,
+        models: [{ id: 'm', endpoint: 'responses' }],
+        onLearn: (_i, e) => learned.push(e)
+      },
       s.fetchFn
     )
     expect(await complete(p, user)).toBe('OK')
@@ -298,14 +397,19 @@ describe('OpenAI-compatible provider: API selection', () => {
 
   test('a per-request API (Test connection) overrides the model setting', async () => {
     const s = server((path) => (path.endsWith('/responses') ? responsesOk() : chatOk()))
-    const p = createProvider({ kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null, models: [{ id: 'm', api: 'chat' }] }, s.fetchFn)
+    const p = createProvider(
+      { kind: 'openai', baseUrl: 'http://x/v1', model: 'm', apiKey: null, models: [{ id: 'm', api: 'chat' }] },
+      s.fetchFn
+    )
     await complete(p, user, undefined, { model: 'm', api: 'responses' })
     expect(s.calls.map((c) => c.path)).toEqual(['/v1/responses'])
   })
 
   test('network failure → readable "unreachable" error, not a bare TypeError', async () => {
     const p = createProvider({ kind: 'openai', baseUrl: 'http://nas:4000/v1', model: 'm', apiKey: KEY }, async () => {
-      throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 10.0.0.2:4000' } })
+      throw Object.assign(new TypeError('fetch failed'), {
+        cause: { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 10.0.0.2:4000' }
+      })
     })
     const e = await failure(complete(p, user))
     expect(e.detail.kind).toBe('network')
@@ -327,9 +431,17 @@ describe('OpenAI-compatible provider: API selection', () => {
 })
 
 describe('responses-only detection', () => {
-  const d = (message: string, extra: Partial<AiErrorDetail> = {}): AiErrorDetail => ({ provider: 'p', kind: 'http', status: 400, message, ...extra })
+  const d = (message: string, extra: Partial<AiErrorDetail> = {}): AiErrorDetail => ({
+    provider: 'p',
+    kind: 'http',
+    status: 400,
+    message,
+    ...extra
+  })
   test('matches OpenAI / LiteLLM / proxy phrasings', () => {
-    expect(isResponsesOnlyError(d('This model is only supported in v1/responses and not in v1/chat/completions.'))).toBe(true)
+    expect(
+      isResponsesOnlyError(d('This model is only supported in v1/responses and not in v1/chat/completions.'))
+    ).toBe(true)
     expect(isResponsesOnlyError(d(RESPONSES_ONLY.error.message))).toBe(true)
     expect(isResponsesOnlyError(d('bad', { code: 'unsupported_api_for_model' }))).toBe(true)
     expect(isResponsesOnlyError(d('The chat completions API is not supported for this model'))).toBe(true)
@@ -354,9 +466,18 @@ describe('responses-only detection', () => {
 describe('error messages', () => {
   test('format: provider + status, message, endpoint + model, hint', () => {
     expect(
-      formatAiError({ provider: 'OpenAI', status: 400, kind: 'http', message: 'model only supported on /v1/responses', endpoint: 'POST /chat/completions', model: 'openai.gpt-6-luna' })
+      formatAiError({
+        provider: 'OpenAI',
+        status: 400,
+        kind: 'http',
+        message: 'model only supported on /v1/responses',
+        endpoint: 'POST /chat/completions',
+        model: 'openai.gpt-6-luna'
+      })
     ).toBe('OpenAI 400: model only supported on /v1/responses (POST /chat/completions, openai.gpt-6-luna)')
-    expect(formatAiError({ provider: 'nas:4000', kind: 'network', message: 'fetch failed' })).toBe('nas:4000 unreachable: fetch failed')
+    expect(formatAiError({ provider: 'nas:4000', kind: 'network', message: 'fetch failed' })).toBe(
+      'nas:4000 unreachable: fetch failed'
+    )
   })
 
   test('scrub: the configured key, sk- keys, bearer tokens, api_key=…', () => {
@@ -369,8 +490,16 @@ describe('error messages', () => {
   })
 
   test('HTTP error bodies: key echoed by the server never reaches the message or detail', async () => {
-    const p = createProvider({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-x', apiKey: KEY }, async () =>
-      json(401, { error: { message: `Incorrect API key provided: ${KEY}`, type: 'invalid_request_error', code: 'invalid_api_key' } })
+    const p = createProvider(
+      { kind: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-x', apiKey: KEY },
+      async () =>
+        json(401, {
+          error: {
+            message: `Incorrect API key provided: ${KEY}`,
+            type: 'invalid_request_error',
+            code: 'invalid_api_key'
+          }
+        })
     )
     const e = await failure(complete(p, [{ role: 'user', content: 'x' }]))
     expect(e.message).toStartWith('OpenAI 401: Incorrect API key provided: ***')
@@ -414,13 +543,25 @@ describe('error sentinel across the Prompt API', () => {
     kind: 'openai',
     // eslint-disable-next-line require-yield
     async *stream() {
-      throw new AiRequestError({ provider: 'OpenAI', status: 400, kind: 'http', message: `bad ${KEY}`, endpoint: 'POST /chat/completions', model: 'luna' })
+      throw new AiRequestError({
+        provider: 'OpenAI',
+        status: 400,
+        kind: 'http',
+        message: `bad ${KEY}`,
+        endpoint: 'POST /chat/completions',
+        model: 'luna'
+      })
     }
   }
 
   test('inline sessions end with a sentinel carrying the scrubbed detail; main is told too', async () => {
     const posted: AiErrorDetail[] = []
-    const M = createLanguageModelClass(FakeBase, () => failing, () => null, (d) => posted.push(d))
+    const M = createLanguageModelClass(
+      FakeBase,
+      () => failing,
+      () => null,
+      (d) => posted.push(d)
+    )
     const m = await M.create({ initialPrompts: [sys(tagSystemPrompt('s', { errors: 'inline' }))] })
     const out = await drain(await m.prompt([userMsg]))
     const { text, error } = splitErrorSentinel(out)
@@ -465,7 +606,10 @@ describe('API settings and discovery', () => {
   })
 
   test('parse + persist: api / endpoint survive, junk dropped; learnEndpoint is not a user edit', () => {
-    expect(parseModel({ id: 'm', api: 'responses', endpoint: 'responses' })).toMatchObject({ api: 'responses', endpoint: 'responses' })
+    expect(parseModel({ id: 'm', api: 'responses', endpoint: 'responses' })).toMatchObject({
+      api: 'responses',
+      endpoint: 'responses'
+    })
     expect(parseModel({ id: 'm', api: 'weird', endpoint: 'x' })).toEqual({ id: 'm' })
     expect(parseAiSettings({ api: 'responses' }).api).toBe('responses')
     expect(parseAiSettings({ api: 'nope' }).api).toBe('auto')
@@ -476,9 +620,18 @@ describe('API settings and discovery', () => {
   test('LiteLLM mode "responses" and supported_endpoints prefill Responses', () => {
     const models = parseLiteLLMInfo({
       data: [
-        { model_name: 'openai.gpt-6-luna', model_info: { mode: 'responses', max_input_tokens: 400000, litellm_provider: 'openai' } },
-        { model_name: 'pro', model_info: { mode: 'chat', supported_endpoints: ['/v1/responses'], max_input_tokens: 1000 } },
-        { model_name: 'chatty', model_info: { mode: 'chat', supported_endpoints: ['/v1/chat/completions', '/v1/responses'] } }
+        {
+          model_name: 'openai.gpt-6-luna',
+          model_info: { mode: 'responses', max_input_tokens: 400000, litellm_provider: 'openai' }
+        },
+        {
+          model_name: 'pro',
+          model_info: { mode: 'chat', supported_endpoints: ['/v1/responses'], max_input_tokens: 1000 }
+        },
+        {
+          model_name: 'chatty',
+          model_info: { mode: 'chat', supported_endpoints: ['/v1/chat/completions', '/v1/responses'] }
+        }
       ]
     })
     expect(models.map((m) => [m.id, m.endpoint, !!m.nonChat])).toEqual([
@@ -486,7 +639,9 @@ describe('API settings and discovery', () => {
       ['pro', 'responses', false],
       ['chatty', undefined, false]
     ])
-    expect(parseOpenAIModels({ data: [{ id: 'x', supported_endpoints: ['responses'] }] })[0]?.endpoint).toBe('responses')
+    expect(parseOpenAIModels({ data: [{ id: 'x', supported_endpoints: ['responses'] }] })[0]?.endpoint).toBe(
+      'responses'
+    )
     expect(endpointFrom(undefined, ['/v1/chat/completions'])).toBeUndefined()
   })
 })

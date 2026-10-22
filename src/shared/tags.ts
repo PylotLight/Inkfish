@@ -73,7 +73,10 @@ function parseValue(first: string, rest: string[]): string[] {
     return inner.split(',').map((s) => s.trim())
   }
   if (v) return v.split(/[,\s]+/)
-  return rest.map((l) => l.trim()).filter((l) => l.startsWith('-')).map((l) => l.replace(/^-\s*/, ''))
+  return rest
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('-'))
+    .map((l) => l.replace(/^-\s*/, ''))
 }
 
 /** Tags from a note's frontmatter (empty when there is none). */
@@ -118,7 +121,10 @@ export function addTag(md: string, tag: string): string {
 
 export function removeTag(md: string, tag: string): string {
   const k = normalizeTag(tag).toLowerCase()
-  return setTags(md, parseTags(md).filter((t) => t.toLowerCase() !== k))
+  return setTags(
+    md,
+    parseTags(md).filter((t) => t.toLowerCase() !== k)
+  )
 }
 
 // --- sidebar search ---------------------------------------------------------------------------

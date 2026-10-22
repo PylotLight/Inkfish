@@ -13,50 +13,53 @@ bun run dev        # dev server + app (wrapped: cleans terminal state on exit)
 
 ```bash
 bun test           # unit tests (also runs packages/cli's tests)
-bun run typecheck  # bun check (bun >= 1.4.3, tsc-compatible) over src/, scripts/ and config
+bun run format:check # check formatting with Bun (bun >= 1.4.4)
+bun run typecheck  # bun check (tsc-compatible) over src/, scripts/ and config
 bun run build      # builds the Swift helper (stt/bin/inkfish-stt), then out/{main,preload,renderer}/
 bun run start      # launch the built app
 ```
 
 ## Scripts
 
-| Script | What it does |
-|--------|--------------|
-| `dev` | `bun scripts/dev.ts`: dev server + app with terminal cleanup on exit |
-| `dev:bare` | raw `electron-vite dev` (no wrapper) |
-| `build` | Swift transcription helper + production build into `out/` |
-| `start` | launch the built app (`electron ./out/main/index.js`) |
-| `preview` | serve the built renderer only |
-| `clean` | remove `out/` |
-| `test` | `bun test` |
-| `test:cli` | only the bunx launcher's tests (`packages/cli`) |
-| `typecheck` | `bun check` |
-| `typecheck:android` | `bun check -p android` (needs `npm ci` in `android/` first) |
-| `stt:build` | build only the Swift helper (`scripts/build-stt.ts`) |
-| `bench:stt` | speech-to-text benchmark (`scripts/bench-stt.ts`) |
-| `test:electron-ai` | smoke Electron's native AI (Prompt API) handler |
-| `assets` | regenerate tray PNGs from `assets/Inkfish_logo.png` |
-| `icon` | regenerate the app icon (`build/icon.png` + `build/icon.icns`) |
-| `dist` / `dist:mac` / `dist:ci` | package with electron-builder into `release/` |
-| `release` | `bun scripts/release.ts`: bump, changelog, tag (see [docs/releasing.md](docs/releasing.md)) |
-| `postinstall` | runs automatically: downloads the Electron binary Bun skips |
+| `format` / `format:check` | format the repository / check formatting with Bun |
+
+| Script                          | What it does                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `dev`                           | `bun scripts/dev.ts`: dev server + app with terminal cleanup on exit                        |
+| `dev:bare`                      | raw `electron-vite dev` (no wrapper)                                                        |
+| `build`                         | Swift transcription helper + production build into `out/`                                   |
+| `start`                         | launch the built app (`electron ./out/main/index.js`)                                       |
+| `preview`                       | serve the built renderer only                                                               |
+| `clean`                         | remove `out/`                                                                               |
+| `test`                          | `bun test`                                                                                  |
+| `test:cli`                      | only the bunx launcher's tests (`packages/cli`)                                             |
+| `typecheck`                     | `bun check`                                                                                 |
+| `typecheck:android`             | `bun check -p android` (needs `npm ci` in `android/` first)                                 |
+| `stt:build`                     | build only the Swift helper (`scripts/build-stt.ts`)                                        |
+| `bench:stt`                     | speech-to-text benchmark (`scripts/bench-stt.ts`)                                           |
+| `test:electron-ai`              | smoke Electron's native AI (Prompt API) handler                                             |
+| `assets`                        | regenerate tray PNGs from `assets/Inkfish_logo.png`                                         |
+| `icon`                          | regenerate the app icon (`build/icon.png` + `build/icon.icns`)                              |
+| `dist` / `dist:mac` / `dist:ci` | package with electron-builder into `release/`                                               |
+| `release`                       | `bun scripts/release.ts`: bump, changelog, tag (see [docs/releasing.md](docs/releasing.md)) |
+| `postinstall`                   | runs automatically: downloads the Electron binary Bun skips                                 |
 
 ## Dev profile (run dev beside the installed app)
 
 Any unpackaged run (`bun run dev`, `bun run start`, `electron .`) is **Inkfish Dev**, a separate profile, so you can keep the release app open while you hack:
 
-| | Release (`Inkfish.app`) | Dev (`bun run dev`) |
-|---|---|---|
-| App name / userData | `Inkfish` | `Inkfish Dev` (`~/Library/Application Support/Inkfish Dev`) |
-| Single-instance lock | its own | its own (both run at once) |
-| Notes folder default | `~/Inkfish` | `~/Inkfish Dev` (never adopts `~/Inkfish` on its own) |
-| Settings, AI keys, menu bar, mini windows, onboarding | its own | its own, starts fresh |
-| LAN sync | `:47821`, its own pairing + device id | `:47822`, separate pairing, device named `<host> (Inkfish Dev)` |
-| Capture shortcuts (defaults, change in Settings → Shortcuts) | `⌥Space` / `⇧⌥Space` | `⌃⌥Space` / `⇧⌃⌥Space` |
-| Mini window toggle | `⌃⌥M` | off until you set one |
-| Tell-apart | | `DEV` pill by the logo, window title, Dock badge `dev`, tray title `dev` (mac) / tooltip |
+|                                                              | Release (`Inkfish.app`)               | Dev (`bun run dev`)                                                                      |
+| ------------------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| App name / userData                                          | `Inkfish`                             | `Inkfish Dev` (`~/Library/Application Support/Inkfish Dev`)                              |
+| Single-instance lock                                         | its own                               | its own (both run at once)                                                               |
+| Notes folder default                                         | `~/Inkfish`                           | `~/Inkfish Dev` (never adopts `~/Inkfish` on its own)                                    |
+| Settings, AI keys, menu bar, mini windows, onboarding        | its own                               | its own, starts fresh                                                                    |
+| LAN sync                                                     | `:47821`, its own pairing + device id | `:47822`, separate pairing, device named `<host> (Inkfish Dev)`                          |
+| Capture shortcuts (defaults, change in Settings → Shortcuts) | `⌥Space` / `⇧⌥Space`                  | `⌃⌥Space` / `⇧⌃⌥Space`                                                                   |
+| Mini window toggle                                           | `⌃⌥M`                                 | off until you set one                                                                    |
+| Tell-apart                                                   |                                       | `DEV` pill by the logo, window title, Dock badge `dev`, tray title `dev` (mac) / tooltip |
 
-- You *can* point dev at your real notes by picking `~/Inkfish` in onboarding or Settings, but it has to be an explicit pick, and then both apps write to it.
+- You _can_ point dev at your real notes by picking `~/Inkfish` in onboarding or Settings, but it has to be an explicit pick, and then both apps write to it.
 - `INKFISH_PROFILE=<name> bun run dev` gives another isolated profile (`Inkfish <name>`), e.g. a second dev instance or a clean QA run. It works on a packaged app too.
 - `INKFISH_SHORTCUTS=off` registers no global shortcuts for that run (a shortcut changed in Settings is still saved, just not registered).
 - An explicit `--user-data-dir` (smoke tests) is left alone.

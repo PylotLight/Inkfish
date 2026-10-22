@@ -45,11 +45,11 @@ on Mac after sync (or a future on-device engine). Audio is never lost.
 ```
 
 - Frontmatter keys are identical (`id, kind, status, created, source,
-  projectHint, assets` for inbox; `id, inbox, project, kind, created, tags`
+projectHint, assets` for inbox; `id, inbox, project, kind, created, tags`
   for routed notes) — see `src/lib/format.ts`, ported from
   `src/main/vault.ts`.
 - Router is the same keyword scorer as Mac `rulesClassify` (`provider:
-  'rules'`) — see `rulesClassify` in `src/lib/format.ts`.
+'rules'`) — see `rulesClassify` in `src/lib/format.ts`.
 - Routed path shape is the same: `<project>/YYYY-MM-DD-slug.md`.
 
 ## Deliberate V1 gaps (see Settings screen)

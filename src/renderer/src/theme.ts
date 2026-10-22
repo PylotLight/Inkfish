@@ -191,7 +191,7 @@ export function loadPrefs(): Prefs {
       ? clampFontSize(base.fontSize)
       : (base as { fontSize?: unknown }).fontSize !== undefined
         ? clampFontSize((base as { fontSize?: unknown }).fontSize)
-        : FONT_SIZE_FROM_PRESET[font] ?? DEFAULT_PREFS.fontSize
+        : (FONT_SIZE_FROM_PRESET[font] ?? DEFAULT_PREFS.fontSize)
   return {
     theme: isTheme(base.theme) ? base.theme : DEFAULT_PREFS.theme,
     accent: isAccent(base.accent) ? base.accent : DEFAULT_PREFS.accent,

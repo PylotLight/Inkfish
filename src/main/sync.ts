@@ -47,8 +47,23 @@ import { indexFile } from './db'
 import { migratePeers, openPeer, sealPeer, type StoredPeer } from './peer-keys'
 import { profile } from './profile'
 import { setTrayTooltip } from './tray'
-import { badgeChanged, deriveSyncBadge, emptyActivity, trayTooltip, type PeerActivity, type SyncBadge } from '../shared/sync-badge'
-import { appDataDir, isStagingRel, mergeCaseDuplicates, resolveNoteAbs, trashPath, vaultConfigured, vaultPaths } from './vault'
+import {
+  badgeChanged,
+  deriveSyncBadge,
+  emptyActivity,
+  trayTooltip,
+  type PeerActivity,
+  type SyncBadge
+} from '../shared/sync-badge'
+import {
+  appDataDir,
+  isStagingRel,
+  mergeCaseDuplicates,
+  resolveNoteAbs,
+  trashPath,
+  vaultConfigured,
+  vaultPaths
+} from './vault'
 
 /**
  * Mac side of LAN sync: an HTTP listener on the local network that only
@@ -187,7 +202,13 @@ function currentBadge(now = Date.now()): SyncBadge {
     {
       running: !!server,
       error: listenError,
-      peers: s.peers.map((p) => ({ id: p.id, name: p.name, lastSync: p.lastSync ?? null, activity: activity.get(p.id) ?? null, runs: p.runs ?? [] }))
+      peers: s.peers.map((p) => ({
+        id: p.id,
+        name: p.name,
+        lastSync: p.lastSync ?? null,
+        activity: activity.get(p.id) ?? null,
+        runs: p.runs ?? []
+      }))
     },
     now
   )
@@ -223,7 +244,12 @@ export function syncBadge(): SyncBadge {
 const SESSION_PATHS = new Set(['/v1/manifest', '/v1/get', '/v1/apply'])
 
 /** Track a request from a paired phone around the handler. Returns the "after" hook. */
-function trackRequest(peerId: string | null, path: string, ip?: string | null, protocol?: unknown): (status: number, body: string) => void {
+function trackRequest(
+  peerId: string | null,
+  path: string,
+  ip?: string | null,
+  protocol?: unknown
+): (status: number, body: string) => void {
   if (!peerId || !load().peers.some((p) => p.id === peerId)) return () => undefined
   const a = actFor(peerId)
   a.inFlight++
@@ -486,7 +512,13 @@ function flushChanged(): void {
     }
     const name = peerId ? peerName(peerId) : 'phone'
     // One row per burst; back-to-back bursts from this phone fold together in the log too.
-    appendSyncLog({ at: Date.now(), peer: name, kind: 'apply', files: rels.size, message: `${rels.size} file change(s) from ${name}` })
+    appendSyncLog({
+      at: Date.now(),
+      peer: name,
+      kind: 'apply',
+      files: rels.size,
+      message: `${rels.size} file change(s) from ${name}`
+    })
   }
   broadcastChanged()
   broadcastStatus()
@@ -715,7 +747,15 @@ export async function startPairing(): Promise<SyncStatus> {
   const s = load()
   const key = new Uint8Array(randomBytes(32))
   const exp = Date.now() + PAIR_TTL_MS
-  const uri = encodePairUri({ v: 1, id: s.deviceId, name: s.deviceName, key: toBase64(key, true), hosts: hosts(), port: s.port, exp })
+  const uri = encodePairUri({
+    v: 1,
+    id: s.deviceId,
+    name: s.deviceName,
+    key: toBase64(key, true),
+    hosts: hosts(),
+    port: s.port,
+    exp
+  })
   const svg = await QRCode.toString(uri, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })
   pending = { key, exp }
   pendingQr = { svg, uri, exp }

@@ -91,7 +91,9 @@ function frontId(md: string): string | null {
 
 /** Body lines that identify a note: front matter, the title heading and blank lines dropped. */
 function contentLines(md: string): string[] {
-  const lines = fmBlock(md).body.split('\n').map((l) => l.trim())
+  const lines = fmBlock(md)
+    .body.split('\n')
+    .map((l) => l.trim())
   const first = lines.findIndex((l) => l !== '')
   if (first >= 0 && /^#\s/.test(lines[first]!)) lines.splice(first, 1)
   return lines.filter((l) => l !== '')
@@ -116,7 +118,10 @@ function titleOf(md: string): string {
 }
 
 function fold(s: string): string {
-  return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
 }
 
 /** Is `path`'s file name the note's title (Mac "filename follows title"), allowing a ` 2` suffix? */
@@ -132,9 +137,11 @@ function namedAfterTitle(path: string, md: string): boolean {
  * up to 1. A front matter `id` on both sides decides outright.
  */
 export function renameScore(fromPath: string, before: string, toPath: string, after: string): number {
-  const a = frontId(before), b = frontId(after)
+  const a = frontId(before),
+    b = frontId(after)
   if (a && b) return a === b ? 1 : 0
-  const x = contentLines(before), y = contentLines(after)
+  const x = contentLines(before),
+    y = contentLines(after)
   const titleRename = dirOf(fromPath) === dirOf(toPath) && namedAfterTitle(toPath, after)
   if (!x.length || !y.length) {
     // Nothing but a title: only a same-folder rename to the new title counts, and only

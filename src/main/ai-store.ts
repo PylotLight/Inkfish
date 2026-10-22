@@ -1,4 +1,10 @@
-import { AI_PROVIDER_KINDS, DEFAULT_MODEL, parseAiSettings, type AiProviderKind, type AiProviderSettings } from '../shared/ai-api'
+import {
+  AI_PROVIDER_KINDS,
+  DEFAULT_MODEL,
+  parseAiSettings,
+  type AiProviderKind,
+  type AiProviderSettings
+} from '../shared/ai-api'
 
 /**
  * The shape of `ai-provider.json` and the pure rules for changing it (Electron-free, unit-tested).
@@ -34,7 +40,12 @@ function parseStash(v: unknown): StoredAi['byKind'] {
     const raw = (v as Record<string, unknown>)[k]
     if (typeof raw !== 'object' || raw === null) continue
     const r = raw as Record<string, unknown>
-    const parsed = parseAiSettings({ kind: k, model: r.model, models: Array.isArray(r.models) ? r.models : [], actionModels: r.actionModels ?? {} })
+    const parsed = parseAiSettings({
+      kind: k,
+      model: r.model,
+      models: Array.isArray(r.models) ? r.models : [],
+      actionModels: r.actionModels ?? {}
+    })
     out[k] = { model: parsed.model, models: parsed.models, actionModels: parsed.actionModels }
   }
   return out
@@ -54,13 +65,18 @@ export function parseStoredAi(raw: unknown): StoredAi {
  * its own list. The key ciphertext is never touched here.
  */
 export function applySettingsPatch(cur: StoredAi, patch: unknown): StoredAi {
-  const p: Record<string, unknown> = typeof patch === 'object' && patch !== null ? { ...(patch as Record<string, unknown>) } : {}
+  const p: Record<string, unknown> =
+    typeof patch === 'object' && patch !== null ? { ...(patch as Record<string, unknown>) } : {}
   let base = settingsOnly(cur)
   let byKind = cur.byKind
   const kind = AI_PROVIDER_KINDS.includes(p.kind as AiProviderKind) ? (p.kind as AiProviderKind) : cur.kind
   if (kind !== cur.kind) {
     byKind = { ...byKind, [cur.kind]: { model: cur.model, models: cur.models, actionModels: cur.actionModels } }
-    const back: KindStash = byKind[kind] ?? { model: DEFAULT_MODEL[kind], models: [{ id: DEFAULT_MODEL[kind] }], actionModels: {} }
+    const back: KindStash = byKind[kind] ?? {
+      model: DEFAULT_MODEL[kind],
+      models: [{ id: DEFAULT_MODEL[kind] }],
+      actionModels: {}
+    }
     base = { ...base, kind, ...back }
     // The patch's `model` (the UI's guess before it knew about the stash) yields to the stash.
     if (byKind[kind] && !Array.isArray(p.models)) delete p.model

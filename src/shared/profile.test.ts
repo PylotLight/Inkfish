@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { DEFAULT_PORT } from './sync/protocol'
-import {
-  cleanProfileName,
-  profileBadgeText,
-  resolveProfile,
-  shortcutLabel,
-  shouldIsolateUserData
-} from './profile'
+import { cleanProfileName, profileBadgeText, resolveProfile, shortcutLabel, shouldIsolateUserData } from './profile'
 
 describe('resolveProfile', () => {
   test('packaged app is the release profile, unchanged', () => {
@@ -61,7 +55,9 @@ describe('shouldIsolateUserData', () => {
   const dev = resolveProfile({ isPackaged: false })
   const rel = resolveProfile({ isPackaged: true })
   test('dev moves the default userData', () => {
-    expect(shouldIsolateUserData(dev, '/Users/x/Library/Application Support', '/Users/x/Library/Application Support')).toBe(true)
+    expect(
+      shouldIsolateUserData(dev, '/Users/x/Library/Application Support', '/Users/x/Library/Application Support')
+    ).toBe(true)
   })
   test('an explicit --user-data-dir is left alone (Surffish #69)', () => {
     expect(shouldIsolateUserData(dev, '/tmp/smoke', '/Users/x/Library/Application Support')).toBe(false)

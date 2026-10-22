@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ArrowUp } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { ScreenHead } from '../components/ScreenHead';
-import { Icon } from '../components/Icon';
-import { useStore } from '../lib/store';
-import { Markdown } from '../components/Markdown';
-import { longDate } from '../lib/when';
+import React, { useEffect, useState } from 'react'
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ArrowUp } from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { ScreenHead } from '../components/ScreenHead'
+import { Icon } from '../components/Icon'
+import { useStore } from '../lib/store'
+import { Markdown } from '../components/Markdown'
+import { longDate } from '../lib/when'
 
 /**
  * Today's note — appends compact `- HH:MM text` lines to `daily/YYYY-MM-DD.md`, like Mac.
@@ -14,38 +14,38 @@ import { longDate } from '../lib/when';
  * send arrow (no block Append button).
  */
 export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const { readDaily, appendDaily } = useStore();
-  const [body, setBody] = useState('');
-  const [rel, setRel] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
+  const { ui, c } = useTheme()
+  const { readDaily, appendDaily } = useStore()
+  const [body, setBody] = useState('')
+  const [rel, setRel] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
 
   async function load(): Promise<void> {
-    const d = await readDaily();
-    setRel(d.rel);
+    const d = await readDaily()
+    setRel(d.rel)
     // readDaily already drops the old `# YYYY-MM-DD` heading (it repeated the page title).
-    setBody(d.body);
+    setBody(d.body)
   }
 
   useEffect(() => {
-    void load();
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   async function append(): Promise<void> {
-    if (!draft.trim()) return;
+    if (!draft.trim()) return
     try {
-      await appendDaily(draft.trim(), 'text');
-      setDraft('');
-      setMsg(null);
-      await load();
+      await appendDaily(draft.trim(), 'text')
+      setDraft('')
+      setMsg(null)
+      await load()
     } catch (e) {
-      setMsg(`Couldn't save: ${e instanceof Error ? e.message : String(e)}`);
+      setMsg(`Couldn't save: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
-  const canAppend = !!draft.trim();
+  const canAppend = !!draft.trim()
 
   return (
     <ScrollView style={ui.screen} contentContainerStyle={ui.scrollPad} keyboardShouldPersistTaps="handled">
@@ -68,7 +68,11 @@ export function DailyScreen({ onMenu }: { onMenu: () => void }): React.JSX.Eleme
       </View>
       {msg && <Text style={ui.err}>{msg}</Text>}
 
-      {body.trim() ? <Markdown text={body} notePath={rel} /> : <Text style={[ui.meta, { marginTop: 12 }]}>Nothing logged yet today.</Text>}
+      {body.trim() ? (
+        <Markdown text={body} notePath={rel} />
+      ) : (
+        <Text style={[ui.meta, { marginTop: 12 }]}>Nothing logged yet today.</Text>
+      )}
     </ScrollView>
-  );
+  )
 }

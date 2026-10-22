@@ -33,7 +33,10 @@ export function resolveVersionRequest({ packageVersion, latest = false }) {
 /** "sha256:ABC.." | "abc.." -> "abc.." (64 hex chars) or null. */
 export function parseSha256(value) {
   if (typeof value !== 'string') return null
-  const hex = value.trim().replace(/^sha256:/i, '').toLowerCase()
+  const hex = value
+    .trim()
+    .replace(/^sha256:/i, '')
+    .toLowerCase()
   return /^[0-9a-f]{64}$/.test(hex) ? hex : null
 }
 
@@ -52,7 +55,9 @@ export function assertChecksum(actual, expected, label = 'download') {
   const e = parseSha256(expected)
   if (!a || !e) throw new Error(`checksum for ${label} is missing or malformed`)
   if (a !== e) {
-    throw new Error(`SHA-256 mismatch for ${label}\n  expected ${e}\n  got      ${a}\nThe file was deleted. Try again, or report it if it keeps happening.`)
+    throw new Error(
+      `SHA-256 mismatch for ${label}\n  expected ${e}\n  got      ${a}\nThe file was deleted. Try again, or report it if it keeps happening.`
+    )
   }
   return true
 }
@@ -110,7 +115,12 @@ export function releaseAssetUrl(config, version) {
 export function platformSupport(config, platform = process.platform, arch = process.arch) {
   const key = `${platform}-${arch}`
   if (config.supported.includes(key)) return null
-  return config.unsupported[key] ?? config.unsupported[platform] ?? config.unsupported.default ?? `${config.displayName} doesn't support ${key} yet.`
+  return (
+    config.unsupported[key] ??
+    config.unsupported[platform] ??
+    config.unsupported.default ??
+    `${config.displayName} doesn't support ${key} yet.`
+  )
 }
 
 /**
@@ -123,26 +133,69 @@ export function platformSupport(config, platform = process.platform, arch = proc
  *   uninstall: boolean, all: boolean, yes: boolean, passthrough: string[] }}
  */
 export function parseArgs(argv) {
-  const out = { help: false, version: false, latest: false, clearCache: false, path: false, noLaunch: false, uninstall: false, all: false, yes: false, passthrough: /** @type {string[]} */ ([]) }
+  const out = {
+    help: false,
+    version: false,
+    latest: false,
+    clearCache: false,
+    path: false,
+    noLaunch: false,
+    uninstall: false,
+    all: false,
+    yes: false,
+    passthrough: /** @type {string[]} */ ([])
+  }
   const end = argv.indexOf('--')
   const own = end === -1 ? argv : argv.slice(0, end)
   const uninstalling = own.includes('--uninstall') || own.includes('--purge')
   let rest = false
   for (const arg of argv) {
-    if (rest) { out.passthrough.push(arg); continue }
+    if (rest) {
+      out.passthrough.push(arg)
+      continue
+    }
     switch (arg) {
-      case '--': rest = true; break
-      case '-h': case '--help': out.help = true; break
-      case '-v': case '--version': out.version = true; break
-      case '--latest': out.latest = true; break
-      case '--clear-cache': out.clearCache = true; break
-      case '--path': out.path = true; break
-      case '--no-launch': out.noLaunch = true; break
-      case '--uninstall': out.uninstall = true; break
-      case '--purge': out.uninstall = true; out.all = true; break
-      case '--all': if (uninstalling) out.all = true; else out.passthrough.push(arg); break
-      case '-y': case '--yes': if (uninstalling) out.yes = true; else out.passthrough.push(arg); break
-      default: out.passthrough.push(arg)
+      case '--':
+        rest = true
+        break
+      case '-h':
+      case '--help':
+        out.help = true
+        break
+      case '-v':
+      case '--version':
+        out.version = true
+        break
+      case '--latest':
+        out.latest = true
+        break
+      case '--clear-cache':
+        out.clearCache = true
+        break
+      case '--path':
+        out.path = true
+        break
+      case '--no-launch':
+        out.noLaunch = true
+        break
+      case '--uninstall':
+        out.uninstall = true
+        break
+      case '--purge':
+        out.uninstall = true
+        out.all = true
+        break
+      case '--all':
+        if (uninstalling) out.all = true
+        else out.passthrough.push(arg)
+        break
+      case '-y':
+      case '--yes':
+        if (uninstalling) out.yes = true
+        else out.passthrough.push(arg)
+        break
+      default:
+        out.passthrough.push(arg)
     }
   }
   return out

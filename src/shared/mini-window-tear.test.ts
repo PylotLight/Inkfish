@@ -28,7 +28,9 @@ describe('tabDragPhase', () => {
     expect(tabDragPhase(start, { x: 300, y: bar.bottom + TAB_TEAR_DISTANCE }, bar, vp)).toBe('tear')
   })
   test('pulled above the strip tears too', () => {
-    expect(tabDragPhase({ x: 300, y: 70 }, { x: 300, y: 70 - 60 - TAB_TEAR_DISTANCE }, { ...bar, top: 70 }, vp)).toBe('tear')
+    expect(tabDragPhase({ x: 300, y: 70 }, { x: 300, y: 70 - 60 - TAB_TEAR_DISTANCE }, { ...bar, top: 70 }, vp)).toBe(
+      'tear'
+    )
   })
   test('out of the window (any side) tears', () => {
     expect(tabDragPhase(start, { x: -5, y: 58 }, bar, vp)).toBe('tear')

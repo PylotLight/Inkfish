@@ -112,7 +112,11 @@ describe('sync converges (Mac case-insensitive, phone case-sensitive)', () => {
 
   test('assets converge both ways byte-exact, then idle', async () => {
     const big = png(9, 3 * 1024 * 1024)
-    const mac = new CiFs({ 'assets/a.png': png(3), 'notes/with image.md': '![](../assets/a.png)\n', 'assets/big.png': big })
+    const mac = new CiFs({
+      'assets/a.png': png(3),
+      'notes/with image.md': '![](../assets/a.png)\n',
+      'assets/big.png': big
+    })
     const phone = new MemFs({ 'assets/from-phone.jpg': png(4, 100_000), 'assets/audio.m4a': png(5, 200_000) })
     const state = new MemState()
     const { remote } = wired(mac)
@@ -125,7 +129,8 @@ describe('sync converges (Mac case-insensitive, phone case-sensitive)', () => {
 
   test('a fresh phone pulls a 300-note Mac vault in one run, then idles', async () => {
     const init: Record<string, string> = {}
-    for (let i = 0; i < 300; i++) init[`${['Work', 'Personal', 'Ideas/Sub'][i % 3]}/note ${i}.md`] = `# note ${i}\n\nbody ${i}\n`
+    for (let i = 0; i < 300; i++)
+      init[`${['Work', 'Personal', 'Ideas/Sub'][i % 3]}/note ${i}.md`] = `# note ${i}\n\nbody ${i}\n`
     const mac = new CiFs(init)
     const phone = new MemFs()
     phone.healCase = true
@@ -150,13 +155,22 @@ describe('conflict copies', () => {
     expect(bumpOriginal('Work/a 2.md')).toBe('Work/a.md')
     expect(bumpOriginal('Work/2026 10.md')).toBe('Work/2026.md')
     expect(bumpOriginal('Work/a.md')).toBeNull()
-    expect(caseAdoptions({ 'work/x.md': e('1') }, { 'Work/x.md': e('1') })).toEqual([{ from: 'work/x.md', to: 'Work/x.md' }])
+    expect(caseAdoptions({ 'work/x.md': e('1') }, { 'Work/x.md': e('1') })).toEqual([
+      { from: 'work/x.md', to: 'Work/x.md' }
+    ])
     // Ambiguous (both spellings on the phone): leave alone.
     expect(caseAdoptions({ 'work/x.png': e('1'), 'WORK/x.png': e('2') }, { 'Work/x.png': e('1') })).toEqual([])
   })
 
   test('redundant copies: identical to the original, or to an older copy', () => {
-    const m: Manifest = { 'Work/a.md': e('A'), [C1]: e('A'), [C2]: e('B'), [C3]: e('B'), 'Work/b 2.md': e('X'), 'Work/b.md': e('X') }
+    const m: Manifest = {
+      'Work/a.md': e('A'),
+      [C1]: e('A'),
+      [C2]: e('B'),
+      [C3]: e('B'),
+      'Work/b 2.md': e('X'),
+      'Work/b.md': e('X')
+    }
     expect(redundantCopies(m).sort()).toEqual([C1, C3].sort())
     expect(redundantCopies(m, { bumps: true }).sort()).toEqual([C1, C3, 'Work/b 2.md'].sort())
   })
@@ -202,7 +216,11 @@ describe('repair', () => {
     const state = new MemState()
     // Corrupt base: claims the Mac files were synced (and since deleted here), so a normal run would trash them on the Mac.
     const m = await mac.list()
-    state.base = { 'Work/a.md': m['Work/a.md']!.hash, 'Work/b.md': m['Work/b.md']!.hash, 'assets/p.png': m['assets/p.png']!.hash }
+    state.base = {
+      'Work/a.md': m['Work/a.md']!.hash,
+      'Work/b.md': m['Work/b.md']!.hash,
+      'assets/p.png': m['assets/p.png']!.hash
+    }
     const { remote } = wired(mac)
     const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac', repair: true })
     expect(r.deleted).toBe(0)

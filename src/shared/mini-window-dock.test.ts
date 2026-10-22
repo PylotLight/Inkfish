@@ -27,8 +27,14 @@ import {
 } from './mini-window-dock'
 
 // A MacBook-ish display with a menu bar, and a second monitor to its right.
-const laptop: MiniDisplay = { bounds: { x: 0, y: 0, width: 1440, height: 900 }, workArea: { x: 0, y: 25, width: 1440, height: 875 } }
-const right: MiniDisplay = { bounds: { x: 1440, y: 0, width: 1920, height: 1080 }, workArea: { x: 1440, y: 0, width: 1920, height: 1080 } }
+const laptop: MiniDisplay = {
+  bounds: { x: 0, y: 0, width: 1440, height: 900 },
+  workArea: { x: 0, y: 25, width: 1440, height: 875 }
+}
+const right: MiniDisplay = {
+  bounds: { x: 1440, y: 0, width: 1920, height: 1080 },
+  workArea: { x: 1440, y: 0, width: 1920, height: 1080 }
+}
 const alone = [laptop]
 const pair = [laptop, right]
 const size = { width: 420, height: 620 }
@@ -45,7 +51,10 @@ describe('outer edges', () => {
   })
 
   test('only where the neighbour actually is along the edge', () => {
-    const short: MiniDisplay = { bounds: { x: 1440, y: 0, width: 800, height: 400 }, workArea: { x: 1440, y: 0, width: 800, height: 400 } }
+    const short: MiniDisplay = {
+      bounds: { x: 1440, y: 0, width: 800, height: 400 },
+      workArea: { x: 1440, y: 0, width: 800, height: 400 }
+    }
     expect(isOuterEdge(laptop, 'right', [laptop, short], [100, 300])).toBe(false)
     expect(isOuterEdge(laptop, 'right', [laptop, short], [500, 800])).toBe(true)
   })
@@ -104,14 +113,24 @@ describe('docked bounds and handle', () => {
 
   test('offset is clamped into the work area, and a too-big window shrinks to fit', () => {
     expect(dockedBounds(size, { edge: 'left', offset: 5000 }, wa, false).y).toBe(25 + 875 - 620)
-    expect(dockedBounds({ width: 3000, height: 3000 }, { edge: 'left', offset: 0 }, wa, false)).toEqual({ x: 0, y: 25, width: 1440, height: 875 })
+    expect(dockedBounds({ width: 3000, height: 3000 }, { edge: 'left', offset: 0 }, wa, false)).toEqual({
+      x: 0,
+      y: 25,
+      width: 1440,
+      height: 875
+    })
     expect(clampDockOffset(-50, 100, 'top', wa)).toBe(0)
   })
 
   test('the handle rides the inner edge, centred; tucked it sits on the screen edge', () => {
     const tucked = dockedBounds(size, { edge: 'right', offset: 0 }, wa, true)
     const handle = dockHandleBounds(tucked, 'right')
-    expect(handle).toEqual({ x: 1440 - MINI_DOCK_HANDLE_THICKNESS, y: 25 + 310 - MINI_DOCK_HANDLE_LENGTH / 2, width: MINI_DOCK_HANDLE_THICKNESS, height: MINI_DOCK_HANDLE_LENGTH })
+    expect(handle).toEqual({
+      x: 1440 - MINI_DOCK_HANDLE_THICKNESS,
+      y: 25 + 310 - MINI_DOCK_HANDLE_LENGTH / 2,
+      width: MINI_DOCK_HANDLE_THICKNESS,
+      height: MINI_DOCK_HANDLE_LENGTH
+    })
     const leftOut = dockHandleBounds(dockedBounds(size, { edge: 'left', offset: 0 }, wa, false), 'left')
     expect(leftOut.x).toBe(420)
     const topTucked = dockHandleBounds(dockedBounds(size, { edge: 'top', offset: 0 }, wa, true), 'top')
@@ -146,7 +165,14 @@ describe('slide', () => {
 
 describe('saved docks and display changes', () => {
   test('parse keeps valid entries only', () => {
-    expect(parseMiniDocks({ a: { edge: 'left', offset: 12.4 }, b: { edge: 'middle', offset: 1 }, c: { edge: 'top', offset: 'x' }, d: null })).toEqual({ a: { edge: 'left', offset: 12 } })
+    expect(
+      parseMiniDocks({
+        a: { edge: 'left', offset: 12.4 },
+        b: { edge: 'middle', offset: 1 },
+        c: { edge: 'top', offset: 'x' },
+        d: null
+      })
+    ).toEqual({ a: { edge: 'left', offset: 12 } })
     expect(parseMiniDocks('nope')).toEqual({})
   })
 
@@ -161,8 +187,14 @@ describe('saved docks and display changes', () => {
   })
 
   test('the offset is re-clamped to a smaller work area', () => {
-    const small: MiniDisplay = { bounds: { x: 0, y: 0, width: 1280, height: 720 }, workArea: { x: 0, y: 25, width: 1280, height: 695 } }
-    expect(reconcileDock({ edge: 'left', offset: 400 }, size, small, [small])).toEqual({ edge: 'left', offset: 695 - 620 })
+    const small: MiniDisplay = {
+      bounds: { x: 0, y: 0, width: 1280, height: 720 },
+      workArea: { x: 0, y: 25, width: 1280, height: 695 }
+    }
+    expect(reconcileDock({ edge: 'left', offset: 400 }, size, small, [small])).toEqual({
+      edge: 'left',
+      offset: 695 - 620
+    })
   })
 
   test('arrows point where the window will go', () => {
@@ -226,7 +258,7 @@ describe('several handles on one edge', () => {
 })
 
 describe('stacked groups', () => {
-  test('windows stack one after another from the first one\'s offset', () => {
+  test("windows stack one after another from the first one's offset", () => {
     expect(stackDockOffsets([300, 200, 100], 50, 875)).toEqual([50, 350, 550])
   })
 

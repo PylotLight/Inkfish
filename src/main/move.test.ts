@@ -16,7 +16,13 @@ const read = (rel: string): string => readFileSync(join(root, rel), 'utf8')
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'inkfish-move-'))
-  paths = { root, inboxDir: join(root, '.x/inbox'), dailyDir: join(root, '.x/daily'), assetsDir: join(root, 'assets'), dbPath: join(root, '.x/db') }
+  paths = {
+    root,
+    inboxDir: join(root, '.x/inbox'),
+    dailyDir: join(root, '.x/daily'),
+    assetsDir: join(root, 'assets'),
+    dbPath: join(root, '.x/db')
+  }
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
@@ -86,12 +92,17 @@ describe('moveEntry', () => {
 describe('renameToTitle', () => {
   test('renames in place, keeps .md, fixes inbound relative links and wikilinks', async () => {
     put('personal/Untitled 3 2.md', '# Japan list\n- sushi\n')
-    put('Work/other.md', 'see [it](../personal/Untitled%203%202.md) and [[Untitled 3 2]] and [[personal/Untitled 3 2|j]]')
+    put(
+      'Work/other.md',
+      'see [it](../personal/Untitled%203%202.md) and [[Untitled 3 2]] and [[personal/Untitled 3 2|j]]'
+    )
     const r = await renameToTitle('personal/Untitled 3 2.md', 'Japan list', paths)
     expect(r.rel).toBe('personal/Japan list.md')
     expect(read('personal/Japan list.md')).toBe('# Japan list\n- sushi\n')
     expect(existsSync(join(root, 'personal/Untitled 3 2.md'))).toBe(false)
-    expect(read('Work/other.md')).toBe('see [it](../personal/Japan%20list.md) and [[Japan list]] and [[personal/Japan list|j]]')
+    expect(read('Work/other.md')).toBe(
+      'see [it](../personal/Japan%20list.md) and [[Japan list]] and [[personal/Japan list|j]]'
+    )
     expect(r.rewritten).toEqual(['Work/other.md'])
   })
   test('collisions get " 2", " 3" (case-insensitive); sanitizes; empty is a no-op', async () => {
@@ -188,9 +199,13 @@ describe('index-backed lookup (no full-vault reads)', () => {
     expect(read('linker.md')).toBe('see [[Ideas]]')
     expect(read('not-a-candidate.md')).toBe('[[Untitled]]')
     expect(r.rewritten).toEqual(['linker.md'])
-    expect(r.move).toEqual({ from: 'Untitled.md', to: 'Ideas.md', notes: [{ from: 'Untitled.md', to: 'Ideas.md', bareUnique: true, newAmbiguous: false }] })
+    expect(r.move).toEqual({
+      from: 'Untitled.md',
+      to: 'Ideas.md',
+      notes: [{ from: 'Untitled.md', to: 'Ideas.md', bareUnique: true, newAmbiguous: false }]
+    })
   })
-  test('bare-link ambiguity is judged from the lookup\'s note list', async () => {
+  test("bare-link ambiguity is judged from the lookup's note list", async () => {
     put('a/Untitled.md', '')
     put('c.md', '[[Untitled]] [[a/Untitled]]')
     const lookup: LookupFn = () => ({ notes: ['a/Untitled.md', 'b/Untitled.md', 'c.md'], candidates: ['c.md'] })
@@ -212,7 +227,9 @@ describe('hand rename fixes links like a title rename', () => {
     expect(r.rel).toBe('notes/New name.md')
     expect(read('other.md')).toBe('[[New name]] [[notes/New name|x]] [r](notes/New%20name.md) [[New name#Part]]')
     expect(r.rewritten).toEqual(['other.md'])
-    expect(r.move?.notes).toEqual([{ from: 'notes/Old name.md', to: 'notes/New name.md', bareUnique: true, newAmbiguous: false }])
+    expect(r.move?.notes).toEqual([
+      { from: 'notes/Old name.md', to: 'notes/New name.md', bareUnique: true, newAmbiguous: false }
+    ])
   })
   test('folder: path wikilinks and relative links into it follow, bare links untouched', async () => {
     put('Proj/a.md', '[[Proj/sub/b]]')

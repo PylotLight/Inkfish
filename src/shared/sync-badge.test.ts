@@ -68,7 +68,9 @@ describe('sync badge state', () => {
     const live = run([peer({}, { sessionSince: NOW - 3000, lastSeen: NOW - 1000 })])
     expect(live.state).toBe('syncing')
     expect(live.nextChangeAt).toBe(NOW - 1000 + SESSION_IDLE_MS)
-    const idle = run([peer({ lastSync: NOW - 30_000 }, { sessionSince: NOW - 40_000, lastSeen: NOW - SESSION_IDLE_MS - 1 })])
+    const idle = run([
+      peer({ lastSync: NOW - 30_000 }, { sessionSince: NOW - 40_000, lastSeen: NOW - SESSION_IDLE_MS - 1 })
+    ])
     expect(idle.state).toBe('synced')
   })
 
@@ -127,7 +129,9 @@ describe('labels', () => {
 
   test('tray tooltip keeps the plain text until something is paired', () => {
     expect(trayTooltip('Inkfish', run([]))).toBe('Inkfish — click for menu')
-    expect(trayTooltip('Inkfish', run([peer({ lastSync: NOW }, { lastSeen: NOW })]))).toBe('Inkfish — Synced with Pixel · just now')
+    expect(trayTooltip('Inkfish', run([peer({ lastSync: NOW }, { lastSeen: NOW })]))).toBe(
+      'Inkfish — Synced with Pixel · just now'
+    )
   })
 
   test('two and many peer names', () => {
@@ -151,7 +155,12 @@ describe('badgeChanged (throttle repaint gate)', () => {
 
 describe('handshake mismatch (protocol / minPeer)', () => {
   test('phone too old → outdated, "update phone", beats a live session', () => {
-    const b = run([peer({ lastSync: NOW - 60_000 }, { lastSeen: NOW - 1000, inFlight: 1, outdated: { at: NOW - 1000, app: 'phone' } })])
+    const b = run([
+      peer(
+        { lastSync: NOW - 60_000 },
+        { lastSeen: NOW - 1000, inFlight: 1, outdated: { at: NOW - 1000, app: 'phone' } }
+      )
+    ])
     expect(b.state).toBe('outdated')
     expect(b.label.startsWith('update phone')).toBe(true)
     expect(b.peers[0]).toMatchObject({ state: 'outdated', update: 'phone' })
@@ -168,7 +177,9 @@ describe('handshake mismatch (protocol / minPeer)', () => {
   })
 
   test('a later successful sync clears it; it also expires', () => {
-    expect(run([peer({ lastSync: NOW - 10 }, { lastSeen: NOW - 10, outdated: { at: NOW - 60_000, app: 'phone' } })]).state).toBe('synced')
+    expect(
+      run([peer({ lastSync: NOW - 10 }, { lastSeen: NOW - 10, outdated: { at: NOW - 60_000, app: 'phone' } })]).state
+    ).toBe('synced')
     expect(run([peer({}, { outdated: { at: NOW - ERROR_MS - 1, app: 'phone' } })]).state).toBe('offline')
   })
 

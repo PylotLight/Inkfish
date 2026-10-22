@@ -53,13 +53,17 @@ export function plan(local: Manifest, remote: Manifest, base: Base): Op[] {
   const ops: Op[] = []
   for (const path of [...paths].sort()) {
     if (ignored(path)) continue
-    const l = local[path]?.hash, r = remote[path]?.hash, b = base[path]
+    const l = local[path]?.hash,
+      r = remote[path]?.hash,
+      b = base[path]
     if (l === r) continue // in sync (or gone on both)
     if (l === b) ops.push(r === undefined ? { op: 'deleteLocal', path } : { op: 'pull', path, hash: r })
     else if (r === b) ops.push(l === undefined ? { op: 'deleteRemote', path } : { op: 'push', path, hash: l! })
     // Changed on both sides from here.
-    else if (l === undefined) ops.push({ op: 'pull', path, hash: r! }) // deleted here, edited there: edit wins
-    else if (r === undefined) ops.push({ op: 'push', path, hash: l }) // edited here, deleted there: edit wins
+    else if (l === undefined)
+      ops.push({ op: 'pull', path, hash: r! }) // deleted here, edited there: edit wins
+    else if (r === undefined)
+      ops.push({ op: 'push', path, hash: l }) // edited here, deleted there: edit wins
     else ops.push({ op: 'merge', path, kind: mergeKind(path), local: l, remote: r, base: b })
   }
   return detectMoves(ops, base)
@@ -72,9 +76,7 @@ function detectMoves(ops: Op[], base: Base): Op[] {
     for (const d of out.filter((o): o is Extract<Op, { op: typeof del }> => o.op === del)) {
       const h = base[d.path]
       if (!h) continue
-      const a = out.find(
-        (o): o is Extract<Op, { op: typeof add }> => o.op === add && o.hash === h && !(o.path in base)
-      )
+      const a = out.find((o): o is Extract<Op, { op: typeof add }> => o.op === add && o.hash === h && !(o.path in base))
       if (!a) continue
       out.splice(out.indexOf(d), 1)
       out.splice(out.indexOf(a), 1, { op: move, from: d.path, to: a.path })

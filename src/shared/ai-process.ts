@@ -38,7 +38,12 @@ export const AI_ACTION_INFO: Record<AiAction, AiActionInfo> = {
     hint: 'Headings, lists, checkboxes, spacing and typos. Same meaning, same words where possible.',
     strict: true
   },
-  typos: { id: 'typos', label: 'Fix typos', hint: 'Spelling, grammar and punctuation only. Layout untouched.', strict: true },
+  typos: {
+    id: 'typos',
+    label: 'Fix typos',
+    hint: 'Spelling, grammar and punctuation only. Layout untouched.',
+    strict: true
+  },
   summarize: { id: 'summarize', label: 'Summarise', hint: 'A short markdown summary of the text.', strict: false },
   checklist: {
     id: 'checklist',
@@ -66,8 +71,10 @@ const ACTION_RULES: Record<Exclude<AiAction, 'custom'>, string> = {
     '- fix obvious typos and punctuation',
     'Do not summarise, shorten, reorder or add facts.'
   ].join('\n'),
-  typos: 'Fix spelling, grammar and punctuation only. Do not change formatting, structure, wording style or line breaks.',
-  summarize: 'Write a concise markdown summary (a few bullets, or a short paragraph for short text). Keep names, dates and numbers exact.',
+  typos:
+    'Fix spelling, grammar and punctuation only. Do not change formatting, structure, wording style or line breaks.',
+  summarize:
+    'Write a concise markdown summary (a few bullets, or a short paragraph for short text). Keep names, dates and numbers exact.',
   checklist: [
     'Rewrite the text as a markdown checklist of action items (- [ ] item).',
     'Keep existing - [x] ticks. Keep non-action context as short plain lines above the list.',
@@ -86,7 +93,10 @@ export type PromptScope = 'note' | 'selection' | 'part'
 
 /** The system + user prompt for one action on `text` (body only, never front matter). */
 export function buildPrompt(action: AiAction, text: string, instruction = '', scope: PromptScope = 'note'): PromptPair {
-  const rules = action === 'custom' ? `Follow this instruction from the user:\n${instruction.trim() || 'Tidy the text.'}` : ACTION_RULES[action]
+  const rules =
+    action === 'custom'
+      ? `Follow this instruction from the user:\n${instruction.trim() || 'Tidy the text.'}`
+      : ACTION_RULES[action]
   const scopeLine =
     scope === 'selection'
       ? 'The input is a selection from a larger note; reply with the replacement for that selection only.'
@@ -113,7 +123,8 @@ export function protectedRefs(text: string): { images: string[]; links: string[]
   const withoutImages = text.replace(/!\[[^\]\n]*\]\([^)\n]+\)/g, ' ')
   const links = new Set<string>()
   for (const m of withoutImages.matchAll(/\[[^\]\n]*\]\(([^)\s\n]+)(?:\s+"[^"\n]*")?\)/g)) if (m[1]) links.add(m[1])
-  for (const m of withoutImages.matchAll(/<?(https?:\/\/[^\s<>)\]]+)>?/g)) if (m[1]) links.add(m[1].replace(/[.,;:!?]+$/, ''))
+  for (const m of withoutImages.matchAll(/<?(https?:\/\/[^\s<>)\]]+)>?/g))
+    if (m[1]) links.add(m[1].replace(/[.,;:!?]+$/, ''))
   return { images: [...new Set(images)], links: [...links] }
 }
 

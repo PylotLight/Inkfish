@@ -217,7 +217,7 @@ export default function MiniNote(): React.JSX.Element {
     else hideTimer.current = window.setTimeout(() => setRevealed(false), 500)
   }
 
-  const title = doc ? dailyTitleForPath(doc.path) ?? baseName(doc.path) : noteId
+  const title = doc ? (dailyTitleForPath(doc.path) ?? baseName(doc.path)) : noteId
 
   return (
     <div
@@ -248,7 +248,12 @@ export default function MiniNote(): React.JSX.Element {
           >
             ⤢
           </button>
-          <button className="mini-btn" title="Close mini window" aria-label="Close mini window" onClick={() => void close()}>
+          <button
+            className="mini-btn"
+            title="Close mini window"
+            aria-label="Close mini window"
+            onClick={() => void close()}
+          >
             ×
           </button>
         </div>

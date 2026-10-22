@@ -102,8 +102,15 @@ describe('per-run model + context window', () => {
         yield 'ok'
       }
     }
-    const LM = createLanguageModelClass(FakeBase, () => provider, (run) => (run.model === 'small' ? { contextWindow: 8192 } : null))
-    const sys: PromptMessage = { role: 'system', content: [{ type: 'text', value: tagSystemPrompt('Be terse.', { model: 'small' }) }] }
+    const LM = createLanguageModelClass(
+      FakeBase,
+      () => provider,
+      (run) => (run.model === 'small' ? { contextWindow: 8192 } : null)
+    )
+    const sys: PromptMessage = {
+      role: 'system',
+      content: [{ type: 'text', value: tagSystemPrompt('Be terse.', { model: 'small' }) }]
+    }
     const m = await LM.create({ initialPrompts: [sys] })
     expect(m.contextWindow).toBe(8192)
     expect(await drain(await m.prompt([user('hi')]))).toBe('ok')
@@ -126,11 +133,39 @@ describe('per-run model + context window', () => {
     const LM = createLanguageModelClass(FakeBase, () => provider)
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).buffer
     const m = await LM.create()
-    await drain(await m.prompt([{ role: 'user', content: [{ type: 'text', value: 'look' }, { type: 'image', value: png }] }]))
-    expect(seen[0]?.[0]).toEqual({ role: 'user', content: 'look', images: [{ mime: 'image/png', data: 'iVBORw0KGgoAAAAN' }] })
+    await drain(
+      await m.prompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', value: 'look' },
+            { type: 'image', value: png }
+          ]
+        }
+      ])
+    )
+    expect(seen[0]?.[0]).toEqual({
+      role: 'user',
+      content: 'look',
+      images: [{ mime: 'image/png', data: 'iVBORw0KGgoAAAAN' }]
+    })
     await drain(await m.prompt([user(tagImages('see', ['data:image/jpeg;base64,/9j/4AAQ']))]))
-    expect(seen[1]?.at(-1)).toEqual({ role: 'user', content: 'see', images: [{ mime: 'image/jpeg', data: '/9j/4AAQ' }] })
-    await drain(await m.prompt([{ role: 'user', content: [{ type: 'text', value: 'raw' }, { type: 'image', value: new ArrayBuffer(64) }] }]))
+    expect(seen[1]?.at(-1)).toEqual({
+      role: 'user',
+      content: 'see',
+      images: [{ mime: 'image/jpeg', data: '/9j/4AAQ' }]
+    })
+    await drain(
+      await m.prompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', value: 'raw' },
+            { type: 'image', value: new ArrayBuffer(64) }
+          ]
+        }
+      ])
+    )
     expect(seen[2]?.at(-1)).toEqual({ role: 'user', content: 'raw' })
   })
 })

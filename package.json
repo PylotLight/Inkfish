@@ -30,7 +30,9 @@
     "bench:stt": "bun scripts/bench-stt.ts",
     "test:electron-ai": "electron scripts/electron-ai-smoke.mjs",
     "test:electron-window": "bun scripts/electron-window-smoke.mjs",
-    "test:cli": "bun test ./packages/cli/test"
+    "test:cli": "bun test ./packages/cli/test",
+    "format": "bun fmt",
+    "format:check": "bun fmt --check"
   },
   "build": {
     "appId": "com.pylotlight.inkfish",

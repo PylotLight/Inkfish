@@ -66,7 +66,9 @@ export default function MeetingImport({ onClose, onImported, notify, page }: Pro
         <div>
           <span className="eyebrow">Capture</span>
           <h2 className="settings-title">Meeting notes</h2>
-          <p className="muted small settings-sub">Paste a transcript, import a Teams .vtt export, or transcribe audio.</p>
+          <p className="muted small settings-sub">
+            Paste a transcript, import a Teams .vtt export, or transcribe audio.
+          </p>
         </div>
         <span className="flex-sp" />
         <button className="btn ghost sm" onClick={onClose}>
@@ -107,7 +109,15 @@ export default function MeetingImport({ onClose, onImported, notify, page }: Pro
 }
 
 function Body({
-  text, setText, title, setTitle, busy, pickFile, pickAudio, save, onClose
+  text,
+  setText,
+  title,
+  setTitle,
+  busy,
+  pickFile,
+  pickAudio,
+  save,
+  onClose
 }: {
   text: string
   setText: (v: string) => void
@@ -121,35 +131,35 @@ function Body({
 }): React.JSX.Element {
   return (
     <>
-        <div className="row wrap">
-          <button className="btn ghost sm" disabled={busy} onClick={pickFile}>
-            Import .vtt / .txt…
-          </button>
-          <button className="btn ghost sm" disabled={busy} onClick={pickAudio}>
-            Transcribe audio…
-          </button>
-        </div>
-        <label className="field">
-          <span>Title (optional)</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sprint planning…" />
-        </label>
-        <label className="field">
-          <span>Transcript</span>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="WEBVTT… or plain transcript…"
-            rows={12}
-          />
-        </label>
-        <div className="row end">
-          <button className="btn ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn mint" disabled={!text.trim() || busy} onClick={save}>
-            Drop in inbox
-          </button>
-        </div>
+      <div className="row wrap">
+        <button className="btn ghost sm" disabled={busy} onClick={pickFile}>
+          Import .vtt / .txt…
+        </button>
+        <button className="btn ghost sm" disabled={busy} onClick={pickAudio}>
+          Transcribe audio…
+        </button>
+      </div>
+      <label className="field">
+        <span>Title (optional)</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sprint planning…" />
+      </label>
+      <label className="field">
+        <span>Transcript</span>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="WEBVTT… or plain transcript…"
+          rows={12}
+        />
+      </label>
+      <div className="row end">
+        <button className="btn ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button className="btn mint" disabled={!text.trim() || busy} onClick={save}>
+          Drop in inbox
+        </button>
+      </div>
     </>
   )
 }

@@ -1,26 +1,37 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { AudioLines, ArrowDownToLine, ChevronRight, FileText, Image as ImageIcon, Inbox, Mic, Search, Sun, X } from 'lucide-react-native';
-import { useTheme } from '../theme';
-import { useStore } from '../lib/store';
-import { useUpdates } from '../lib/updates';
-import { searchNotesSync } from '../lib/vault';
-import { folderOf, longDate, when } from '../lib/when';
-import type { NoteKind } from '../lib/format';
-import { ScreenHead } from '../components/ScreenHead';
-import { Icon } from '../components/Icon';
-import { dailyTitle, localDay, parseEntries } from '../../../src/shared/daily';
-import { entryCountLabel, matchesDay } from '../../../src/shared/journal';
+import React, { useEffect, useMemo, useState } from 'react'
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import {
+  AudioLines,
+  ArrowDownToLine,
+  ChevronRight,
+  FileText,
+  Image as ImageIcon,
+  Inbox,
+  Mic,
+  Search,
+  Sun,
+  X
+} from 'lucide-react-native'
+import { useTheme } from '../theme'
+import { useStore } from '../lib/store'
+import { useUpdates } from '../lib/updates'
+import { searchNotesSync } from '../lib/vault'
+import { folderOf, longDate, when } from '../lib/when'
+import type { NoteKind } from '../lib/format'
+import { ScreenHead } from '../components/ScreenHead'
+import { Icon } from '../components/Icon'
+import { dailyTitle, localDay, parseEntries } from '../../../src/shared/daily'
+import { entryCountLabel, matchesDay } from '../../../src/shared/journal'
 
 interface Props {
-  onMenu: () => void;
-  onOpen: (id: string) => void;
-  onCompose: (opts?: { voice?: boolean }) => void;
-  onInbox: () => void;
-  onToday: () => void;
+  onMenu: () => void
+  onOpen: (id: string) => void
+  onCompose: (opts?: { voice?: boolean }) => void
+  onInbox: () => void
+  onToday: () => void
   /** Journal timeline, or straight to one day's page. */
-  onJournal: (day?: string) => void;
-  onUpdates: () => void;
+  onJournal: (day?: string) => void
+  onUpdates: () => void
 }
 
 const KIND_ICON: Record<NoteKind, typeof FileText> = {
@@ -28,7 +39,7 @@ const KIND_ICON: Record<NoteKind, typeof FileText> = {
   voice: AudioLines,
   image: ImageIcon,
   meeting: AudioLines
-};
+}
 
 /**
  * Home — the landing page. One glance: today's date, a capture line, what's
@@ -36,34 +47,42 @@ const KIND_ICON: Record<NoteKind, typeof FileText> = {
  * and quiet labels (Obsidian's file list), accent only on the live bits.
  * Search lives in the top bar and swaps the page for results in place.
  */
-export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJournal, onUpdates }: Props): React.JSX.Element {
-  const { ui, c } = useTheme();
-  const { inbox, notes, days, readDaily } = useStore();
-  const upd = useUpdates();
-  const [query, setQuery] = useState<string | null>(null);
-  const [todayLines, setTodayLines] = useState<string[]>([]);
+export function HomeScreen({
+  onMenu,
+  onOpen,
+  onCompose,
+  onInbox,
+  onToday,
+  onJournal,
+  onUpdates
+}: Props): React.JSX.Element {
+  const { ui, c } = useTheme()
+  const { inbox, notes, days, readDaily } = useStore()
+  const upd = useUpdates()
+  const [query, setQuery] = useState<string | null>(null)
+  const [todayLines, setTodayLines] = useState<string[]>([])
 
-  const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing');
-  const recent = useMemo(() => notes.slice(0, 8), [notes]);
-  const results = useMemo(() => (query ? searchNotesSync(notes, query) : []), [notes, query]);
+  const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing')
+  const recent = useMemo(() => notes.slice(0, 8), [notes])
+  const results = useMemo(() => (query ? searchNotesSync(notes, query) : []), [notes, query])
   // Daily notes live outside the note index; match them on their saved summaries.
   const dayHits = useMemo(
     () => (query?.trim() ? days.filter((d) => matchesDay(d.day, query, d.snippet)).slice(0, 5) : []),
     [days, query]
-  );
+  )
   // Past days for the Daily strip (today has its own section above).
   const pastDays = useMemo(() => {
-    const today = localDay();
-    return days.filter((d) => d.day !== today).slice(0, 8);
-  }, [days]);
+    const today = localDay()
+    return days.filter((d) => d.day !== today).slice(0, 8)
+  }, [days])
 
   // Today preview: the last few logged entries (section bodies, newest last).
   useEffect(() => {
     void readDaily().then(({ body }) => {
-      const entries = parseEntries(body).map((e) => `${e.time}  ${e.text}`);
-      setTodayLines(entries.slice(-3));
-    });
-  }, [readDaily, notes, inbox]);
+      const entries = parseEntries(body).map((e) => `${e.time}  ${e.text}`)
+      setTodayLines(entries.slice(-3))
+    })
+  }, [readDaily, notes, inbox])
 
   if (query !== null) {
     return (
@@ -83,13 +102,19 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
           />
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={ui.scrollPad}>
-          {query.trim() && results.length === 0 && dayHits.length === 0 && <Text style={[ui.meta, { marginTop: 12 }]}>No matches.</Text>}
+          {query.trim() && results.length === 0 && dayHits.length === 0 && (
+            <Text style={[ui.meta, { marginTop: 12 }]}>No matches.</Text>
+          )}
           {dayHits.map((d) => (
             <Pressable key={d.path} onPress={() => onJournal(d.day)} style={ui.listRow}>
               <Icon as={Sun} size={18} color={c.faint} />
               <View style={ui.listText}>
-                <Text style={ui.title} numberOfLines={1}>{dailyTitle(d.day)}</Text>
-                <Text style={ui.meta} numberOfLines={1}>{d.snippet || 'Daily note'}</Text>
+                <Text style={ui.title} numberOfLines={1}>
+                  {dailyTitle(d.day)}
+                </Text>
+                <Text style={ui.meta} numberOfLines={1}>
+                  {d.snippet || 'Daily note'}
+                </Text>
               </View>
             </Pressable>
           ))}
@@ -97,14 +122,18 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
             <Pressable key={n.id} onPress={() => onOpen(n.id)} style={ui.listRow}>
               <Icon as={KIND_ICON[n.kind] ?? FileText} size={18} color={c.faint} />
               <View style={ui.listText}>
-                <Text style={ui.title} numberOfLines={1}>{n.title}</Text>
-                <Text style={ui.meta} numberOfLines={1}>{n.snippet || folderOf(n.path)}</Text>
+                <Text style={ui.title} numberOfLines={1}>
+                  {n.title}
+                </Text>
+                <Text style={ui.meta} numberOfLines={1}>
+                  {n.snippet || folderOf(n.path)}
+                </Text>
               </View>
             </Pressable>
           ))}
         </ScrollView>
       </View>
-    );
+    )
   }
 
   return (
@@ -115,7 +144,10 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
       {upd.release && (upd.status === 'available' || upd.status === 'ready' || upd.status === 'downloading') && (
         <Pressable onPress={onUpdates} style={[ui.row, { gap: 6, marginTop: 6 }]} accessibilityLabel="Update available">
           <Icon as={ArrowDownToLine} size={14} color={c.accent} />
-          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>Inkfish {upd.release.version}{upd.release.prerelease ? ' (beta)' : ''} is available</Text>
+          <Text style={[ui.meta, { marginTop: 0, color: c.accent }]}>
+            Inkfish {upd.release.version}
+            {upd.release.prerelease ? ' (beta)' : ''} is available
+          </Text>
         </Pressable>
       )}
 
@@ -140,7 +172,9 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
         <Pressable key={i.id} onPress={() => onOpen(i.id)} style={ui.listRow}>
           <Icon as={Inbox} size={18} color={c.faint} />
           <View style={ui.listText}>
-            <Text style={ui.title} numberOfLines={1}>{i.raw.split('\n')[0] || 'Untitled'}</Text>
+            <Text style={ui.title} numberOfLines={1}>
+              {i.raw.split('\n')[0] || 'Untitled'}
+            </Text>
           </View>
           <Text style={ui.meta}>{when(i.createdAt)}</Text>
         </Pressable>
@@ -160,7 +194,9 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
         todayLines.map((l, k) => (
           <Pressable key={k} onPress={onToday} style={[ui.listRow, { paddingVertical: 7 }]}>
             <Text style={[ui.meta, { marginTop: 0, width: 40, fontVariant: ['tabular-nums'] }]}>{l.slice(0, 5)}</Text>
-            <Text style={[ui.title, { flex: 1, fontWeight: '400' }]} numberOfLines={1}>{l.slice(5).trim()}</Text>
+            <Text style={[ui.title, { flex: 1, fontWeight: '400' }]} numberOfLines={1}>
+              {l.slice(5).trim()}
+            </Text>
           </Pressable>
         ))
       )}
@@ -168,7 +204,11 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
       {/* Daily — past days at a glance, separate from Recent; See all opens the Journal. */}
       {days.length > 0 && (
         <>
-          <Pressable onPress={() => onJournal()} style={[ui.row, { justifyContent: 'space-between' }]} accessibilityLabel="Open journal">
+          <Pressable
+            onPress={() => onJournal()}
+            style={[ui.row, { justifyContent: 'space-between' }]}
+            accessibilityLabel="Open journal"
+          >
             <Text style={ui.label}>Daily</Text>
             <Text style={[ui.label, { color: c.faint }]}>{`See all ${days.length} ›`}</Text>
           </Pressable>
@@ -187,11 +227,20 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
                   onPress={() => onJournal(d.day)}
                   onLongPress={() => onOpen(d.id)}
                   delayLongPress={450}
-                  style={{ width: 196, padding: 12, borderRadius: 14, borderWidth: 0.5, borderColor: c.border, backgroundColor: c.card }}
+                  style={{
+                    width: 196,
+                    padding: 12,
+                    borderRadius: 14,
+                    borderWidth: 0.5,
+                    borderColor: c.border,
+                    backgroundColor: c.card
+                  }}
                   accessibilityLabel={`${dailyTitle(d.day)}, ${entryCountLabel(d.count)}`}
                 >
                   <View style={[ui.row, { justifyContent: 'space-between', marginBottom: 4 }]}>
-                    <Text style={[ui.title, { fontSize: 14 }]} numberOfLines={1}>{dailyTitle(d.day)}</Text>
+                    <Text style={[ui.title, { fontSize: 14 }]} numberOfLines={1}>
+                      {dailyTitle(d.day)}
+                    </Text>
                     {d.count > 0 && <Text style={[ui.meta, { marginTop: 0, fontSize: 11.5 }]}>{String(d.count)}</Text>}
                   </View>
                   {d.entries.length > 0 ? (
@@ -202,7 +251,9 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
                       </Text>
                     ))
                   ) : (
-                    <Text style={[ui.meta, { marginTop: 1 }]} numberOfLines={2}>{d.snippet || 'Empty'}</Text>
+                    <Text style={[ui.meta, { marginTop: 1 }]} numberOfLines={2}>
+                      {d.snippet || 'Empty'}
+                    </Text>
                   )}
                 </Pressable>
               ))}
@@ -218,12 +269,16 @@ export function HomeScreen({ onMenu, onOpen, onCompose, onInbox, onToday, onJour
         <Pressable key={n.id} onPress={() => onOpen(n.id)} style={ui.listRow}>
           <Icon as={KIND_ICON[n.kind] ?? FileText} size={18} color={c.faint} />
           <View style={ui.listText}>
-            <Text style={ui.title} numberOfLines={1}>{n.title}</Text>
-            <Text style={[ui.meta, { marginTop: 1 }]} numberOfLines={1}>{folderOf(n.path)}</Text>
+            <Text style={ui.title} numberOfLines={1}>
+              {n.title}
+            </Text>
+            <Text style={[ui.meta, { marginTop: 1 }]} numberOfLines={1}>
+              {folderOf(n.path)}
+            </Text>
           </View>
           <Text style={ui.meta}>{when(n.updatedAt)}</Text>
         </Pressable>
       ))}
     </ScrollView>
-  );
+  )
 }

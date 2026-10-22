@@ -12,16 +12,16 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "Casks/**"
-      - "LICENSE"
+      - '**.md'
+      - 'docs/**'
+      - 'Casks/**'
+      - 'LICENSE'
   pull_request:
     paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "Casks/**"
-      - "LICENSE"
+      - '**.md'
+      - 'docs/**'
+      - 'Casks/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 # One run per PR (or per ref); a new push to a PR cancels the stale run. main never cancels.
@@ -92,6 +92,7 @@ jobs:
       # --ignore-scripts skips the root postinstall (the ~100 MB Electron binary download):
       # tests, typecheck and the electron-vite build never launch Electron.
       - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run format:check
       - run: bun test
       - run: bun run typecheck
       - run: bun run build

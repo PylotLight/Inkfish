@@ -209,7 +209,11 @@ function skipUpdateVersion(version: unknown): UpdateState {
 
 function remindUpdateLater(): UpdateState {
   if (latest) {
-    preferences = { ...preferences, remindLaterVersion: latest.version, remindAfter: Date.now() + UPDATE_REMIND_LATER_MS }
+    preferences = {
+      ...preferences,
+      remindLaterVersion: latest.version,
+      remindAfter: Date.now() + UPDATE_REMIND_LATER_MS
+    }
     activeNotification?.close()
     savePreferences()
   }
@@ -230,7 +234,13 @@ async function setUpdateSettings(input: unknown): Promise<UpdateSettingsResult> 
 async function downloadUpdate(): Promise<boolean> {
   const release = latest
   if (!release?.link) return false
-  for (const candidate of releaseAssetCandidates(release.link, release.version, process.platform, process.arch, APP_NAME)) {
+  for (const candidate of releaseAssetCandidates(
+    release.link,
+    release.version,
+    process.platform,
+    process.arch,
+    APP_NAME
+  )) {
     try {
       const response = await net.fetch(candidate, {
         method: 'HEAD',
@@ -273,7 +283,9 @@ export function registerUpdateIpc(): void {
   ipcMain.handle('updates:remind-later', () => remindUpdateLater())
   ipcMain.handle('updates:settings:set', (_e, input: unknown) => setUpdateSettings(input))
   ipcMain.handle('updates:download', () => downloadUpdate())
-  ipcMain.handle('updates:open-release', () => (latest?.link ? shell.openExternal(latest.link).then(() => true) : false))
+  ipcMain.handle('updates:open-release', () =>
+    latest?.link ? shell.openExternal(latest.link).then(() => true) : false
+  )
   ipcMain.handle('updates:copy-brew', () => {
     clipboard.writeText(BREW_UPGRADE_COMMAND)
     return true

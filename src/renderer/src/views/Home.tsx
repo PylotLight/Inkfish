@@ -37,16 +37,22 @@ function dirOf(path: string): string {
  * Accent is reserved for state: pending inbox count, hover affordances.
  */
 export default function Home({
-  notes, inbox, today, days, onOpenJournal, titleOf, onOpenNote, onOpenInbox, onOpenToday, onTodayAppended, onOpenFolder, notify, captureKey = '⌥Space'
+  notes,
+  inbox,
+  today,
+  days,
+  onOpenJournal,
+  titleOf,
+  onOpenNote,
+  onOpenInbox,
+  onOpenToday,
+  onTodayAppended,
+  onOpenFolder,
+  notify,
+  captureKey = '⌥Space'
 }: Props): React.JSX.Element {
-  const latest = useMemo(
-    () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12),
-    [notes]
-  )
-  const pending = useMemo(
-    () => inbox.filter((i) => i.status === 'inbox' || i.status === 'processing'),
-    [inbox]
-  )
+  const latest = useMemo(() => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12), [notes])
+  const pending = useMemo(() => inbox.filter((i) => i.status === 'inbox' || i.status === 'processing'), [inbox])
   const topFolders = useMemo(() => {
     const m = new Map<string, number>()
     for (const n of notes) {
@@ -66,9 +72,7 @@ export default function Home({
     <div className="home">
       <header className="home-head">
         <h2>Home</h2>
-        <p className="muted">
-          {pending.length > 0 ? `${pending.length} waiting in inbox` : 'Inbox zero'}
-        </p>
+        <p className="muted">{pending.length > 0 ? `${pending.length} waiting in inbox` : 'Inbox zero'}</p>
       </header>
 
       <div className="home-stats" role="list">
@@ -84,11 +88,7 @@ export default function Home({
           <span className="hstat-value">{editedToday}</span>
           <span className="hstat-label">Edited today</span>
         </div>
-        <button
-          className={`hstat as-btn${pending.length > 0 ? ' live' : ''}`}
-          role="listitem"
-          onClick={onOpenInbox}
-        >
+        <button className={`hstat as-btn${pending.length > 0 ? ' live' : ''}`} role="listitem" onClick={onOpenInbox}>
           <span className="hstat-value">{pending.length}</span>
           <span className="hstat-label">Inbox</span>
         </button>
@@ -101,7 +101,11 @@ export default function Home({
       <div className="home-grid">
         <section className="hsec" aria-label="Latest notes">
           <h3 className="hsec-title">Latest</h3>
-          {latest.length === 0 && <p className="muted small">Nothing yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}</p>}
+          {latest.length === 0 && (
+            <p className="muted small">
+              Nothing yet — {captureKey ? `${captureKey} to capture.` : 'capture from the menu bar icon.'}
+            </p>
+          )}
           <ul className="hrows">
             {latest.map((n) => (
               <li key={n.id}>
@@ -164,7 +168,10 @@ export default function Home({
 
 /** Today's day-log at a glance: latest entries + a quick-append box. */
 function TodaySection({
-  entry, onOpenToday, onAppended, notify
+  entry,
+  onOpenToday,
+  onAppended,
+  notify
 }: {
   entry: NoteEntry | null
   onOpenToday: () => void
@@ -220,9 +227,7 @@ function TodaySection({
         </button>
       </div>
       {sections.length === 0 && (
-        <p className="muted small hsec-empty">
-          Nothing logged yet — jot the first line below.
-        </p>
+        <p className="muted small hsec-empty">Nothing logged yet — jot the first line below.</p>
       )}
       {sections.length > 0 && (
         <ul className="hrows">
@@ -262,7 +267,9 @@ const DAILY_CARDS = 6
  * from Latest so regular notes don't get buried under dates. "Journal" opens the full timeline.
  */
 function DailySection({
-  days, onOpenNote, onOpenJournal
+  days,
+  onOpenNote,
+  onOpenJournal
 }: {
   days: Array<DayRef<NoteEntry>>
   onOpenNote: (id: string) => void
@@ -295,7 +302,9 @@ function DailySection({
               <button key={d.id} className="hday" onClick={() => onOpenNote(d.id)} title={`Open ${dailyTitle(d.day)}`}>
                 <span className="hday-head">
                   <span className="hday-title">{dailyTitle(d.day)}</span>
-                  <span className="hday-count">{body !== undefined && sum.count > 0 ? entryCountLabel(sum.count) : ''}</span>
+                  <span className="hday-count">
+                    {body !== undefined && sum.count > 0 ? entryCountLabel(sum.count) : ''}
+                  </span>
                 </span>
                 {sum.entries.length > 0 ? (
                   sum.entries.map((e, i) => (

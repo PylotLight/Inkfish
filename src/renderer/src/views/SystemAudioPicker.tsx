@@ -122,7 +122,8 @@ export default function SystemAudioPicker({ disabled }: { disabled?: boolean }):
                 onChange={(e) => update({ ...prefs, autoPick: e.target.checked })}
               />
               <span className="small">
-                Auto-pick a meeting app if it&apos;s playing (Teams, Zoom, Webex, Slack, FaceTime; else Meet in a browser)
+                Auto-pick a meeting app if it&apos;s playing (Teams, Zoom, Webex, Slack, FaceTime; else Meet in a
+                browser)
                 {preview && <b> — now: {describeSource({ mode: 'apps', apps: preview })}</b>}
               </span>
             </label>

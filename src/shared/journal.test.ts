@@ -53,7 +53,11 @@ describe('dailyRefs / withoutDaily', () => {
     const notes = Array.from({ length: 2000 }, (_, i) => row(`work/n${i}.md`))
     for (let i = 0; i < 400; i++) {
       const d = new Date(2025, 0, 1 + i)
-      notes.push(row(`daily/${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.md`))
+      notes.push(
+        row(
+          `daily/${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.md`
+        )
+      )
     }
     const t = performance.now()
     const refs = dailyRefs(notes)

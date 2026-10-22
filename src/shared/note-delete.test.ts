@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  QUICK_DELETE_CHARS, bodyChars, deleteNeedsConfirm, noteBody, previewLines, renameCommit, renameStem, rowKeyAction, stripFrontMatter
+  QUICK_DELETE_CHARS,
+  bodyChars,
+  deleteNeedsConfirm,
+  noteBody,
+  previewLines,
+  renameCommit,
+  renameStem,
+  rowKeyAction,
+  stripFrontMatter
 } from './note-delete'
 
 describe('quick delete rule', () => {
@@ -58,8 +66,10 @@ describe('inline rename', () => {
 })
 
 describe('row keys', () => {
-  const k = (key: string, m: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>
-    rowKeyAction({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...m })
+  const k = (
+    key: string,
+    m: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}
+  ) => rowKeyAction({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...m })
   test('F2 renames; Enter is left to the row (opens the note)', () => {
     expect(k('F2')).toBe('rename')
     expect(k('F2', { metaKey: true })).toBeNull()

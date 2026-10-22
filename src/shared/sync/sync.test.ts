@@ -36,7 +36,8 @@ describe('diff3', () => {
 })
 
 describe('notes', () => {
-  const fm = (tags: string[], status = 'ready'): string => `---\nid: n1\nstatus: ${status}\ntags:\n${tags.map((t) => `  - ${t}`).join('\n')}\n---\n`
+  const fm = (tags: string[], status = 'ready'): string =>
+    `---\nid: n1\nstatus: ${status}\ntags:\n${tags.map((t) => `  - ${t}`).join('\n')}\n---\n`
   test('frontmatter per key + list union + body merge', () => {
     const base = `${fm(['a'])}# T\n\none\nmid\ntwo\n`
     const ours = `${fm(['a', 'b'])}# T\n\nONE\nmid\ntwo\n`
@@ -55,15 +56,32 @@ describe('notes', () => {
     expect(mergeDaily(ours, theirs)).toBe(`${head}## 09:10\n\ncoffee\n\n## 11:30\n\nstandup\n\n## 13:00\n\nlunch\n`)
   })
   test('conflict path', () => {
-    expect(conflictPath('work/Idea.md', 'Pixel 8', new Date(2026, 9, 8, 9, 4))).toBe('work/Idea (conflict · Pixel 8 · 2026-10-08 0904).md')
+    expect(conflictPath('work/Idea.md', 'Pixel 8', new Date(2026, 9, 8, 9, 4))).toBe(
+      'work/Idea (conflict · Pixel 8 · 2026-10-08 0904).md'
+    )
   })
 })
 
 describe('plan', () => {
   test('pull, push, deletes, edit beats delete, merge, move', () => {
     const base = { 'a.md': 'A', 'b.md': 'B', 'c.md': 'C', 'd.md': 'D', 'e.md': 'E', 'f.md': 'F', 'old.md': 'M' }
-    const local: Manifest = { 'a.md': e('A2'), 'b.md': e('B'), 'd.md': e('D'), 'e.md': e('E3'), 'f.md': e('F4'), 'old.md': e('M') }
-    const remote: Manifest = { 'a.md': e('A'), 'b.md': e('B2'), 'c.md': e('C'), 'e.md': e('E2'), 'f.md': e('F5'), 'new/old.md': e('M'), '.inkfish/x': e('Z') }
+    const local: Manifest = {
+      'a.md': e('A2'),
+      'b.md': e('B'),
+      'd.md': e('D'),
+      'e.md': e('E3'),
+      'f.md': e('F4'),
+      'old.md': e('M')
+    }
+    const remote: Manifest = {
+      'a.md': e('A'),
+      'b.md': e('B2'),
+      'c.md': e('C'),
+      'e.md': e('E2'),
+      'f.md': e('F5'),
+      'new/old.md': e('M'),
+      '.inkfish/x': e('Z')
+    }
     // a: local edit → push; b: remote edit → pull; c: local deleted → deleteRemote; d: remote deleted → deleteLocal
     // e: both edited → merge; f: both edited → merge; old.md moved remotely → moveLocal
     expect(plan(local, remote, base)).toEqual([
@@ -84,7 +102,12 @@ describe('plan', () => {
     expect(neededFromRemote(ops, { 'a.png': e('H') })).toEqual(['N'])
   })
   test('binary conflict keeps both', () => {
-    const w = resolveMerge({ op: 'merge', path: 'assets/x.png', kind: 'binary', local: '1', remote: '2' }, { local: '', remote: '' }, 'Mac', new Date(2026, 9, 8, 1, 2))
+    const w = resolveMerge(
+      { op: 'merge', path: 'assets/x.png', kind: 'binary', local: '1', remote: '2' },
+      { local: '', remote: '' },
+      'Mac',
+      new Date(2026, 9, 8, 1, 2)
+    )
     expect(w).toEqual([
       { path: 'assets/x.png', from: 'local' },
       { path: 'assets/x (conflict · Mac · 2026-10-08 0102).png', from: 'remote' }

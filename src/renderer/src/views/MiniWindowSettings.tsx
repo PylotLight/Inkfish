@@ -14,9 +14,23 @@ const IS_LINUX = navigator.platform.toUpperCase().includes('LINUX')
 
 type State = Awaited<ReturnType<typeof window.api.mini.settings>>
 
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (v: boolean) => void }): React.JSX.Element {
+function Switch({
+  on,
+  label,
+  onChange
+}: {
+  on: boolean
+  label: string
+  onChange: (v: boolean) => void
+}): React.JSX.Element {
   return (
-    <button role="switch" aria-checked={on} className={`switch${on ? ' on' : ''}`} onClick={() => onChange(!on)} aria-label={label}>
+    <button
+      role="switch"
+      aria-checked={on}
+      className={`switch${on ? ' on' : ''}`}
+      onClick={() => onChange(!on)}
+      aria-label={label}
+    >
       <span className="knob" />
     </button>
   )
@@ -37,7 +51,10 @@ export default function MiniWindowSettings(): React.JSX.Element {
 
   useEffect(() => {
     window.api.mini.settings().then(setState).catch(console.error)
-    window.api.shortcuts.get().then((s) => setCapture(s.settings)).catch(console.error)
+    window.api.shortcuts
+      .get()
+      .then((s) => setCapture(s.settings))
+      .catch(console.error)
   }, [])
   const known = capture ? knownShortcutsWith(capture) : undefined
 
@@ -49,11 +66,7 @@ export default function MiniWindowSettings(): React.JSX.Element {
   const popKey = IS_MAC ? '⌘⇧M' : 'Ctrl+Shift+M'
   const shortcutLabel = s ? formatAccelerator(s.shortcut, IS_MAC) : '…'
   const pendingClash = pending ? shortcutClash(pending, IS_MAC, known) : null
-  const status = !s?.shortcut
-    ? 'Off'
-    : state?.registered
-      ? 'Active'
-      : (state?.error ?? 'Not active')
+  const status = !s?.shortcut ? 'Off' : state?.registered ? 'Active' : (state?.error ?? 'Not active')
 
   const record = (accelerator: string): void => {
     // A known clash (1Password's ⌘⇧Space, Spotlight…) asks first instead of silently stealing it.
@@ -69,17 +82,17 @@ export default function MiniWindowSettings(): React.JSX.Element {
     <section className="settings-group">
       <h4>Mini window</h4>
       <p className="muted small setting-hint">
-        Pop a note out into a small window that floats over every app, on every Space and over full-screen apps.
-        Use <b>Pop out to Mini Window</b> in a note’s ⋯ or tab menu, or press {popKey}; press {popKey} in the mini
-        to send it back. Edits sync live with the main window and save automatically.
+        Pop a note out into a small window that floats over every app, on every Space and over full-screen apps. Use{' '}
+        <b>Pop out to Mini Window</b> in a note’s ⋯ or tab menu, or press {popKey}; press {popKey} in the mini to send
+        it back. Edits sync live with the main window and save automatically.
       </p>
 
       <div className="setting-row stacked">
         <span className="setting-label">
           Show / hide shortcut <span className="muted small">({status})</span>
           <span className="muted small setting-hint">
-            Works from any app: with no mini open it pops out the note you have open, otherwise it hides or
-            brings back your minis. Click the field and press new keys.
+            Works from any app: with no mini open it pops out the note you have open, otherwise it hides or brings back
+            your minis. Click the field and press new keys.
           </span>
         </span>
         <div className="row" style={{ marginTop: 0 }}>
@@ -152,8 +165,8 @@ export default function MiniWindowSettings(): React.JSX.Element {
         <span className="setting-label">
           Tuck to screen edge
           <span className="muted small setting-hint">
-            Drag a mini against a screen edge (or use its ◂ button) and it slides away behind a small tab. Click the
-            tab to slide it back; drag the tab along the edge to move it.
+            Drag a mini against a screen edge (or use its ◂ button) and it slides away behind a small tab. Click the tab
+            to slide it back; drag the tab along the edge to move it.
           </span>
         </span>
         <Switch on={s?.tuckToEdge ?? true} label="Tuck to screen edge" onChange={(v) => update({ tuckToEdge: v })} />
@@ -162,7 +175,9 @@ export default function MiniWindowSettings(): React.JSX.Element {
       <div className="setting-row inline">
         <span className="setting-label">
           Peek on hover
-          <span className="muted small setting-hint">Rest the pointer on a tucked tab to peek the note out until you move away.</span>
+          <span className="muted small setting-hint">
+            Rest the pointer on a tucked tab to peek the note out until you move away.
+          </span>
         </span>
         <Switch on={s?.peekOnHover ?? true} label="Peek on hover" onChange={(v) => update({ peekOnHover: v })} />
       </div>

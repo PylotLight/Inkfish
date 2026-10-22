@@ -23,7 +23,10 @@ const bin =
 const lock = join(root, 'bun.lock')
 const stamp = join(root, 'node_modules', '.bun-tag')
 const mtime = (p: string): number => (existsSync(p) ? statSync(p).mtimeMs : 0)
-if (!existsSync(join(root, 'node_modules')) || mtime(lock) > Math.max(mtime(stamp), mtime(join(root, 'node_modules')))) {
+if (
+  !existsSync(join(root, 'node_modules')) ||
+  mtime(lock) > Math.max(mtime(stamp), mtime(join(root, 'node_modules')))
+) {
   console.log('[dev] dependencies changed — running bun install')
   const r = spawnSync(process.execPath, ['install'], { cwd: root, stdio: 'inherit' })
   if (r.status !== 0) process.exit(r.status ?? 1)
