@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16] - 2026-10-22
+
+### Added
+
+- Add SOCKS routing and proxy native model downloads ([687d469](https://github.com/PylotLight/Inkfish/commit/687d4693f8482cc75bb9ee05724dd11837721c09))
+
+### Fixed
+
+- **(tray)** Pack the tray icon pngs (blank menu bar icon) (#92) ([f31faab](https://github.com/PylotLight/Inkfish/commit/f31faab89451230561f5c84e4254fa068ad8bab8))
+- Window getting stuck + esc on capture popup showing main app (#95) ([5737ec0](https://github.com/PylotLight/Inkfish/commit/5737ec038a5c8de48704478f768305cab5f6f21e))
+
 ## [0.2.15] - 2026-10-20
 
 ### Added
@@ -298,6 +309,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.16]: https://github.com/PylotLight/Inkfish/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/PylotLight/Inkfish/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/PylotLight/Inkfish/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/PylotLight/Inkfish/compare/v0.2.12...v0.2.13
