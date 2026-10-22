@@ -4,6 +4,7 @@
  * chosen engine its settled text *is* the final transcript — no wait after
  * stop. Live text needs Redux · Web downloaded.
  */
+import type { RealtimeSegment, RealtimeUpdate } from '@karanganesan/vocule'
 import { isWebReady, reduxSpeech, resetWeb } from './webStt'
 
 export const LIVE_ENGINE = 'web-parakeet-redux'
@@ -44,17 +45,17 @@ export async function startRedux(
     let segments: LiveSegment[] = []
     const live = await speech.listen({
       stream,
-      onUpdate: (u) => {
-        segments = u.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+      onUpdate: (u: RealtimeUpdate) => {
+        segments = u.segments.map((s: RealtimeSegment) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
         onText(u.text.trim(), segments)
       },
-      onError: (e) => console.warn('[live] redux', e)
+      onError: (e: unknown) => console.warn('[live] redux', e)
     })
     return {
       engine: 'Parakeet Redux · live',
       stop: async () => {
         const text = (await live.stop()).replace(/\s+/g, ' ').trim()
-        segments = live.segments.map((s) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
+        segments = live.segments.map((s: RealtimeSegment) => ({ text: s.text.trim(), start: s.startSeconds, end: s.endSeconds }))
         release()
         return { engine: 'Parakeet Redux · live', text, segments: segments.filter((s) => s.text) }
       },

@@ -88,6 +88,47 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 - bunx: `bunx @pylotlight/inkfish --uninstall`, or `--purge` to also remove app data. See [packages/cli](packages/cli/README.md#uninstall).
 - Either way your notes folder is left alone.
 
+## SOCKS5 connections
+
+Inkfish uses the same local SOCKS5 settings and routing rules as Blobfish.
+Start an SSH dynamic forward and leave it running:
+
+```bash
+ssh -N -D 127.0.0.1:1080 user@your-ssh-host
+```
+
+Open **Settings → Network → SOCKS5 proxy**, enable the proxy, check its local
+host and port, then select **Save proxy settings**. Inkfish does not start SSH.
+Only `127.0.0.1`, `localhost`, and `::1` are accepted as proxy hosts.
+**Test TCP port** checks for a listener, not a working SOCKS/SSH connection.
+
+In-app web model downloads, benchmark clips, and other Chromium HTTP(S) requests
+follow these routes. Destination DNS for proxied traffic travels through SOCKS,
+with no silent Direct fallback. **Kill switch** checks the selected proxy port
+before proxied requests (checks are cached for up to two seconds); Direct routes
+continue to work. Named proxies and exact or `*.example.com` rules can select
+the main proxy, another local proxy, or Direct. Exact rules beat wildcards,
+and more-specific wildcards beat broader ones. A rule can use the main proxy
+even when its global switch is off. Loopback always stays direct; single-label
+names and local-network addresses bypass by default. Rules override LAN bypass.
+
+**Native speech model downloads follow the same routing.** Inkfish gives
+FluidAudio a temporary loopback HTTP proxy that bridges each destination to the
+selected SOCKS5 proxy or an explicitly direct route. This includes repository
+listings, vocabulary files, resumable model files, mirrors, and redirected CDN
+connections. SOCKS destinations are resolved by the proxy, and a failed tunnel
+never falls back to Direct. HTTPS remains encrypted end-to-end; the bridge does
+not intercept TLS. Saving proxy settings pauses active native downloads and
+closes their tunnels; resume them after saving to use the new route.
+Already-downloaded models and offline transcription are unaffected.
+
+Settings are saved atomically to `proxy.json` in the app profile and restored
+before windows open. Invalid saved settings stop startup instead of going direct.
+Phone LAN sync is an incoming local service, not routed through this proxy.
+External browser links, OS-managed Apple services, custom transcription helpers,
+and package/build-time downloads are outside this setting. A tunnel is not an
+anonymity guarantee.
+
 ## Docs
 
 - [Troubleshooting](docs/troubleshooting.md)

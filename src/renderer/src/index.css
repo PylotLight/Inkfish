@@ -6203,3 +6203,41 @@ input[type='password'].text-input {
 html[data-theme='paper'] .jmonth {
   background: color-mix(in srgb, #f1ece2 97%, transparent);
 }
+/* SOCKS5 network settings */
+.network-settings {
+  min-width: 0;
+}
+.network-proxy-row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.network-proxy-row label {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 150px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.network-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.network-settings-block {
+  margin: 14px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.network-settings-actions {
+  gap: 8px;
+  margin-top: 12px;
+}
+.network-settings-message.is-error {
+  color: var(--danger);
+}

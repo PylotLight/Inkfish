@@ -11,6 +11,7 @@ import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
 import MiniWindowSettings from './MiniWindowSettings'
 import UpdateSettings from './UpdateSettings'
+import { NetworkSettings } from './NetworkSettings'
 
 interface Props {
   prefs: Prefs
@@ -131,13 +132,14 @@ function FontSelect({
   )
 }
 
-type SettingsTab = 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
+type SettingsTab = 'network' | 'appearance' | 'audio' | 'voice' | 'notes' | 'sync' | 'trash' | 'apple-intelligence' | 'ai' | 'mini-window' | 'about'
 
 const NAV_GROUPS = ['Configure', 'Voice', 'Intelligence'] as const
 const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof NAV_GROUPS)[number] }> = [
   { id: 'appearance', label: 'Appearance', icon: '◐', group: 'Configure' },
   { id: 'mini-window', label: 'Mini window', icon: '⧉', group: 'Configure' },
   { id: 'notes', label: 'Notes', icon: '▤', group: 'Configure' },
+  { id: 'network', label: 'Network', icon: '⇄', group: 'Configure' },
   { id: 'sync', label: 'Sync', icon: '⇅', group: 'Configure' },
   { id: 'trash', label: 'Trash', icon: '⌫', group: 'Configure' },
   { id: 'about', label: 'About & updates', icon: 'ⓘ', group: 'Configure' },
@@ -497,7 +499,7 @@ export default function SettingsView({
           )}
 
           {tab === 'mini-window' && <MiniWindowSettings />}
-
+          {tab === 'network' && <NetworkSettings />}
           {tab === 'audio' && <AudioSettings />}
 
           {tab === 'voice' && <VoiceEngineSettings />}

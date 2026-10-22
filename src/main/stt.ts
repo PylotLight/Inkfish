@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseHelperJson, pickAutoEngine } from '../shared/stt'
+import { createModelDownloadProxy } from './model-download-proxy'
+import { getProxySettings, isProxyTransitioning, onProxyChanging } from './proxy-state'
 import type { DownloadProgress, DownloadState, SttEngine, SttResult } from '../shared/types'
 export type { DownloadProgress } from '../shared/types'
 
@@ -134,7 +136,10 @@ export async function transcribe(wavPath: string, engineId?: string, timeoutMs =
 
 const MAX_ATTEMPTS = 4
 const BACKOFF_MS = [3_000, 10_000, 30_000]
-const active = new Map<string, { child?: ChildProcess; paused: boolean; progress: DownloadProgress }>()
+const active = new Map<string, { child?: ChildProcess; closeProxy?: () => void; paused: boolean; progress: DownloadProgress }>()
+
+// Tear down native downloads and their tunnels before changing routing policy.
+onProxyChanging(() => pauseAllDownloadsForProxyChange())
 
 const BLOCKED_RE =
   /offline|timed? ?out|could not connect|cannot connect|network|connection|resolve|host|ssl|tls|certificate|proxy|forbidden|\b40[13]\b|\b429\b|\b5\d\d\b|-10(0[1-9]|20)|-1200|stall/i
@@ -154,12 +159,14 @@ export async function prepareEngine(
   onProgress: (p: DownloadProgress) => void = () => {},
   mirror = ''
 ): Promise<void> {
+  if (isProxyTransitioning()) throw new Error('Native model downloads are paused while proxy settings change or routing is blocked. Retry after saving Network settings.')
   const helper = helperPath()
   if (!helper) throw new Error('Transcription helper not built')
   const existing = active.get(engineId)
-  if (existing && !existing.paused && existing.child) return // already running
+  if (existing && !existing.paused && ['downloading', 'retrying'].includes(existing.progress.state)) return // already running or starting
   const d = {
     child: undefined as ChildProcess | undefined,
+    closeProxy: undefined as (() => void) | undefined,
     paused: false,
     progress: {
       id: engineId,
@@ -177,78 +184,106 @@ export async function prepareEngine(
     onProgress(d.progress)
   }
   emit({})
-  const env = { ...process.env }
-  if (mirror.trim()) env['REGISTRY_URL'] = mirror.trim().replace(/\/+$/, '')
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    emit({ state: 'downloading', attempt, error: undefined, blocked: undefined })
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn(helper, ['prepare', '--engine', engineId], { env })
-        d.child = child
-        let err = ''
-        let buf = ''
-        child.stderr.on('data', (chunk: Buffer) => {
-          buf += chunk.toString()
-          const lines = buf.split('\n')
-          buf = lines.pop() ?? ''
-          for (const line of lines) {
-            if (line.startsWith('PROGRESS ')) {
-              try {
-                const p = JSON.parse(line.slice(9)) as Partial<DownloadProgress>
-                const phase = p.phase ?? ''
-                const f = Math.min(1, p.fraction ?? 0)
-                // `fraction` is within the current phase (download, then compile).
-                // Monotonic inside a phase: a resumed run re-lists first and must
-                // not dip the bar; listing keeps the last download value.
-                const same = phase === d.progress.phase || phase === 'listing'
-                emit({
-                  fraction: same ? Math.max(d.progress.fraction, f) : f,
-                  phase: phase === 'listing' && d.progress.fraction > 0 ? d.progress.phase : phase,
-                  files: p.files ?? 0,
-                  total: p.total ?? 0
-                })
-              } catch {
-                // malformed line — ignore
-              }
-            } else if (line.trim()) err += line + '\n'
-          }
-        })
-        child.on('error', (e) => reject(new Error(`download helper failed to start: ${e.message}`)))
-        child.on('close', (code) => {
-          d.child = undefined
-          if (d.paused) resolve()
-          else if (code === 0) resolve()
-          else reject(new Error(lastLine(err) || `download exited ${code}`))
-        })
-      })
-      if (d.paused) {
-        emit({ state: 'paused' })
-        return
-      }
-      emit({ state: 'done', fraction: 1 })
-      active.delete(engineId)
+  // FluidAudio 0.17.5 passes these HTTP(S) proxy settings to every registry,
+  // small-file and streaming URLSession, including redirected CDN requests.
+  // The bridge selects Inkfish's route per destination and keeps TLS end-to-end.
+  const bridge = await createModelDownloadProxy(getProxySettings(), () => d.paused || isProxyTransitioning()).catch((error: unknown) => {
+    emit({ state: 'error', error: error instanceof Error ? error.message : String(error) })
+    throw error
+  })
+  d.closeProxy = bridge.close
+  try {
+    if (d.paused || isProxyTransitioning()) {
+      emit({ state: 'paused' })
       return
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      const blocked = BLOCKED_RE.test(msg)
-      if (attempt < MAX_ATTEMPTS) {
-        emit({ state: 'retrying', error: msg, blocked })
-        await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] ?? 30_000))
+    }
+    const env = modelDownloadEnvironment(process.env, bridge.url, mirror)
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      emit({ state: 'downloading', attempt, error: undefined, blocked: undefined })
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(helper, ['prepare', '--engine', engineId], { env })
+          d.child = child
+          let err = ''
+          let buf = ''
+          child.stderr.on('data', (chunk: Buffer) => {
+            buf += chunk.toString()
+            const lines = buf.split('\n')
+            buf = lines.pop() ?? ''
+            for (const line of lines) {
+              if (line.startsWith('PROGRESS ')) {
+                try {
+                  const p = JSON.parse(line.slice(9)) as Partial<DownloadProgress>
+                  const phase = p.phase ?? ''
+                  const f = Math.min(1, p.fraction ?? 0)
+                  // `fraction` is within the current phase (download, then compile).
+                  // Monotonic inside a phase: a resumed run re-lists first and must
+                  // not dip the bar; listing keeps the last download value.
+                  const same = phase === d.progress.phase || phase === 'listing'
+                  emit({
+                    fraction: same ? Math.max(d.progress.fraction, f) : f,
+                    phase: phase === 'listing' && d.progress.fraction > 0 ? d.progress.phase : phase,
+                    files: p.files ?? 0,
+                    total: p.total ?? 0
+                  })
+                } catch {
+                  // malformed line — ignore
+                }
+              } else if (line.trim()) err += line + '\n'
+            }
+          })
+          child.on('error', (e) => reject(new Error(`download helper failed to start: ${e.message}`)))
+          child.on('close', (code) => {
+            d.child = undefined
+            if (d.paused) resolve()
+            else if (code === 0) resolve()
+            else reject(new Error(lastLine(err) || `download exited ${code}`))
+          })
+        })
         if (d.paused) {
           emit({ state: 'paused' })
           return
         }
-        continue
+        emit({ state: 'done', fraction: 1 })
+        active.delete(engineId)
+        return
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        const blocked = BLOCKED_RE.test(msg)
+        if (attempt < MAX_ATTEMPTS) {
+          emit({ state: 'retrying', error: msg, blocked })
+          await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] ?? 30_000))
+          if (d.paused) {
+            emit({ state: 'paused' })
+            return
+          }
+          continue
+        }
+        emit({ state: 'error', error: msg, blocked })
+        throw new Error(
+          blocked
+            ? `Couldn't reach Hugging Face (${msg}). A VPN, firewall or network filter may be blocking it — retry, or switch the download source.`
+            : msg
+        )
       }
-      emit({ state: 'error', error: msg, blocked })
-      throw new Error(
-        blocked
-          ? `Couldn't reach Hugging Face (${msg}). A VPN, firewall or network filter may be blocking it — retry, or switch the download source.`
-          : msg
-      )
     }
+  } finally {
+    bridge.close()
+    d.closeProxy = undefined
   }
+}
+
+/** Build the native helper's environment without inherited proxy bypasses. */
+export function modelDownloadEnvironment(base: NodeJS.ProcessEnv, proxyUrl: string, mirror = ''): NodeJS.ProcessEnv {
+  const env = { ...base }
+  for (const key of Object.keys(env)) {
+    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete env[key]
+  }
+  env['http_proxy'] = proxyUrl
+  env['https_proxy'] = proxyUrl
+  if (mirror.trim()) env['REGISTRY_URL'] = mirror.trim().replace(/\/+$/, '')
+  return env
 }
 
 /** Pause a running download; partial files stay on disk for resume. */
@@ -256,7 +291,13 @@ export function pauseDownload(engineId: string): void {
   const d = active.get(engineId)
   if (!d) return
   d.paused = true
+  d.closeProxy?.()
   d.child?.kill('SIGTERM')
+}
+
+/** Stop every in-flight model download before the proxy routing configuration changes. */
+export function pauseAllDownloadsForProxyChange(): void {
+  for (const engineId of active.keys()) pauseDownload(engineId)
 }
 
 /** Forget a paused or failed download (its partial files go with `removeEngine`). */

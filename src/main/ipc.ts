@@ -1,3 +1,4 @@
+import { getProxySettings, setProxySettings, testLocalProxy } from './proxy'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { cancelPairing, renameDevice, readSyncLog, startPairing, startSync, syncBadge, syncStatus, unpair, type SyncStatus } from './sync'
 import type { SyncBadge } from '../shared/sync-badge'
@@ -244,6 +245,9 @@ export function registerIpc(): void {
   ipcMain.handle('sync:badge', (): SyncBadge => syncBadge())
 
   ipcMain.handle('ping', () => 'pong')
+  ipcMain.handle('proxy:get', () => getProxySettings())
+  ipcMain.handle('proxy:set', (_event: IpcMainInvokeEvent, input: unknown) => setProxySettings(input))
+  ipcMain.handle('proxy:test', (_event: IpcMainInvokeEvent, input: unknown) => testLocalProxy(input))
 
   ipcMain.handle('sys:info', (): SysInfo => {
     return {

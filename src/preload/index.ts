@@ -1,3 +1,4 @@
+import type { ProxySettings, ProxyTestResult } from '../shared/proxy-settings'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
@@ -49,6 +50,11 @@ export interface Versions {
  */
 const api = {
   ping: (): Promise<string> => ipcRenderer.invoke('ping'),
+  proxy: {
+    get: (): Promise<ProxySettings> => ipcRenderer.invoke('proxy:get'),
+    set: (settings: ProxySettings): Promise<ProxySettings> => ipcRenderer.invoke('proxy:set', settings),
+    test: (settings: ProxySettings): Promise<ProxyTestResult> => ipcRenderer.invoke('proxy:test', settings)
+  },
   versions: {
     node: (): string => process.versions.node,
     chrome: (): string => process.versions.chrome,

@@ -1,10 +1,11 @@
 // Must be first: picks the app profile (dev runs → "Inkfish Dev") and moves userData before
 // anything reads it or takes the single-instance lock.
 import { profile } from './profile'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, protocol, session, systemPreferences, webContents } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, protocol, session, systemPreferences, webContents } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 // Crash guard before the app's own modules: catches errors thrown while they load.
 import './crash-guard'
+import { closeProxy, initializeProxy } from './proxy'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { initAiApi } from './ai-api'
@@ -75,8 +76,9 @@ function initVault(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId(profile.kind === 'release' ? APP_ID : `${APP_ID}.${profile.badge}`)
+  await initializeProxy()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -175,6 +177,9 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+}).catch((error: unknown) => {
+  dialog.showErrorBox('Inkfish could not start safely', error instanceof Error ? error.message : String(error))
+  app.quit()
 })
 
 app.on('second-instance', () => showWindow())
@@ -240,6 +245,7 @@ app.on('before-quit', (e) => {
 // is checkpointed and nothing writes after it closes. A failing step never skips the rest.
 const shutdown = createShutdown(
   [
+    { name: 'proxy', run: closeProxy },
     { name: 'shortcuts', run: () => globalShortcut.unregisterAll() },
     { name: 'systap', run: stopSysTap },
     { name: 'vault watch', run: stopVaultWatch },
