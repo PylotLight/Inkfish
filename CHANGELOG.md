@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.19] - 2026-10-23
+
+### Fixed
+
+- **(find)** ⌘F via macOS Edit › Find menu + key code matching (#100) ([1cf6ca4](https://github.com/PylotLight/Inkfish/commit/1cf6ca4d49388ec52520cf155f8e6b3798c65c08))
+
 ## [0.2.18] - 2026-10-23
 
 ### Added
@@ -43,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.15] - 2026-10-20
 
+[0.2.19]: https://github.com/PylotLight/Inkfish/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/PylotLight/Inkfish/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/PylotLight/Inkfish/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/PylotLight/Inkfish/compare/v0.2.15...v0.2.16
