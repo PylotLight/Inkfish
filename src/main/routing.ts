@@ -2,14 +2,19 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   DEFAULT_ROUTING_PREFS,
+  KEEP_IN_INBOX,
   keyTerms,
+  routeKey,
+  routeKeyLabel,
   sanitizeRoutingPrefs,
+  toRoutePreview,
   type InboxRoute,
   type RouteDoc,
+  type RoutePreview,
   type RoutingPrefs
 } from '../shared/routing'
-import type { ClassifyResult, NoteEntry } from '../shared/types'
-import { classify, type RouteLlm } from './ai'
+import type { ClassifyResult, NoteEntry, NoteKind } from '../shared/types'
+import { classify, intelEligible, rulesRoute, type ClassifyInput, type RouteLlm } from './ai'
 import { indexFile, indexPath, removePath, routeHits, routeMeta } from './db'
 import {
   appDataDir,
@@ -71,6 +76,38 @@ export function routeCorpus(raw: string): {
   return { notes, docs, totalDocs: notes.length }
 }
 
+/**
+ * The router's inputs for one capture. Filing and the live preview both build them here, so what the
+ * capture popover previews is exactly what the rules router files.
+ */
+export function routeInputFor(raw: string, kind: NoteKind, hint: string | undefined, paths: VaultPaths): ClassifyInput {
+  return {
+    raw,
+    kind,
+    projects: listProjects(paths),
+    projectHint: hint,
+    corpus: routeCorpus(raw),
+    prefs: loadRoutingPrefs()
+  }
+}
+
+/**
+ * Live preview for the capture popover: the offline rules router only (no model call), on the same
+ * inputs filing uses. `aiReady` = an AI provider / Apple Intelligence may refine it at filing time.
+ */
+export function previewRoute(
+  raw: string,
+  kind: NoteKind,
+  hint: string | undefined,
+  paths: VaultPaths,
+  aiReady = false
+): RoutePreview {
+  const input = routeInputFor(raw, kind, hint, paths)
+  const { decision } = rulesRoute(input)
+  const prefs = input.prefs ?? DEFAULT_ROUTING_PREFS
+  return toRoutePreview(decision, { autoFile: prefs.autoFile, aiMayRefine: aiReady && intelEligible(input) })
+}
+
 // --- route one inbox capture -----------------------------------------------------------------
 
 export interface RouteOutcome {
@@ -85,6 +122,8 @@ export interface RouteOptions {
   apply: boolean
   /** Explicit folder (Move → / picker) — overrides the capture's own hint. */
   hint?: string
+  /** "Route" clicked: a capture the user kept in the inbox gets routed normally this time. */
+  manual?: boolean
   llm?: RouteLlm | null
 }
 
@@ -105,15 +144,9 @@ export async function routeInboxItem(
   setInboxStatus(id, 'processing', paths)
   reindexInbox()
   try {
-    const result = await classify({
-      raw: item.raw,
-      kind: item.kind,
-      projects: listProjects(paths),
-      projectHint: opts.hint ?? item.projectHint,
-      corpus: routeCorpus(item.raw),
-      prefs: loadRoutingPrefs(),
-      llm: opts.llm ?? null
-    })
+    let hint = opts.hint ?? item.projectHint
+    if (opts.manual && hint === KEEP_IN_INBOX) hint = undefined
+    const result = await classify({ ...routeInputFor(item.raw, item.kind, hint, paths), llm: opts.llm ?? null })
     const route: InboxRoute = {
       action: result.action,
       folder: result.projectName,
@@ -123,7 +156,15 @@ export async function routeInboxItem(
       provider: result.provider,
       suggested: false
     }
+    // The capture showed a preview; say so when filing ended up somewhere else (AI refined it, vault changed).
+    const previewed = item.previewed
+    const differs = (rel: string): boolean =>
+      Boolean(previewed) && previewed !== routeKey({ action: route.action, folder: route.folder, rel })
+    const notePreview = (): void => {
+      if (previewed) route.reason = `${route.reason} · preview said ${routeKeyLabel(previewed)}`
+    }
     if (result.action === 'review' || !opts.apply) {
+      if (differs(route.rel)) notePreview()
       route.suggested = result.action !== 'review'
       setInboxStatus(id, 'inbox', paths)
       setInboxRoute(id, route, paths)
@@ -148,6 +189,7 @@ export async function routeInboxItem(
       )
     }
     route.rel = written.vaultRel
+    if (differs(result.action === 'append' ? written.vaultRel : '')) notePreview()
     setInboxStatus(id, 'ready', paths)
     setInboxRoute(id, route, paths)
     reindexInbox()

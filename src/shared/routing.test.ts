@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  appendHint,
   DEFAULT_ROUTING_PREFS,
+  KEEP_IN_INBOX,
+  parseRouteHint,
+  previewLabel,
   decideRoute,
   ftsQuery,
   inferTags,
@@ -238,5 +242,38 @@ describe('pickMeetingsFolder', () => {
     )
     expect(pickMeetingsFolder('', null, [])).toBe('')
     expect(pickMeetingsFolder('', null, ['root-meeting.md'])).toBe('')
+  })
+})
+
+describe('route hints + preview label', () => {
+  test('parseRouteHint', () => {
+    expect(parseRouteHint('auto')).toEqual({ kind: 'auto' })
+    expect(parseRouteHint(undefined)).toEqual({ kind: 'auto' })
+    expect(parseRouteHint(KEEP_IN_INBOX)).toEqual({ kind: 'inbox' })
+    expect(parseRouteHint(appendHint('Garden/Tomato log.md'))).toEqual({ kind: 'append', rel: 'Garden/Tomato log.md' })
+    expect(parseRouteHint('Garden')).toEqual({ kind: 'folder', name: 'Garden' })
+  })
+
+  test('previewLabel', () => {
+    const base = {
+      folder: 'Garden',
+      target: null,
+      tags: [],
+      confidence: 0.72,
+      reason: '',
+      override: false,
+      suggested: false,
+      aiMayRefine: false,
+      alt: { folder: null, append: null }
+    }
+    const tomato = { rel: 'Garden/Tomato log.md', title: 'Tomato log' }
+    expect(previewLabel({ ...base, action: 'new' })).toBe('→ Garden · new note · 72%')
+    expect(previewLabel({ ...base, action: 'append', confidence: 0.81, target: tomato })).toBe(
+      '→ add to Tomato log · 81%'
+    )
+    expect(previewLabel({ ...base, action: 'inbox' })).toBe('→ inbox (not sure)')
+    expect(previewLabel({ ...base, action: 'inbox', override: true })).toBe('→ keep in inbox')
+    expect(previewLabel({ ...base, action: 'new', suggested: true })).toBe('suggested → Garden · new note · 72%')
+    expect(previewLabel({ ...base, action: 'new', override: true })).toBe('→ Garden · new note')
   })
 })

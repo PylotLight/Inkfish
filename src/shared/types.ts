@@ -58,6 +58,8 @@ export interface InboxItem {
   createdAt: number
   /** What the router did (or suggests): folder, new vs appended, why. */
   route?: import('./routing').InboxRoute
+  /** Where the capture popover previewed it would go (`routeKey`), when it showed one. */
+  previewed?: string
 }
 
 export interface ProcessedNote {
@@ -82,6 +84,8 @@ export interface InboxAddInput {
   source?: NoteSource
   /** Vault-relative asset paths already saved via `assets:save`. */
   assets?: string[]
+  /** `routeKey` of the route preview shown at save time (only when it matched the saved text + hint). */
+  previewed?: string
 }
 
 export interface VaultInfo {

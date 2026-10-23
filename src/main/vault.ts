@@ -1073,6 +1073,8 @@ export interface InboxWriteInput {
   projectHint?: string
   source?: NoteSource
   assets?: string[]
+  /** Route the capture popover previewed (`routeKey`), to flag a different outcome at filing. */
+  previewed?: string
 }
 
 export function writeInboxItem(
@@ -1091,7 +1093,8 @@ export function writeInboxItem(
     created: new Date(createdAt).toISOString(),
     source,
     projectHint: input.projectHint ?? 'auto',
-    assets: input.assets ?? []
+    assets: input.assets ?? [],
+    ...(input.previewed ? { routePreview: input.previewed } : {})
   })
   const file = join(paths.inboxDir, `${id}.md`)
   writeFileSync(file, `${fm}${input.raw.replace(/\s+$/, '')}\n`, 'utf8')
@@ -1103,7 +1106,8 @@ export function writeInboxItem(
       assets: input.assets ?? [],
       status,
       projectHint: input.projectHint ?? 'auto',
-      createdAt
+      createdAt,
+      ...(input.previewed ? { previewed: input.previewed } : {})
     },
     path: file
   }
@@ -1123,7 +1127,8 @@ export function readInboxItem(id: string, paths: VaultPaths = vaultPaths()): Inb
     status: (fm['status'] as NoteStatus) ?? 'inbox',
     projectHint: typeof fm['projectHint'] === 'string' ? fm['projectHint'] : 'auto',
     createdAt: Number.isFinite(created) ? created : 0,
-    route: readRoute(fm)
+    route: readRoute(fm),
+    ...(typeof fm['routePreview'] === 'string' && fm['routePreview'] ? { previewed: fm['routePreview'] } : {})
   }
 }
 

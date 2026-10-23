@@ -368,6 +368,12 @@ export function clearProcessed(noteId: string): boolean {
 
 // --- routing -------------------------------------------------------------------------------
 
+/** A provider is set up (no key decrypt — cheap enough for the capture's live route preview). */
+export function aiConfigured(): boolean {
+  const s = load()
+  return isConnected(settingsOnly(s), Boolean(s.keyEnc))
+}
+
 /**
  * One short completion for the capture router (main process, no renderer). Null when no provider
  * is connected (switched off, or no key for a remote server) — the router then stays on rules.

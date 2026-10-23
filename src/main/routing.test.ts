@@ -130,3 +130,85 @@ describe('routeInboxItem', () => {
     expect(out.route.rel.startsWith('Unsorted/')).toBe(true)
   })
 })
+
+describe('previewRoute (capture popover)', () => {
+  const filedKey = (r: { action: string; folder: string; rel: string }): string =>
+    r.action === 'append' ? `append:${r.rel}` : r.action === 'review' ? 'review:' : `new:${r.folder}`
+
+  test('preview == filing decision for the same input (append / new / inbox / overrides / suggest-only)', async () => {
+    const { v, r, paths } = await setup()
+    const sr = await import('../shared/routing')
+    const cases: Array<{ raw: string; hint?: string; prefs?: Partial<import('../shared/routing').RoutingPrefs> }> = [
+      { raw: 'tomato seedlings need staking, fix the watering schedule' },
+      { raw: 'worms escaping the compost bin again, more mulch', prefs: { allowAppend: false } },
+      { raw: 'book the dentist for thursday arvo' },
+      { raw: 'tomato seedlings need staking', hint: 'Rust' },
+      { raw: 'worms in the compost bin', hint: sr.appendHint('Garden/Tomato log.md') },
+      { raw: 'tomato seedlings need staking, fix the watering schedule', hint: sr.KEEP_IN_INBOX },
+      { raw: 'worms escaping the compost bin again, more mulch', prefs: { autoFile: false, allowAppend: false } }
+    ]
+    const seen = new Set<string>()
+    for (const c of cases) {
+      r.saveRoutingPrefs({ ...sr.DEFAULT_ROUTING_PREFS, ...(c.prefs ?? {}) })
+      const p = r.previewRoute(c.raw, 'text', c.hint ?? 'auto', paths)
+      const { item } = v.writeInboxItem({ kind: 'text', raw: c.raw, projectHint: c.hint ?? 'auto' }, paths)
+      const out = ok(await r.routeInboxItem(item.id, paths, { apply: r.loadRoutingPrefs().autoFile }))
+      const filed = filedKey({ ...out.route, rel: out.route.action === 'append' ? out.route.rel : '' })
+      expect(sr.routeKey({ action: p.action, folder: p.folder, rel: p.target?.rel })).toBe(filed)
+      expect(p.confidence).toBeCloseTo(out.route.confidence, 2)
+      expect(p.suggested).toBe(out.route.suggested)
+      seen.add(p.action)
+      if (out.route.action === 'append' && !out.route.suggested) r.undoInboxRoute(item.id, paths)
+    }
+    expect([...seen].sort()).toEqual(['append', 'inbox', 'new'])
+  })
+
+  test('override always wins: append to a chosen note, keep in inbox', async () => {
+    const { v, r, paths } = await setup()
+    const sr = await import('../shared/routing')
+    const hint = sr.appendHint('Rust/Borrow checker.md')
+    const p = r.previewRoute('book the dentist for thursday arvo', 'text', hint, paths)
+    expect(p).toMatchObject({ action: 'append', override: true, folder: 'Rust' })
+    expect(p.target?.rel).toBe('Rust/Borrow checker.md')
+    const { item } = v.writeInboxItem(
+      { kind: 'text', raw: 'book the dentist for thursday arvo', projectHint: hint },
+      paths
+    )
+    const out = ok(await r.routeInboxItem(item.id, paths, { apply: true }))
+    expect(out.route).toMatchObject({ action: 'append', rel: 'Rust/Borrow checker.md', provider: 'picker' })
+    expect(readFileSync(join(dir, 'Rust/Borrow checker.md'), 'utf8')).toContain('book the dentist')
+
+    // Keep in inbox beats a confident append; "Route" clicked later routes it normally.
+    const raw = 'tomato seedlings need staking, fix the watering schedule'
+    const keep = v.writeInboxItem({ kind: 'text', raw, projectHint: sr.KEEP_IN_INBOX }, paths).item
+    const kept = ok(await r.routeInboxItem(keep.id, paths, { apply: true }))
+    expect(kept.route).toMatchObject({ action: 'review', reason: 'kept in inbox' })
+    const later = ok(await r.routeInboxItem(keep.id, paths, { apply: true, manual: true }))
+    expect(later.route.action).toBe('append')
+  })
+
+  test('AI can refine but never beats an override; a different outcome is flagged on the inbox row', async () => {
+    const { v, r, paths } = await setup()
+    r.saveRoutingPrefs({ allowAppend: false, useAiProvider: true })
+    const raw = 'worms escaping the compost bin again, more mulch'
+    expect(r.previewRoute(raw, 'text', 'auto', paths, true)).toMatchObject({
+      action: 'new',
+      folder: 'Garden',
+      aiMayRefine: true
+    })
+    const llm = async (): Promise<string> =>
+      JSON.stringify({ action: 'new', folder: 'Rust', targetNote: null, title: 'x', tags: [], confidence: 0.9 })
+    const { item } = v.writeInboxItem({ kind: 'text', raw, previewed: 'new:Garden' }, paths)
+    expect(v.readInboxItem(item.id, paths)?.previewed).toBe('new:Garden')
+    const out = ok(await r.routeInboxItem(item.id, paths, { apply: true, llm }))
+    expect(out.route.folder).toBe('Rust')
+    expect(out.route.reason).toContain('preview said new note in Garden')
+
+    // The user picked Garden in the preview: the picker wins over the model, nothing to flag.
+    expect(r.previewRoute(raw, 'text', 'Garden', paths, true)).toMatchObject({ override: true, aiMayRefine: false })
+    const two = v.writeInboxItem({ kind: 'text', raw, projectHint: 'Garden', previewed: 'new:Garden' }, paths).item
+    const out2 = ok(await r.routeInboxItem(two.id, paths, { apply: true, llm }))
+    expect(out2.route.folder).toBe('Garden')
+    expect(out2.route.reason).not.toContain('preview said')
+  })
+})

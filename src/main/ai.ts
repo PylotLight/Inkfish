@@ -147,7 +147,7 @@ export function rulesRoute(input: ClassifyInput): { decision: RouteDecision; res
 }
 
 /** Notes the model shouldn't rewrite or file: empty, or already-formatted meeting transcripts. */
-function intelEligible(input: ClassifyInput): boolean {
+export function intelEligible(input: ClassifyInput): boolean {
   return input.kind !== 'meeting' && input.kind !== 'image' && input.raw.trim().length >= 12
 }
 

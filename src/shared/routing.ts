@@ -350,6 +350,32 @@ function hintFolder(hint: string, folders: readonly RouteFolder[]): string {
   return matchFolder(hint, folders)?.dir ?? hint.trim().replace(/^\/+|\/+$/g, '')
 }
 
+// --- explicit overrides (capture picker / route preview) ---------------------------------------
+
+/** Hint that keeps the capture in the inbox (route preview › "Keep in inbox"). */
+export const KEEP_IN_INBOX = '@inbox'
+const APPEND_PREFIX = '@append:'
+
+/** Hint that appends the capture to one existing note (vault rel). */
+export const appendHint = (rel: string): string => `${APPEND_PREFIX}${rel}`
+
+export type RouteHint =
+  { kind: 'auto' } | { kind: 'inbox' } | { kind: 'append'; rel: string } | { kind: 'folder'; name: string }
+
+/** Picker hint → what the user asked for: let the router decide, a folder, a note to append to, or the inbox. */
+export function parseRouteHint(hint: string | null | undefined): RouteHint {
+  const h = (hint ?? '').trim()
+  if (!h || h === 'auto') return { kind: 'auto' }
+  if (h === KEEP_IN_INBOX) return { kind: 'inbox' }
+  if (h.startsWith(APPEND_PREFIX)) {
+    const rel = h.slice(APPEND_PREFIX.length).trim()
+    return rel ? { kind: 'append', rel } : { kind: 'auto' }
+  }
+  return { kind: 'folder', name: h }
+}
+
+const noteName = (rel: string): string => (rel.split('/').pop() ?? rel).replace(/\.md$/i, '')
+
 /**
  * Score folders and notes against the capture and decide: append to a related note, new note in a
  * folder, or leave it for review. Deterministic and offline.
@@ -444,8 +470,38 @@ export function decideRoute(input: RouteInput): RouteDecision {
 
   const base = { tags, folders: scored, notes: notes.slice(0, 8) }
 
-  // 1. Explicit picker / Move choice: always wins, always a new note there.
-  const hint = input.hint && input.hint !== 'auto' ? input.hint : null
+  // 1. Explicit picker / Move / preview choice: always wins.
+  const choice = parseRouteHint(input.hint)
+  if (choice.kind === 'inbox') {
+    return {
+      ...base,
+      action: 'review',
+      folder: null,
+      target: null,
+      targetTitle: null,
+      confidence: 1,
+      reason: 'kept in inbox',
+      provider: 'picker'
+    }
+  }
+  if (choice.kind === 'append') {
+    const meta = input.notes.find((n) => n.path === choice.rel)
+    if (meta) {
+      const title = input.docs.find((d) => d.path === choice.rel)?.title || noteName(choice.rel)
+      return {
+        ...base,
+        action: 'append',
+        folder: topDir(choice.rel, folders),
+        target: choice.rel,
+        targetTitle: title,
+        confidence: 1,
+        reason: `picked: add to "${title}"`,
+        provider: 'picker'
+      }
+    }
+    // The note is gone: a new note next to where it was, when that folder still exists.
+  }
+  const hint = choice.kind === 'folder' ? choice.name : choice.kind === 'append' ? topDir(choice.rel, folders) : null
   if (hint) {
     const dir = hintFolder(hint, folders)
     return {
@@ -711,4 +767,80 @@ export function pickMeetingsFolder(pref: string, legacy: string | null, meetingP
     }
   }
   return best
+}
+
+// --- live preview (capture popover) ----------------------------------------------------------
+
+/** Where a capture would go if saved now: the rules router's call on the same inputs as filing. */
+export interface RoutePreview {
+  action: 'new' | 'append' | 'inbox'
+  /** Folder of the new note / append target ('' = vault root or none). */
+  folder: string
+  /** Append target (vault rel + title); null otherwise. */
+  target: { rel: string; title: string } | null
+  tags: string[]
+  confidence: number
+  reason: string
+  /** The capture's hint decided it (picker / preview override). */
+  override: boolean
+  /** Settings › Routing auto-file is off: it would only be suggested, the capture waits in the inbox. */
+  suggested: boolean
+  /** An AI model may still refine this at filing time (provider / Apple Intelligence). */
+  aiMayRefine: boolean
+  /** Quick switches for the preview menu. */
+  alt: {
+    /** "New note instead": the folder a new note would go to (when the call is append / inbox). */
+    folder: string | null
+    /** "Add to … instead": the best appendable note (when the call isn't an append). */
+    append: { rel: string; title: string } | null
+  }
+}
+
+/** Fold a rules decision into the preview the capture shows. */
+export function toRoutePreview(d: RouteDecision, opts: { autoFile: boolean; aiMayRefine: boolean }): RoutePreview {
+  const override = d.provider === 'picker'
+  const action = d.action === 'review' ? 'inbox' : d.action
+  const best = d.notes.find((n) => n.appendable && n.score > 0)
+  const topFolder = d.folders.find((f) => f.score > 0)?.dir ?? null
+  return {
+    action,
+    folder: d.folder ?? '',
+    target: d.action === 'append' && d.target ? { rel: d.target, title: d.targetTitle ?? noteName(d.target) } : null,
+    tags: [...d.tags],
+    confidence: d.confidence,
+    reason: d.reason,
+    override,
+    suggested: !opts.autoFile && action !== 'inbox',
+    aiMayRefine: opts.aiMayRefine && !override && !d.reason.startsWith('meeting →'),
+    alt: {
+      folder: action === 'new' ? null : (d.folder ?? topFolder),
+      append: action === 'append' || !best ? null : { rel: best.path, title: best.title }
+    }
+  }
+}
+
+/** One compact line: "→ Garden · new note · 72%", "→ add to Tomato log · 81%", "→ inbox (not sure)". */
+export function previewLabel(p: RoutePreview): string {
+  const pre = p.suggested ? 'suggested ' : ''
+  const conf = p.override ? '' : ` · ${pct(p.confidence)}`
+  if (p.action === 'inbox') return p.override ? '→ keep in inbox' : '→ inbox (not sure)'
+  if (p.action === 'append') return `${pre}→ add to ${p.target?.title ?? 'note'}${conf}`
+  return `${pre}→ ${p.folder || 'vault root'} · new note${conf}`
+}
+
+/** Compact key for "where it went" (preview vs. filed): `new:Garden`, `append:Garden/Tomato log.md`, `review:`. */
+export function routeKey(r: { action: string; folder: string; rel?: string }): string {
+  if (r.action === 'append') return `append:${r.rel ?? ''}`
+  if (r.action === 'review' || r.action === 'inbox') return 'review:'
+  return `new:${r.folder}`
+}
+
+/** Human form of a routeKey, for "preview said …". */
+export function routeKeyLabel(key: string): string {
+  const i = key.indexOf(':')
+  const action = i === -1 ? key : key.slice(0, i)
+  const rest = i === -1 ? '' : key.slice(i + 1)
+  if (action === 'append') return `add to ${noteName(rest)}`
+  if (action === 'review') return 'inbox'
+  return `new note in ${rest || 'vault root'}`
 }

@@ -119,14 +119,15 @@ import {
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
 import {
   loadRoutingPrefs,
+  previewRoute,
   routeCorpus,
   routeInboxItem,
   saveRoutingPrefs,
   undoInboxRoute,
   type RouteOutcome
 } from './routing'
-import { routeCompletion } from './ai-api'
-import type { RoutingPrefs } from '../shared/routing'
+import { aiConfigured, routeCompletion } from './ai-api'
+import type { RoutePreview, RoutingPrefs } from '../shared/routing'
 import { shortcutFor } from './shortcuts'
 import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
 import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
@@ -203,7 +204,7 @@ function info(): VaultInfo {
 /** Background worker: classify + route one inbox item, never deleting raw. */
 async function processInboxItem(
   id: string,
-  opts: { apply: boolean; hint?: string }
+  opts: { apply: boolean; hint?: string; manual?: boolean }
 ): Promise<RouteOutcome | { error: string }> {
   let paths: VaultPaths
   try {
@@ -377,7 +378,8 @@ export function registerIpc(): void {
         raw: input.raw,
         projectHint: input.projectHint ?? 'auto',
         source: input.source ?? 'tray',
-        assets: input.assets ?? []
+        assets: input.assets ?? [],
+        previewed: typeof input.previewed === 'string' ? input.previewed.slice(0, 300) : undefined
       },
       paths
     )
@@ -397,8 +399,24 @@ export function registerIpc(): void {
 
   // "Route" clicked: file it now (applies a suggestion; low confidence still stays for review).
   ipcMain.handle('inbox:process', (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
-    processInboxItem(id, { apply: true })
+    processInboxItem(id, { apply: true, manual: true })
   )
+
+  // Capture popover's live preview: the rules router on the same inputs filing uses (no model call).
+  ipcMain.handle('route:preview', (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind, hint?: string) => {
+    if (!vaultConfigured() || typeof raw !== 'string' || !raw.trim()) return null
+    const prefs = loadRoutingPrefs()
+    const intel = loadIntelPrefs()
+    const aiReady =
+      (prefs.useAiProvider && aiConfigured()) ||
+      (intel.provider === 'apple' && intel.organize && process.platform === 'darwin')
+    try {
+      return previewRoute(raw, kind, hint || 'auto', requireNotes(), aiReady) satisfies RoutePreview
+    } catch (err) {
+      console.warn('[route] preview failed:', err instanceof Error ? err.message : String(err))
+      return null
+    }
+  })
 
   // Move → folder: the user's choice always wins (new note there).
   ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {

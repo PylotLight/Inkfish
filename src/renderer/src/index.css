@@ -1374,6 +1374,105 @@ html.mini-window .ed-src .cm-gutters {
   color: color-mix(in srgb, var(--muted) 75%, transparent);
 }
 
+/* Live route preview: one fixed-height line above the bar (reserved so the popover never jumps). */
+.cap-route {
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+}
+
+.cap-route-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  border: none;
+  background: transparent;
+  padding: 1px 6px;
+  margin-left: -6px;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.cap-route-line.static {
+  cursor: default;
+  font-weight: 600;
+}
+
+button.cap-route-line:hover,
+button.cap-route-line:focus-visible,
+button.cap-route-line[aria-expanded='true'] {
+  background: var(--panel);
+  color: var(--text);
+  outline: none;
+}
+
+.cap-route-line.stale {
+  opacity: 0.55;
+}
+
+.cap-route-where {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cap-route-line.unsure .cap-route-where {
+  font-style: italic;
+}
+
+.cap-route-why {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.cap-route-menu {
+  position: absolute;
+  left: -6px;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  min-width: 200px;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  outline: none;
+  -webkit-app-region: no-drag;
+}
+
+.cap-route-menu li {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cap-route-menu li.on {
+  background: var(--panel);
+}
+
 .cap-bar {
   display: flex;
   align-items: center;
