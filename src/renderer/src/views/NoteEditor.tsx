@@ -17,6 +17,7 @@ import {
   type FindOpts
 } from '../find'
 import { listKeys, livePreview } from '../livePreview'
+import { codeHighlight } from '../codeHighlight'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
 import NoteAi from './NoteAi'
 import TagChips from './TagChips'
@@ -266,6 +267,7 @@ function NoteEditor({
               if (d && !remote) window.api.mini?.draft(d.id, next)
             }),
             findDecoField,
+            codeHighlight(),
             livePreview({
               onToggleTask: (pos) => toggleTaskRef.current(pos),
               resolveImage: (src) => imageCandidates(src, notePathRef.current)

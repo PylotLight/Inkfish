@@ -30,6 +30,18 @@
 
 :root {
   color-scheme: dark;
+  /* Syntax palette (code blocks) — dark default, paper overrides. */
+  --syn-text: color-mix(in srgb, var(--text) 82%, transparent);
+  --syn-keyword: #c792ea;
+  --syn-string: #a5d6a7;
+  --syn-number: #f78c6c;
+  --syn-comment: rgba(160, 170, 185, 0.62);
+  --syn-def: #82aaff;
+  --syn-type: #ffcb6b;
+  --syn-prop: #89ddff;
+  --syn-special: #f07178;
+  --syn-tag: #f07178;
+  --syn-punct: rgba(200, 210, 225, 0.6);
   --bg: #0c0e11;
   --panel: rgba(255, 255, 255, 0.055);
   --panel-strong: rgba(255, 255, 255, 0.1);
@@ -2038,6 +2050,77 @@ html.mini-window .editor {
   opacity: 0.6;
 }
 
+/* Syntax highlighting (codeHighlight.ts → classHighlighter `tok-*` classes). Palette per theme below. */
+.ed-src .cm-line.lp-code {
+  color: var(--syn-text);
+}
+.ed-src .tok-keyword,
+.ed-src .tok-operatorKeyword,
+.ed-src .tok-modifier {
+  color: var(--syn-keyword);
+}
+.ed-src .tok-string,
+.ed-src .tok-string2,
+.ed-src .tok-inserted {
+  color: var(--syn-string);
+}
+.ed-src .tok-number,
+.ed-src .tok-bool,
+.ed-src .tok-atom,
+.ed-src .tok-null {
+  color: var(--syn-number);
+}
+.ed-src .tok-comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+.ed-src .tok-variableName.tok-definition,
+.ed-src .tok-function,
+.ed-src .tok-propertyName.tok-definition {
+  color: var(--syn-def);
+}
+.ed-src .tok-typeName,
+.ed-src .tok-className,
+.ed-src .tok-namespace {
+  color: var(--syn-type);
+}
+.ed-src .tok-propertyName,
+.ed-src .tok-attributeName {
+  color: var(--syn-prop);
+}
+.ed-src .tok-regexp,
+.ed-src .tok-escape,
+.ed-src .tok-special {
+  color: var(--syn-special);
+}
+.ed-src .tok-tagName,
+.ed-src .tok-heading {
+  color: var(--syn-tag);
+}
+.ed-src .tok-deleted,
+.ed-src .tok-invalid {
+  color: var(--danger);
+}
+.ed-src .tok-meta,
+.ed-src .tok-punctuation,
+.ed-src .tok-operator {
+  color: var(--syn-punct);
+}
+/* Markdown chrome that's still visible: fence info (```ts), link urls, raw markers. */
+.ed-src .tok-labelName {
+  color: var(--syn-keyword);
+}
+.ed-src .tok-url {
+  color: var(--syn-comment);
+}
+.ed-src .tok-processingInstruction {
+  color: var(--syn-punct);
+}
+/* Live preview owns heading looks; don't recolour headings in prose. */
+.ed-src .cm-line:not(.lp-code) .tok-heading {
+  color: inherit;
+}
+
 .ed-src .lp-bold {
   font-weight: 700;
 }
@@ -2324,6 +2407,17 @@ html[data-theme='plum'] {
 
 html[data-theme='paper'] {
   color-scheme: light;
+  --syn-text: #2b2620;
+  --syn-keyword: #8a3fb8;
+  --syn-string: #2f7d3a;
+  --syn-number: #b5531c;
+  --syn-comment: rgba(60, 52, 40, 0.55);
+  --syn-def: #1f5fc4;
+  --syn-type: #9a6a00;
+  --syn-prop: #0b7a8a;
+  --syn-special: #c0392b;
+  --syn-tag: #b8323f;
+  --syn-punct: rgba(60, 52, 40, 0.6);
   --panel: rgba(255, 255, 255, 0.62);
   --panel-strong: rgba(255, 255, 255, 0.85);
   --border: rgba(30, 25, 15, 0.14);
