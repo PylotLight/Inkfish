@@ -78,8 +78,39 @@ On macOS omit `xvfb-run -a`. Pass model IDs to run a subset. Set
 `INKFISH_STT_SMOKE_PROFILE` to retain the test cache between runs, then use
 `--offline --full` to test the entire 79 s clip with remote requests blocked.
 Do not rebuild the renderer while this test is running. The CLI
-`bun run bench:stt` still benchmarks only native helper engines; use Settings
-for the Web models.
+`bun run bench:stt` still benchmarks only native helper engines.
+
+For repeatable Web engine measurements outside Settings:
+
+```sh
+INKFISH_STT_BENCH_PROFILE=/tmp/inkfish-web-bench \
+  xvfb-run -a bun run bench:stt:web
+```
+
+On macOS omit `xvfb-run -a`. This builds a separate benchmark renderer with the
+application's production CSP and sandboxed Electron settings. By default it runs
+both Quick and Deep on Redux and the Workmind Moonshine v2 Small export. Pass
+`--quick` or `--deep`, followed by any shipped `web-` engine IDs, for a subset.
+The same application engine loaders, bundled audio, warm-up, per-clip time limits,
+normalization and corpus WER scoring are used. Timed Web calls include audio
+decoding, as they do in Settings. Model loading and the first decode are timed
+separately as warm-up; this is not a native-helper benchmark.
+
+The runner saves each success or failure incrementally to `bench-results.json`;
+override its location with `INKFISH_STT_BENCH_OUTPUT`. Set
+`INKFISH_STT_BENCH_PROFILE` to retain model caches, then pass `--offline` on a
+later run to block all HTTP(S) requests. Without a profile override, the temporary
+profile is removed after a completed run. Do not rebuild this benchmark renderer
+while it is running. Redux requires a working WebGPU adapter; a missing adapter
+is recorded as a failure, not a zero score or an inferred CPU result. A run with
+any failed engine exits nonzero while preserving other engines' results.
+
+Zipformer Small and the official Moonshine Voice streaming runtime are not added
+as selectable engines by this benchmark change. Zipformer still needs a built
+sherpa-onnx browser runtime and an end-to-end adapter. The official Moonshine
+prototype still needs production asset/worker/CSP validation. Neither is claimed
+to have passed Quick or Deep, and no Redux comparison is claimed on machines
+without WebGPU.
 
 ## WASM / pure-JS review (2026-10)
 
