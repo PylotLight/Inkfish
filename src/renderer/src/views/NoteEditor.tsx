@@ -445,6 +445,8 @@ function NoteEditor({
   }, [findQuery, replaceText, findOpts, handleText])
 
   // Window-level shortcuts (capture phase): work wherever focus is, as long as this note is on screen.
+  // When the keydown handler already ran, the menu item (same key) must not run it twice (⌘G would step 2).
+  const keyHandledAtRef = useRef(0)
   const findKeysRef = useRef({ findOpen, openFind, stepFind })
   findKeysRef.current = { findOpen, openFind, stepFind }
   useEffect(() => {
@@ -459,6 +461,7 @@ function NoteEditor({
       // e.code, not e.key: on macOS ⌥⌘F reports key 'ƒ' (and other layouts remap letters).
       const key = e.code === 'KeyF' ? 'f' : e.code === 'KeyG' ? 'g' : e.key.toLowerCase()
       const k = findKeysRef.current
+      if (key === 'f' || key === 'g') keyHandledAtRef.current = performance.now()
       if (key === 'f' && !e.shiftKey) {
         e.preventDefault()
         e.stopPropagation()
@@ -485,6 +488,7 @@ function NoteEditor({
     return sub((action) => {
       const root = rootRef.current
       if (!root || root.offsetParent === null) return
+      if (performance.now() - keyHandledAtRef.current < 250) return
       const k = findKeysRef.current
       if (action === 'find') k.openFind(false)
       else if (action === 'replace') k.openFind(true)
