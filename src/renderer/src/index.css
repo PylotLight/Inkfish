@@ -664,11 +664,6 @@ html[data-theme='paper'] .toast.glass {
   color: #fff;
 }
 
-.engine-icon.cohere {
-  background: #39594d;
-  color: #ff7759;
-}
-
 .engine-main {
   flex: 1;
   min-width: 0;
@@ -762,6 +757,11 @@ html[data-theme='paper'] .toast.glass {
   border-bottom: 1px solid var(--border);
 }
 
+.bench-table th,
+.bench-table td {
+  white-space: nowrap;
+}
+
 .bench-table td {
   padding: 5px 8px 5px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
@@ -828,19 +828,31 @@ html[data-theme='paper'] .toast.glass {
 
 .engine-run {
   display: flex;
-  gap: 10px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--border);
   font-size: 13px;
 }
 
+.engine-run > * {
+  min-width: 0;
+}
+
+.run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
 .engine-ms {
   flex: none;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
-  min-width: 52px;
+  white-space: nowrap;
 }
 
 .engine-ms.best {
@@ -848,14 +860,56 @@ html[data-theme='paper'] .toast.glass {
   font-weight: 600;
 }
 
-.engine-text {
+.run-head .engine-runtime {
+  flex: 1 1 12ch;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-clips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.run-clips .tag {
+  white-space: nowrap;
+}
+
+.run-clips .tag b {
+  font-weight: 600;
+}
+
+.run-errors {
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.engine-detail {
-  white-space: pre-line;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+.engine-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.engine-text.open {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
 }
 
 .engine-row.is-hidden {

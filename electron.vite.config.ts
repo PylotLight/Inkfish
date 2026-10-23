@@ -1,8 +1,6 @@
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
-import { moonshineRuntime } from './scripts/lib/moonshine-runtime'
-import { qwenRuntime } from './scripts/lib/qwen-runtime'
 
 export default defineConfig({
   main: {
@@ -22,12 +20,12 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
-    plugins: [react(), moonshineRuntime(), qwenRuntime()],
-    // In-app speech engines spawn module workers and use top-level await.
+    plugins: [react()],
+    // The in-app speech engine (vocule) spawns module workers and uses top-level await.
     worker: { format: 'es' },
     build: { target: 'esnext' },
     optimizeDeps: {
-      exclude: ['@karanganesan/vocule', 'parakeet.js', '@huggingface/transformers']
+      exclude: ['@karanganesan/vocule']
     }
   }
 })

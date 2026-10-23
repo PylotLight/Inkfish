@@ -1,16 +1,10 @@
 /**
- * In-app (WASM / WebGPU) speech engines that run in the renderer — no helper,
- * no installs. Models download on first use into the renderer's Cache Storage
- * / IndexedDB. These complement the native helper engines and show up beside
- * them in Settings › Voice Engine (ids prefixed `web-`).
+ * In-app (WASM / WebGPU) speech engine that runs in the renderer — no helper,
+ * no installs. Parakeet Redux · Web (vocule) downloads on first use into the
+ * renderer's Cache Storage and shows up beside the native engines in
+ * Settings › Voice Engine (ids prefixed `web-`).
  */
 import type { SttEngine, SttResult } from '../../shared/types'
-import { TRANSFORMER_ENGINES, speechWindows, transformerCache } from './transformerSttModels'
-import { TransformerClient } from './transformerStt'
-import { ZIPFORMER_ENGINE, disposeZipformer } from './zipformerStt'
-import { MOONSHINE_WASM_ENGINE, disposeMoonshineWasm } from './moonshineWasm'
-import { MOONSHINE_TINY_ENGINE, disposeMoonshineTiny } from './moonshineTinyStt'
-import { QWEN_ASR_ENGINE, loadQwenAsr, disposeQwenAsr } from './qwenAsr'
 
 interface Heard {
   text: string
@@ -37,7 +31,6 @@ interface WebEngine {
   languages: string
   /** Cache Storage buckets / IndexedDB databases the model lives in. */
   caches: string[]
-  dbs?: string[]
   load: (gpu: Gpu, onProgress: OnProgress) => Promise<Loaded>
 }
 
@@ -60,10 +53,6 @@ export function probeGpu(): Promise<Gpu> {
 }
 
 export const WEB_ENGINES: WebEngine[] = [
-  ZIPFORMER_ENGINE,
-  MOONSHINE_WASM_ENGINE,
-  MOONSHINE_TINY_ENGINE,
-  { ...QWEN_ASR_ENGINE, load: async (_gpu, onProgress) => loadQwenAsr(onProgress) },
   {
     id: 'web-parakeet-redux',
     name: 'Parakeet Redux · Web',
@@ -89,72 +78,36 @@ export const WEB_ENGINES: WebEngine[] = [
         return { text: parts.join(' '), runtime: `WebGPU+WASM · ${label || 'Parakeet Redux'}` }
       }
     }
-  },
-  {
-    id: 'web-parakeet-v2',
-    name: 'Parakeet v2 · Web',
-    subtitle: 'parakeet.js — TDT 0.6B v2 on WebGPU (ONNX Runtime Web)',
-    family: 'nvidia',
-    // WebGPU can't run the int8 encoder, so fp16 (1.24 GB) is the smallest GPU
-    // build; CPU-only Macs get int8 (652 MB). FluidVoice's 442 MB is the native
-    // Core ML build — that's our native "Parakeet v2" engine.
-    size: '~1.2 GB GPU · 650 MB CPU',
-    languages: 'English',
-    caches: [],
-    dbs: ['parakeet-cache-db'],
-    load: async (gpu, onProgress) => {
-      const { fromHub } = await import('parakeet.js')
-      const encoderQuant = gpu.ok ? 'fp16' : 'int8'
-      const expected = gpu.ok ? 1.24e9 : 0.652e9
-      const seen = new Map<string, { loaded: number; total: number }>()
-      const model = await fromHub('parakeet-tdt-0.6b-v2', {
-        // parakeet.js reports per file; sum across files so the bar only moves forward.
-        progress: (p: { loaded: number; total: number; file: string }) => {
-          seen.set(p.file, p)
-          let loaded = 0
-          let total = 0
-          for (const f of seen.values()) {
-            loaded += f.loaded
-            total += f.total
-          }
-          onProgress({ loaded, total: Math.max(total, expected), file: p.file, phase: 'downloading' })
-        },
-        backend: gpu.ok ? 'webgpu-hybrid' : 'wasm',
-        encoderQuant,
-        decoderQuant: 'int8',
-        cpuThreads: Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
-      })
-      const runtime = gpu.ok
-        ? `WebGPU encoder fp16 (${gpu.label}) + WASM decoder int8 · TDT 0.6B v2`
-        : 'WASM int8 (CPU) · TDT 0.6B v2'
-      return async (pcm) => ({ text: (await model.transcribeLongAudio(pcm, 16_000)).text, runtime })
-    }
-  },
-  ...TRANSFORMER_ENGINES.map((e): WebEngine => ({
-    ...e,
-    languages: 'English',
-    caches: [transformerCache(e.id)],
-    load: async (_gpu, onProgress) => {
-      const client = new TransformerClient()
-      transformerClients.set(e.id, client)
-      try {
-        await client.prepare(e.id, onProgress)
-      } catch (error) {
-        client.dispose()
-        if (transformerClients.get(e.id) === client) transformerClients.delete(e.id)
-        throw error
-      }
-      return (pcm) => client.transcribe(pcm)
-    }
-  }))
+  }
 ]
 
 /** Longest window fed to Redux in one call. */
 const REDUX_WINDOW_S = 20
 
 /** Split PCM into ≤maxS windows, cutting at the quietest 50 ms in each window's last 4 s. */
-export function splitAtQuiet(pcm: Float32Array, rate: number, maxS: number): Float32Array[] {
-  return speechWindows(pcm, rate, maxS)
+export function splitAtQuiet(pcm: Float32Array, rate = 16_000, maxS = REDUX_WINDOW_S): Float32Array[] {
+  const max = Math.floor(maxS * rate)
+  if (pcm.length <= max) return [pcm]
+  const hop = Math.max(1, Math.floor(rate * 0.05))
+  const windows: Float32Array[] = []
+  let start = 0
+  while (pcm.length - start > max) {
+    const end = start + max
+    let best = end
+    let quietest = Infinity
+    for (let i = Math.max(start + hop, end - 4 * rate); i + hop <= end; i += hop) {
+      let energy = 0
+      for (let j = i; j < i + hop; j++) energy += pcm[j]! * pcm[j]!
+      if (energy < quietest) {
+        quietest = energy
+        best = i + Math.floor(hop / 2)
+      }
+    }
+    windows.push(pcm.subarray(start, best))
+    start = best
+  }
+  windows.push(pcm.subarray(start))
+  return windows
 }
 
 export const isWebEngine = (id: string | undefined): boolean => !!id && id.startsWith('web-')
@@ -192,7 +145,6 @@ export function webEngines(): SttEngine[] {
 }
 
 const loaded = new Map<string, Promise<Loaded>>()
-const transformerClients = new Map<string, TransformerClient>()
 
 function get(id: string, onProgress: OnProgress = () => undefined): Promise<Loaded> {
   const e = WEB_ENGINES.find((x) => x.id === id)
@@ -218,12 +170,6 @@ export async function prepareWeb(id: string, onProgress?: OnProgress): Promise<v
 /** Drop a wedged in-memory engine (e.g. after a timeout) so the next use starts fresh. */
 export function resetWeb(id: string): void {
   loaded.delete(id)
-  transformerClients.get(id)?.dispose()
-  transformerClients.delete(id)
-  if (id === ZIPFORMER_ENGINE.id) disposeZipformer()
-  if (id === MOONSHINE_WASM_ENGINE.id) disposeMoonshineWasm()
-  if (id === MOONSHINE_TINY_ENGINE.id) disposeMoonshineTiny()
-  if (id === QWEN_ASR_ENGINE.id) disposeQwenAsr()
   if (id === 'web-parakeet-redux' && redux) {
     const r = redux
     redux = null
@@ -236,7 +182,6 @@ export async function removeWeb(id: string): Promise<void> {
   if (!e) return
   resetWeb(id)
   for (const c of e.caches) await caches.delete(c).catch(() => false)
-  for (const db of e.dbs ?? []) indexedDB.deleteDatabase(db)
   // Engines sharing a cache bucket lose their weights too.
   const s = readySet()
   for (const other of WEB_ENGINES) {
@@ -311,4 +256,44 @@ export function reduxSpeech(): Promise<import('@karanganesan/vocule').Speech> {
 /** Load the chosen web engine in the background so the first transcription doesn't pay for it. */
 export function warmWeb(id: string | undefined): void {
   if (id && isWebEngine(id) && readySet().has(id)) void get(id).catch(() => undefined)
+}
+
+/**
+ * Cache Storage buckets / IndexedDB databases left behind by the Web engines
+ * that were dropped (Parakeet v2 · Web, Zipformer, Moonshine, Whisper,
+ * Wav2Vec2, Qwen ASR). They live in Inkfish's own renderer storage, so
+ * deleting them can't touch anything outside the app.
+ */
+export const LEGACY_WEB_CACHES = [
+  'inkfish-zipformer-wasm-909bffc-v1',
+  'moonshine-models-v1',
+  'inkfish-moonshine-tiny-int8-v1',
+  'inkfish-qwen3-asr-bridge-v1',
+  'inkfish-qwen3-asr-projector-v1'
+]
+/** Transformers.js buckets were `inkfish-stt-<engine id>-v1`. */
+export const LEGACY_WEB_CACHE_PREFIX = 'inkfish-stt-web-'
+export const LEGACY_WEB_DBS = ['parakeet-cache-db']
+const LEGACY_DONE_KEY = 'inkfish.webstt.legacyCleaned'
+
+/** Is this a bucket from a removed Web engine? */
+export const isLegacyWebCache = (name: string): boolean =>
+  LEGACY_WEB_CACHES.includes(name) || name.startsWith(LEGACY_WEB_CACHE_PREFIX)
+
+/** One-time cleanup of removed Web engines' downloads and ready flags. Never throws. */
+export async function cleanupLegacyWebModels(): Promise<void> {
+  try {
+    if (localStorage.getItem(LEGACY_DONE_KEY)) return
+    const keep = new Set(WEB_ENGINES.map((e) => e.id))
+    const s = readySet()
+    const kept = new Set([...s].filter((id) => keep.has(id)))
+    if (kept.size !== s.size) saveReady(kept)
+    if (typeof caches !== 'undefined') {
+      for (const name of await caches.keys()) if (isLegacyWebCache(name)) await caches.delete(name).catch(() => false)
+    }
+    if (typeof indexedDB !== 'undefined') for (const db of LEGACY_WEB_DBS) indexedDB.deleteDatabase(db)
+    localStorage.setItem(LEGACY_DONE_KEY, '1')
+  } catch {
+    // best effort; try again next launch
+  }
 }

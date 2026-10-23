@@ -44,8 +44,7 @@ export interface ProviderStatus {
 export async function providerStatus(): Promise<ProviderStatus[]> {
   const engines = await listEngines()
   const ready = engines.filter((e) => e.ready)
-  const apple =
-    engines.find((e) => e.id === 'apple-analyzer' && e.available) ?? engines.find((e) => e.id === 'apple-speech')
+  const apple = engines.find((e) => e.id === 'apple-analyzer')
   return [
     {
       id: 'apple',

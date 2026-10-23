@@ -20,7 +20,7 @@ let package = Package(
   name: "InkfishSTT",
   platforms: [.macOS(.v14)],
   dependencies: [
-    // Parakeet (v3 / Redux / Ultra / v2) on the Neural Engine via CoreML. Apache-2.0.
+    // Parakeet Redux via CoreML. Apache-2.0.
     .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.5")
   ],
   targets: [

@@ -42,7 +42,7 @@ Object.assign(window, {
       )
       const loadMs = Math.round(performance.now() - cold)
       const start = performance.now()
-      const result = await limited(run(pcm), id === 'web-qwen3-asr-06b' ? 600_000 : 120_000, id)
+      const result = await limited(run(pcm), 120_000, id)
       if (!result.text.trim()) throw new Error('Empty transcript')
       return {
         id,

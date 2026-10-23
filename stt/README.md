@@ -6,11 +6,10 @@ Users never run it; everything is driven from Settings › Voice Engine.
 
 Engines (`src/main/stt.ts` lists and runs them):
 
-| id                                                                     | engine                             | notes                                                             |
-| ---------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
-| `apple-speech`                                                         | SFSpeechRecognizer                 | built in; macOS needs Siri or Dictation enabled                   |
-| `apple-analyzer`                                                       | SpeechAnalyzer / SpeechTranscriber | macOS 26 + built with the macOS 26 SDK; assets via AssetInventory |
-| `parakeet-*`, `phonon-2`, `nemotron-multilingual`, `cohere-transcribe` | FluidAudio CoreML on the ANE       | see docs/stt-options.md                                           |
+| id               | engine                             | notes                                                             |
+| ---------------- | ---------------------------------- | ----------------------------------------------------------------- |
+| `apple-analyzer` | SpeechAnalyzer / SpeechTranscriber | macOS 26 + built with the macOS 26 SDK; assets via AssetInventory |
+| `parakeet-redux` | FluidAudio Core ML (GPU)           | macOS 15; see docs/stt-options.md                                 |
 
 Helper commands: `engines`, `transcribe <audio> --engine ID`, `prepare --engine ID`, `remove --engine ID`.
 FluidAudio caches models in `~/Library/Application Support/FluidAudio/Models`.

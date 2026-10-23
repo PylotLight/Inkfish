@@ -20,17 +20,7 @@ app.setPath('userData', profile)
 app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
 const args = process.argv.slice(2)
 const ids = args.filter((s) => s.startsWith('web-'))
-if (!ids.length) {
-  ids.push(
-    'web-parakeet-redux',
-    'web-zipformer-small',
-    'web-moonshine-v2-small',
-    'web-moonshine-streaming-small-en',
-    'web-wav2vec2-base-960h',
-    'web-moonshine-streaming-tiny-int8-experimental',
-    'web-qwen3-asr-06b'
-  )
-}
+if (!ids.length) ids.push('web-parakeet-redux')
 const modes = args.includes('--smoke')
   ? ['smoke']
   : args.includes('--quick')

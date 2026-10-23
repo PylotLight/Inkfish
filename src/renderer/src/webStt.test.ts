@@ -1,25 +1,43 @@
 import { describe, expect, test } from 'bun:test'
-import { WEB_ENGINES, webEngines } from './webStt'
+import { WEB_ENGINES, isLegacyWebCache, splitAtQuiet, webEngines } from './webStt'
 
-const candidates = ['web-wav2vec2-base-960h', 'web-moonshine-streaming-tiny-int8-experimental', 'web-qwen3-asr-06b']
-
-describe('web STT testing candidates', () => {
-  test('registers all three additional candidates with separate loaders and caches', () => {
-    const engines = candidates.map((id) => WEB_ENGINES.find((engine) => engine.id === id)!)
-    for (const engine of engines) {
-      expect(engine).toBeDefined()
-      expect(typeof engine.load).toBe('function')
-      expect(`${engine.name} ${engine.subtitle}`.toLowerCase()).toContain('experimental')
-      expect(engine.caches.length).toBeGreaterThan(0)
-    }
-    const caches = engines.flatMap((engine) => engine.caches)
-    expect(new Set(caches).size).toBe(caches.length)
+describe('web STT engines', () => {
+  test('only Parakeet Redux · Web is left', () => {
+    expect(WEB_ENGINES.map((e) => e.id)).toEqual(['web-parakeet-redux'])
+    expect(webEngines().map((e) => e.name)).toEqual(['Parakeet Redux · Web'])
   })
 
-  test('keeps every engine ID unique and exposes all candidates in Settings metadata', () => {
-    const ids = WEB_ENGINES.map((engine) => engine.id)
-    expect(new Set(ids).size).toBe(ids.length)
-    const settingsIds = webEngines().map((engine) => engine.id)
-    for (const id of candidates) expect(settingsIds).toContain(id)
+  test('legacy cleanup never matches the Redux bucket', () => {
+    for (const c of WEB_ENGINES.flatMap((e) => e.caches)) expect(isLegacyWebCache(c)).toBe(false)
+    expect(isLegacyWebCache('inkfish-stt-web-whisper-base-en-v1')).toBe(true)
+    expect(isLegacyWebCache('inkfish-zipformer-wasm-909bffc-v1')).toBe(true)
+    expect(isLegacyWebCache('moonshine-models-v1')).toBe(true)
+  })
+})
+
+describe('splitAtQuiet', () => {
+  test('reconstructs every input sample exactly and respects maximum duration', () => {
+    const rate = 100
+    const pcm = Float32Array.from({ length: 1_037 }, (_, i) => Math.sin(i / 9))
+    const windows = splitAtQuiet(pcm, rate, 2)
+    expect(windows.length).toBeGreaterThan(1)
+    expect(windows.every((w) => w.length <= 2 * rate)).toBe(true)
+    expect([...windows.flatMap((w) => [...w])]).toEqual([...pcm])
+  })
+
+  test('cuts at a quiet boundary when one is available', () => {
+    const rate = 100
+    const pcm = new Float32Array(450)
+    pcm.fill(1)
+    pcm.fill(0, 180, 230)
+    const windows = splitAtQuiet(pcm, rate, 2)
+    expect(windows[0]!.length).toBeGreaterThanOrEqual(180)
+    expect(windows[0]!.length).toBeLessThanOrEqual(230)
+    expect([...windows.flatMap((w) => [...w])]).toEqual([...pcm])
+  })
+
+  test('short clips stay whole', () => {
+    const pcm = new Float32Array(16_000)
+    expect(splitAtQuiet(pcm)).toEqual([pcm])
   })
 })

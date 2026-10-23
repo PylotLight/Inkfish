@@ -8,10 +8,10 @@
 //   inkfish-stt ai run   (JSON request on stdin) → cleanup / organise / summarise JSON
 //   inkfish-stt audio-apps                      → [AudioProc] JSON (who's playing audio)
 //   inkfish-stt tap [--apps id,id]              → PCM stream (all audio, or just those apps)
-//   options: --locale en-AU, --allow-network (apple-speech only)
+//   options: --locale en-AU
 //
-// Engines: apple-speech (SFSpeechRecognizer), apple-analyzer (SpeechAnalyzer,
-// macOS 26), and the FluidAudio CoreML/ANE models in Fluid.swift.
+// Engines: apple-analyzer (SpeechAnalyzer, macOS 26) and Parakeet Redux via
+// FluidAudio (Fluid.swift).
 // Errors → stderr + non-zero exit.
 import Foundation
 import FluidAudio
@@ -39,7 +39,7 @@ struct Engine: Encodable {
   /// Current status line ("Downloaded", "Needs macOS 26", fix-it hints).
   let detail: String
   var subtitle: String = ""
-  /// "apple" | "nvidia" | "cohere" — drives the badge.
+  /// "apple" | "nvidia" — drives the badge.
   var family: String = "apple"
   var size: String = ""
   var languages: String = ""
@@ -51,8 +51,8 @@ struct Engine: Encodable {
 /// `prepare` progress for the app: one `PROGRESS {json}` line per update on stderr.
 ///
 /// FluidAudio's `fractionCompleted` covers the whole operation: repo loads give
-/// the download the first half and Core ML compile the second (weight 0.5),
-/// subdirectory loads (Nemotron) are all download (weight 1.0). The app wants
+/// the download the first half and Core ML compile the second (weight 0.5).
+/// The app wants
 /// each phase on its own 0–100% bar, so rescale here: `fraction` is progress
 /// within the current phase.
 func progressLine(downloadWeight w: Double) -> ProgressHandler {
@@ -79,7 +79,6 @@ func progressLine(downloadWeight w: Double) -> ProgressHandler {
 
 struct Options {
   var locale: Locale = .current
-  var allowNetwork = ProcessInfo.processInfo.environment["INKFISH_STT_ALLOW_NETWORK"] == "1"
   /// `tap --apps a,b`: owning-app bundle ids to tap (nil = all system audio).
   var tapApps: [String]? = nil
 }
@@ -117,8 +116,7 @@ func fail(_ msg: String, _ code: Int32) -> Never {
 }
 
 func listEngines(_ opts: Options) async -> [Engine] {
-  var out = [AppleSpeech.engine(opts)]
-  out.append(await AppleAnalyzer.engine(opts))
+  var out = [await AppleAnalyzer.engine(opts)]
   out.append(contentsOf: Fluid.engines(opts))
   return out
 }
@@ -127,7 +125,6 @@ func transcribe(_ url: URL, engine: String, _ opts: Options) async throws -> Tra
   let t0 = Date()
   var r: Transcript
   switch engine {
-  case "apple-speech": r = try await AppleSpeech.transcribe(url, opts)
   case "apple-analyzer": r = try await AppleAnalyzer.transcribe(url, opts)
   default:
     guard let model = Fluid.Model(rawValue: engine) else { throw STTError("unknown engine \(engine)", code: 64) }
@@ -143,14 +140,13 @@ struct InkfishSTT {
   static func main() async {
     var args = Array(CommandLine.arguments.dropFirst())
     var opts = Options()
-    var engine = "apple-speech"
+    var engine = "apple-analyzer"
     var positional: [String] = []
     while !args.isEmpty {
       let a = args.removeFirst()
       switch a {
       case "--engine": engine = args.isEmpty ? engine : args.removeFirst()
       case "--locale": if !args.isEmpty { opts.locale = Locale(identifier: args.removeFirst()) }
-      case "--allow-network": opts.allowNetwork = true
       case "--apps":
         let ids = (args.isEmpty ? "" : args.removeFirst()).split(separator: ",")
           .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -191,12 +187,11 @@ struct InkfishSTT {
           if engine == "apple-analyzer" { try await AppleAnalyzer.prepare(opts); emit(["ok": true]); return }
           throw STTError("nothing to prepare for \(engine)", code: 64)
         }
-        // Nemotron downloads a subdirectory (no compile phase); the rest are repo loads.
-        try await Fluid.prepare(model, opts, progress: progressLine(downloadWeight: model == .nemotron ? 1.0 : 0.5))
+        try await Fluid.prepare(model, progress: progressLine(downloadWeight: 0.5))
         emit(["ok": true])
       case "remove":
         guard let model = Fluid.Model(rawValue: engine) else { throw STTError("nothing to remove for \(engine)", code: 64) }
-        try Fluid.remove(model, opts)
+        try Fluid.remove(model)
         emit(["ok": true])
       case "transcribe":
         guard positional.count > 1 else { fail("usage: inkfish-stt transcribe <audio> --engine ID", 64) }

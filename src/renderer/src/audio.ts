@@ -2,6 +2,8 @@
 // Device choice lives in localStorage (shared by the main window and the
 // capture popover — same origin).
 
+import { migrateEngineId } from '../../shared/stt'
+
 const KEY = 'inkfish.audio'
 
 export interface AudioPrefs {
@@ -19,10 +21,14 @@ export interface AudioPrefs {
 export function loadAudioPrefs(): AudioPrefs {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<AudioPrefs>
+    const saved = typeof raw.engine === 'string' ? raw.engine : ''
+    // A removed engine (Whisper, Moonshine, …) falls back to Parakeet Redux.
+    const engine = migrateEngineId(saved, isMac())
+    if (engine !== saved) localStorage.setItem(KEY, JSON.stringify({ ...raw, engine }))
     return {
       inputId: typeof raw.inputId === 'string' ? raw.inputId : '',
       outputId: typeof raw.outputId === 'string' ? raw.outputId : '',
-      engine: typeof raw.engine === 'string' ? raw.engine : '',
+      engine,
       liveCaptions: raw.liveCaptions === true,
       modelMirror: typeof raw.modelMirror === 'string' ? raw.modelMirror : ''
     }
@@ -30,6 +36,8 @@ export function loadAudioPrefs(): AudioPrefs {
     return { inputId: '', outputId: '', engine: '', liveCaptions: false, modelMirror: '' }
   }
 }
+
+const isMac = (): boolean => typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent)
 
 export function saveAudioPrefs(p: Partial<AudioPrefs>): void {
   try {

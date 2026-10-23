@@ -7,11 +7,11 @@ describe('parseHelperJson', () => {
   })
   test('log lines before the reply', () => {
     const out =
-      'Compiling model…\n[FluidAudio] loaded encoder\n{"engine":"parakeet-v2","text":"The little girl","ms":12}\n'
+      'Compiling model…\n[FluidAudio] loaded encoder\n{"engine":"parakeet-redux","text":"The little girl","ms":12}\n'
     expect(parseHelperJson<{ text: string }>(out)?.text).toBe('The little girl')
   })
   test('log text glued onto the reply line', () => {
-    const out = 'warmup done {"engine":"parakeet-v2","text":"a b c"} trailing'
+    const out = 'warmup done {"engine":"parakeet-redux","text":"a b c"} trailing'
     expect(parseHelperJson<{ text: string }>(out)?.text).toBe('a b c')
   })
   test('engine list', () => {

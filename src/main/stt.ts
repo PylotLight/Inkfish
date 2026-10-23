@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseHelperJson, pickAutoEngine } from '../shared/stt'
+import { migrateEngineId, parseHelperJson, pickAutoEngine } from '../shared/stt'
 import { createModelDownloadProxy } from './model-download-proxy'
 import { getProxySettings, isProxyTransitioning, onProxyChanging } from './proxy-state'
 import type { DownloadProgress, DownloadState, SttEngine, SttResult } from '../shared/types'
@@ -11,9 +11,8 @@ export type { DownloadProgress } from '../shared/types'
  * Speech-to-text engines. Native only — never python/pip.
  *
  * The bundled helper (`stt/` SwiftPM package → Resources/bin/inkfish-stt)
- * hosts Apple Speech, Apple SpeechAnalyzer (macOS 26) and the FluidAudio
- * CoreML models (Parakeet, Phonon-2, Nemotron 3.5, Cohere) on the Neural
- * Engine. It's an internal sidecar the app spawns, not a user-facing tool.
+ * hosts Apple SpeechAnalyzer (macOS 26) and Parakeet Redux
+ * (FluidAudio Core ML on the GPU). It's an internal sidecar the app spawns, not a user-facing tool.
  * No external installs. `$INKFISH_STT_BIN` (dev only) overrides everything
  * and must print `{text, segments}`.
  */
@@ -70,7 +69,7 @@ export async function listEngines(): Promise<SttEngine[]> {
       engines.push(...(parseHelperJson<SttEngine[]>(await run(helper, ['engines'], 20_000)) ?? []))
     } catch (e) {
       engines.push({
-        id: 'apple-speech',
+        id: 'apple-analyzer',
         name: 'Built-in engines',
         available: false,
         ready: false,
@@ -79,7 +78,7 @@ export async function listEngines(): Promise<SttEngine[]> {
     }
   } else if (process.platform === 'darwin') {
     engines.push({
-      id: 'apple-speech',
+      id: 'apple-analyzer',
       name: 'Built-in engines',
       available: false,
       ready: false,
@@ -90,8 +89,10 @@ export async function listEngines(): Promise<SttEngine[]> {
 }
 
 /** wav → transcript with the chosen engine ('' / undefined = best ready engine). */
-export async function transcribe(wavPath: string, engineId?: string, timeoutMs = 300_000): Promise<SttResult> {
+export async function transcribe(wavPath: string, requested?: string, timeoutMs = 300_000): Promise<SttResult> {
   const engines = await listEngines()
+  // Old saved choices (Parakeet v3, Cohere, …) run on native Redux instead.
+  const engineId = requested ? migrateEngineId(requested, process.platform === 'darwin') : requested
   const engine = engineId ? engines.find((e) => e.id === engineId) : pickAutoEngine(engines)
   if (!engine) {
     throw new Error(
