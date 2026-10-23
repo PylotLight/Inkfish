@@ -1,12 +1,10 @@
 // bun run bench:stt:web [--quick | --deep | --smoke] [--offline] [web-engine-id ...]
 // Linux: xvfb-run -a bun run bench:stt:web
-// Uses the same engines, fixtures, warm-up, time limits and WER as Settings.
+// Uses the same engine, fixtures, warm-up, time limits and WER as Settings.
 import { build } from 'vite'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { moonshineRuntime } from './lib/moonshine-runtime'
-import { qwenRuntime } from './lib/qwen-runtime'
 
 const root = resolve(import.meta.dir, '..')
 const outDir = resolve(root, 'out/stt-bench')
@@ -15,7 +13,6 @@ await build({
   root,
   base: './',
   logLevel: 'warn',
-  plugins: [moonshineRuntime(), qwenRuntime()],
   worker: { format: 'es' },
   build: {
     outDir,

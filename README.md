@@ -50,7 +50,7 @@ Inkfish checks GitHub Releases and tells you when there's a new version (Setting
 
 - ⌥Space anywhere opens a small capture window near the cursor. Type, paste or drop images, dictate, and ⌘↩ saves to the inbox. ⇧⌥Space appends to today's daily note instead. Both shortcuts can be changed or turned off in Settings → Shortcuts.
 - Lives in the menu bar: left-click the icon to capture, right-click for the menu. Menu bar mode can hide the Dock icon, change what a click opens (capture, today, or the main window), or turn the icon off (Settings → Appearance → Menu bar).
-- Voice notes transcribe on-device: Apple Speech, SpeechAnalyzer (macOS 26), or downloadable Parakeet / Nemotron / Cohere models on the Neural Engine, with a built-in benchmark to pick one (Settings → Voice Engine).
+- Voice notes transcribe on-device: Parakeet Redux (native Core ML or in-app WebGPU) or Apple SpeechAnalyzer (macOS 26), with a built-in benchmark to pick one (Settings → Voice Engine).
 
 **Inbox to project notes**
 

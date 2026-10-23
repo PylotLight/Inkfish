@@ -1,16 +1,12 @@
+/**
+ * The only engines Inkfish offers: Parakeet Redux (native Core ML on the Mac,
+ * and the in-app vocule build), Apple Speech · macOS 26+ (SpeechAnalyzer), and
+ * the dev-only `$INKFISH_STT_BIN` override.
+ */
+export const STT_ENGINE_IDS = ['parakeet-redux', 'web-parakeet-redux', 'apple-analyzer', 'override']
+
 /** Auto-pick order among *ready* engines when the user hasn't chosen one. */
-export const STT_AUTO_ORDER = [
-  'parakeet-v3',
-  'parakeet-v2',
-  'parakeet-ultra',
-  'phonon-2',
-  'parakeet-redux',
-  'parakeet-flash',
-  'nemotron-multilingual',
-  'cohere-transcribe',
-  'apple-analyzer',
-  'apple-speech'
-]
+export const STT_AUTO_ORDER = ['parakeet-redux', 'apple-analyzer']
 
 export function pickAutoEngine<T extends { id: string; ready: boolean }>(engines: T[]): T | undefined {
   if (engines[0]?.id === 'override') return engines[0]
@@ -19,6 +15,16 @@ export function pickAutoEngine<T extends { id: string; ready: boolean }>(engines
     if (e) return e
   }
   return undefined
+}
+
+/**
+ * A saved engine choice from before the model list was trimmed (Whisper,
+ * Moonshine, Parakeet v2/v3, Nemotron, legacy Apple Speech, …) moves to Parakeet Redux: native on
+ * the Mac, the Web build everywhere else. '' (auto) and current ids stay.
+ */
+export function migrateEngineId(id: string, mac: boolean): string {
+  if (!id || STT_ENGINE_IDS.includes(id)) return id
+  return mac ? 'parakeet-redux' : 'web-parakeet-redux'
 }
 
 /**

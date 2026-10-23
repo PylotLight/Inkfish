@@ -22,9 +22,22 @@ import {
 } from '../../../shared/sttBench'
 import { isWebEngine, prepareWeb, removeWeb, resetWeb, transcribeWeb, webEngines } from '../webStt'
 
+/** Benchmark breakdown shown under a finished run. */
+type RunDetail = {
+  /** Per-clip WER (Deep). */
+  clips: { label: string; wer: number }[]
+  subs: number
+  dels: number
+  ins: number
+  warmMs: number
+  loadMs?: number
+  /** A few example substitutions ("a → of"). */
+  examples: string[]
+}
+
 type Run =
   | { state: 'running' }
-  | { state: 'done'; text: string; ms: number; runtime?: string; wer?: number; speed?: number; detail?: string }
+  | { state: 'done'; text: string; ms: number; runtime?: string; wer?: number; speed?: number; detail?: RunDetail }
   | { state: 'error'; text: string }
 
 const CLIP_SECONDS = 6
@@ -120,11 +133,7 @@ function phaseLabel(p: DownloadProgress, e?: SttEngine): string {
   if (p.state === 'error') return p.blocked ? "Couldn't reach the model host" : 'Download failed'
   if (p.phase === 'listing') return 'Finding files…'
   if (p.phase === 'compiling') {
-    return isWebEngine(p.id)
-      ? 'Loading model…'
-      : p.id === 'parakeet-redux'
-        ? `Preparing on the GPU · ${pct}`
-        : `Optimising for the Neural Engine · ${pct}`
+    return isWebEngine(p.id) ? 'Loading model…' : `Preparing on the GPU · ${pct}`
   }
   // Real byte counts when the downloader gives them, else an estimate from the model's size.
   let amount = ''
@@ -445,15 +454,15 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           localStorage.setItem(scoresKey(m), JSON.stringify(next))
           return next
         })
-        const confusions = [...new Set(per.flatMap((p) => p.w.confusions))].slice(0, 5)
-        const detail = [
-          per.length > 1 ? per.map((p) => `${p.b.label} ${fmtWer(p.w.wer)}`).join(' · ') : '',
-          `${score.subs} wrong · ${score.dels} missed · ${score.ins} extra`,
-          `warm-up ${fmtMsShort(warmMs)}${score.loadMs ? ` · load ${fmtMsShort(score.loadMs)} per run` : ''}`,
-          confusions.length ? `e.g. ${confusions.join(', ')}` : ''
-        ]
-          .filter(Boolean)
-          .join('\n')
+        const detail: RunDetail = {
+          clips: per.length > 1 ? per.map((p) => ({ label: p.b.label, wer: p.w.wer })) : [],
+          subs: score.subs ?? 0,
+          dels: score.dels ?? 0,
+          ins: score.ins ?? 0,
+          warmMs,
+          loadMs: score.loadMs,
+          examples: [...new Set(per.flatMap((p) => p.w.confusions))].slice(0, 5)
+        }
         setRuns((p) => ({
           ...p,
           [e.id]: {
@@ -541,7 +550,6 @@ export default function VoiceEngineSettings(): React.JSX.Element {
                 Deep {fmtWer(deepScores[e.id]!.wer)}
               </span>
             )}
-            {e.ready && e.id.startsWith('apple-speech') && <span className="tag dim">Needs Siri or Dictation</span>}
           </div>
           {(dl[e.id] || busy[e.id] === 'Downloading…') && (
             <div className={`dl ${dl[e.id]?.state ?? 'downloading'}`}>
@@ -564,15 +572,7 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           {run && (
             <div className={`engine-run ${run.state}`}>
               {run.state === 'running' && <span className="muted small">Transcribing…</span>}
-              {run.state === 'done' && (
-                <>
-                  <span className={`engine-ms${run.ms === fastest ? ' best' : ''}`}>{fmtMs(run.ms)}</span>
-                  {run.wer !== undefined && <span className="engine-ms">{fmtWer(run.wer)} WER</span>}
-                  {run.detail && <span className="engine-detail small">{run.detail}</span>}
-                  <span className="engine-text">{run.text}</span>
-                  {run.runtime && <span className="muted small engine-runtime">{run.runtime}</span>}
-                </>
-              )}
+              {run.state === 'done' && <RunResult run={run} fastest={run.ms === fastest} />}
               {run.state === 'error' && <span className="small error-text">{run.text}</span>}
             </div>
           )}
@@ -651,8 +651,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
     <section className="settings-group">
       <h4>Voice Engine</h4>
       <p className="muted small setting-hint" style={{ marginTop: -4 }}>
-        Everything runs on this Mac. Native models use the Neural Engine; “· Web” models run in-app on WebGPU or WASM.
-        Models download once.
+        Everything runs on this Mac. Parakeet Redux runs natively with Core ML, or in-app on WebGPU + WASM (“· Web”).
+        Apple Speech · macOS 26+ is built into macOS. Models download once.
       </p>
 
       {engines === null && <p className="muted small">Checking engines…</p>}
@@ -689,8 +689,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         <div className="setting-label">
           Download source
           <span className="muted small setting-hint">
-            Where native and Moonshine/Whisper Web models download from. If a VPN or network blocks Hugging Face, try
-            the mirror. Native paused downloads resume where they stopped.
+            Where native Parakeet Redux downloads from. If a VPN or network blocks Hugging Face, try the mirror. Paused
+            downloads resume where they stopped.
           </span>
         </div>
         <select
@@ -955,28 +955,69 @@ function HideButton({
 }
 
 function EngineIcon({ family }: { family?: string }): React.JSX.Element {
-  const label =
-    family === 'nvidia'
-      ? 'NV'
-      : family === 'cohere'
-        ? 'Co'
-        : family === 'moonshine'
-          ? 'M'
-          : family === 'whisper'
-            ? 'W'
-            : family === 'wav2vec2'
-              ? 'W2'
-              : family === 'qwen'
-                ? 'Q'
-                : ''
   return (
     <span className={`engine-icon ${family ?? 'apple'}`} aria-hidden>
-      {label || (
+      {family === 'nvidia' ? (
+        'NV'
+      ) : (
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
           <path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z" />
         </svg>
       )}
     </span>
+  )
+}
+
+/**
+ * One finished run: headline (time, WER, warm-up, what ran), per-clip chips,
+ * error counts + example mix-ups, then the transcript sample, clamped to a few
+ * lines and expandable. Stacked rows so nothing gets squeezed at narrow widths.
+ */
+function RunResult({ run, fastest }: { run: Extract<Run, { state: 'done' }>; fastest: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const d = run.detail
+  return (
+    <>
+      <div className="run-head">
+        <span className={`engine-ms${fastest ? ' best' : ''}`}>{fmtMs(run.ms)}</span>
+        {run.wer !== undefined && <span className="engine-ms">{fmtWer(run.wer)} WER</span>}
+        {d && (
+          <span className="engine-ms">
+            warm-up {fmtMsShort(d.warmMs)}
+            {d.loadMs ? ` · load ${fmtMsShort(d.loadMs)}/run` : ''}
+          </span>
+        )}
+        {run.runtime && (
+          <span className="muted small engine-runtime" title={run.runtime}>
+            {run.runtime}
+          </span>
+        )}
+      </div>
+      {d && d.clips.length > 0 && (
+        <div className="run-clips">
+          {d.clips.map((c) => (
+            <span key={c.label} className="tag score">
+              {c.label} <b>{fmtWer(c.wer)}</b>
+            </span>
+          ))}
+        </div>
+      )}
+      {d && (
+        <div className="run-errors muted small">
+          {d.subs} wrong · {d.dels} missed · {d.ins} extra
+          {d.examples.length > 0 && <span className="run-examples"> · e.g. {d.examples.join(', ')}</span>}
+        </div>
+      )}
+      <button
+        type="button"
+        className={`engine-text${open ? ' open' : ''}`}
+        onClick={() => setOpen(!open)}
+        title={open ? 'Show less' : 'Show the full transcript'}
+        aria-expanded={open}
+      >
+        {run.text}
+      </button>
+    </>
   )
 }
 

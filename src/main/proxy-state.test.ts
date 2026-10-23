@@ -34,10 +34,10 @@ test('settings returned to callers are deep copies', () => {
 test('native downloads fail closed during transitions and blocked routing', async () => {
   proxyState.transitioning = true
   expect(isProxyTransitioning()).toBe(true)
-  await expect(prepareEngine('parakeet-v3')).rejects.toThrow('proxy settings change')
+  await expect(prepareEngine('parakeet-redux')).rejects.toThrow('proxy settings change')
   proxyState.transitioning = false
   proxyState.blocked = true
-  await expect(prepareEngine('parakeet-v3')).rejects.toThrow('routing is blocked')
+  await expect(prepareEngine('parakeet-redux')).rejects.toThrow('routing is blocked')
 })
 
 test('native model helper uses the bridge without inherited proxy bypasses', () => {

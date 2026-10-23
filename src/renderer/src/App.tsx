@@ -1947,7 +1947,7 @@ function Main(): React.JSX.Element {
         ['sync', 'Sync', ['phone', 'android', 'pair', 'lan']],
         ['trash', 'Trash', ['deleted', 'restore']],
         ['audio', 'Audio', ['microphone', 'input']],
-        ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
+        ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'parakeet', 'redux']],
         ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
         ['routing', 'Routing', ['route', 'inbox', 'file', 'folder', 'append', 'meetings folder', 'auto']],
         ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]

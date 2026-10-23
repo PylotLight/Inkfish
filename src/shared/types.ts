@@ -177,7 +177,7 @@ export interface MeetingSaveInput {
 
 export interface SttResult {
   text: string
-  /** Engine id that produced it (e.g. 'parakeet-v3', 'apple-speech'). */
+  /** Engine id that produced it (e.g. 'parakeet-redux', 'apple-analyzer'). */
   provider: string
   /** Engine display name. */
   engine?: string
@@ -200,7 +200,7 @@ export interface SttEngine {
   /** Status line / fix-it hint. */
   detail: string
   subtitle?: string
-  /** 'apple' | 'nvidia' | 'cohere' */
+  /** 'apple' | 'nvidia' */
   family?: string
   size?: string
   languages?: string
