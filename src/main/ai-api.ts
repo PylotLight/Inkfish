@@ -366,6 +366,27 @@ export function clearProcessed(noteId: string): boolean {
   return true
 }
 
+// --- routing -------------------------------------------------------------------------------
+
+/**
+ * One short completion for the capture router (main process, no renderer). Null when no provider
+ * is connected (switched off, or no key for a remote server) — the router then stays on rules.
+ */
+export async function routeCompletion(system: string, user: string): Promise<string | null> {
+  const s = load()
+  const apiKey = await decryptKey()
+  if (!isConnected(settingsOnly(s), Boolean(apiKey))) return null
+  const provider = createProvider({ ...(await providerConfig()), onLearn: (id, e) => rememberEndpoint(id, e) })
+  return complete(
+    provider,
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ],
+    AbortSignal.timeout(20_000)
+  )
+}
+
 // --- IPC ------------------------------------------------------------------------------------
 
 export function initAiApi(): void {

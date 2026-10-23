@@ -9,6 +9,7 @@ import VoiceEngineSettings from './VoiceEngineSettings'
 import MenuBarSettings from './MenuBarSettings'
 import SyncSettings from './SyncSettings'
 import TrashSettings from './TrashSettings'
+import RoutingSettings from './RoutingSettings'
 import MiniWindowSettings from './MiniWindowSettings'
 import ShortcutSettings from './ShortcutSettings'
 import UpdateSettings from './UpdateSettings'
@@ -143,6 +144,7 @@ type SettingsTab =
   | 'sync'
   | 'trash'
   | 'apple-intelligence'
+  | 'routing'
   | 'ai'
   | 'mini-window'
   | 'about'
@@ -159,6 +161,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: string; group: (typeof
   { id: 'about', label: 'About & updates', icon: 'ⓘ', group: 'Configure' },
   { id: 'audio', label: 'Audio', icon: '♪', group: 'Voice' },
   { id: 'voice', label: 'Voice Engine', icon: '≋', group: 'Voice' },
+  { id: 'routing', label: 'Routing', icon: '↳', group: 'Intelligence' },
   { id: 'apple-intelligence', label: 'Apple Intelligence', icon: '✦', group: 'Intelligence' },
   { id: 'ai', label: 'AI provider', icon: '⌁', group: 'Intelligence' }
 ]
@@ -521,6 +524,7 @@ export default function SettingsView({
 
           {tab === 'voice' && <VoiceEngineSettings />}
 
+          {tab === 'routing' && <RoutingSettings />}
           {tab === 'apple-intelligence' && <IntelligenceSettings />}
           {tab === 'ai' && <AiApiSettings />}
 

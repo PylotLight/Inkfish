@@ -15,6 +15,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
 import { uniqueName } from '../shared/note-move'
+import type { InboxRoute } from '../shared/routing'
 import { appendToDailyFile, formatEntry, localDay as sharedLocalDay, migrateLegacyDaily } from '../shared/daily'
 
 /**
@@ -1121,7 +1122,8 @@ export function readInboxItem(id: string, paths: VaultPaths = vaultPaths()): Inb
     assets: Array.isArray(assets) ? assets : [],
     status: (fm['status'] as NoteStatus) ?? 'inbox',
     projectHint: typeof fm['projectHint'] === 'string' ? fm['projectHint'] : 'auto',
-    createdAt: Number.isFinite(created) ? created : 0
+    createdAt: Number.isFinite(created) ? created : 0,
+    route: readRoute(fm)
   }
 }
 
@@ -1134,6 +1136,52 @@ export function setInboxStatus(id: string, status: NoteStatus, paths: VaultPaths
   for (const [k, v] of Object.entries(fm)) flat[k] = v
   writeFileSync(file, `${stringifyFrontmatter(flat)}${body}`, 'utf8')
   return true
+}
+
+const ROUTE_KEYS = [
+  'routeAction',
+  'routeFolder',
+  'routeRel',
+  'routeReason',
+  'routeConfidence',
+  'routeProvider',
+  'routeSuggested'
+] as const
+
+/** Record (or clear, with null) the router's result on the raw inbox capture. */
+export function setInboxRoute(id: string, route: InboxRoute | null, paths: VaultPaths = vaultPaths()): boolean {
+  const file = join(paths.inboxDir, `${id}.md`)
+  if (!existsSync(file)) return false
+  const [fm, body] = parseFrontmatter(readFileSync(file, 'utf8'))
+  const flat: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fm)) if (!(ROUTE_KEYS as readonly string[]).includes(k)) flat[k] = v
+  if (route) {
+    flat['routeAction'] = route.action
+    flat['routeFolder'] = route.folder
+    flat['routeRel'] = route.rel
+    flat['routeReason'] = route.reason.replace(/[\r\n]+/g, ' ').slice(0, 200)
+    flat['routeConfidence'] = route.confidence.toFixed(2)
+    flat['routeProvider'] = route.provider
+    flat['routeSuggested'] = route.suggested ? 'true' : 'false'
+  }
+  writeFileSync(file, `${stringifyFrontmatter(flat)}${body}`, 'utf8')
+  return true
+}
+
+function readRoute(fm: Record<string, string | string[]>): InboxRoute | undefined {
+  const s = (k: string): string => (typeof fm[k] === 'string' ? (fm[k] as string) : '')
+  const action = s('routeAction')
+  if (action !== 'new' && action !== 'append' && action !== 'review') return undefined
+  const conf = Number(s('routeConfidence'))
+  return {
+    action,
+    folder: s('routeFolder'),
+    rel: s('routeRel'),
+    reason: s('routeReason'),
+    confidence: Number.isFinite(conf) ? conf : 0,
+    provider: s('routeProvider'),
+    suggested: s('routeSuggested') === 'true'
+  }
 }
 
 export function listInbox(paths: VaultPaths = vaultPaths()): InboxItem[] {
@@ -1155,41 +1203,9 @@ export function slugToId(slug: string): string {
   return slugify(slug, 32)
 }
 
-/** Seed starter folders on first run so the picker + router have somewhere
- * to go. Only for fresh vaults (no .md yet) — adopted vaults keep exactly
- * the folders they already have. */
-export function ensureSeedProjects(paths: VaultPaths = vaultPaths()): Project[] {
-  ensureVault(paths)
-  if (!dirHasMd(paths.root)) {
-    for (const name of ['personal', 'work', 'reading']) {
-      mkdirSync(join(paths.root, name), { recursive: true })
-    }
-  }
-  return listProjects(paths)
-}
-
 /** Dirs that are staging/app-owned, not projects. User folders are never
  * touched — only these reserved names stay out of the project list. */
 const RESERVED_DIRS = new Set(['inbox', 'daily', 'assets'])
-
-/** Does this dir tree contain any .md (one level lookahead, skips hidden)? */
-function dirHasMd(dir: string): boolean {
-  let entries: Dirent<string>[]
-  try {
-    entries = readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return false
-  }
-  for (const e of entries) {
-    const n = e.name
-    if (n.startsWith('.')) continue
-    if (e.isFile() && n.endsWith('.md')) return true
-    if (e.isDirectory()) {
-      if (dirHasMd(join(dir, n))) return true
-    }
-  }
-  return false
-}
 
 export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
   const found: Project[] = []
@@ -1202,7 +1218,7 @@ export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
   }
   // A "project" is just a top-level folder — ours or imported. No app
   // container dir: routed notes land in `<vault>/<name>/` directly.
-  // Empty folders count too (fresh seeds start empty).
+  // Empty folders count too.
   if (existsSync(paths.root)) {
     for (const f of readdirSync(paths.root, { withFileTypes: true })) {
       if (!f.isDirectory() || f.name.startsWith('.') || RESERVED_DIRS.has(f.name)) continue
@@ -1231,14 +1247,18 @@ export interface RouteInput {
   kind: NoteKind
 }
 
-/** Write the processed note into `<vault>/<project>/`, link back to the inbox id. */
+/** Write the processed note into `<vault>/<folder>/`, link back to the inbox id. */
 export function routeToProject(
   input: RouteInput,
   paths: VaultPaths = vaultPaths()
 ): { noteId: string; path: string; vaultRel: string } {
   ensureVault(paths)
-  const slug = slugify(input.projectName, 32)
-  const dir = join(paths.root, slug)
+  const folder = input.projectName.trim().replace(/^\/+|\/+$/g, '')
+  if (!folder) throw new Error('no folder to file into')
+  // Exact folder, else an existing case variant (Personal vs personal); a new one is created as named.
+  const rel = existsSync(join(paths.root, folder)) ? folder : resolveDirRel(folder, paths)
+  const dir = join(paths.root, rel)
+  assertInside(paths.root, dir, folder)
   mkdirSync(dir, { recursive: true })
   const noteId = newId('n')
   const createdAt = Date.now()
@@ -1246,13 +1266,69 @@ export function routeToProject(
   const fm = stringifyFrontmatter({
     id: noteId,
     inbox: input.inboxId,
-    project: slug,
+    project: slugToId(rel.split('/')[0] ?? rel),
     kind: input.kind,
     created: new Date(createdAt).toISOString(),
     tags: input.tags
   })
   writeFileSync(file, `${fm}# ${input.title}\n\n${input.markdown.replace(/\s+$/, '')}\n`, 'utf8')
   return { noteId, path: file, vaultRel: relative(paths.root, file) }
+}
+
+/** Hidden markers around an appended capture, so undo/delete can strip just that section. */
+export const appendMarker = (inboxId: string): { open: string; close: string } => ({
+  open: `<!-- inkfish:inbox ${inboxId} -->`,
+  close: `<!-- /inkfish:inbox ${inboxId} -->`
+})
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** `## 2026-10-23 14:02` in local time. */
+export function appendHeading(at: Date): string {
+  return `## ${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())} ${pad2(at.getHours())}:${pad2(at.getMinutes())}`
+}
+
+/**
+ * Append a capture to an existing vault note as a dated section wrapped in hidden inbox markers.
+ * Front matter and the rest of the note are left byte-for-byte.
+ */
+export function appendToNote(
+  targetRel: string,
+  input: { inboxId: string; markdown: string; at?: Date },
+  paths: VaultPaths = vaultPaths()
+): { path: string; vaultRel: string } {
+  const abs = join(paths.root, targetRel)
+  assertInside(paths.root, abs, targetRel)
+  if (!existsSync(abs)) throw new Error(`${targetRel} not found`)
+  const { open, close } = appendMarker(input.inboxId)
+  const existing = readFileSync(abs, 'utf8')
+  const sep = existing.endsWith('\n\n') ? '' : existing.endsWith('\n') ? '\n' : '\n\n'
+  const section = `${appendHeading(input.at ?? new Date())}\n${open}\n${input.markdown.replace(/\s+$/, '')}\n${close}\n`
+  writeFileSync(abs, `${existing}${sep}${section}`, 'utf8')
+  return { path: abs, vaultRel: relative(paths.root, abs) }
+}
+
+/**
+ * Remove an appended section (heading + marked body) from `text`. Returns the stripped text and the
+ * removed section, or null when the markers aren't there.
+ */
+export function stripAppended(text: string, inboxId: string): { text: string; removed: string } | null {
+  const { open, close } = appendMarker(inboxId)
+  const i = text.indexOf(open)
+  if (i === -1) return null
+  const j = text.indexOf(close, i)
+  if (j === -1) return null
+  let start = i
+  // Take the dated heading line right above the marker with it.
+  const before = text.slice(0, i)
+  const m = /(^|\n)(## [^\n]*)\n$/.exec(before)
+  if (m) start = before.length - m[2]!.length - 1
+  let end = j + close.length
+  if (text[end] === '\n') end++
+  let head = text.slice(0, start)
+  // Drop the blank line the append added in front.
+  if (head.endsWith('\n\n')) head = head.slice(0, -1)
+  return { text: head + text.slice(end), removed: text.slice(start, end) }
 }
 
 /** Undone routings land here (app data) — never as dotfiles inside the vault. */
@@ -1264,33 +1340,48 @@ function undoneDir(): string {
   return dir
 }
 
-/** Undo a routing: inbox item back to `inbox`, processed file moved aside. */
-export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths()): boolean {
-  // Find processed notes pointing at this inbox id and archive them.
-  // Only routed notes carry an `inbox:` frontmatter ref, so walking the
-  // vault is safe — user files never match.
+/**
+ * Undo a routing: inbox item back to `inbox`. A note created for it is moved aside (app data); a
+ * section appended to an existing note is cut out of that note (and kept aside too). Vault rels it
+ * changed are pushed onto `touched` when given (for a targeted reindex).
+ */
+export function undoRoute(inboxId: string, paths: VaultPaths = vaultPaths(), touched?: string[]): boolean {
+  // Only routed notes carry an `inbox:` front matter ref, and only appended sections carry the
+  // hidden marker, so walking the vault is safe — user files never match.
   let found = false
   if (!existsSync(paths.root)) return false
+  const marker = appendMarker(inboxId).open
   const walk = (dir: string): void => {
     for (const f of readdirSync(dir, { withFileTypes: true })) {
+      if (f.name.startsWith('.')) continue
       const p = join(dir, f.name)
       if (f.isDirectory()) {
         walk(p)
         continue
       }
       if (!f.name.endsWith('.md')) continue
-      const [fm] = parseFrontmatter(readFileSync(p, 'utf8'))
+      const text = readFileSync(p, 'utf8')
+      const [fm] = parseFrontmatter(text)
       if (fm['inbox'] === inboxId) {
         const trashed = join(undoneDir(), `${inboxId}-${basename(p)}`)
-        writeFileSync(trashed, readFileSync(p))
+        writeFileSync(trashed, text)
         // Remove the original (raw inbox .md is untouched — nothing lost).
         unlinkSync(p)
+        touched?.push(relative(paths.root, p))
+        found = true
+      } else if (text.includes(marker)) {
+        const cut = stripAppended(text, inboxId)
+        if (!cut) continue
+        writeFileSync(join(undoneDir(), `${inboxId}-appended-${basename(p)}`), cut.removed)
+        writeFileSync(p, cut.text, 'utf8')
+        touched?.push(relative(paths.root, p))
         found = true
       }
     }
   }
   walk(paths.root)
   setInboxStatus(inboxId, 'inbox', paths)
+  setInboxRoute(inboxId, null, paths)
   return found
 }
 

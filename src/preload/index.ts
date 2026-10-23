@@ -2,6 +2,7 @@ import type { ProxySettings, ProxyTestResult } from '../shared/proxy-settings'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
 import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type { InboxRoute, RoutingPrefs } from '../shared/routing'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
 import type { AiErrorDetail } from '../shared/ai-errors'
 import type { AiApi, DiscoveryResult } from '../shared/ai-models'
@@ -236,8 +237,13 @@ const api = {
     add: (input: InboxAddInput): Promise<InboxItem> => ipcRenderer.invoke('inbox:add', input),
     list: (): Promise<InboxItem[]> => ipcRenderer.invoke('inbox:list'),
     count: (): Promise<number> => ipcRenderer.invoke('inbox:count'),
-    process: (id: string): Promise<{ note: NoteEntry } | { error: string }> => ipcRenderer.invoke('inbox:process', id),
-    reassign: (id: string, projectName: string): Promise<{ note: string; path: string } | { error: string }> =>
+    /** File it now. `note` is null when the router left it in the inbox (see `route.reason`). */
+    process: (id: string): Promise<{ note: NoteEntry | null; route: InboxRoute } | { error: string }> =>
+      ipcRenderer.invoke('inbox:process', id),
+    reassign: (
+      id: string,
+      projectName: string
+    ): Promise<{ note: string | null; path: string; route: InboxRoute } | { error: string }> =>
       ipcRenderer.invoke('inbox:reassign', id, projectName),
     undo: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:undo', id),
     remove: (id: string): Promise<boolean> => ipcRenderer.invoke('inbox:delete', id),
@@ -343,6 +349,11 @@ const api = {
       ipcRenderer.invoke('ai-api:processed-get', noteId),
     processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
     processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId)
+  },
+  routing: {
+    /** Settings › Routing (auto-file, default folder, append, meetings folder). */
+    prefs: (): Promise<RoutingPrefs> => ipcRenderer.invoke('routing:prefs'),
+    setPrefs: (patch: Partial<RoutingPrefs>): Promise<RoutingPrefs> => ipcRenderer.invoke('routing:set-prefs', patch)
   },
   intel: {
     /** Apple Intelligence availability; `fresh` skips the 1-minute cache. */

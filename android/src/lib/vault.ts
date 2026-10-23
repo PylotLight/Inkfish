@@ -576,16 +576,6 @@ export async function createProject(name: string): Promise<Project> {
   return { id: slugToId(slug), name: slug, dir: slug }
 }
 
-export async function ensureSeedProjects(): Promise<Project[]> {
-  await ensureTree()
-  const rels: string[] = []
-  await walkVault(VAULT, '', rels)
-  if (rels.length === 0) {
-    for (const name of ['personal', 'work', 'reading']) await mkdir(`${VAULT}${name}/`)
-  }
-  return projectsFromNames(await childDirs(VAULT))
-}
-
 export interface VaultIndex {
   notes: NoteEntry[]
   projects: Project[]
@@ -627,10 +617,6 @@ async function buildVaultIndex(onPartial?: (index: VaultIndex) => void): Promise
     } catch {
       // best-effort
     }
-    scan = await scanVault()
-  }
-  if (scan.files.length === 0 && scan.dirs.length === 0) {
-    await Promise.all(['personal', 'work', 'reading'].map((name) => mkdir(`${VAULT}${name}/`)))
     scan = await scanVault()
   }
   const dirs = scan.dirs

@@ -12,9 +12,10 @@ describe('matchProject', () => {
     expect(matchProject('inkfish', projects)?.id).toBe('inkfish')
     expect(matchProject('JAPAN TRIP', projects)?.id).toBe('japan-trip')
   })
-  test('containment either way', () => {
-    expect(matchProject('Japan', projects)?.id).toBe('japan-trip')
-    expect(matchProject('the work project', projects)?.id).toBe('work')
+  test('no loose containment: partial names are not a match', () => {
+    expect(matchProject('Japan', projects)).toBeNull()
+    expect(matchProject('the work project', projects)).toBeNull()
+    expect(matchProject('  Inkfish ', projects)?.id).toBe('inkfish')
   })
   test('unknown or empty → null so the router falls back', () => {
     expect(matchProject('', projects)).toBeNull()

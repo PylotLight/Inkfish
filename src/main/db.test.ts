@@ -74,7 +74,6 @@ describe('index', () => {
     process.env['INKFISH_DATA'] = dataDir
     try {
       const paths = v.ensureVault(v.vaultPaths())
-      v.ensureSeedProjects(paths)
       v.writeInboxItem({ kind: 'text', raw: 'scan me' }, paths)
       v.appendDaily('day note', {}, paths)
       // Vault scan skips the staging namespace (nothing finalised yet).
