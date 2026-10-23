@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  findMatches,
-  isInvalidQuery,
-  matchAtOrAfter,
-  replacementFor,
-  seedFromSelection,
-  wrapIndex
-} from './find'
+import { findMatches, isInvalidQuery, matchAtOrAfter, replacementFor, seedFromSelection, wrapIndex } from './find'
 
 describe('findMatches', () => {
   it('is case-insensitive by default', () => {

@@ -666,11 +666,14 @@ function NoteEditor({
               placeholder="Find in note…"
               aria-label="Find in note"
             />
-            <span
-              className={`muted small find-count${findQuery && findTotal === 0 ? ' none' : ''}`}
-              aria-live="polite"
-            >
-              {findBad ? 'bad regex' : findQuery ? (findTotal > 0 ? `${findCurrent + 1}/${findTotal}` : 'no results') : ''}
+            <span className={`muted small find-count${findQuery && findTotal === 0 ? ' none' : ''}`} aria-live="polite">
+              {findBad
+                ? 'bad regex'
+                : findQuery
+                  ? findTotal > 0
+                    ? `${findCurrent + 1}/${findTotal}`
+                    : 'no results'
+                  : ''}
             </span>
             <button
               className={`btn ghost sm icon find-opt${findOpts.caseSensitive ? ' on' : ''}`}
@@ -743,7 +746,12 @@ function NoteEditor({
               <button className="btn ghost sm" onClick={replaceOne} disabled={findTotal === 0} title="Replace (↵)">
                 Replace
               </button>
-              <button className="btn ghost sm" onClick={replaceAll} disabled={findTotal === 0} title="Replace all (⌥⌘↵)">
+              <button
+                className="btn ghost sm"
+                onClick={replaceAll}
+                disabled={findTotal === 0}
+                title="Replace all (⌥⌘↵)"
+              >
                 All
               </button>
             </div>
