@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.17] - 2026-10-23
+
+### Added
+
+- **(stt)** Add compact Moonshine and Whisper benchmark options ([5bd988c](https://github.com/PylotLight/Inkfish/commit/5bd988ca3449998c0abaa6b257943b15467b0506))
+- **(stt)** Add repeatable Electron Quick and Deep web benchmarks ([2c4cafe](https://github.com/PylotLight/Inkfish/commit/2c4cafef03548a0d8819cebd1aecb9ebbe3350fd))
+- **(stt)** Add selectable Zipformer and official Moonshine WASM engines ([e54c567](https://github.com/PylotLight/Inkfish/commit/e54c5679eefa7d198f2ed37cabdabf5c6514b61b))
+
+### Other
+
+- Add Bun formatter checks ([29f6ef9](https://github.com/PylotLight/Inkfish/commit/29f6ef90cd810b4b5539c88691a275d6b5244bb1))
+- File by vault content, append to related notes, no hardcoded dirs (#96) ([b891510](https://github.com/PylotLight/Inkfish/commit/b891510e063c2128ba4c58e1533ef46ac834f970))
+
 ## [0.2.16] - 2026-10-22
 
 ### Added
@@ -309,6 +322,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Obsidian pass: bare text tree rows, chevron-only folders, indent guides, top icon toolbar, single-line kind chips ([d162537](https://github.com/PylotLight/Inkfish/commit/d162537fceb4133c00031dfa3f5976f3360a1738))
 - Bigger icon, aligned line numbers, font dropdowns, code highlight + copy ([bdbd1bb](https://github.com/PylotLight/Inkfish/commit/bdbd1bb5159460a2934ac173c6d0f62846649bde))
 
+[0.2.17]: https://github.com/PylotLight/Inkfish/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/PylotLight/Inkfish/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/PylotLight/Inkfish/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/PylotLight/Inkfish/compare/v0.2.13...v0.2.14
