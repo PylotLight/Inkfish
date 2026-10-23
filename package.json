@@ -1,7 +1,7 @@
 {
   "name": "inkfish",
   "private": true,
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "Inkfish — menu-bar quick capture with AI inbox-to-project note flow (bun + electron)",
   "license": "MIT",
   "author": "PylotLight <lochois@gmail.com>",
