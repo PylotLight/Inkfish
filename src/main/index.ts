@@ -18,6 +18,7 @@ import './crash-guard'
 import { closeProxy, initializeProxy } from './proxy'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
+import { installAppMenu } from './app-menu'
 import { initAiApi } from './ai-api'
 import { registerSysTap, stopSysTap } from './systap'
 import { destroyTray } from './tray'
@@ -143,6 +144,7 @@ app
       console.log('[inkfish] first run — waiting for vault selection')
     }
     registerIpc()
+    installAppMenu()
     registerShortcutIpc()
     // Settings › AI: Electron 45 local AI handler for the Prompt API (off until a provider is connected).
     initAiApi()

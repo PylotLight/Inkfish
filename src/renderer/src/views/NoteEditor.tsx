@@ -456,7 +456,8 @@ function NoteEditor({
       // A modal / palette owns the keyboard.
       const t = e.target as HTMLElement | null
       if (t?.closest?.('[role="dialog"], .palette, .cmd-palette') && !root.contains(t)) return
-      const key = e.key.toLowerCase()
+      // e.code, not e.key: on macOS ⌥⌘F reports key 'ƒ' (and other layouts remap letters).
+      const key = e.code === 'KeyF' ? 'f' : e.code === 'KeyG' ? 'g' : e.key.toLowerCase()
       const k = findKeysRef.current
       if (key === 'f' && !e.shiftKey) {
         e.preventDefault()
@@ -471,6 +472,25 @@ function NoteEditor({
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  // Edit › Find in the macOS app menu (main/app-menu.ts): same actions, for when the key goes to the menu.
+  useEffect(() => {
+    const sub = (
+      window as unknown as {
+        api?: { onFind?: (cb: (action: 'find' | 'replace' | 'next' | 'prev') => void) => () => void }
+      }
+    ).api?.onFind
+    if (!sub) return
+    return sub((action) => {
+      const root = rootRef.current
+      if (!root || root.offsetParent === null) return
+      const k = findKeysRef.current
+      if (action === 'find') k.openFind(false)
+      else if (action === 'replace') k.openFind(true)
+      else if (k.findOpen) k.stepFind(action === 'prev' ? -1 : 1)
+      else k.openFind()
+    })
   }, [])
 
   if (!doc) {
