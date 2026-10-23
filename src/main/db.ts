@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 import type { NoteDoc, NoteEntry, NoteKind, NoteStatus, SearchResult } from '../shared/types'
 import { parseFrontmatter, slugToId } from './vault'
 import { parseTags } from '../shared/tags'
+import { ftsQuery } from '../shared/routing'
 
 /**
  * SQLite index (main process only). Plain `.md` files stay the source of
@@ -50,6 +51,18 @@ interface Backend {
   bodiesContaining(needles: string[]): string[]
   /** Drop every row at `rel` or under `rel/` (a file or a whole folder). */
   removePath(rel: string): number
+  /** Vault notes matching any of `terms` (stems, prefix match), best first. Staging excluded. */
+  termHits(terms: string[], limit: number): RouteHitRow[]
+  /** path/kind/tags of every vault note (staging excluded). */
+  meta(): Array<{ path: string; kind: string; tags: string }>
+}
+
+export interface RouteHitRow {
+  path: string
+  title: string
+  kind: string
+  tags: string
+  body: string
 }
 
 /** Cast node:sqlite rows (Record<string, SQLOutputValue>) to our row shape. */
@@ -151,6 +164,15 @@ function createSqliteBackend(dbPath: string): Backend | null {
     const clearStmt = db.prepare('DELETE FROM notes')
     const pathsStmt = db.prepare('SELECT path FROM notes')
     const delPathStmt = db.prepare('DELETE FROM notes WHERE path = ? OR substr(path, 1, ?) = ?')
+    const metaStmt = db.prepare(
+      "SELECT path, kind, tags FROM notes WHERE path NOT LIKE 'inbox/%' AND path NOT LIKE 'daily/%'"
+    )
+    // Title counts most, then tags, then body (bm25 column weights).
+    const hitsStmt = db.prepare(`
+      SELECT n.path, n.title, n.kind, n.tags, n.body FROM notes n
+      JOIN notes_fts ON notes_fts.rowid = n.rowid
+      WHERE notes_fts MATCH ? AND n.path NOT LIKE 'inbox/%' AND n.path NOT LIKE 'daily/%'
+      ORDER BY bm25(notes_fts, 4.0, 1.0, 2.0) LIMIT ?`)
     return {
       upsert: (r) =>
         upsertStmt.run(
@@ -218,7 +240,17 @@ function createSqliteBackend(dbPath: string): Backend | null {
       removePath: (rel) => {
         const prefix = `${rel}/`
         return Number(delPathStmt.run(rel, prefix.length, prefix).changes ?? 0)
-      }
+      },
+      termHits: (terms, limit) => {
+        const q = ftsQuery(terms)
+        if (!q) return []
+        try {
+          return rows<RouteHitRow[]>(hitsStmt.all(q, limit))
+        } catch {
+          return []
+        }
+      },
+      meta: () => rows<Array<{ path: string; kind: string; tags: string }>>(metaStmt.all())
     }
   } catch (err) {
     console.warn('[db] node:sqlite unavailable, using in-memory index:', String(err))
@@ -272,8 +304,27 @@ function createMemoryBackend(): Backend {
         }
       }
       return n
-    }
+    },
+    termHits: (terms, limit) => {
+      if (terms.length === 0) return []
+      return [...rows.values()]
+        .filter((r) => !isStaging(r.path))
+        .map((r) => {
+          const hay = `${r.title}\n${r.body}\n${r.tags}`.toLowerCase()
+          return { r, n: terms.filter((t) => hay.includes(t)).length }
+        })
+        .filter((x) => x.n > 0)
+        .sort((a, b) => b.n - a.n || b.r.updatedAt - a.r.updatedAt)
+        .slice(0, limit)
+        .map(({ r }) => ({ path: r.path, title: r.title, kind: r.kind, tags: r.tags, body: r.body }))
+    },
+    meta: () =>
+      [...rows.values()].filter((r) => !isStaging(r.path)).map((r) => ({ path: r.path, kind: r.kind, tags: r.tags }))
   }
+}
+
+function isStaging(path: string): boolean {
+  return path.startsWith('inbox/') || path.startsWith('daily/')
 }
 
 // --- index API ---------------------------------------------------------------------
@@ -554,4 +605,27 @@ export function relatedNotes(noteId: string, limit = 5): NoteEntry[] {
     .sort((x, y) => y.s - x.s)
     .slice(0, limit)
     .map(({ r }) => rowToEntry(r))
+}
+
+/** Notes matching the capture's key terms (router candidates). */
+export function routeHits(terms: string[], limit = 60): Array<RouteHitRow & { tagList: string[] }> {
+  return must()
+    .termHits(terms, limit)
+    .map((r) => ({ ...r, tagList: safeTags(r.tags) }))
+}
+
+/** Every vault note's path/kind/tags (folder profiles + tag vocabulary). */
+export function routeMeta(): Array<{ path: string; kind: string; tags: string[] }> {
+  return must()
+    .meta()
+    .map((r) => ({ path: r.path, kind: r.kind, tags: safeTags(r.tags) }))
+}
+
+function safeTags(json: string): string[] {
+  try {
+    const v = JSON.parse(json || '[]') as unknown
+    return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []
+  } catch {
+    return []
+  }
 }

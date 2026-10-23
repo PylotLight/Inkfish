@@ -1,7 +1,23 @@
 import { spawn } from 'node:child_process'
 import { basename, join } from 'node:path'
 import type { ClassifyResult, NoteKind, Project } from '../shared/types'
-import { intelRun, intelStatus, loadIntelPrefs, matchProject } from './intelligence'
+import { intelRun, intelStatus, loadIntelPrefs } from './intelligence'
+import {
+  DEFAULT_ROUTING_PREFS,
+  aiCandidates,
+  aiRoutePrompt,
+  applyAiRoute,
+  decideRoute,
+  parseAiRoute,
+  tagVocab,
+  type RouteDecision,
+  type RouteDoc,
+  type RouteFolder,
+  type RouteInput,
+  type RouteNoteMeta,
+  type RoutingPrefs
+} from '../shared/routing'
+import { slugify } from './vault'
 import { listEngines } from './stt'
 
 /**
@@ -42,7 +58,7 @@ export async function providerStatus(): Promise<ProviderStatus[]> {
             : 'not built'
     },
     await intelStatus().then((s) => ({ id: 'intelligence' as const, available: s.available, detail: s.detail })),
-    { id: 'rules', available: true, detail: 'built-in keyword router, always available, offline' },
+    { id: 'rules', available: true, detail: 'built-in router (vault content + tags), always available, offline' },
     {
       id: 'stt',
       available: ready.length > 0,
@@ -55,12 +71,20 @@ export async function providerStatus(): Promise<ProviderStatus[]> {
 
 // --- classify -------------------------------------------------------------------
 
+/** The user's AI provider, when connected: (system, user) → reply text, or null when unavailable. */
+export type RouteLlm = (system: string, user: string) => Promise<string | null>
+
 export interface ClassifyInput {
   raw: string
   kind: NoteKind
   projects: Project[]
   /** Explicit picker choice; 'auto' (or omitted) = let the router decide. */
   projectHint?: string
+  /** Vault evidence: every note's metadata + the notes matching the capture (see ./routing.ts). */
+  corpus?: { notes: RouteNoteMeta[]; docs: RouteDoc[]; totalDocs?: number }
+  /** Settings › Routing (defaults when omitted). */
+  prefs?: RoutingPrefs
+  llm?: RouteLlm | null
 }
 
 function titleFromRaw(raw: string): string {
@@ -71,16 +95,6 @@ function titleFromRaw(raw: string): string {
       .find((l) => l.length > 0) ?? 'Untitled'
   const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
   return sentence.slice(0, 80).trim() || 'Untitled'
-}
-
-function tagsFromRaw(raw: string, kind: NoteKind): string[] {
-  const tags = new Set<string>()
-  for (const m of raw.matchAll(/#([a-z0-9][a-z0-9-_]*)/gi)) {
-    const t = m[1]?.toLowerCase()
-    if (t) tags.add(t)
-  }
-  if (kind !== 'text') tags.add(kind)
-  return [...tags].slice(0, 8)
 }
 
 function formatBody(raw: string, kind: NoteKind): string {
@@ -94,83 +108,115 @@ function formatBody(raw: string, kind: NoteKind): string {
     .join('\n')
 }
 
-function rulesClassify(input: ClassifyInput): ClassifyResult {
-  const { raw, kind, projects } = input
-  const hint = input.projectHint && input.projectHint !== 'auto' ? input.projectHint : null
-  let project = hint ? (projects.find((p) => p.id === hint || p.name === hint) ?? null) : null
-  let confidence = hint ? 1 : 0
-  if (!project) {
-    const hay = raw.toLowerCase()
-    let best = 0
-    for (const p of projects) {
-      const name = p.name.toLowerCase()
-      // Whole-word hits count more than substrings.
-      const words = name.split(/[^a-z0-9]+/).filter(Boolean)
-      let score = 0
-      for (const w of words) {
-        if (w.length < 3) continue
-        const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
-        score += (hay.match(re) ?? []).length * 2
-        if (hay.includes(w)) score += 0.5
-      }
-      if (score > best) {
-        best = score
-        project = p
-      }
-    }
-    confidence = best >= 2 ? 0.7 : best > 0 ? 0.45 : 0.25
-    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'general' }
-  }
+const foldersOf = (projects: Project[]): RouteFolder[] => projects.map((p) => ({ id: p.id, name: p.name, dir: p.dir }))
+
+function routeInput(input: ClassifyInput, prefs: RoutingPrefs): RouteInput {
   return {
-    projectId: project.id,
-    projectName: project.name,
-    title: titleFromRaw(raw),
-    tags: tagsFromRaw(raw, kind),
-    markdown: formatBody(raw, kind),
-    provider: 'rules',
-    confidence
+    raw: input.raw,
+    kind: input.kind,
+    folders: foldersOf(input.projects),
+    notes: input.corpus?.notes ?? [],
+    docs: input.corpus?.docs ?? [],
+    totalDocs: input.corpus?.totalDocs,
+    prefs,
+    hint: input.projectHint
   }
+}
+
+function toResult(d: RouteDecision, input: ClassifyInput): ClassifyResult {
+  const p = d.folder ? input.projects.find((x) => x.dir === d.folder) : undefined
+  return {
+    projectId: p?.id ?? (d.folder ? slugify(d.folder, 32) : ''),
+    projectName: d.folder ?? '',
+    title: titleFromRaw(input.raw),
+    tags: d.tags,
+    markdown: formatBody(input.raw, input.kind),
+    provider: d.provider,
+    confidence: d.confidence,
+    action: d.action,
+    targetRel: d.target,
+    targetTitle: d.targetTitle,
+    reason: d.reason
+  }
+}
+
+/** Offline router only (no models). */
+export function rulesRoute(input: ClassifyInput): { decision: RouteDecision; result: ClassifyResult } {
+  const decision = decideRoute(routeInput(input, input.prefs ?? DEFAULT_ROUTING_PREFS))
+  return { decision, result: toResult(decision, input) }
 }
 
 /** Notes the model shouldn't rewrite or file: empty, or already-formatted meeting transcripts. */
-function intelEligible(input: ClassifyInput): boolean {
+export function intelEligible(input: ClassifyInput): boolean {
   return input.kind !== 'meeting' && input.kind !== 'image' && input.raw.trim().length >= 12
 }
 
+/**
+ * Route one capture. Rules first (offline, vault content), then the user's AI provider when it is
+ * connected and allowed, else Apple Intelligence when on — both only pick between the candidates the
+ * rules found (exact matches), and an explicit picker choice always wins.
+ */
 export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
-  const rules = rulesClassify(input)
-  const prefs = loadIntelPrefs()
-  if (prefs.provider !== 'apple' || (!prefs.cleanup && !prefs.organize) || !intelEligible(input)) return rules
-  try {
-    if (!(await intelStatus()).available) return rules
-    const hinted = Boolean(input.projectHint && input.projectHint !== 'auto')
-    const r = await intelRun({
-      task: prefs.organize ? 'organize' : 'cleanup',
-      text: input.raw,
-      projects: input.projects.map((p) => p.name)
-    })
-    const out: ClassifyResult = { ...rules, provider: 'apple' }
-    if (prefs.cleanup && r.text.trim()) out.markdown = r.text.trim()
-    if (prefs.organize) {
-      if (r.title.trim()) out.title = r.title.trim().slice(0, 80)
-      const tags = new Set([...rules.tags, ...r.tags.map((t) => t.toLowerCase().replace(/^#/, '').trim())])
-      out.tags = [...tags].filter(Boolean).slice(0, 8)
-      // An explicit picker choice always wins over the model.
-      const project = hinted ? null : matchProject(r.project, input.projects)
-      if (project) {
-        out.projectId = project.id
-        out.projectName = project.name
-        out.confidence = Math.max(rules.confidence, 0.8)
+  const prefs = input.prefs ?? DEFAULT_ROUTING_PREFS
+  const { decision } = rulesRoute(input)
+  let routed = decision
+  let out = toResult(decision, input)
+  const vocab = tagVocab(input.corpus?.notes ?? [])
+  const fixed = decision.provider === 'picker' || decision.reason.startsWith('meeting →')
+  const cand = aiCandidates(decision, foldersOf(input.projects))
+  let aiDone = false
+
+  // 1. The user's own AI provider (Settings › AI provider), when connected.
+  if (!fixed && input.llm && prefs.useAiProvider && intelEligible(input) && cand.folders.length) {
+    try {
+      const { system, user } = aiRoutePrompt(input.raw, cand, prefs.allowAppend)
+      const reply = await input.llm(system, user)
+      const ai = reply ? parseAiRoute(reply, cand) : null
+      if (ai) {
+        routed = applyAiRoute(decision, ai, 'api', prefs, vocab)
+        out = { ...toResult(routed, input), title: ai.title || out.title }
+        aiDone = true
       }
-      if (prefs.actionItems && r.actionItems.length) {
+    } catch (err) {
+      console.warn('[route] AI provider failed, using rules:', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  // 2. Apple Intelligence: cleanup, and organise when the provider didn't answer.
+  const intel = loadIntelPrefs()
+  if (intel.provider !== 'apple' || (!intel.cleanup && !intel.organize) || !intelEligible(input)) return out
+  try {
+    if (!(await intelStatus()).available) return out
+    const organize = intel.organize && !aiDone
+    const r = await intelRun({ task: organize ? 'organize' : 'cleanup', text: input.raw, projects: cand.folders })
+    if (intel.cleanup && r.text.trim()) out.markdown = r.text.trim()
+    if (organize) {
+      if (r.title.trim()) out.title = r.title.trim().slice(0, 80)
+      // Exact candidate only (no loose containment); picker / meetings folder are never overridden.
+      const folder = fixed ? null : cand.folders.find((f) => f.toLowerCase() === r.project.trim().toLowerCase())
+      const ai = {
+        action: 'new' as const,
+        folder: folder ?? '',
+        targetNote: null,
+        title: '',
+        tags: r.tags,
+        // No score from the on-device model: a valid pick counts as just above the default bar.
+        confidence: folder ? Math.max(prefs.minConfidence, 0.6) : 0
+      }
+      // Keep a rules append (the model can't see notes); otherwise take its folder.
+      if (routed.action !== 'append') routed = applyAiRoute(routed, ai, 'apple', prefs, vocab)
+      const { title, markdown } = out
+      out = { ...toResult(routed, input), title, markdown }
+      if (intel.actionItems && r.actionItems.length) {
         const todos = r.actionItems.map((a) => a.trim()).filter(Boolean)
         const missing = todos.filter((a) => !out.markdown.includes(a))
         if (missing.length) out.markdown += `\n\n## Action items\n${missing.map((a) => `- [ ] ${a}`).join('\n')}`
       }
     }
+    if (out.provider === 'rules') out.provider = 'apple'
     return out
   } catch {
-    return rules
+    return out
   }
 }
 

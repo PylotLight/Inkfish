@@ -52,6 +52,7 @@ import SyncBadge from './views/SyncBadge'
 import FolderPicker from './views/FolderPicker'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
 import { matchesTags, parseTagQuery } from '../../shared/tags'
+import { routeSummary } from '../../shared/routing'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -1948,6 +1949,7 @@ function Main(): React.JSX.Element {
         ['audio', 'Audio', ['microphone', 'input']],
         ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'whisper', 'parakeet']],
         ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
+        ['routing', 'Routing', ['route', 'inbox', 'file', 'folder', 'append', 'meetings folder', 'auto']],
         ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
       ] as Array<[string, string, string[]]>
     ).map(([tab, label, keywords]): RunnableCommand => ({
@@ -2800,9 +2802,15 @@ function InboxBar({
 
   return (
     <div className="inboxbar glass">
-      <span className="qsub muted">
+      <span className="qsub muted" title={item.route ? `${item.route.provider} · ${item.route.reason}` : undefined}>
         {item.kind}
-        {item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}
+        {item.status === 'processing'
+          ? ' · routing…'
+          : item.route
+            ? ` · ${routeSummary(item.route, item.status)}${item.status === 'ready' ? ' ✓' : ` · ${item.route.reason}`}`
+            : item.status === 'ready'
+              ? ' · ready ✓'
+              : ''}
       </span>
       <span className="flex-sp" />
       {item.status !== 'processing' && (
@@ -2813,12 +2821,15 @@ function InboxBar({
             void run(
               () => window.api.inbox.process(item.id),
               (r) => {
-                const res = r as { note?: NoteEntry } | { error?: string }
-                if (res && 'note' in res && res.note) {
-                  notify('Routed ✓')
+                const res = r as Awaited<ReturnType<typeof window.api.inbox.process>>
+                if ('error' in res) {
+                  notify(`Route issue: ${res.error}`)
+                  onDone()
+                } else if (res.note) {
+                  notify(`Routed ✓ ${routeSummary(res.route, 'ready')}`)
                   onDone(res.note.id)
                 } else {
-                  notify(`Route issue: ${(res as { error?: string }).error ?? 'unknown'}`)
+                  notify(`Left in inbox: ${res.route.reason}`)
                   onDone()
                 }
               },
@@ -2841,9 +2852,14 @@ function InboxBar({
           void run(
             () => window.api.inbox.reassign(item.id, v),
             (r) => {
-              const res = r as { note?: string } | { error?: string }
+              const res = r as Awaited<ReturnType<typeof window.api.inbox.reassign>>
+              if ('error' in res) {
+                notify(`Move failed: ${res.error}`)
+                onDone()
+                return
+              }
               notify(`Moved → ${v}`)
-              onDone(res && 'note' in res && typeof res.note === 'string' ? res.note : undefined)
+              onDone(res.note ?? undefined)
             },
             'Move failed'
           )

@@ -61,11 +61,11 @@ describe('inbox', () => {
 })
 
 describe('projects + routing', () => {
-  test('seeds, create, route, undo keeps raw', async () => {
+  test('fresh vault has no folders (nothing seeded), create, route, undo keeps raw', async () => {
     const v = await vault()
     const paths = v.ensureVault()
-    const seeds = v.ensureSeedProjects(paths)
-    expect(seeds.map((s) => s.name)).toContain('personal')
+    expect(v.listProjects(paths)).toEqual([])
+    expect('ensureSeedProjects' in v).toBe(false)
     const p = v.createProject('My Project!')
     expect(p.name).toBe('my-project')
     expect(() => v.createProject('!!!')).toThrow()
@@ -88,6 +88,62 @@ describe('projects + routing', () => {
     // Raw inbox file untouched, status reset.
     expect(v.readInboxItem(item.id, paths)?.status).toBe('inbox')
     expect(v.undoRoute('missing', paths)).toBe(false)
+  })
+
+  test('append adds a dated, marked section; undo strips just that section', async () => {
+    const v = await vault()
+    const { mkdirSync, readFileSync, writeFileSync } = await import('node:fs')
+    const paths = v.ensureVault()
+    mkdirSync(join(paths.root, 'garden'), { recursive: true })
+    const original = '---\ntags: [tomatoes]\n---\n# Tomato log\n\nplanted roma seedlings\n'
+    writeFileSync(join(paths.root, 'garden', 'Tomato log.md'), original)
+    const a = v.writeInboxItem({ kind: 'text', raw: 'first' }, paths).item
+    const b = v.writeInboxItem({ kind: 'text', raw: 'second' }, paths).item
+    const at = new Date(2026, 9, 23, 14, 2)
+    v.appendToNote('garden/Tomato log.md', { inboxId: a.id, markdown: 'tomatoes need staking', at }, paths)
+    v.appendToNote('garden/Tomato log.md', { inboxId: b.id, markdown: 'water every morning', at }, paths)
+    const text = readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')
+    expect(text.startsWith(original)).toBe(true)
+    expect(text).toContain(`## 2026-10-23 14:02\n<!-- inkfish:inbox ${a.id} -->\ntomatoes need staking\n`)
+
+    const touched: string[] = []
+    expect(v.undoRoute(a.id, paths, touched)).toBe(true)
+    expect(touched).toEqual(['garden/Tomato log.md'])
+    const after = readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')
+    expect(after).not.toContain('tomatoes need staking')
+    expect(after).toContain('water every morning')
+    expect(after.startsWith(original)).toBe(true)
+    // Undo the other one too: the note is back to exactly what it was.
+    v.undoRoute(b.id, paths)
+    expect(readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')).toBe(original)
+    // The note itself is never deleted by an undo, and the raw capture stays.
+    expect(v.readInboxItem(a.id, paths)?.raw).toBe('first')
+  })
+
+  test('route result is recorded on the inbox capture and cleared by undo', async () => {
+    const v = await vault()
+    const paths = v.ensureVault()
+    const { item } = v.writeInboxItem({ kind: 'text', raw: 'hello' }, paths)
+    v.setInboxRoute(
+      item.id,
+      {
+        action: 'review',
+        folder: '',
+        rel: '',
+        reason: 'not sure: 20%, left in inbox',
+        confidence: 0.2,
+        provider: 'rules',
+        suggested: false
+      },
+      paths
+    )
+    expect(v.readInboxItem(item.id, paths)?.route).toMatchObject({
+      action: 'review',
+      reason: 'not sure: 20%, left in inbox'
+    })
+    v.undoRoute(item.id, paths)
+    expect(v.readInboxItem(item.id, paths)?.route).toBeUndefined()
+    expect(v.readInboxItem(item.id, paths)?.raw).toBe('hello')
   })
 })
 

@@ -140,15 +140,12 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
 }
 
 /**
- * Map the model's project name onto a real project: exact (case-insensitive),
- * then containment. Unknown names return null so the router can fall back.
+ * Map the model's project name onto a real project: exact match only (case-insensitive, outer
+ * whitespace ignored). Loose containment used to file "the work project" under anything with
+ * "work" in it; now anything else returns null so the router keeps its own call.
  */
 export function matchProject<T extends { id: string; name: string }>(name: string, projects: T[]): T | null {
   const n = name.trim().toLowerCase()
   if (!n) return null
-  return (
-    projects.find((p) => p.name.toLowerCase() === n || p.id.toLowerCase() === n) ??
-    projects.find((p) => n.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(n)) ??
-    null
-  )
+  return projects.find((p) => p.name.toLowerCase() === n || p.id.toLowerCase() === n) ?? null
 }

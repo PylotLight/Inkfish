@@ -1,5 +1,6 @@
 import { memo, useEffect } from 'react'
 import type { InboxItem, Project } from '../../../shared/types'
+import { routeSummary } from '../../../shared/routing'
 
 interface Props {
   items: InboxItem[]
@@ -56,17 +57,34 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
               <span className="qtext">{item.raw.split('\n')[0]?.slice(0, 90) || '(empty)'}</span>
               <span className="qsub muted">
                 {item.kind} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                {item.status === 'processing' ? ' · routing…' : item.status === 'ready' ? ' · ready ✓' : ''}
+                {item.status === 'processing'
+                  ? ' · routing…'
+                  : item.route
+                    ? ` · ${routeSummary(item.route, item.status)}${item.status === 'ready' ? ' ✓' : ''}`
+                    : item.status === 'ready'
+                      ? ' · ready ✓'
+                      : ''}
               </span>
+              {item.route && item.status !== 'processing' && (
+                <span className="qsub muted small" title={`${item.route.provider} · ${item.route.reason}`}>
+                  {item.route.reason}
+                </span>
+              )}
             </button>
             <div className="row qactions">
               {item.status !== 'processing' && (
                 <button
                   className="btn ghost sm"
-                  title="Route now"
-                  onClick={() => void act(() => window.api.inbox.process(item.id), 'Routed ✓')}
+                  title={item.route?.suggested ? 'File it where suggested' : 'Route now'}
+                  onClick={() =>
+                    void act(async () => {
+                      const r = await window.api.inbox.process(item.id)
+                      if ('error' in r) throw new Error(r.error)
+                      notify(r.note ? `Routed ✓ ${routeSummary(r.route, 'ready')}` : `Left in inbox: ${r.route.reason}`)
+                    }, '')
+                  }
                 >
-                  Route
+                  {item.route?.suggested && item.status === 'inbox' ? 'File' : 'Route'}
                 </button>
               )}
               <select

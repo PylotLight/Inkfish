@@ -56,6 +56,10 @@ export interface InboxItem {
   status: NoteStatus
   projectHint?: string
   createdAt: number
+  /** What the router did (or suggests): folder, new vs appended, why. */
+  route?: import('./routing').InboxRoute
+  /** Where the capture popover previewed it would go (`routeKey`), when it showed one. */
+  previewed?: string
 }
 
 export interface ProcessedNote {
@@ -80,6 +84,8 @@ export interface InboxAddInput {
   source?: NoteSource
   /** Vault-relative asset paths already saved via `assets:save`. */
   assets?: string[]
+  /** `routeKey` of the route preview shown at save time (only when it matched the saved text + hint). */
+  previewed?: string
 }
 
 export interface VaultInfo {
@@ -131,9 +137,16 @@ export interface ClassifyResult {
   tags: string[]
   /** Formatted GFM markdown body (no frontmatter — main adds it). */
   markdown: string
-  /** 'apple' | 'rules' — which provider produced this. */
+  /** 'picker' | 'rules' | 'apple' | 'api' — which provider produced this. */
   provider: string
   confidence: number
+  /** new note, append to `targetRel`, or leave in the inbox for review. */
+  action: 'new' | 'append' | 'review'
+  /** Append target (vault rel) when action is append. */
+  targetRel?: string | null
+  targetTitle?: string | null
+  /** One line: why it went there (or didn't). */
+  reason: string
 }
 
 export interface MeetingImportInput {
@@ -147,7 +160,7 @@ export interface MeetingImportInput {
 /** A live-captured meeting written straight into the vault as its own note. */
 export interface MeetingSaveInput {
   title: string
-  /** Vault folder it is filed under ('' = root). Defaults to `Meetings`. */
+  /** Vault folder it is filed under ('' = vault root). Settings › Routing remembers the choice. */
   folder: string
   tags: string[]
   /** Transcript markdown (speaker-labelled paragraphs). */

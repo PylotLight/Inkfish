@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { classify, summarize, summarizeExtractive, providerStatus } from './ai'
 import type { Project } from '../shared/types'
+import { DEFAULT_ROUTING_PREFS } from '../shared/routing'
 
 const projects: Project[] = [
   { id: 'personal', name: 'personal', dir: 'personal' },
@@ -12,7 +13,7 @@ describe('classify (rules engine, offline)', () => {
     const r = await classify({ raw: 'anything at all', kind: 'text', projects, projectHint: 'work' })
     expect(r.projectName).toBe('work')
     expect(r.confidence).toBe(1)
-    expect(r.provider).toBe('rules')
+    expect(r.provider).toBe('picker')
   })
 
   test('auto routes on keyword, extracts title + tags', async () => {
@@ -26,10 +27,61 @@ describe('classify (rules engine, offline)', () => {
     expect(r.tags).toContain('urgent')
   })
 
-  test('falls back to first project when nothing matches', async () => {
+  test('never guesses projects[0]: nothing related stays in the inbox for review', async () => {
     const r = await classify({ raw: 'xyzzy unrelated', kind: 'text', projects })
-    expect(r.projectName).toBe('personal')
+    expect(r.action).toBe('review')
+    expect(r.projectName).toBe('')
+    expect(r.reason).toContain('left in inbox')
     expect(r.confidence).toBeLessThan(0.5)
+  })
+
+  test('low confidence goes to the default folder only when the user set one', async () => {
+    const r = await classify({
+      raw: 'xyzzy unrelated',
+      kind: 'text',
+      projects,
+      prefs: { ...DEFAULT_ROUTING_PREFS, defaultFolder: 'work' }
+    })
+    expect(r.action).toBe('new')
+    expect(r.projectName).toBe('work')
+  })
+
+  test('no folders at all → review, no invented "general"', async () => {
+    const r = await classify({ raw: 'anything at all here', kind: 'text', projects: [] })
+    expect(r.action).toBe('review')
+    expect(r.projectName).toBe('')
+  })
+
+  test('AI provider answer is constrained to candidates (exact only)', async () => {
+    const bad = await classify({
+      raw: 'xyzzy unrelated words here',
+      kind: 'text',
+      projects,
+      llm: async () => '{"action":"new","folder":"the work project","title":"x","tags":[],"confidence":0.9}'
+    })
+    expect(bad.action).toBe('review')
+    const good = await classify({
+      raw: 'xyzzy unrelated words here',
+      kind: 'text',
+      projects,
+      llm: async () => '{"action":"new","folder":"personal","title":"Xyzzy","tags":["misc"],"confidence":0.8}'
+    })
+    expect(good.action).toBe('new')
+    expect(good.projectName).toBe('personal')
+    expect(good.provider).toBe('api')
+    expect(good.title).toBe('Xyzzy')
+  })
+
+  test('explicit picker beats the AI provider', async () => {
+    const r = await classify({
+      raw: 'xyzzy unrelated words here',
+      kind: 'text',
+      projects,
+      projectHint: 'work',
+      llm: async () => '{"action":"new","folder":"personal","title":"x","tags":[],"confidence":0.99}'
+    })
+    expect(r.projectName).toBe('work')
+    expect(r.provider).toBe('picker')
   })
 
   test('meeting kind keeps body, tags the kind', async () => {

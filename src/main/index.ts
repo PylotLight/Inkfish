@@ -28,14 +28,7 @@ import { registerAssetProtocol } from './assets-protocol'
 import { closeAllMinis, getMiniSettings, registerMiniWindow } from './mini-window'
 import { registerCaptureShortcuts, registerShortcutIpc } from './shortcuts'
 import { openDb, reindexStaging, reindexVault } from './db'
-import {
-  ensureSeedProjects,
-  ensureVault,
-  mergeCaseDuplicates,
-  setConfigDir,
-  setDefaultVaultName,
-  vaultConfigured
-} from './vault'
+import { ensureVault, mergeCaseDuplicates, setConfigDir, setDefaultVaultName, vaultConfigured } from './vault'
 import { profileBadgeText } from '../shared/profile'
 import { startVaultWatch, stopVaultWatch, rescanVaultFromDisk } from './watch'
 import { closeDb } from './db'
@@ -74,7 +67,6 @@ if (!app.requestSingleInstanceLock()) {
 function initVault(): void {
   try {
     const paths = ensureVault()
-    ensureSeedProjects(paths)
     const merged = mergeCaseDuplicates(paths.root)
     if (merged.dirs > 0 || merged.files > 0) {
       console.log(`[inkfish] healed ${merged.dirs} folder(s), ${merged.files} file(s) with case-duplicate names`)

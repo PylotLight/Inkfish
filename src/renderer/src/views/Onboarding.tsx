@@ -27,6 +27,36 @@ export default function Onboarding({
   const [picked, setPicked] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [mic, setMic] = useState<'untested' | 'ok' | 'blocked'>('untested')
+  /** Optional starter folders, comma separated. Nothing is created when left empty. */
+  const [folders, setFolders] = useState('')
+  const [hasFolders, setHasFolders] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (step !== 2) return
+    window.api.projects
+      .list()
+      .then((p) => setHasFolders(p.length > 0))
+      .catch(() => setHasFolders(null))
+  }, [step])
+
+  const finish = async (): Promise<void> => {
+    const names = [
+      ...new Set(
+        folders
+          .split(',')
+          .map((f) => f.trim())
+          .filter(Boolean)
+      )
+    ]
+    for (const n of names) {
+      try {
+        await window.api.files.mkdir('', n)
+      } catch (e) {
+        notify(`Couldn't create ${n}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+    localStorage.setItem('inkfish.onboarded', '1')
+    onDone()
+  }
 
   useEffect(() => {
     setPicked(vault?.root ?? '')
@@ -48,7 +78,7 @@ export default function Onboarding({
     else if (r.error !== 'cancelled') notify(`Picker failed: ${r.error}`)
   }
 
-  /** Commit the location: creates + seeds + indexes BEFORE anything else runs. */
+  /** Commit the location: creates + indexes BEFORE anything else runs (no folders are seeded). */
   const useLocation = async (): Promise<void> => {
     if (vault?.managed) {
       // Dev/test env owns the location and main already initialized it.
@@ -85,9 +115,9 @@ export default function Onboarding({
             <h3>Where do your notes live?</h3>
             <p className="muted">
               Pick a folder for your notes — a fresh empty folder, or an existing vault (Obsidian etc.) whose{' '}
-              <code>.md</code> files get indexed on import. Routed notes land in plain top-level folders (
-              <code>work/</code>, <code>personal/</code>…); working state stays in hidden app data, never in your
-              folder. Your files stay plain Markdown. Nothing is created until you confirm.
+              <code>.md</code> files get indexed on import. Routed notes land in your own top-level folders, picked from
+              what's already in them; working state stays in hidden app data, never in your folder. Your files stay
+              plain Markdown. Nothing is created until you confirm.
             </p>
             <code className="pill">{picked || '…'}</code>
             {vault?.managed && <p className="muted small">Location is managed by INKFISH_VAULT (dev mode).</p>}
@@ -160,17 +190,22 @@ export default function Onboarding({
               The global shortcut pops capture from anywhere. <code>⌘↵</code> saves to the inbox — the worker routes it,
               raw is never deleted. Change the shortcut any time in Settings › Shortcuts.
             </p>
+            {hasFolders === false && (
+              <label className="field">
+                <span>Folders to start with (optional)</span>
+                <input
+                  value={folders}
+                  onChange={(e) => setFolders(e.target.value)}
+                  placeholder="comma separated — leave empty and captures wait in the inbox"
+                  aria-label="Starter folders"
+                />
+              </label>
+            )}
             <div className="row end">
               <button className="btn ghost" onClick={() => setStep(1)}>
                 Back
               </button>
-              <button
-                className="btn mint"
-                onClick={() => {
-                  localStorage.setItem('inkfish.onboarded', '1')
-                  onDone()
-                }}
-              >
+              <button className="btn mint" onClick={() => void finish()}>
                 Start capturing
               </button>
             </div>

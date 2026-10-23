@@ -64,7 +64,6 @@ import {
   createDir,
   ensureDaily,
   deleteInboxItem,
-  ensureSeedProjects,
   ensureVault,
   defaultVaultRoot,
   envManaged,
@@ -85,11 +84,9 @@ import {
   migrateTitleNamed,
   deleteTrash,
   mergeCaseDuplicates,
-  readInboxItem,
   requireNotes,
   resolveAsset,
   resolveNoteAbs,
-  routeToProject,
   saveAsset,
   saveProfile,
   setInboxStatus,
@@ -97,7 +94,6 @@ import {
   storeRoot,
   switchProfile,
   trashPath,
-  undoRoute,
   vaultConfigured,
   vaultPaths,
   writeInboxItem,
@@ -121,6 +117,17 @@ import {
   searchNotes
 } from './db'
 import { classify, providerStatus, speak, stopSpeak, summarize } from './ai'
+import {
+  loadRoutingPrefs,
+  previewRoute,
+  routeCorpus,
+  routeInboxItem,
+  saveRoutingPrefs,
+  undoInboxRoute,
+  type RouteOutcome
+} from './routing'
+import { aiConfigured, routeCompletion } from './ai-api'
+import type { RoutePreview, RoutingPrefs } from '../shared/routing'
 import { shortcutFor } from './shortcuts'
 import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
 import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
@@ -196,57 +203,16 @@ function info(): VaultInfo {
 
 /** Background worker: classify + route one inbox item, never deleting raw. */
 async function processInboxItem(
-  id: string
-): Promise<{ note: NoteEntry; classify: ClassifyResult } | { error: string }> {
+  id: string,
+  opts: { apply: boolean; hint?: string; manual?: boolean }
+): Promise<RouteOutcome | { error: string }> {
   let paths: VaultPaths
   try {
     paths = requireNotes()
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
-  const item = readInboxItem(id, paths)
-  if (!item) return { error: `inbox item ${id} not found` }
-  setInboxStatus(id, 'processing', paths)
-  indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
-  try {
-    const projects = listProjects(paths)
-    const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: item.projectHint })
-    const projectName = result.projectName || 'general'
-    const routed = routeToProject(
-      {
-        inboxId: id,
-        projectName,
-        title: result.title,
-        tags: result.tags,
-        markdown: result.markdown,
-        kind: item.kind
-      },
-      paths
-    )
-    setInboxStatus(id, 'ready', paths)
-    indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
-    const entry = indexFile(routed.path, routed.vaultRel)
-    return {
-      note: entry ?? {
-        id: routed.noteId,
-        path: routed.vaultRel,
-        title: result.title,
-        kind: item.kind,
-        status: 'ready' as NoteStatus,
-        projectId: result.projectId,
-        inboxId: id,
-        tags: result.tags,
-        snippet: result.markdown.slice(0, 220),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        size: result.markdown.length
-      },
-      classify: result
-    }
-  } catch (err) {
-    setInboxStatus(id, 'inbox', paths)
-    return { error: err instanceof Error ? err.message : String(err) }
-  }
+  return routeInboxItem(id, paths, { ...opts, llm: routeCompletion })
 }
 
 /**
@@ -370,7 +336,6 @@ export function registerIpc(): void {
         const paths = ensureVault(vaultPaths(resolve(root)))
         storeRoot(paths.root)
         closeDb()
-        ensureSeedProjects(paths)
         mergeCaseDuplicates(paths.root)
         const backend = openDb(paths.dbPath)
         const indexed = reindexVault(paths.root) + reindexStaging(paths)
@@ -413,13 +378,16 @@ export function registerIpc(): void {
         raw: input.raw,
         projectHint: input.projectHint ?? 'auto',
         source: input.source ?? 'tray',
-        assets: input.assets ?? []
+        assets: input.assets ?? [],
+        previewed: typeof input.previewed === 'string' ? input.previewed.slice(0, 300) : undefined
       },
       paths
     )
     indexFile(path, `inbox/${item.id}.md`)
-    // Non-blocking auto-route: inbox shows `processing` → `ready`.
-    void processInboxItem(item.id).catch((err) => console.error('[inbox] auto-route failed:', err))
+    // Non-blocking auto-route: inbox shows `processing` → `ready` (or stays, with the reason).
+    void processInboxItem(item.id, { apply: loadRoutingPrefs().autoFile }).catch((err) =>
+      console.error('[inbox] auto-route failed:', err)
+    )
     return item
   })
 
@@ -429,52 +397,53 @@ export function registerIpc(): void {
   })
   ipcMain.handle('inbox:count', (): number => countInbox())
 
+  // "Route" clicked: file it now (applies a suggestion; low confidence still stays for review).
   ipcMain.handle('inbox:process', (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
-    processInboxItem(id)
+    processInboxItem(id, { apply: true, manual: true })
   )
 
-  ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
-    undoRoute(id, requireNotes())
-    const item = readInboxItem(id, requireNotes())
-    if (!item) return { error: `inbox item ${id} not found` }
-    // Force the router to this project by passing an explicit hint.
-    setInboxStatus(id, 'inbox', requireNotes())
-    const paths = requireNotes()
-    const projects = listProjects(paths)
-    const result = await classify({ raw: item.raw, kind: item.kind, projects, projectHint: projectName })
-    const routed = routeToProject(
-      {
-        inboxId: id,
-        projectName: result.projectName,
-        title: result.title,
-        tags: result.tags,
-        markdown: result.markdown,
-        kind: item.kind
-      },
-      paths
-    )
-    setInboxStatus(id, 'ready', paths)
-    indexFile(join(paths.inboxDir, `${id}.md`), `inbox/${id}.md`)
-    indexFile(routed.path, routed.vaultRel)
-    return { note: routed.noteId, path: routed.vaultRel }
+  // Capture popover's live preview: the rules router on the same inputs filing uses (no model call).
+  ipcMain.handle('route:preview', (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind, hint?: string) => {
+    if (!vaultConfigured() || typeof raw !== 'string' || !raw.trim()) return null
+    const prefs = loadRoutingPrefs()
+    const intel = loadIntelPrefs()
+    const aiReady =
+      (prefs.useAiProvider && aiConfigured()) ||
+      (intel.provider === 'apple' && intel.organize && process.platform === 'darwin')
+    try {
+      return previewRoute(raw, kind, hint || 'auto', requireNotes(), aiReady) satisfies RoutePreview
+    } catch (err) {
+      console.warn('[route] preview failed:', err instanceof Error ? err.message : String(err))
+      return null
+    }
   })
 
-  ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => {
+  // Move → folder: the user's choice always wins (new note there).
+  ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
     const paths = requireNotes()
-    const ok = undoRoute(id, paths)
-    // Drop undone notes from the index (files moved to app-data, re-scan is cheap).
-    void reindexVault(paths.root)
-    return ok
+    undoInboxRoute(id, paths)
+    const res = await processInboxItem(id, { apply: true, hint: projectName })
+    if ('error' in res) return res
+    return { note: res.note?.id ?? null, path: res.route.rel, route: res.route }
   })
+
+  ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => undoInboxRoute(id, requireNotes()))
 
   ipcMain.handle('inbox:delete', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()
+    undoInboxRoute(id, paths)
     const ok = deleteInboxItem(id, paths)
     removeNote(id)
     removeNote(`inbox/${id}.md`)
-    void reindexVault(paths.root)
+    removePath(`inbox/${id}.md`)
     return ok
   })
+
+  // --- routing prefs (Settings › Routing) ---------------------------------------------
+  ipcMain.handle('routing:prefs', (): RoutingPrefs => loadRoutingPrefs())
+  ipcMain.handle('routing:set-prefs', (_e: IpcMainInvokeEvent, patch: Partial<RoutingPrefs>): RoutingPrefs =>
+    saveRoutingPrefs(patch)
+  )
 
   ipcMain.handle('inbox:set-status', (_e: IpcMainInvokeEvent, id: string, status: NoteStatus): boolean =>
     setInboxStatus(id, status, requireNotes())
@@ -508,7 +477,6 @@ export function registerIpc(): void {
         const root = switchProfile(id)
         const paths = ensureVault(vaultPaths(resolve(root)))
         closeDb()
-        ensureSeedProjects(paths)
         const backend = openDb(paths.dbPath)
         const indexed = reindexVault(paths.root) + reindexStaging(paths)
         return { info: info(), backend, indexed }
@@ -762,7 +730,15 @@ export function registerIpc(): void {
   // --- AI --------------------------------------------------------------------------
   ipcMain.handle('ai:providers', () => providerStatus())
   ipcMain.handle('ai:classify', (_e: IpcMainInvokeEvent, raw: string, kind: NoteKind): Promise<ClassifyResult> =>
-    classify({ raw, kind, projects: vaultConfigured() ? listProjects(requireNotes()) : [] })
+    vaultConfigured()
+      ? classify({
+          raw,
+          kind,
+          projects: listProjects(requireNotes()),
+          corpus: routeCorpus(raw),
+          prefs: loadRoutingPrefs()
+        })
+      : classify({ raw, kind, projects: [] })
   )
   ipcMain.handle('ai:summarize', (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> =>
     summarize(text)
@@ -847,7 +823,9 @@ export function registerIpc(): void {
       paths
     )
     indexFile(path, `inbox/${item.id}.md`)
-    void processInboxItem(item.id).catch((err) => console.error('[meeting] route failed:', err))
+    void processInboxItem(item.id, { apply: loadRoutingPrefs().autoFile }).catch((err) =>
+      console.error('[meeting] route failed:', err)
+    )
     return item
   })
   ipcMain.handle('meeting:save', (_e: IpcMainInvokeEvent, input: MeetingSaveInput): string => {

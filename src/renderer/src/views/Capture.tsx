@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { assetUrl, imageMarkdown } from '../../../shared/images'
+import { KEEP_IN_INBOX, parseRouteHint, previewLabel, type RoutePreview } from '../../../shared/routing'
 import type { NoteKind, Project } from '../../../shared/types'
 import { blobToDataUrl, ipcError, loadAudioPrefs, openMic, toWav } from '../audio'
 import { LIVE_ENGINE, liveAvailable, startLive, type LiveSession } from '../liveCaptions'
 import { loadLabels, startMeeting, toMarkdown, type Meeting, type MeetingLine } from '../meeting'
 import { describeSource } from '../../../shared/systemAudio'
 import { isWebEngine, transcribeWeb, warmWeb } from '../webStt'
+import {
+  captureKind,
+  createPreviewer,
+  previewable,
+  previewKey,
+  previewOptions,
+  previewRouteKey,
+  type PreviewOption
+} from '../routePreview'
 
 /**
  * Capture popover (380×300): one borderless composer on the window's own
@@ -33,6 +43,11 @@ export default function Capture(): React.JSX.Element {
   const meetingRef = useRef<Meeting | null>(null)
   const [meetState, setMeetState] = useState<'idle' | 'rec' | 'working'>('idle')
   const [meetLines, setMeetLines] = useState<MeetingLine[]>([])
+  const [preview, setPreview] = useState<{ key: string; p: RoutePreview } | null>(null)
+  const [routeMenu, setRouteMenu] = useState(false)
+  const [menuHi, setMenuHi] = useState(0)
+  const projectRef = useRef<HTMLSelectElement>(null)
+  const routeBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     window.api.projects
@@ -64,13 +79,75 @@ export default function Capture(): React.JSX.Element {
   const appendText = (t: string): void =>
     setRaw((prev) => (prev ? (prev.endsWith('\n') ? `${prev}${t}` : `${prev}\n${t}`) : t))
 
+  // --- live route preview: where Save would file it (rules router, same inputs as filing) -------
+  const kindNow: NoteKind = captureKind(attachments)
+  const rawNow = raw.trim()
+  const wantPreview = dest === 'inbox' && previewable(rawNow)
+  const keyNow = previewKey(rawNow, kindNow, hint)
+  const previewer = useMemo(
+    () =>
+      createPreviewer(
+        (a) => window.api.routing.preview(a.raw, a.kind, a.hint),
+        (key, p) => setPreview(p ? { key, p } : null)
+      ),
+    []
+  )
+  useEffect(() => {
+    if (!wantPreview) {
+      previewer.cancel()
+      setPreview(null)
+      setRouteMenu(false)
+      return
+    }
+    // keyNow covers raw / kind / hint.
+    previewer.request({ raw: rawNow, kind: kindNow, hint })
+  }, [wantPreview, keyNow, previewer]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => previewer.cancel(), [previewer])
+  const shown = wantPreview ? preview : null
+  const fresh = shown?.key === keyNow
+  const menuOptions: PreviewOption[] = shown ? previewOptions(shown.p, hint, projects) : []
+
+  const pickOption = (o: PreviewOption): void => {
+    setRouteMenu(false)
+    if (o.hint === null) {
+      // Other folder… → the folder picker up top.
+      const sel = projectRef.current
+      sel?.focus()
+      try {
+        sel?.showPicker()
+      } catch {
+        // showPicker can refuse without a fresh gesture; focus is enough then (↑↓ / space).
+      }
+      return
+    }
+    setHint(o.hint)
+    inputRef.current?.focus()
+  }
+
+  const onMenuKey = (e: React.KeyboardEvent): void => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const n = menuOptions.length
+      setMenuHi((i) => (i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n)
+    } else if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      e.stopPropagation()
+      const o = menuOptions[menuHi]
+      if (o) pickOption(o)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setRouteMenu(false)
+      routeBtnRef.current?.focus()
+    }
+  }
+
   const save = async (): Promise<void> => {
     if (!raw.trim() && attachments.length === 0) return
     setSaving(true)
+    setRouteMenu(false)
     try {
-      const hasAudio = attachments.some((a) => /\.(wav|mp3|m4a|ogg|flac)$/i.test(a))
-      const hasImage = attachments.some((a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a))
-      const kind: NoteKind = hasAudio ? 'voice' : hasImage ? 'image' : 'text'
+      const kind: NoteKind = captureKind(attachments)
       if (dest === 'today') {
         // Image refs are already inline in `raw` (ingestFile appends them);
         // only add refs for attachments the user removed from the text.
@@ -83,7 +160,10 @@ export default function Capture(): React.JSX.Element {
           raw: raw.trim(),
           projectHint: hint,
           source: 'popover',
-          assets: attachments
+          assets: attachments,
+          // Only a preview of exactly this text + hint counts (a stale one says nothing).
+          previewed:
+            preview && preview.key === previewKey(raw.trim(), kind, hint) ? previewRouteKey(preview.p) : undefined
         })
       }
       setSaved(true)
@@ -336,8 +416,23 @@ export default function Capture(): React.JSX.Element {
           </button>
         </div>
         {dest === 'inbox' && (
-          <select className="cap-project" value={hint} onChange={(e) => setHint(e.target.value)} aria-label="Project">
+          <select
+            ref={projectRef}
+            className="cap-project"
+            value={hint}
+            onChange={(e) => setHint(e.target.value)}
+            aria-label="Project"
+          >
             <option value="auto">Auto-route</option>
+            {hint === KEEP_IN_INBOX && <option value={KEEP_IN_INBOX}>Keep in inbox</option>}
+            {parseRouteHint(hint).kind === 'append' && (
+              <option value={hint}>
+                Add to {shown?.p.target?.title ?? (hint.split('/').pop() ?? '').replace(/\.md$/i, '')}
+              </option>
+            )}
+            {parseRouteHint(hint).kind === 'folder' && !projects.some((p) => p.id === hint) && (
+              <option value={hint}>{hint}</option>
+            )}
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -402,6 +497,58 @@ export default function Capture(): React.JSX.Element {
           ))}
         </ul>
       )}
+
+      <div className="cap-route" aria-live="polite">
+        {dest === 'today' && rawNow && <span className="cap-route-line static">→ today’s note</span>}
+        {shown && (
+          <>
+            <button
+              ref={routeBtnRef}
+              className={`cap-route-line${fresh ? '' : ' stale'}${shown.p.action === 'inbox' ? ' unsure' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={routeMenu}
+              title={`${shown.p.reason}${shown.p.tags.length ? ` · #${shown.p.tags.join(' #')}` : ''}${
+                shown.p.aiMayRefine ? ' · AI may refine this when filing' : ''
+              }\nClick to change`}
+              onClick={() => {
+                setMenuHi(0)
+                setRouteMenu((v) => !v)
+              }}
+            >
+              <span className="cap-route-where">{previewLabel(shown.p)}</span>
+              <span className="cap-route-why">
+                {shown.p.override ? '' : shown.p.reason}
+                {shown.p.aiMayRefine ? ' · AI may refine' : ''}
+              </span>
+            </button>
+            {routeMenu && (
+              <ul
+                className="cap-route-menu glass"
+                role="menu"
+                tabIndex={-1}
+                ref={(el) => el?.focus()}
+                onKeyDown={onMenuKey}
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setRouteMenu(false)
+                }}
+              >
+                {menuOptions.map((o, i) => (
+                  <li
+                    key={o.id}
+                    role="menuitem"
+                    className={i === menuHi ? 'on' : ''}
+                    onMouseEnter={() => setMenuHi(i)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickOption(o)}
+                  >
+                    {o.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="cap-bar">
         <button

@@ -4,6 +4,7 @@
  * file can be unit-tested with plain `tsc` + node.
  */
 import { parseTags } from '../../../src/shared/tags'
+import { DEFAULT_ROUTING_PREFS, decideRoute, keyTerms } from '../../../src/shared/routing'
 
 export type NoteKind = 'text' | 'voice' | 'image' | 'meeting'
 export type NoteStatus = 'inbox' | 'processing' | 'ready' | 'archived'
@@ -56,6 +57,9 @@ export interface ClassifyResult {
   markdown: string
   provider: string
   confidence: number
+  /** new note, or leave in the inbox for review (Android never appends). */
+  action: 'new' | 'append' | 'review'
+  reason: string
 }
 
 export function newId(prefix = ''): string {
@@ -210,40 +214,47 @@ export function formatBody(raw: string, kind: NoteKind): string {
     .join('\n')
 }
 
-/** Rules router — identical scoring to Mac `rulesClassify` (no Apple LLM on Android). */
-export function rulesClassify(raw: string, kind: NoteKind, projects: Project[], projectHint?: string): ClassifyResult {
-  const hint = projectHint && projectHint !== 'auto' ? projectHint : null
-  let project: Project | null = hint ? (projects.find((p) => p.id === hint || p.name === hint) ?? null) : null
-  let confidence = hint ? 1 : 0
-  if (!project) {
-    const hay = raw.toLowerCase()
-    let best = 0
-    for (const p of projects) {
-      const name = p.name.toLowerCase()
-      const words = name.split(/[^a-z0-9]+/).filter(Boolean)
-      let score = 0
-      for (const w of words) {
-        if (w.length < 3) continue
-        const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
-        score += (hay.match(re) ?? []).length * 2
-        if (hay.includes(w)) score += 0.5
-      }
-      if (score > best) {
-        best = score
-        project = p
-      }
-    }
-    confidence = best >= 2 ? 0.7 : best > 0 ? 0.45 : 0.25
-    project ??= projects[0] ?? { id: 'general', name: 'general', dir: 'general' }
-  }
+/**
+ * Rules router — the same content-based scoring as the Mac (src/shared/routing.ts), over the notes
+ * index (title + snippet). Never guesses a folder: unsure captures stay in the inbox for review.
+ * Android doesn't append to existing notes (yet), so append is off here.
+ */
+export function rulesClassify(
+  raw: string,
+  kind: NoteKind,
+  projects: Project[],
+  projectHint?: string,
+  notes: readonly NoteEntry[] = []
+): ClassifyResult {
+  const vault = notes.filter((n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/'))
+  const terms = keyTerms(raw, 12)
+  const docs = vault
+    .filter((n) => {
+      const hay = `${n.title}\n${n.snippet}\n${n.tags.join(' ')}`.toLowerCase()
+      return terms.some((t) => hay.includes(t))
+    })
+    .slice(0, 60)
+    .map((n) => ({ path: n.path, title: n.title, kind: n.kind, tags: n.tags, body: n.snippet }))
+  const d = decideRoute({
+    raw,
+    kind,
+    folders: projects.map((p) => ({ id: p.id, name: p.name, dir: p.dir })),
+    notes: vault.map((n) => ({ path: n.path, kind: n.kind, tags: n.tags })),
+    docs,
+    prefs: { ...DEFAULT_ROUTING_PREFS, allowAppend: false },
+    hint: projectHint
+  })
+  const p = d.folder ? projects.find((x) => x.dir === d.folder) : undefined
   return {
-    projectId: project.id,
-    projectName: project.name,
+    projectId: p?.id ?? (d.folder ? slugToId(d.folder) : ''),
+    projectName: d.folder ?? '',
     title: titleFromRaw(raw),
-    tags: tagsFromRaw(raw, kind),
+    tags: d.tags,
     markdown: formatBody(raw, kind),
-    provider: 'rules',
-    confidence
+    provider: d.provider,
+    confidence: d.confidence,
+    action: d.action === 'append' ? 'new' : d.action,
+    reason: d.reason
   }
 }
 

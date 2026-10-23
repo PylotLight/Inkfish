@@ -202,7 +202,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       await vault.setInboxStatus(item.id, 'processing')
       try {
         const fresh = await vault.listProjects()
-        const r = rulesClassify(raw, kind, fresh, projectHint)
+        const r = rulesClassify(raw, kind, fresh, projectHint, notesRef.current)
+        // Unsure (or no folders yet): leave it in the inbox for review instead of guessing.
+        if (r.action === 'review') throw new Error(r.reason)
         await vault.routeToProject({
           inboxId: item.id,
           projectName: r.projectName,
@@ -237,7 +239,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       if (!item) throw new Error(`inbox item ${id} not found`)
       await vault.undoRoute(id)
       const fresh = await vault.listProjects()
-      const r = rulesClassify(item.raw, item.kind, fresh, projectName ?? item.projectHint)
+      const r = rulesClassify(item.raw, item.kind, fresh, projectName ?? item.projectHint, notesRef.current)
+      // Unsure: stays in the inbox (pick a folder to file it).
+      if (r.action === 'review') {
+        await vault.setInboxStatus(id, 'inbox')
+        await refresh()
+        return
+      }
       await vault.routeToProject({
         inboxId: id,
         projectName: r.projectName,

@@ -14,10 +14,11 @@ import {
 } from '../meeting'
 import { describeSource } from '../../../shared/systemAudio'
 import MeetingImport from './MeetingImport'
+import { pickMeetingsFolder } from '../../../shared/routing'
 import SystemAudioPicker from './SystemAudioPicker'
 
-const DEFAULT_FOLDER = 'Meetings'
-const FOLDER_KEY = 'inkfish.meeting.folder.v1'
+/** Pre-routing-settings pick (read once, then Settings › Routing owns it). */
+const LEGACY_FOLDER_KEY = 'inkfish.meeting.folder.v1'
 
 interface Props {
   /** Every indexed note — meetings are the `kind: meeting` ones. */
@@ -94,6 +95,14 @@ export default function Meetings({
       .then(setProjects)
       .catch(() => setProjects([]))
   }, [saved])
+  // Settings › Routing › Meetings folder ('' = not chosen yet).
+  const [folderPref, setFolderPref] = useState('')
+  useEffect(() => {
+    window.api.routing
+      .prefs()
+      .then((p) => setFolderPref(p.meetingsFolder))
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => onRecording(state === 'rec' || state === 'starting' || state === 'saving'), [state, onRecording])
 
@@ -196,7 +205,11 @@ export default function Meetings({
       const speakers = r.hasSystemAudio ? [label('mic'), label('system')] : [label('mic')]
       const draft = {
         title: defaultTitle(new Date(m.startedAt)),
-        folder: localStorage.getItem(FOLDER_KEY) || DEFAULT_FOLDER,
+        folder: pickMeetingsFolder(
+          folderPref,
+          localStorage.getItem(LEGACY_FOLDER_KEY),
+          meetings.map((n) => n.path)
+        ),
         tags: '',
         transcript: toMarkdown(r.lines, { mic: label('mic'), system: label('system') }),
         speakers,
@@ -229,7 +242,12 @@ export default function Meetings({
     if (!saved) return
     try {
       const rel = await write(saved)
-      localStorage.setItem(FOLDER_KEY, saved.folder)
+      // Remember the pick (Settings › Routing › Meetings folder).
+      if (saved.folder !== folderPref) {
+        const p = await window.api.routing.setPrefs({ meetingsFolder: saved.folder })
+        setFolderPref(p.meetingsFolder)
+        localStorage.removeItem(LEGACY_FOLDER_KEY)
+      }
       setSaved({ ...saved, rel })
       onRefresh()
       notify(`Filed under ${saved.folder || '/'} ✓`)
@@ -256,7 +274,7 @@ export default function Meetings({
     [notes]
   )
   const folders = useMemo(() => {
-    const s = new Set<string>([DEFAULT_FOLDER, ...projects.map((p) => p.dir)])
+    const s = new Set<string>(projects.map((p) => p.dir))
     for (const n of meetings) s.add(folderOf(n.path))
     return [...s].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [projects, meetings])
@@ -397,7 +415,7 @@ export default function Meetings({
                   list="meet-folders"
                   value={saved.folder}
                   onChange={(e) => setSaved({ ...saved, folder: e.target.value })}
-                  placeholder={DEFAULT_FOLDER}
+                  placeholder="Vault root — pick or type a folder"
                 />
                 <datalist id="meet-folders">
                   {folders.map((f) => (
