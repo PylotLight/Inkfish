@@ -214,6 +214,12 @@ const api = {
     ipcRenderer.on('inkfish:vault-changed', fn)
     return () => ipcRenderer.removeListener('inkfish:vault-changed', fn)
   },
+  /** Edit › Find menu (macOS app menu, main/app-menu.ts) → the focused window's note. */
+  onFind: (cb: (action: 'find' | 'replace' | 'next' | 'prev') => void): (() => void) => {
+    const fn = (_e: unknown, action: 'find' | 'replace' | 'next' | 'prev'): void => cb(action)
+    ipcRenderer.on('inkfish:find', fn)
+    return () => ipcRenderer.removeListener('inkfish:find', fn)
+  },
   onOpenToday: (cb: () => void): (() => void) => {
     const fn = (): void => cb()
     ipcRenderer.on('inkfish:open-today', fn)
