@@ -4831,14 +4831,49 @@ html[data-density='compact'] .note-stage {
 
 .find-bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   flex-shrink: 0;
   background: var(--inset-soft);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 6px 8px 6px 12px;
+  padding: 6px 8px 6px 6px;
   margin-bottom: 10px;
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.find-expand,
+.find-expand-spacer {
+  flex-shrink: 0;
+  width: 22px;
+  font-size: 11px;
+}
+
+.find-opt {
+  font-family: var(--mono-font, ui-monospace, monospace);
+  font-size: 11.5px;
+  opacity: 0.6;
+}
+
+.find-opt.on {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+}
+
+.find-input.bad {
+  color: var(--danger, #e5484d);
+}
+
+.find-count.none {
+  color: var(--danger, #e5484d);
+  opacity: 0.85;
 }
 
 .find-input {
@@ -4856,6 +4891,7 @@ html[data-density='compact'] .note-stage {
 .find-count {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   min-width: 44px;
   text-align: right;
 }

@@ -5,7 +5,17 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { minimalEdit } from '../../../shared/mini-window'
 import PopOutIcon from './PopOutIcon'
-import { findAll, fmtBytes, fmtChars, timeAgo } from '../text'
+import { fmtBytes, fmtChars, timeAgo } from '../text'
+import {
+  findMatches,
+  isInvalidQuery,
+  matchAtOrAfter,
+  replacementFor,
+  seedFromSelection,
+  wrapIndex,
+  type FindMatch,
+  type FindOpts
+} from '../find'
 import { listKeys, livePreview } from '../livePreview'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
 import NoteAi from './NoteAi'
@@ -17,42 +27,24 @@ import { sendAiCommand } from '../nativeAi'
 const remoteSync = Annotation.define<boolean>()
 
 /** In-note find highlight for the editor pane. */
-const setFind = StateEffect.define<{ query: string; current: number }>()
-const findQueryField = StateField.define<{ query: string; current: number }>({
-  create: () => ({ query: '', current: 0 }),
-  update: (v, tr) => {
-    for (const e of tr.effects) if (e.is(setFind)) return e.value as { query: string; current: number }
-    return v
-  }
-})
-function buildFindDeco(docText: string, query: string, current: number): DecorationSet {
-  if (!query) return Decoration.none
-  const hay = docText.toLowerCase()
-  const q = query.toLowerCase()
+const setFind = StateEffect.define<{ matches: FindMatch[]; current: number }>()
+const findHitMark = Decoration.mark({ class: 'cm-find-hit' })
+const findCurrentMark = Decoration.mark({ class: 'cm-find-hit current' })
+function buildFindDeco(matches: FindMatch[], current: number, docLen: number): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
-  let ordinal = 0
-  let from = 0
-  while (true) {
-    const i = hay.indexOf(q, from)
-    if (i < 0) break
-    builder.add(
-      i,
-      i + q.length,
-      ordinal === current
-        ? Decoration.mark({ class: 'cm-find-hit current' })
-        : Decoration.mark({ class: 'cm-find-hit' })
-    )
-    ordinal++
-    from = i + Math.max(1, q.length)
-  }
+  matches.forEach((m, i) => {
+    if (m.to <= docLen) builder.add(m.from, m.to, i === current ? findCurrentMark : findHitMark)
+  })
   return builder.finish()
 }
+/** Matches come from React (one source of truth with the counter); edits just map them along. */
 const findDecoField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update: (old, tr) => {
-    const q = tr.state.field(findQueryField)
-    if (!tr.docChanged && !tr.effects.some((e) => e.is(setFind))) return old.map(tr.changes)
-    return buildFindDeco(tr.newDoc.toString(), q.query, q.current)
+    for (const e of tr.effects) {
+      if (e.is(setFind)) return buildFindDeco(e.value.matches, e.value.current, tr.newDoc.length)
+    }
+    return tr.docChanged ? old.map(tr.changes) : old
   },
   provide: (f) => EditorView.decorations.from(f)
 })
@@ -166,36 +158,74 @@ function NoteEditor({
   })
 
   // --- in-note find ---------------------------------------------------------
+  // ⌘F opens it from anywhere in the window while a note is showing (not just with the caret in
+  // the editor), seeded from the selection and landing on the first hit after the caret. ↵ / ⇧↵ and
+  // ⌘G / ⇧⌘G step, and the current hit is selected in the editor, so Esc leaves you right there.
+  const rootRef = useRef<HTMLDivElement>(null)
+  /** Caret when find opened — typing a query lands on the first hit after it. */
+  const caretAnchorRef = useRef(0)
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
   const [findIndex, setFindIndex] = useState(0)
+  const [findOpts, setFindOpts] = useState<FindOpts>({})
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [replaceText, setReplaceText] = useState('')
   const findInputRef = useRef<HTMLInputElement>(null)
-  const openFind = useCallback(() => {
+  const replaceInputRef = useRef<HTMLInputElement>(null)
+  /** Bumped on every explicit navigation so the "move to hit" effect fires even on a same index. */
+  const [findNav, setFindNav] = useState(0)
+  const findOptsRef = useRef(findOpts)
+  findOptsRef.current = findOpts
+  const findQueryRef = useRef(findQuery)
+  findQueryRef.current = findQuery
+
+  const editorText = (): string => viewRef.current?.state.doc.toString() ?? textRef.current
+  const caretPos = (): number => {
+    const v = viewRef.current
+    if (v) return v.state.selection.main.from
+    const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
+    return ta?.selectionStart ?? 0
+  }
+
+  const openFind = useCallback((withReplace = false) => {
+    const v = viewRef.current
+    // Seed only from a real selection in the note (not the hit we selected while the bar has focus).
+    const sel = v && v.hasFocus ? v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to) : ''
+    const seed = seedFromSelection(sel)
+    const query = seed ?? findQueryRef.current
+    caretAnchorRef.current = caretPos()
     setFindOpen(true)
-    setFindIndex(0)
-    requestAnimationFrame(() => findInputRef.current?.select())
+    if (withReplace) setReplaceOpen(true)
+    setFindQuery(query)
+    setFindIndex(matchAtOrAfter(findMatches(editorText(), query, findOptsRef.current), caretAnchorRef.current))
+    setFindNav((n) => n + 1)
+    requestAnimationFrame(() => {
+      const el = withReplace && seed ? replaceInputRef.current : findInputRef.current
+      el?.focus()
+      el?.select()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Close and hand focus back to the editor with the current hit selected. */
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    setReplaceOpen(false)
+    const v = viewRef.current
+    if (v) {
+      v.dispatch({ effects: setFind.of({ matches: [], current: 0 }) })
+      v.focus()
+    }
   }, [])
 
   // Reset find when switching documents.
   const docId = doc?.id ?? null
   useEffect(() => {
     setFindOpen(false)
+    setReplaceOpen(false)
     setFindQuery('')
     setFindIndex(0)
   }, [docId])
-
-  // Push find state into the editor decorations + scroll to the hit.
-  useEffect(() => {
-    const v = viewRef.current
-    if (!v) return
-    const srcText = v.state.doc.toString()
-    const hits = findAll(srcText, findQuery)
-    const cur = hits.length > 0 ? ((findIndex % hits.length) + hits.length) % hits.length : 0
-    v.dispatch({ effects: setFind.of({ query: findQuery, current: cur }) })
-    if (findQuery && hits[cur] !== undefined) {
-      v.dispatch({ effects: EditorView.scrollIntoView(hits[cur] as number, { y: 'center' }) })
-    }
-  }, [findQuery, findIndex])
 
   // Editor mounts when the mount div exists. On app launch the tabs restore
   // before the note loads, so the first render is the `!doc` empty state and
@@ -235,7 +265,6 @@ function NoteEditor({
               const d = saveRef.current.doc
               if (d && !remote) window.api.mini?.draft(d.id, next)
             }),
-            findQueryField,
             findDecoField,
             livePreview({
               onToggleTask: (pos) => toggleTaskRef.current(pos),
@@ -334,24 +363,113 @@ function NoteEditor({
   // In-note find matches over the current source.
   // Hooks live above the `!doc` early return to keep hook order stable.
   const preSrc = text || (doc && !editedRef.current ? doc.markdown : '')
-  const findHits = useMemo(() => findAll(preSrc, findQuery), [preSrc, findQuery])
-  const findTotal = findHits.length
-  const findCurrent = findTotal > 0 ? ((findIndex % findTotal) + findTotal) % findTotal : 0
-  const stepFind = useCallback(
-    (dir: 1 | -1) => {
-      setFindIndex((i) => (findTotal > 0 ? i + dir : 0))
-      // Fallback textarea can't render marks — jump the caret instead.
-      if (cmFailed && findTotal > 0) {
-        const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
-        const pos = findHits[(((findIndex + dir) % findTotal) + findTotal) % findTotal] ?? 0
-        if (ta) {
-          ta.focus()
-          ta.setSelectionRange(pos, pos + findQuery.length)
-        }
-      }
-    },
-    [findTotal, findHits, findIndex, findQuery.length, cmFailed]
+  const findHits = useMemo(
+    () => (findOpen ? findMatches(preSrc, findQuery, findOpts) : []),
+    [findOpen, preSrc, findQuery, findOpts]
   )
+  const findTotal = findHits.length
+  const findCurrent = wrapIndex(findIndex, findTotal)
+  const findBad = isInvalidQuery(findQuery, findOpts)
+  const findHitsRef = useRef(findHits)
+  findHitsRef.current = findHits
+
+  // Highlights follow the matches (typing in the note re-finds live).
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setFind.of({ matches: findHits, current: findCurrent }) })
+  }, [findHits, findCurrent])
+
+  // Move to the current hit — only on query / option / step changes, never while typing in the note.
+  useEffect(() => {
+    if (!findOpen) return
+    const hits = findHitsRef.current
+    const m = hits[wrapIndex(findIndex, hits.length)]
+    if (!m) return
+    const v = viewRef.current
+    if (v) {
+      v.dispatch({
+        selection: { anchor: m.from, head: m.to },
+        effects: EditorView.scrollIntoView(m.from, { y: 'center' })
+      })
+      return
+    }
+    const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
+    ta?.setSelectionRange(m.from, m.to)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findOpen, findQuery, findOpts, findIndex, findNav])
+
+  const stepFind = useCallback((dir: 1 | -1) => {
+    setFindIndex((i) => wrapIndex(i + dir, findHitsRef.current.length))
+    setFindNav((n) => n + 1)
+  }, [])
+
+  const replaceOne = useCallback(() => {
+    const hits = findHitsRef.current
+    const m = hits[wrapIndex(findIndex, hits.length)]
+    if (!m) return
+    const src = editorText()
+    const insert = replacementFor(src, m, findQuery, replaceText, findOpts)
+    const v = viewRef.current
+    if (v) v.dispatch({ changes: { from: m.from, to: m.to, insert }, userEvent: 'input.replace' })
+    else handleText(src.slice(0, m.from) + insert + src.slice(m.to))
+    // Same index now points at the next hit (the replaced one usually no longer matches).
+    setFindNav((n) => n + 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findIndex, findQuery, replaceText, findOpts, handleText])
+
+  const replaceAll = useCallback(() => {
+    const hits = findHitsRef.current
+    if (hits.length === 0) return
+    const src = editorText()
+    const changes = hits.map((m) => ({
+      from: m.from,
+      to: m.to,
+      insert: replacementFor(src, m, findQuery, replaceText, findOpts)
+    }))
+    const v = viewRef.current
+    if (v) {
+      // One transaction → one ⌘Z.
+      v.dispatch({ changes, userEvent: 'input.replace' })
+    } else {
+      let out = ''
+      let at = 0
+      for (const c of changes) {
+        out += src.slice(at, c.from) + c.insert
+        at = c.to
+      }
+      handleText(out + src.slice(at))
+    }
+    setFindIndex(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findQuery, replaceText, findOpts, handleText])
+
+  // Window-level shortcuts (capture phase): work wherever focus is, as long as this note is on screen.
+  const findKeysRef = useRef({ findOpen, openFind, stepFind })
+  findKeysRef.current = { findOpen, openFind, stepFind }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const root = rootRef.current
+      // Hidden (settings open, other view) → leave the key alone.
+      if (!root || root.offsetParent === null) return
+      // A modal / palette owns the keyboard.
+      const t = e.target as HTMLElement | null
+      if (t?.closest?.('[role="dialog"], .palette, .cmd-palette') && !root.contains(t)) return
+      const key = e.key.toLowerCase()
+      const k = findKeysRef.current
+      if (key === 'f' && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        k.openFind(e.altKey)
+      } else if (key === 'g' && !e.altKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (k.findOpen) k.stepFind(e.shiftKey ? -1 : 1)
+        else k.openFind()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
 
   if (!doc) {
     return (
@@ -372,6 +490,7 @@ function NoteEditor({
 
   return (
     <div
+      ref={rootRef}
       className="editor"
       onKeyDown={(e) => {
         // ⌘S from anywhere in the editor.
@@ -380,18 +499,10 @@ function NoteEditor({
           onFlush?.()
           return
         }
-        // ⌘F opens in-note find (we highlight ourselves, not the browser).
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        // Esc closes find from the bar or the note itself (caret stays on the hit).
+        if (e.key === 'Escape' && findOpen) {
           e.preventDefault()
-          if (findOpen) findInputRef.current?.select()
-          else openFind()
-          return
-        }
-        // Esc inside the find bar closes it.
-        if (e.key === 'Escape' && findOpen && (e.target as HTMLElement)?.closest?.('.find-bar')) {
-          e.preventDefault()
-          setFindOpen(false)
-          setFindQuery('')
+          closeFind()
         }
       }}
     >
@@ -524,61 +635,127 @@ function NoteEditor({
         </div>
       )}
       {findOpen && (
-        <div className="find-bar" role="search" aria-label="Find in note">
-          <input
-            ref={findInputRef}
-            className="find-input"
-            value={findQuery}
-            autoFocus
-            onChange={(e) => {
-              setFindQuery(e.target.value)
-              setFindIndex(0)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                stepFind(e.shiftKey ? -1 : 1)
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setFindOpen(false)
-                setFindQuery('')
-              }
-            }}
-            placeholder="Find in note…"
-            aria-label="Find in note"
-          />
-          <span className="muted small find-count" aria-live="polite">
-            {findQuery ? (findTotal > 0 ? `${findCurrent + 1}/${findTotal}` : '0/0') : ''}
-          </span>
-          <button
-            className="btn ghost sm icon"
-            title="Previous (⇧↵)"
-            aria-label="Previous match"
-            onClick={() => stepFind(-1)}
-            disabled={findTotal === 0}
-          >
-            ↑
-          </button>
-          <button
-            className="btn ghost sm icon"
-            title="Next (↵)"
-            aria-label="Next match"
-            onClick={() => stepFind(1)}
-            disabled={findTotal === 0}
-          >
-            ↓
-          </button>
-          <button
-            className="btn ghost sm icon"
-            title="Close (Esc)"
-            aria-label="Close find"
-            onClick={() => {
-              setFindOpen(false)
-              setFindQuery('')
-            }}
-          >
-            ×
-          </button>
+        <div className={`find-bar${replaceOpen ? ' with-replace' : ''}`} role="search" aria-label="Find in note">
+          <div className="find-row">
+            <button
+              className="btn ghost sm icon find-expand"
+              title={replaceOpen ? 'Hide replace' : 'Replace (⌥⌘F)'}
+              aria-label="Toggle replace"
+              aria-expanded={replaceOpen}
+              onClick={() => setReplaceOpen((v) => !v)}
+            >
+              {replaceOpen ? '▾' : '▸'}
+            </button>
+            <input
+              ref={findInputRef}
+              className={`find-input${findBad ? ' bad' : ''}`}
+              value={findQuery}
+              autoFocus
+              spellCheck={false}
+              onChange={(e) => {
+                const q = e.target.value
+                setFindQuery(q)
+                setFindIndex(matchAtOrAfter(findMatches(editorText(), q, findOpts), caretAnchorRef.current))
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  stepFind(e.shiftKey ? -1 : 1)
+                }
+              }}
+              placeholder="Find in note…"
+              aria-label="Find in note"
+            />
+            <span className={`muted small find-count${findQuery && findTotal === 0 ? ' none' : ''}`} aria-live="polite">
+              {findBad
+                ? 'bad regex'
+                : findQuery
+                  ? findTotal > 0
+                    ? `${findCurrent + 1}/${findTotal}`
+                    : 'no results'
+                  : ''}
+            </span>
+            <button
+              className={`btn ghost sm icon find-opt${findOpts.caseSensitive ? ' on' : ''}`}
+              title="Match case"
+              aria-label="Match case"
+              aria-pressed={!!findOpts.caseSensitive}
+              onClick={() => setFindOpts((o) => ({ ...o, caseSensitive: !o.caseSensitive }))}
+            >
+              Aa
+            </button>
+            <button
+              className={`btn ghost sm icon find-opt${findOpts.wholeWord ? ' on' : ''}`}
+              title="Whole word"
+              aria-label="Whole word"
+              aria-pressed={!!findOpts.wholeWord}
+              onClick={() => setFindOpts((o) => ({ ...o, wholeWord: !o.wholeWord }))}
+            >
+              ab
+            </button>
+            <button
+              className={`btn ghost sm icon find-opt${findOpts.regex ? ' on' : ''}`}
+              title="Regex"
+              aria-label="Regex"
+              aria-pressed={!!findOpts.regex}
+              onClick={() => setFindOpts((o) => ({ ...o, regex: !o.regex }))}
+            >
+              .*
+            </button>
+            <button
+              className="btn ghost sm icon"
+              title="Previous (⇧↵ / ⇧⌘G)"
+              aria-label="Previous match"
+              onClick={() => stepFind(-1)}
+              disabled={findTotal === 0}
+            >
+              ↑
+            </button>
+            <button
+              className="btn ghost sm icon"
+              title="Next (↵ / ⌘G)"
+              aria-label="Next match"
+              onClick={() => stepFind(1)}
+              disabled={findTotal === 0}
+            >
+              ↓
+            </button>
+            <button className="btn ghost sm icon" title="Close (Esc)" aria-label="Close find" onClick={closeFind}>
+              ×
+            </button>
+          </div>
+          {replaceOpen && (
+            <div className="find-row">
+              <span className="find-expand-spacer" aria-hidden />
+              <input
+                ref={replaceInputRef}
+                className="find-input"
+                value={replaceText}
+                spellCheck={false}
+                onChange={(e) => setReplaceText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if ((e.metaKey || e.ctrlKey) && e.altKey) replaceAll()
+                    else replaceOne()
+                  }
+                }}
+                placeholder={findOpts.regex ? 'Replace ($1 for groups)…' : 'Replace…'}
+                aria-label="Replace with"
+              />
+              <button className="btn ghost sm" onClick={replaceOne} disabled={findTotal === 0} title="Replace (↵)">
+                Replace
+              </button>
+              <button
+                className="btn ghost sm"
+                onClick={replaceAll}
+                disabled={findTotal === 0}
+                title="Replace all (⌥⌘↵)"
+              >
+                All
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* AI: Raw / Processed view + Process selection (user-driven, see NoteAi). */}
