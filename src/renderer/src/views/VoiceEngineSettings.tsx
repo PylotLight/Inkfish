@@ -964,7 +964,11 @@ function EngineIcon({ family }: { family?: string }): React.JSX.Element {
           ? 'M'
           : family === 'whisper'
             ? 'W'
-            : ''
+            : family === 'wav2vec2'
+              ? 'W2'
+              : family === 'qwen'
+                ? 'Q'
+                : ''
   return (
     <span className={`engine-icon ${family ?? 'apple'}`} aria-hidden>
       {label || (

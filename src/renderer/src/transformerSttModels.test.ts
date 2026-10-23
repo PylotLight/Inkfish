@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { DownloadTotals, padAudio, speechWindows, TRANSFORMER_ENGINES, transformerCache } from './transformerSttModels'
 
 describe('transformer STT models', () => {
-  test('defines six uniquely identified web engines under 200 MB', () => {
-    expect(TRANSFORMER_ENGINES).toHaveLength(6)
+  test('defines seven uniquely identified web engines under 200 MB', () => {
+    expect(TRANSFORMER_ENGINES).toHaveLength(7)
     const ids = TRANSFORMER_ENGINES.map(({ id }) => id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids.every((id) => id.startsWith('web-'))).toBe(true)
@@ -12,6 +12,14 @@ describe('transformer STT models', () => {
       expect(Number.isFinite(sizeMb)).toBe(true)
       expect(sizeMb).toBeLessThan(200)
     }
+  })
+
+  test('uses the Wav2Vec2 speech model and CTC path rather than a generative decoder', () => {
+    const engine = TRANSFORMER_ENGINES.find(({ id }) => id === 'web-wav2vec2-base-960h')!
+    expect(engine.model).toBe('onnx-community/wav2vec2-base-960h-ONNX')
+    expect(engine.kind).toBe('ctc')
+    expect(engine.size).toBe('~95 MB')
+    expect(engine.subtitle).toContain('Experimental')
   })
 
   test('distinguishes original Moonshine models from v2 and labels the v2 export experimental', () => {

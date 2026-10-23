@@ -1,6 +1,16 @@
 /** Quantized ONNX weights only; tokenizer/config downloads add a little overhead. */
 export const TRANSFORMER_ENGINES = [
   {
+    id: 'web-wav2vec2-base-960h',
+    name: 'Wav2Vec2 Base 960h · Web',
+    subtitle: 'Experimental English CTC baseline · q8 CPU · no punctuation restoration',
+    family: 'wav2vec2',
+    size: '~95 MB',
+    model: 'onnx-community/wav2vec2-base-960h-ONNX',
+    kind: 'ctc',
+    frameSize: 1
+  },
+  {
     id: 'web-moonshine-v2-small',
     name: 'Moonshine v2 Small · Web',
     subtitle: 'Experimental community ONNX export · q8 CPU · full-utterance, not live streaming',

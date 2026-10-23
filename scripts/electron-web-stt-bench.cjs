@@ -21,9 +21,23 @@ app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
 const args = process.argv.slice(2)
 const ids = args.filter((s) => s.startsWith('web-'))
 if (!ids.length) {
-  ids.push('web-parakeet-redux', 'web-zipformer-small', 'web-moonshine-v2-small', 'web-moonshine-streaming-small-en')
+  ids.push(
+    'web-parakeet-redux',
+    'web-zipformer-small',
+    'web-moonshine-v2-small',
+    'web-moonshine-streaming-small-en',
+    'web-wav2vec2-base-960h',
+    'web-moonshine-streaming-tiny-int8-experimental',
+    'web-qwen3-asr-06b'
+  )
 }
-const modes = args.includes('--quick') ? ['quick'] : args.includes('--deep') ? ['deep'] : ['quick', 'deep']
+const modes = args.includes('--smoke')
+  ? ['smoke']
+  : args.includes('--quick')
+    ? ['quick']
+    : args.includes('--deep')
+      ? ['deep']
+      : ['quick', 'deep']
 const output = path.resolve(process.env.INKFISH_STT_BENCH_OUTPUT || path.join(root, 'bench-results.json'))
 const report = {
   at: new Date().toISOString(),
@@ -59,12 +73,16 @@ app
         console.log(`[bench] ${id}: ${mode} starting`)
         try {
           const row = await win.webContents.executeJavaScript(
-            `window.inkfishBench.run(${JSON.stringify(id)}, ${JSON.stringify(mode)})`
+            mode === 'smoke'
+              ? `window.inkfishBench.smoke(${JSON.stringify(id)})`
+              : `window.inkfishBench.run(${JSON.stringify(id)}, ${JSON.stringify(mode)})`
           )
           report.rows.push(row)
-          console.log(
-            `[bench] ${id} ${mode}: WER ${(row.wer * 100).toFixed(2)}%, ${row.speed.toFixed(2)}x real time, warm-up ${row.warmMs} ms`
-          )
+          if (mode === 'smoke') console.log(`[smoke] ${id}: ${JSON.stringify(row)}`)
+          else
+            console.log(
+              `[bench] ${id} ${mode}: WER ${(row.wer * 100).toFixed(2)}%, ${row.speed.toFixed(2)}x real time, warm-up ${row.warmMs} ms`
+            )
         } catch (error) {
           failed = true
           report.rows.push({ id, mode, error: error.message })

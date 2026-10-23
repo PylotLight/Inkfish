@@ -1,5 +1,5 @@
 import { BENCH_MODES, corpusWer, speedFactor, wordErrorRate, type BenchMode } from '../src/shared/sttBench'
-import { WEB_ENGINES, prepareWeb, resetWeb, transcribeWeb } from '../src/renderer/src/webStt'
+import { WEB_ENGINES, prepareWeb, probeGpu, resetWeb, toPcm16k, transcribeWeb } from '../src/renderer/src/webStt'
 
 const urls = import.meta.glob('../src/renderer/src/assets/bench/*.{wav,flac}', {
   eager: true,
@@ -27,6 +27,32 @@ async function limited<T>(work: Promise<T>, ms: number, id: string): Promise<T> 
 Object.assign(window, {
   inkfishBench: {
     engines: WEB_ENGINES.map(({ id, name }) => ({ id, name })),
+    async smoke(id: string) {
+      const engine = WEB_ENGINES.find((e) => e.id === id)
+      if (!engine) throw new Error(`Unknown web engine ${id}`)
+      const url = urls['../src/renderer/src/assets/bench/librispeech-1272.wav']!
+      const pcm = (await toPcm16k(await (await fetch(url)).blob())).slice(0, 6 * 16_000)
+      const cold = performance.now()
+      const run = await limited(
+        engine.load(await probeGpu(), (p) => {
+          if (p.phase === 'loading') console.log(`[smoke] ${id}: loading`)
+        }),
+        600_000,
+        id
+      )
+      const loadMs = Math.round(performance.now() - cold)
+      const start = performance.now()
+      const result = await limited(run(pcm), id === 'web-qwen3-asr-06b' ? 600_000 : 120_000, id)
+      if (!result.text.trim()) throw new Error('Empty transcript')
+      return {
+        id,
+        mode: 'smoke',
+        seconds: pcm.length / 16_000,
+        loadMs,
+        decodeMs: Math.round(performance.now() - start),
+        ...result
+      }
+    },
     async run(id: string, mode: BenchMode) {
       const engine = WEB_ENGINES.find((e) => e.id === id)
       if (!engine) throw new Error(`Unknown web engine ${id}`)

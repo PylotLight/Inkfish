@@ -37,6 +37,7 @@ if (!worker) throw new Error('STT worker not built; run bunx electron-vite build
 const models = process.argv.slice(2).filter((x) => x.startsWith('web-'))
 if (!models.length)
   models.push(
+    'web-wav2vec2-base-960h',
     'web-moonshine-tiny',
     'web-moonshine-base',
     'web-moonshine-v2-small',

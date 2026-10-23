@@ -52,7 +52,9 @@ async function handle(message: TransformerRequest): Promise<void> {
           if (p) reply({ seq, progress: p })
           if (event.status === 'done' && event.file?.endsWith('.onnx')) {
             weightsDone.add(event.file)
-            if (weightsDone.size >= 2) reply({ seq, progress: { loaded: 1, phase: 'loading' } })
+            if (weightsDone.size >= (engine?.kind === 'ctc' ? 1 : 2)) {
+              reply({ seq, progress: { loaded: 1, phase: 'loading' } })
+            }
           }
         }
       })
@@ -65,14 +67,15 @@ async function handle(message: TransformerRequest): Promise<void> {
       return
     }
     const parts: string[] = []
-    // Independent quiet-cut windows are deliberate for both model families.
+    // Independent quiet-cut windows are deliberate across model families.
     // Whisper Base q8 dropped whole sections of our 79 s clip when routed
     // through the pipeline's overlap/token-timestamp stitching path.
     const maxS = engine.id === 'web-distil-whisper-small-en' ? 15 : 20
     for (const window of speechWindows(message.pcm, 16_000, maxS)) {
-      const output = await transcriber(padAudio(window, engine.frameSize), {
-        max_new_tokens: 256
-      })
+      const output = await transcriber(
+        padAudio(window, engine.frameSize),
+        engine.kind === 'ctc' ? {} : { max_new_tokens: 256 }
+      )
       const text = (Array.isArray(output) ? output[0]?.text : output.text)?.trim()
       if (text) parts.push(text)
     }

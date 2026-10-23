@@ -9,6 +9,8 @@ import { TRANSFORMER_ENGINES, speechWindows, transformerCache } from './transfor
 import { TransformerClient } from './transformerStt'
 import { ZIPFORMER_ENGINE, disposeZipformer } from './zipformerStt'
 import { MOONSHINE_WASM_ENGINE, disposeMoonshineWasm } from './moonshineWasm'
+import { MOONSHINE_TINY_ENGINE, disposeMoonshineTiny } from './moonshineTinyStt'
+import { QWEN_ASR_ENGINE, loadQwenAsr, disposeQwenAsr } from './qwenAsr'
 
 interface Heard {
   text: string
@@ -60,6 +62,8 @@ export function probeGpu(): Promise<Gpu> {
 export const WEB_ENGINES: WebEngine[] = [
   ZIPFORMER_ENGINE,
   MOONSHINE_WASM_ENGINE,
+  MOONSHINE_TINY_ENGINE,
+  { ...QWEN_ASR_ENGINE, load: async (_gpu, onProgress) => loadQwenAsr(onProgress) },
   {
     id: 'web-parakeet-redux',
     name: 'Parakeet Redux · Web',
@@ -218,6 +222,8 @@ export function resetWeb(id: string): void {
   transformerClients.delete(id)
   if (id === ZIPFORMER_ENGINE.id) disposeZipformer()
   if (id === MOONSHINE_WASM_ENGINE.id) disposeMoonshineWasm()
+  if (id === MOONSHINE_TINY_ENGINE.id) disposeMoonshineTiny()
+  if (id === QWEN_ASR_ENGINE.id) disposeQwenAsr()
   if (id === 'web-parakeet-redux' && redux) {
     const r = redux
     redux = null
