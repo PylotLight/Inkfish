@@ -25,7 +25,7 @@ export default defineConfig({
     worker: { format: 'es' },
     build: { target: 'esnext' },
     optimizeDeps: {
-      exclude: ['@karanganesan/vocule', 'parakeet.js']
+      exclude: ['@karanganesan/vocule', 'parakeet.js', '@huggingface/transformers']
     }
   }
 })

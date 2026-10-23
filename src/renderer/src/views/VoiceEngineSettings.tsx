@@ -689,8 +689,8 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         <div className="setting-label">
           Download source
           <span className="muted small setting-hint">
-            Where native models download from. If a VPN or network blocks Hugging Face, try the mirror. Paused downloads
-            resume where they stopped.
+            Where native and Moonshine/Whisper Web models download from. If a VPN or network blocks Hugging Face, try
+            the mirror. Native paused downloads resume where they stopped.
           </span>
         </div>
         <select
@@ -955,7 +955,16 @@ function HideButton({
 }
 
 function EngineIcon({ family }: { family?: string }): React.JSX.Element {
-  const label = family === 'nvidia' ? 'NV' : family === 'cohere' ? 'Co' : ''
+  const label =
+    family === 'nvidia'
+      ? 'NV'
+      : family === 'cohere'
+        ? 'Co'
+        : family === 'moonshine'
+          ? 'M'
+          : family === 'whisper'
+            ? 'W'
+            : ''
   return (
     <span className={`engine-icon ${family ?? 'apple'}`} aria-hidden>
       {label || (

@@ -5,6 +5,8 @@
  * them in Settings › Voice Engine (ids prefixed `web-`).
  */
 import type { SttEngine, SttResult } from '../../shared/types'
+import { TRANSFORMER_ENGINES, speechWindows, transformerCache } from './transformerSttModels'
+import { TransformerClient } from './transformerStt'
 
 interface Heard {
   text: string
@@ -119,7 +121,24 @@ export const WEB_ENGINES: WebEngine[] = [
         : 'WASM int8 (CPU) · TDT 0.6B v2'
       return async (pcm) => ({ text: (await model.transcribeLongAudio(pcm, 16_000)).text, runtime })
     }
-  }
+  },
+  ...TRANSFORMER_ENGINES.map((e): WebEngine => ({
+    ...e,
+    languages: 'English',
+    caches: [transformerCache(e.id)],
+    load: async (_gpu, onProgress) => {
+      const client = new TransformerClient()
+      transformerClients.set(e.id, client)
+      try {
+        await client.prepare(e.id, onProgress)
+      } catch (error) {
+        client.dispose()
+        if (transformerClients.get(e.id) === client) transformerClients.delete(e.id)
+        throw error
+      }
+      return (pcm) => client.transcribe(pcm)
+    }
+  }))
 ]
 
 /** Longest window fed to Redux in one call. */
@@ -127,28 +146,7 @@ const REDUX_WINDOW_S = 20
 
 /** Split PCM into ≤maxS windows, cutting at the quietest 50 ms in each window's last 4 s. */
 export function splitAtQuiet(pcm: Float32Array, rate: number, maxS: number): Float32Array[] {
-  const max = Math.floor(maxS * rate)
-  if (pcm.length <= max) return [pcm]
-  const hop = Math.floor(rate * 0.05)
-  const out: Float32Array[] = []
-  let start = 0
-  while (pcm.length - start > max) {
-    const end = start + max
-    let best = end
-    let bestE = Infinity
-    for (let i = Math.max(start + hop, end - 4 * rate); i + hop <= end; i += hop) {
-      let e = 0
-      for (let j = i; j < i + hop; j++) e += pcm[j]! * pcm[j]!
-      if (e < bestE) {
-        bestE = e
-        best = i + Math.floor(hop / 2)
-      }
-    }
-    out.push(pcm.subarray(start, best))
-    start = best
-  }
-  out.push(pcm.subarray(start))
-  return out
+  return speechWindows(pcm, rate, maxS)
 }
 
 export const isWebEngine = (id: string | undefined): boolean => !!id && id.startsWith('web-')
@@ -186,6 +184,7 @@ export function webEngines(): SttEngine[] {
 }
 
 const loaded = new Map<string, Promise<Loaded>>()
+const transformerClients = new Map<string, TransformerClient>()
 
 function get(id: string, onProgress: OnProgress = () => undefined): Promise<Loaded> {
   const e = WEB_ENGINES.find((x) => x.id === id)
@@ -194,7 +193,9 @@ function get(id: string, onProgress: OnProgress = () => undefined): Promise<Load
   if (!p) {
     p = probeGpu().then((g) => e.load(g, onProgress))
     loaded.set(id, p)
-    p.catch(() => loaded.delete(id))
+    p.catch(() => {
+      if (loaded.get(id) === p) loaded.delete(id)
+    })
   }
   return p
 }
@@ -209,6 +210,8 @@ export async function prepareWeb(id: string, onProgress?: OnProgress): Promise<v
 /** Drop a wedged in-memory engine (e.g. after a timeout) so the next use starts fresh. */
 export function resetWeb(id: string): void {
   loaded.delete(id)
+  transformerClients.get(id)?.dispose()
+  transformerClients.delete(id)
   if (id === 'web-parakeet-redux' && redux) {
     const r = redux
     redux = null
@@ -219,8 +222,7 @@ export function resetWeb(id: string): void {
 export async function removeWeb(id: string): Promise<void> {
   const e = WEB_ENGINES.find((x) => x.id === id)
   if (!e) return
-  loaded.delete(id)
-  if (id === 'web-parakeet-redux') redux = null
+  resetWeb(id)
   for (const c of e.caches) await caches.delete(c).catch(() => false)
   for (const db of e.dbs ?? []) indexedDB.deleteDatabase(db)
   // Engines sharing a cache bucket lose their weights too.
