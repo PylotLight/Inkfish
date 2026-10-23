@@ -7,6 +7,8 @@
 import type { SttEngine, SttResult } from '../../shared/types'
 import { TRANSFORMER_ENGINES, speechWindows, transformerCache } from './transformerSttModels'
 import { TransformerClient } from './transformerStt'
+import { ZIPFORMER_ENGINE, disposeZipformer } from './zipformerStt'
+import { MOONSHINE_WASM_ENGINE, disposeMoonshineWasm } from './moonshineWasm'
 
 interface Heard {
   text: string
@@ -56,6 +58,8 @@ export function probeGpu(): Promise<Gpu> {
 }
 
 export const WEB_ENGINES: WebEngine[] = [
+  ZIPFORMER_ENGINE,
+  MOONSHINE_WASM_ENGINE,
   {
     id: 'web-parakeet-redux',
     name: 'Parakeet Redux · Web',
@@ -212,6 +216,8 @@ export function resetWeb(id: string): void {
   loaded.delete(id)
   transformerClients.get(id)?.dispose()
   transformerClients.delete(id)
+  if (id === ZIPFORMER_ENGINE.id) disposeZipformer()
+  if (id === MOONSHINE_WASM_ENGINE.id) disposeMoonshineWasm()
   if (id === 'web-parakeet-redux' && redux) {
     const r = redux
     redux = null

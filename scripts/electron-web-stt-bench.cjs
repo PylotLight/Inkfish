@@ -20,7 +20,9 @@ app.setPath('userData', profile)
 app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
 const args = process.argv.slice(2)
 const ids = args.filter((s) => s.startsWith('web-'))
-if (!ids.length) ids.push('web-parakeet-redux', 'web-moonshine-v2-small')
+if (!ids.length) {
+  ids.push('web-parakeet-redux', 'web-zipformer-small', 'web-moonshine-v2-small', 'web-moonshine-streaming-small-en')
+}
 const modes = args.includes('--quick') ? ['quick'] : args.includes('--deep') ? ['deep'] : ['quick', 'deep']
 const output = path.resolve(process.env.INKFISH_STT_BENCH_OUTPUT || path.join(root, 'bench-results.json'))
 const report = {

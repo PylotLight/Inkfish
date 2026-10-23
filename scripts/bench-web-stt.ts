@@ -5,6 +5,7 @@ import { build } from 'vite'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { moonshineRuntime } from './lib/moonshine-runtime'
 
 const root = resolve(import.meta.dir, '..')
 const outDir = resolve(root, 'out/stt-bench')
@@ -13,6 +14,7 @@ await build({
   root,
   base: './',
   logLevel: 'warn',
+  plugins: [moonshineRuntime()],
   worker: { format: 'es' },
   build: {
     outDir,

@@ -23,16 +23,18 @@ All FluidAudio (Apache-2.0) models download once to
 
 ## In-app Web engines (renderer, WebGPU/WASM — `src/renderer/src/webStt.ts`)
 
-| Engine id                     | Package                     | Notes                                                                                                                         |
-| ----------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `web-parakeet-redux`          | `@karanganesan/vocule`      | Redux in a worker; ~178 MB; closed-source engine, MIT package                                                                 |
-| `web-parakeet-v2`             | `parakeet.js`               | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (1.24 GB; WebGPU can't run int8), int8 on CPU (652 MB). Native Core ML v2 is ~442 MB |
-| `web-moonshine-v2-small`      | `@huggingface/transformers` | **Experimental** [community v2 Small export](https://huggingface.co/Workmind/moonshine-streaming-small-ONNX); q8 CPU, ~158 MB |
-| `web-moonshine-tiny`          | `@huggingface/transformers` | [Original Tiny](https://huggingface.co/onnx-community/moonshine-tiny-ONNX), not v2; q8 CPU, ~28 MB                            |
-| `web-moonshine-base`          | `@huggingface/transformers` | [Original Base](https://huggingface.co/onnx-community/moonshine-base-ONNX), not v2; q8 CPU, ~63 MB                            |
-| `web-whisper-tiny-en`         | `@huggingface/transformers` | [Whisper Tiny.en](https://huggingface.co/onnx-community/whisper-tiny.en); q8 CPU, ~41 MB                                      |
-| `web-whisper-base-en`         | `@huggingface/transformers` | [Whisper Base.en](https://huggingface.co/onnx-community/whisper-base.en); q8 CPU, ~77 MB                                      |
-| `web-distil-whisper-small-en` | `@huggingface/transformers` | [Distil-Whisper Small.en](https://huggingface.co/distil-whisper/distil-small.en); q8 CPU, ~172 MB                             |
+| Engine id                          | Package                        | Notes                                                                                                                                                                               |
+| ---------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web-parakeet-redux`               | `@karanganesan/vocule`         | Redux in a worker; ~178 MB; closed-source engine, MIT package                                                                                                                       |
+| `web-parakeet-v2`                  | `parakeet.js`                  | TDT 0.6B v2 ONNX; fp16 encoder on WebGPU (1.24 GB; WebGPU can't run int8), int8 on CPU (652 MB). Native Core ML v2 is ~442 MB                                                       |
+| `web-zipformer-small`              | sherpa-onnx WASM               | Experimental [Zipformer Small English bundle](https://huggingface.co/wundr-ai/zipformer-small-librispeech-en-wasm); offline int8 transducer, ~28.2 MB model / ~39.9 MB with runtime |
+| `web-moonshine-streaming-small-en` | `@moonshine-ai/moonshine-wasm` | Experimental official Small Streaming English runtime; threaded CPU/WASM, model files downloaded from the official catalog                                                          |
+| `web-moonshine-v2-small`           | `@huggingface/transformers`    | **Experimental** [community v2 Small export](https://huggingface.co/Workmind/moonshine-streaming-small-ONNX); q8 CPU, ~158 MB                                                       |
+| `web-moonshine-tiny`               | `@huggingface/transformers`    | [Original Tiny](https://huggingface.co/onnx-community/moonshine-tiny-ONNX), not v2; q8 CPU, ~28 MB                                                                                  |
+| `web-moonshine-base`               | `@huggingface/transformers`    | [Original Base](https://huggingface.co/onnx-community/moonshine-base-ONNX), not v2; q8 CPU, ~63 MB                                                                                  |
+| `web-whisper-tiny-en`              | `@huggingface/transformers`    | [Whisper Tiny.en](https://huggingface.co/onnx-community/whisper-tiny.en); q8 CPU, ~41 MB                                                                                            |
+| `web-whisper-base-en`              | `@huggingface/transformers`    | [Whisper Base.en](https://huggingface.co/onnx-community/whisper-base.en); q8 CPU, ~77 MB                                                                                            |
+| `web-distil-whisper-small-en`      | `@huggingface/transformers`    | [Distil-Whisper Small.en](https://huggingface.co/distil-whisper/distil-small.en); q8 CPU, ~172 MB                                                                                   |
 
 Bundled as devDependencies (Vite bundles them into the renderer; native
 `onnxruntime-node`/`sharp` deps are never loaded or shipped). Needs CSP
@@ -44,8 +46,8 @@ wasm to the app bundle.
 ### Comparing the compact models
 
 Download the models in **Settings › Voice Engine**, then run the existing Quick
-and Deep benchmarks to compare WER and warm decode speed with Redux. The new
-models are English-only and use single-threaded WASM q8 in dedicated module
+and Deep benchmarks to compare WER and warm decode speed with Redux. The six
+Transformers.js models are English-only and use single-threaded WASM q8 in dedicated module
 workers, not the GPU/ANE. Their labels show approximate ONNX encoder + merged
 decoder bytes, excluding tokenizer/config files and the shared bundled runtime;
 they are not peak RAM figures. No accuracy or speed win over Redux is assumed.
@@ -89,7 +91,8 @@ INKFISH_STT_BENCH_PROFILE=/tmp/inkfish-web-bench \
 
 On macOS omit `xvfb-run -a`. This builds a separate benchmark renderer with the
 application's production CSP and sandboxed Electron settings. By default it runs
-both Quick and Deep on Redux and the Workmind Moonshine v2 Small export. Pass
+both Quick and Deep on Redux, Zipformer Small, Workmind Moonshine v2 Small,
+and the official Moonshine Small Streaming runtime. Pass
 `--quick` or `--deep`, followed by any shipped `web-` engine IDs, for a subset.
 The same application engine loaders, bundled audio, warm-up, per-clip time limits,
 normalization and corpus WER scoring are used. Timed Web calls include audio
@@ -105,22 +108,30 @@ while it is running. Redux requires a working WebGPU adapter; a missing adapter
 is recorded as a failure, not a zero score or an inferred CPU result. A run with
 any failed engine exits nonzero while preserving other engines' results.
 
-Zipformer Small and the official Moonshine Voice streaming runtime are not added
-as selectable engines by this benchmark change. Zipformer still needs a built
-sherpa-onnx browser runtime and an end-to-end adapter. The official Moonshine
-prototype still needs production asset/worker/CSP validation. Neither is claimed
-to have passed Quick or Deep, and no Redux comparison is claimed on machines
-without WebGPU.
+All three requested candidates are selectable in **Settings › Voice Engine**.
+Zipformer uses the pinned upstream sherpa-onnx browser bundle in a dedicated
+worker; its runtime and model download together into a separate cache. The
+official Moonshine option uses its actual streaming API with chunked PCM, not
+the Workmind full-utterance conversion. Inkfish's file/benchmark interface still
+returns the final text after the whole clip; live microphone captions remain
+Redux-only. The official published runtime requires SharedArrayBuffer and
+threads; it does not include a prebuilt single-thread fallback.
+
+Quick/Deep runs of these two WASM adapters are left to the owner. No accuracy,
+speed advantage, or direct Redux comparison is claimed from this Linux sandbox,
+which has no WebGPU adapter. The Workmind export previously measured 3.52% WER /
+1.99× real time on Quick and 20.33% WER / 1.95× on Deep here; those CPU results are
+not a comparison against Redux and are not representative of a Mac's GPU/ANE.
 
 ## WASM / pure-JS review (2026-10)
 
-| Option                                                | Verdict                                                                                                                                                                    |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parakeet Redux WASM                                   | Redundant — the same Redux weights run natively on the ANE via FluidAudio, much faster than WASM CPU.                                                                      |
-| Transformers.js (Moonshine/Whisper, WASM q8)          | Shipped for compact-model comparisons, isolated in workers. GPU/ANE acceleration is not claimed.                                                                           |
-| Moonshine WASM (`@moonshine-ai/moonshine-wasm` 0.1.x) | Tried and removed (Oct 2026): its threaded Emscripten build stalled loading inside Electron (CSP `unsafe-eval` / pthread pool), and Redux · Web already streams live text. |
-| Moonshine JS                                          | Superseded by moonshine-wasm.                                                                                                                                              |
-| Transcribe.js / shout (whisper.cpp WASM)              | CPU-only Whisper; slower than Transformers.js WebGPU. Skip.                                                                                                                |
-| vosk-browser                                          | Low accuracy; command words only. Skip.                                                                                                                                    |
+| Option                                                | Verdict                                                                                                                                  |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Parakeet Redux WASM                                   | Redundant — the same Redux weights run natively on the ANE via FluidAudio, much faster than WASM CPU.                                    |
+| Transformers.js (Moonshine/Whisper, WASM q8)          | Shipped for compact-model comparisons, isolated in workers. GPU/ANE acceleration is not claimed.                                         |
+| Moonshine WASM (`@moonshine-ai/moonshine-wasm` 0.1.5) | Reintroduced as an experimental selectable official Small Streaming option. Threaded runtime; user-device Quick/Deep validation pending. |
+| Moonshine JS                                          | Superseded by moonshine-wasm.                                                                                                            |
+| Transcribe.js / shout (whisper.cpp WASM)              | CPU-only Whisper; slower than Transformers.js WebGPU. Skip.                                                                              |
+| vosk-browser                                          | Low accuracy; command words only. Skip.                                                                                                  |
 
 "SpeechAnalyzer needs a Swift helper" no longer counts against it — the helper ships already.
