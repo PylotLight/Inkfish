@@ -10,6 +10,7 @@ import {
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { stopUtilityProcess } from './utility-process'
 import {
   isConnected,
   parseAiSettings,
@@ -222,7 +223,7 @@ export function applyAi(): Promise<void> {
     if (!handler && child) {
       const old = child
       child = null
-      old.kill()
+      stopUtilityProcess(old)
     }
   })
   return applying
