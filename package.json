@@ -105,7 +105,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "codemirror": "^6.0.2",
-    "electron": "45.0.0",
+    "electron": "46.0.0-alpha.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^6.0.0",
     "qrcode": "^1.5.4",
