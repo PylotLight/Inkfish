@@ -1,4 +1,5 @@
 import { screen, type BaseWindow } from 'electron'
+import { isUsableRect } from '../shared/window-geometry'
 import { createFrameLoop, frameIntervalFor, type MotionRect } from '../shared/mini-window-motion'
 
 /**
@@ -43,6 +44,8 @@ export const motion = createFrameLoop({
  */
 export function placeWindow(win: BaseWindow, rect: MotionRect): void {
   if (win.isDestroyed()) return
+  // Electron 46 rejects non-finite / out-of-range geometry, so don't hand it junk (NaN / zero-size).
+  if (!isUsableRect(rect)) return
   if (motion.inTick()) {
     motion.place(
       win,

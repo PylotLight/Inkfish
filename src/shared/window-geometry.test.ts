@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { boundsToShow, fitBoundsToDisplays, parseSavedWindowState, planMainWindow } from './window-geometry'
+import {
+  boundsToShow,
+  fitBoundsToDisplays,
+  isUsableRect,
+  parseSavedWindowState,
+  planMainWindow
+} from './window-geometry'
 
 const MIN = { width: 980, height: 640 }
 const laptop = { x: 0, y: 25, width: 1512, height: 920 }
@@ -64,6 +70,24 @@ describe('boundsToShow', () => {
     const r = boundsToShow({ x: -30000, y: -30000, width: 1200, height: 800 }, [laptop, external], MIN, laptop)
     expect(r.x).toBeGreaterThanOrEqual(laptop.x)
     expect(r.y).toBeGreaterThanOrEqual(laptop.y)
+  })
+})
+
+describe('isUsableRect', () => {
+  test('accepts a finite positive rect', () => {
+    expect(isUsableRect({ x: 100, y: 100, width: 1200, height: 800 })).toBe(true)
+  })
+  test('rejects missing, zero-size and non-finite rects', () => {
+    expect(isUsableRect(null)).toBe(false)
+    expect(isUsableRect(undefined)).toBe(false)
+    expect(isUsableRect({ x: 0, y: 0, width: 0, height: 0 })).toBe(false)
+    expect(isUsableRect({ x: 0, y: 0, width: 800, height: -1 })).toBe(false)
+    expect(isUsableRect({ x: Number.NaN, y: 0, width: 800, height: 600 })).toBe(false)
+    expect(isUsableRect({ x: 0, y: Number.POSITIVE_INFINITY, width: 800, height: 600 })).toBe(false)
+  })
+  test('honours the minimum size when one is given', () => {
+    expect(isUsableRect({ x: 0, y: 0, width: 500, height: 400 }, MIN)).toBe(false)
+    expect(isUsableRect({ x: 0, y: 0, width: 980, height: 640 }, MIN)).toBe(true)
   })
 })
 

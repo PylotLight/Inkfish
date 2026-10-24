@@ -110,6 +110,19 @@ export function sameRect(a: Rect, b: Rect): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
+/**
+ * Whether a rect is safe to hand to the window geometry APIs: finite coordinates and a positive
+ * size. Electron 46 now rejects non-finite / out-of-range geometry (#54216) and tolerates partial
+ * bounds, so callers should not push junk at `BrowserWindow.setBounds`.
+ */
+export function isUsableRect(bounds: Rect | null | undefined, minimum?: { width: number; height: number }): boolean {
+  if (!bounds) return false
+  if (![bounds.x, bounds.y, bounds.width, bounds.height].every(finite)) return false
+  if (bounds.width <= 0 || bounds.height <= 0) return false
+  if (minimum && (bounds.width < minimum.width || bounds.height < minimum.height)) return false
+  return true
+}
+
 /** What the main-window getter does with what it holds: make a new one, reload a dead renderer, or reuse it. */
 export type MainWindowPlan = 'create' | 'reload' | 'reuse'
 
