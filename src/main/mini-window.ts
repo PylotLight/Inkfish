@@ -211,6 +211,7 @@ function rendererUrl(hash: string): { url?: string; file?: string; hash: string 
 
 function preloadPath(): string {
   const base = join(__dirname, '../preload/index')
+  if (existsSync(`${base}.cjs`)) return `${base}.cjs`
   return existsSync(`${base}.js`) ? `${base}.js` : `${base}.mjs`
 }
 
@@ -285,7 +286,7 @@ function ensureHandle(m: Mini): BrowserWindow {
     hasShadow: false,
     acceptFirstMouse: true,
     backgroundColor: '#00000000',
-    webPreferences: { preload: preloadPath(), sandbox: false, contextIsolation: true }
+    webPreferences: { preload: preloadPath(), sandbox: true, contextIsolation: true }
   })
   setFloating(h)
   h.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -640,7 +641,7 @@ export function openMini(noteId: string, focus = false, at?: PeekPoint): boolean
     backgroundColor: IS_MAC ? '#00000000' : '#14181d',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       enableBlinkFeatures: 'AIPromptAPI'
     }

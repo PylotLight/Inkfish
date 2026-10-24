@@ -62,9 +62,10 @@ export function sendToMain(channel: string, ...args: unknown[]): void {
   else send()
 }
 
-/** electron-vite emits out/preload/index.js or index.mjs depending on config — accept both. */
+/** The sandboxed preload builds as index.cjs; keep fallbacks for legacy build layouts. */
 function resolvePreload(): string {
   const base = join(__dirname, '../preload/index')
+  if (existsSync(`${base}.cjs`)) return `${base}.cjs`
   if (existsSync(`${base}.js`)) return `${base}.js`
   return `${base}.mjs`
 }
@@ -153,7 +154,7 @@ export function createWindow(): BrowserWindow {
     backgroundColor: isMac ? '#00000000' : '#101418',
     webPreferences: {
       preload: resolvePreload(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       // Prompt API (`LanguageModel`), answered by the local AI handler (src/main/ai-api.ts).
       enableBlinkFeatures: 'AIPromptAPI'

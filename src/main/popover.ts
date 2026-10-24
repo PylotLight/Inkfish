@@ -26,6 +26,7 @@ const EARLY_BLUR_GRACE_MS = 200
 
 function resolvePreload(): string {
   const base = join(__dirname, '../preload/index')
+  if (existsSync(`${base}.cjs`)) return `${base}.cjs`
   if (existsSync(`${base}.js`)) return `${base}.js`
   return `${base}.mjs`
 }
@@ -57,7 +58,7 @@ export function createPopover(): BrowserWindow {
     backgroundColor: isMac ? '#00000000' : '#14181d',
     webPreferences: {
       preload: resolvePreload(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true
     }
   })
