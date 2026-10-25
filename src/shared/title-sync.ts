@@ -59,6 +59,11 @@ function plainInline(s: string): string {
     .trim()
 }
 
+/** Plain display text for Markdown titles, shared by both platform renderers. */
+export function plainTitle(s: string): string {
+  return plainInline(s)
+}
+
 /**
  * The note's title from its text: front matter `title:` if present, else the first non-blank
  * line when it is a `# H1`. Empty string when there is none.

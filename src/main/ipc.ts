@@ -90,6 +90,7 @@ import {
   saveAsset,
   saveProfile,
   setInboxStatus,
+  setFrontmatterTitle,
   setTitleOverride,
   storeRoot,
   switchProfile,
@@ -589,11 +590,26 @@ export function registerIpc(): void {
     void shell.showItemInFolder(resolveNoteAbs(doc.path, paths))
     return true
   })
-  // --- custom display titles (app-data `titles.json`, never in the notes) -------
+  // --- portable display titles (front matter) + legacy app-data overrides ------
   ipcMain.handle('notes:titles', (): Record<string, string> => loadTitles())
-  ipcMain.handle('notes:set-title', (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> =>
-    setTitleOverride(id, title)
-  )
+  ipcMain.handle('notes:set-title', (_e: IpcMainInvokeEvent, id: string, title: string): Record<string, string> => {
+    const paths = requireNotes()
+    const doc = getNote(id, paths.root)
+    if (doc) {
+      const abs = resolveNoteAbs(doc.path, paths)
+      if (existsSync(abs)) {
+        const existing = readFileSync(abs, 'utf8')
+        const next = setFrontmatterTitle(existing, title)
+        if (next !== existing) writeFileSync(abs, next, 'utf8')
+        indexFile(abs, doc.path)
+      }
+    }
+    const all = setTitleOverride(id, title)
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('inkfish:vault-changed')
+    }
+    return all
+  })
 
   // --- file management (tree CRUD; fs op then renderer reindexes) ------------------
   ipcMain.handle('files:create', (_e: IpcMainInvokeEvent, dirRel: string): string => {
@@ -634,6 +650,12 @@ export function registerIpc(): void {
       const before = getNote(rel, paths.root)
       // Backlinks come from the index (no full-vault read); only the linking notes are opened.
       const res = await renameToTitle(rel, title, paths, linkLookup)
+      const renamedAbs = resolveNoteAbs(res.rel, paths)
+      if (existsSync(renamedAbs)) {
+        const existing = readFileSync(renamedAbs, 'utf8')
+        const next = setFrontmatterTitle(existing, title)
+        if (next !== existing) writeFileSync(renamedAbs, next, 'utf8')
+      }
       // The file name IS the title now — a stale custom display title would hide it. Overrides are
       // keyed by note id, which is the front matter `id:` when the note has one (not its path), so
       // clear both. Also when the name already fit (header title typed back to the file name).
@@ -645,6 +667,7 @@ export function registerIpc(): void {
           clearOverride(rel)
           clearOverride(before?.id)
         }
+        if (existsSync(renamedAbs)) indexFile(renamedAbs, res.rel)
         return res
       }
       migrateTitles(rel, res.rel)

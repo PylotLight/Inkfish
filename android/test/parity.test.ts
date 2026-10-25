@@ -6,11 +6,18 @@ import { relinkAfterRename } from '../src/lib/relink'
 const stat = { size: 1, mtime: 1 }
 
 describe('front matter: titles + tags (Mac parity)', () => {
-  test('front matter `title:` is the display title, then # H1, then first line', () => {
+  test('explicit front matter title wins; ordinary notes use the filename, inbox uses content', () => {
     expect(entryFromFile('a.md', '---\ntitle: "Trip: Japan"\n---\n# Draft\n\nbody\n', stat).title).toBe('Trip: Japan')
+    expect(entryFromFile('a.md', '---\ntitle: "**Trip** [notes](https://example.com)"\n---\nbody\n', stat).title).toBe(
+      'Trip notes'
+    )
     expect(entryFromFile('a.md', "---\ntitle: 'It''s here'\n---\nbody\n", stat).title).toBe("It's here")
-    expect(entryFromFile('a.md', '---\nid: n1\n---\n# Heading\n\nbody\n', stat).title).toBe('Heading')
-    expect(entryFromFile('a.md', 'just text\nmore\n', stat).title).toBe('just text')
+    expect(entryFromFile('Heading.md', '---\nid: n1\n---\n# Body heading\n\nbody\n', stat).title).toBe('Heading')
+    expect(entryFromFile('Plain note.md', 'just text\nmore\n', stat).title).toBe('Plain note')
+    expect(entryFromFile('inbox/a.md', 'just text\nmore\n', stat).title).toBe('just text')
+    expect(entryFromFile('inbox/a.md', '---\ntitle: "Ignored"\n---\n# Actual inbox title\n', stat).title).toBe(
+      'Actual inbox title'
+    )
   })
 
   test('tags: inline, YAML block list, scalar', () => {

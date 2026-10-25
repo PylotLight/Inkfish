@@ -109,6 +109,8 @@ export interface NoteEntry {
   /** Vault-relative path, e.g. `inbox/2026-10-05-abc123.md`. */
   path: string
   title: string
+  /** Portable explicit display title from Markdown front matter, when present. */
+  frontmatterTitle?: string
   kind: NoteKind
   status: NoteStatus
   projectId: string | null

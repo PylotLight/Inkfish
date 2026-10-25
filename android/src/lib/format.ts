@@ -5,6 +5,8 @@
  */
 import { parseTags } from '../../../src/shared/tags'
 import { DEFAULT_ROUTING_PREFS, decideRoute, keyTerms } from '../../../src/shared/routing'
+import { dailyTitleForPath } from '../../../src/shared/daily'
+import { plainTitle } from '../../../src/shared/title-sync'
 
 export type NoteKind = 'text' | 'voice' | 'image' | 'meeting'
 export type NoteStatus = 'inbox' | 'processing' | 'ready' | 'archived'
@@ -159,16 +161,21 @@ export function parseFrontmatter(md: string): [Record<string, string | string[]>
   return [data, md.slice(end + 4).replace(/^\n/, '')]
 }
 
-// --- titles / bodies (same rules as Mac `db.ts` + `ai.ts`) ---
+// --- note titles / bodies ------------------------------------------------------
 
 /**
- * Display title for a note file: front matter `title:` wins (same rule as Mac
- * title sync), then the first `# H1`, then the first line.
+ * Display title follows the Mac app: inbox notes use their content; elsewhere
+ * front matter `title:` wins, daily notes use a friendly date, and ordinary
+ * notes use the filename rather than guessing from the first body line.
  */
-export function titleFromFile(fm: Record<string, string | string[]>, body: string): string {
+export function titleFromFile(vaultRel: string, fm: Record<string, string | string[]>, body: string): string {
+  if (vaultRel.startsWith('inbox/')) return plainTitle(titleFromBody(body)).slice(0, 120) || 'Untitled'
   const t = fm['title']
-  if (typeof t === 'string' && t.trim()) return t.trim().slice(0, 120)
-  return titleFromBody(body)
+  if (typeof t === 'string' && t.trim()) return plainTitle(t.trim()).slice(0, 120) || t.trim().slice(0, 120)
+  const daily = dailyTitleForPath(vaultRel)
+  if (daily) return daily
+  const file = vaultRel.split('/').pop()?.replace(/\.md$/i, '').trim()
+  return file || titleFromBody(body)
 }
 
 /** Markdown image/embed refs, stripped from list snippets so they read as text. */
@@ -287,7 +294,7 @@ export function entryFromFile(vaultRel: string, text: string, stat: { size: numb
   return {
     id,
     path: vaultRel,
-    title: titleFromFile(fm, body),
+    title: titleFromFile(vaultRel, fm, body),
     kind,
     status,
     projectId,

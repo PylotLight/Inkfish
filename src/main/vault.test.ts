@@ -42,6 +42,16 @@ describe('frontmatter', () => {
     expect(fm).toEqual({})
     expect(body).toBe('just text')
   })
+  test('portable display title round-trips without changing other metadata or the body', async () => {
+    const v = await vault()
+    const file = '---\nid: note-1\ntags: [work]\n---\n# Body heading\ntext\n'
+    const title = 'Trip: Japan "2026" \\notes'
+    const titled = v.setFrontmatterTitle(file, title)
+    expect(v.parseFrontmatter(titled)[0]['title']).toBe(title)
+    expect(titled).toContain('id: note-1')
+    expect(titled).toContain('tags: [work]\n---\n# Body heading\ntext\n')
+    expect(v.setFrontmatterTitle(titled, '')).toBe('---\nid: note-1\ntags: [work]\n---\n# Body heading\ntext\n')
+  })
 })
 
 describe('inbox', () => {

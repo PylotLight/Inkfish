@@ -24,6 +24,7 @@ export interface NoteRow {
   id: string
   path: string
   title: string
+  frontmatterTitle?: string | null
   kind: NoteKind
   status: NoteStatus
   projectId: string | null
@@ -76,6 +77,7 @@ function rowToEntry(r: NoteRow): NoteEntry {
     id: r.id,
     path: r.path,
     title: r.title,
+    ...(r.frontmatterTitle ? { frontmatterTitle: r.frontmatterTitle } : {}),
     kind: r.kind,
     status: r.status,
     projectId: r.projectId,
@@ -101,6 +103,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
         id TEXT PRIMARY KEY,
         path TEXT NOT NULL,
         title TEXT NOT NULL DEFAULT '',
+        frontmatterTitle TEXT,
         kind TEXT NOT NULL DEFAULT 'text',
         status TEXT NOT NULL DEFAULT 'inbox',
         projectId TEXT,
@@ -135,20 +138,24 @@ function createSqliteBackend(dbPath: string): Backend | null {
         dims INTEGER NOT NULL DEFAULT 0
       );
     `)
-    // Migrate older DBs that predate the `size` column.
+    // Migrate older DBs that predate the `size` and portable title columns.
     try {
       const cols = db.prepare(`PRAGMA table_info(notes)`).all() as Array<{ name: string }>
       if (!cols.some((c) => c.name === 'size')) {
         db.exec(`ALTER TABLE notes ADD COLUMN size INTEGER NOT NULL DEFAULT 0`)
       }
+      if (!cols.some((c) => c.name === 'frontmatterTitle')) {
+        db.exec(`ALTER TABLE notes ADD COLUMN frontmatterTitle TEXT`)
+      }
     } catch {
       // fresh table already has it
     }
     const upsertStmt = db.prepare(`
-      INSERT INTO notes (id, path, title, kind, status, projectId, inboxId, tags, body, createdAt, updatedAt, size, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO notes (id, path, title, frontmatterTitle, kind, status, projectId, inboxId, tags, body, createdAt, updatedAt, size, embedding)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        path=excluded.path, title=excluded.title, kind=excluded.kind, status=excluded.status,
+        path=excluded.path, title=excluded.title, frontmatterTitle=excluded.frontmatterTitle,
+        kind=excluded.kind, status=excluded.status,
         projectId=excluded.projectId, inboxId=excluded.inboxId, tags=excluded.tags,
         body=excluded.body, createdAt=excluded.createdAt, updatedAt=excluded.updatedAt,
         size=excluded.size, embedding=excluded.embedding
@@ -179,6 +186,7 @@ function createSqliteBackend(dbPath: string): Backend | null {
           r.id,
           r.path,
           r.title,
+          r.frontmatterTitle ?? null,
           r.kind,
           r.status,
           r.projectId,
@@ -392,6 +400,8 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   const fromPath = projectFromPath(vaultRel)
   const projectId = fromFm ?? (fromPath ? slugToId(fromPath) : null)
   const inboxId = str(fm['inbox'])
+  const frontmatterTitle =
+    typeof fm['title'] === 'string' && fm['title'].trim() ? fm['title'].trim().slice(0, 200) : null
   // Inline `[a, b]`, YAML block `- a` lists and plain `a, b` all count (shared/tags.ts).
   const tagList = parseTags(raw)
   let createdAt = str(fm['created']) ? Date.parse(str(fm['created']) as string) : NaN
@@ -411,7 +421,8 @@ export function indexFile(absPath: string, vaultRel: string): NoteEntry | null {
   const row: NoteRow = {
     id,
     path: vaultRel,
-    title: titleFromBody(body),
+    title: vaultRel.startsWith('inbox/') ? titleFromBody(body) : (frontmatterTitle ?? titleFromBody(body)),
+    frontmatterTitle,
     kind,
     status,
     projectId,

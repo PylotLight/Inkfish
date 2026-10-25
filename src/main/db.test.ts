@@ -42,6 +42,17 @@ describe('index', () => {
     expect(d.countInbox()).toBe(0)
   })
 
+  test('indexes explicit frontmatter titles for cross-device display', async () => {
+    const d = await db()
+    d.openDb(join(dir, 'titles.db'))
+    const { writeFileSync } = await import('node:fs')
+    const file = join(dir, 'Original file.md')
+    writeFileSync(file, '---\nid: title-test\ntitle: "Trip: Japan"\n---\n# Different body heading\n')
+    const entry = d.indexFile(file, 'Original file.md')
+    expect(entry?.title).toBe('Trip: Japan')
+    expect(entry?.frontmatterTitle).toBe('Trip: Japan')
+  })
+
   test('related ranks by cosine similarity', async () => {
     const d = await db()
     d.openDb(join(dir, 'r.db'))

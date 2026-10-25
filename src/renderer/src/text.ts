@@ -1,4 +1,5 @@
 import { dailyTitleForPath } from '../../shared/daily'
+import { plainTitle } from '../../shared/title-sync'
 
 /** Strip markdown chrome for titles, list rows and dashboard text. */
 export function plain(md: string): string {
@@ -21,14 +22,17 @@ export interface Titled {
   id: string
   path: string
   title: string
+  frontmatterTitle?: string
 }
 
 /**
- * Obsidian-style title: custom override (app config) wins, else the .md
- * filename, else the indexed first line. Inbox raws keep their first line.
+ * Portable frontmatter title wins, then a legacy custom override, then the .md
+ * filename. Inbox raws keep their first line.
  */
 export function displayTitle(e: Titled, overrides: Record<string, string>): string {
   if (e.path.startsWith('inbox/')) return plain(e.title).slice(0, 120) || e.id
+  const fm = e.frontmatterTitle?.trim()
+  if (fm) return plainTitle(fm).slice(0, 120) || fm.slice(0, 120)
   const o = overrides[e.id]
   if (o && o.trim()) return o.trim()
   // Day notes keep their sortable `daily/YYYY-MM-DD.md` file name but read as `Tue 20 Oct`.

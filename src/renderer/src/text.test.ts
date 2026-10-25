@@ -14,6 +14,12 @@ describe('display titles', () => {
     expect(displayTitle(inbox, {})).toBe('hello world')
   })
 
+  test('portable frontmatter title wins over both filename and legacy override', () => {
+    const e = { id: 'history/a.md', path: 'history/a.md', title: 'body heading', frontmatterTitle: 'Trip: Japan' }
+    expect(displayTitle(e, { 'history/a.md': 'Old local title' })).toBe('Trip: Japan')
+    expect(displayTitle({ ...e, frontmatterTitle: '**Trip** [notes](https://example.com)' }, {})).toBe('Trip notes')
+  })
+
   test('baseName strips dirs and .md', () => {
     expect(baseName('history/diffs/undo/History & diff mgmt.md')).toBe('History & diff mgmt')
     expect(baseName('todo.md')).toBe('todo')

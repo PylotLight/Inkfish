@@ -136,7 +136,7 @@ export function switchProfile(id: string): string {
   return found.root
 }
 
-/** Custom display titles (id → title), kept in app data — never in the notes. */
+/** Legacy custom display titles (id → title), kept in app data; new explicit titles live in front matter. */
 export function titlesPath(): string | null {
   if (!configDir) return null
   return join(configDir, 'titles.json')
@@ -1036,7 +1036,7 @@ export function stringifyFrontmatter(data: Record<string, unknown>): string {
 
 function unquote(s: string): string {
   s = s.trim()
-  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"')
+  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\])/g, '$1')
   return s
 }
 
@@ -1063,6 +1063,25 @@ export function parseFrontmatter(md: string): [Record<string, string | string[]>
     data[key] = val.startsWith('[') ? parseList(val) : unquote(val)
   }
   return [data, md.slice(end + 4).replace(/^\n/, '')]
+}
+
+/** Set or clear a portable display title while preserving other frontmatter and the body verbatim. */
+export function setFrontmatterTitle(md: string, title: string): string {
+  const value = title.trim()
+  if (!md.startsWith('---')) return value ? `---\ntitle: ${JSON.stringify(value)}\n---\n${md}` : md
+  const end = md.indexOf('\n---', 3)
+  if (end === -1) return value ? `---\ntitle: ${JSON.stringify(value)}\n---\n${md}` : md
+  const block = md.slice(0, end + 4).split('\n')
+  const tail = md.slice(end + 4)
+  let found = false
+  const lines = block.flatMap((line) => {
+    if (!/^title\s*:/i.test(line)) return [line]
+    found = true
+    return value ? [`title: ${JSON.stringify(value)}`] : []
+  })
+  if (value && !found) lines.splice(1, 0, `title: ${JSON.stringify(value)}`)
+  if (!value && lines.slice(1, -1).every((line) => !line.trim())) return tail.replace(/^\n/, '')
+  return `${lines.join('\n')}${tail}`
 }
 
 // --- inbox ---------------------------------------------------------------------
