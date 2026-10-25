@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { InteractionManager } from 'react-native'
 import { rulesClassify, type InboxItem, type NoteDoc, type NoteEntry, type NoteKind, type Project } from './format'
 import * as vault from './vault'
 import { purgeTrash } from './trash'
@@ -42,7 +41,7 @@ const Ctx = createContext<Store | null>(null)
 function afterFirstPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
-      InteractionManager.runAfterInteractions(() => resolve())
+      requestIdleCallback(() => resolve())
     })
   })
 }

@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { Dimensions, Image, Text, View, type LayoutChangeEvent } from 'react-native'
 import { useTheme, type AppTheme } from '../theme'
 import {
-  blockImage,
   fitImage,
   isAudio,
   resolveImage,
@@ -11,6 +10,7 @@ import {
   type ImageToken
 } from '../lib/mdimages'
 import { listAttachments, vaultRootUri } from '../lib/vault'
+import { parseMarkdown, type Block } from '../lib/markdown'
 
 /**
  * Tiny markdown renderer — headings, bold, bullets, code fences, images. No deps.
@@ -18,7 +18,7 @@ import { listAttachments, vaultRootUri } from '../lib/vault'
  * inline, resolved against the vault the same way the Mac does.
  */
 export function Markdown({ text, notePath }: { text: string; notePath?: string | null }): React.JSX.Element {
-  const blocks = useMemo(() => parse(text), [text])
+  const blocks = useMemo(() => parseMarkdown(text), [text])
   const t = useTheme()
   const hasImages = useMemo(() => /!\[/.test(text), [text])
   const [files, setFiles] = useState<readonly string[]>([])
@@ -56,75 +56,6 @@ interface ImgCtx {
   width: number
 }
 const ImageContext = createContext<ImgCtx>({ notePath: null, files: [], width: 320 })
-
-type Block =
-  | { t: 'h'; level: number; text: string }
-  | { t: 'p'; text: string }
-  | { t: 'li'; text: string }
-  | { t: 'code'; text: string }
-  | { t: 'img'; img: ImageToken }
-  | { t: 'task'; done: boolean; text: string }
-  | { t: 'quote'; text: string }
-  | { t: 'hr' }
-  | { t: 'gap' }
-
-function parse(text: string): Block[] {
-  const out: Block[] = []
-  const lines = text.split('\n')
-  let code: string[] | null = null
-  for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      if (code) {
-        out.push({ t: 'code', text: code.join('\n') })
-        code = null
-      } else code = []
-      continue
-    }
-    if (code) {
-      code.push(line)
-      continue
-    }
-    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) {
-      out.push({ t: 'hr' })
-      continue
-    }
-    const task = /^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(line)
-    if (task) {
-      out.push({ t: 'task', done: task[1] !== ' ', text: task[2] ?? '' })
-      continue
-    }
-    const q = /^\s*>\s?(.*)$/.exec(line)
-    if (q) {
-      out.push({ t: 'quote', text: q[1] ?? '' })
-      continue
-    }
-    const h = /^(#{1,6})\s+(.*)$/.exec(line)
-    if (h) {
-      out.push({ t: 'h', level: h[1]?.length ?? 1, text: h[2] ?? '' })
-      continue
-    }
-    const img = line.includes('![') ? blockImage(line) : null
-    if (img) {
-      out.push({ t: 'img', img })
-      continue
-    }
-    if (/^\s*-\s+/.test(line) || /^\s*\*\s+/.test(line)) {
-      out.push({ t: 'li', text: line.replace(/^\s*[-*]\s+/, '') })
-      continue
-    }
-    if (/^\s*\d+\.\s+/.test(line)) {
-      out.push({ t: 'li', text: line.replace(/^\s*\d+\.\s+/, '• ') })
-      continue
-    }
-    if (!line.trim()) {
-      out.push({ t: 'gap' })
-      continue
-    }
-    out.push({ t: 'p', text: line })
-  }
-  if (code) out.push({ t: 'code', text: code.join('\n') })
-  return out
-}
 
 /** Image refs inside a line split out first, then inline styles on the text between them. */
 function runs(text: string, base: object, md: AppTheme['md']): React.ReactNode[] {
@@ -258,9 +189,9 @@ function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.E
       )
     case 'li':
       return (
-        <Text style={md.p}>
+        <Text style={block.depth ? [md.p, { marginLeft: block.depth * 16 }] : md.p}>
           <Text style={md.bullet}>• </Text>
-          {runs(block.text.replace(/^• /, ''), {}, md)}
+          {runs(block.text, {}, md)}
         </Text>
       )
     case 'code':
@@ -273,7 +204,7 @@ function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.E
       return <MdImage img={block.img} md={md} />
     case 'task':
       return (
-        <Text style={md.p}>
+        <Text style={block.depth ? [md.p, { marginLeft: block.depth * 16 }] : md.p}>
           <Text style={md.check}>{block.done ? '☑  ' : '☐  '}</Text>
           <Text style={block.done ? md.strike : undefined}>{runs(block.text, {}, md)}</Text>
         </Text>

@@ -9,10 +9,11 @@ to Mac, so sync will be a plain file copy.
 ```bash
 cd android
 npm install
-npx expo start        # scan the QR with Expo Go (Android)
+npm run android       # build and install the custom dev client on a device/emulator
+npx expo start --dev-client
 ```
 
-No dev build needed for V1 (all modules are Expo Go compatible).
+`expo-share-intent` uses native Android code, so this app requires a custom development build; Expo Go cannot load it. Rebuild the dev client after changing native dependencies.
 
 ## What V1 does
 

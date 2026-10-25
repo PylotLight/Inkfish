@@ -145,7 +145,7 @@ function Shell(): React.JSX.Element {
   return (
     <OpenSyncContext.Provider value={openSync}>
       <View style={[styles.safe, { backgroundColor: t.c.bg }]}>
-        <StatusBar barStyle={t.statusBar} backgroundColor={t.c.bg} />
+        <StatusBar barStyle={t.statusBar} />
         {error && (
           <View style={[styles.errBar, { paddingTop: insets.top }]}>
             <Text style={[styles.errText, { color: t.c.danger }]}>{error}</Text>
