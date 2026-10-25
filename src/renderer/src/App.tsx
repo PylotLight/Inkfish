@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import logoUrl from './assets/logo.png'
 import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
 import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
@@ -7,16 +6,16 @@ import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
 import type { KindFilter, RowActions, TreeTarget } from './views/FolderTree'
 import { loadTabs, TABS_KEY, type MenuState, type Scope, type Selection, type Tab } from './shell/types'
-import { DeletePopover, UndoToast, type Anchor } from './views/DeletePopover'
+import type { Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
 import { dailyRefs } from '../../shared/journal'
-import Onboarding from './views/Onboarding'
-import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
+import type { RunnableCommand } from './views/CommandPalette'
 import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import Sidebar from './shell/Sidebar'
 import Center from './shell/Center'
+import Overlays from './shell/Overlays'
 import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle } from '../../shared/mini-window-tear'
 import { createAutosave, type Autosave } from '../../shared/autosave'
@@ -38,9 +37,8 @@ import {
   parseSideCollapsed,
   serializeSideCollapsed
 } from '../../shared/sidebar'
-import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
-import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
-import FolderPicker from './views/FolderPicker'
+import type { MenuItem } from './views/Dialogs'
+import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
 import { matchesTags, parseTagQuery } from '../../shared/tags'
 import { routeSummary } from '../../shared/routing'
@@ -2097,102 +2095,44 @@ function Main(): React.JSX.Element {
         setMeetingLive={setMeetingLive}
       />
 
-      {menu && <CtxMenu x={menu.x} y={menu.y} items={menuItems(menu.target)} onClose={() => setMenu(null)} />}
-      {palette && (
-        <CommandPalette
-          mode={palette}
-          commands={paletteCommands}
-          notes={paletteNotes}
-          platform={sys?.platform ?? 'darwin'}
-          onClose={() => setPalette(null)}
-          onOpenNote={(id, pop) => {
-            if (pop) popOut(id)
-            else {
-              leaveSettings()
-              selectNote(id)
-            }
-          }}
-        />
-      )}
-      {prompt && (
-        <PromptModal
-          title={prompt.title}
-          initial={prompt.initial}
-          placeholder={prompt.title}
-          confirmLabel={prompt.confirm}
-          onSubmit={prompt.onSubmit}
-          onClose={() => setPrompt(null)}
-        />
-      )}
-      {confirm && (
-        <ConfirmModal
-          title={confirm.title}
-          body={confirm.body}
-          confirmLabel={confirm.confirm}
-          onConfirm={confirm.onConfirm}
-          onClose={() => setConfirm(null)}
-        />
-      )}
-      {showOnboarding && (
-        <Onboarding
-          step={ostep}
-          setStep={setOstep}
-          vault={vaultInfo}
-          profile={profile}
-          onVaultReady={onVaultReady}
-          onDone={() => setShowOnboarding(false)}
-          notify={notify}
-        />
-      )}
-      {movePick && (
-        <FolderPicker
-          title={`Move “${movePick.name.slice(0, 40)}” to…`}
-          folders={
-            movePick.kind === 'dir'
-              ? folderList.filter((f) => f !== movePick.rel && !f.startsWith(`${movePick.rel}/`))
-              : folderList
-          }
-          current={dirOf(movePick.rel)}
-          x={movePick.x}
-          y={movePick.y}
-          onPick={(dir) => {
-            const m = movePick
-            setMovePick(null)
-            void doMove(m.rel, m.kind, dir)
-          }}
-          onClose={() => setMovePick(null)}
-        />
-      )}
-      {delAsk && (
-        <DeletePopover
-          anchor={delAsk.anchor}
-          title={delAsk.title}
-          path={delAsk.entry.path}
-          lines={delAsk.lines}
-          size={delAsk.entry.size}
-          updatedAt={delAsk.entry.updatedAt}
-          onConfirm={() => {
-            const d = delAsk
-            setDelAsk(null)
-            void trashWithUndo(d.entry.path, d.title)
-          }}
-          onCancel={() => {
-            const id = delAsk.entry.id
-            setDelAsk(null)
-            window.setTimeout(() => rowEl(id)?.querySelector<HTMLButtonElement>('.filerow')?.focus(), 0)
-          }}
-        />
-      )}
-      {undoDel && !toast && (
-        <UndoToast
-          key={undoDel.key}
-          message={undoDel.message}
-          onClose={closeUndo}
-          onUndo={() => void undoTrash(undoDel)}
-        />
-      )}
-      {toast && <div className="toast glass">{toast}</div>}
-      {brandEgg.open && <BrandEasterEgg logoUrl={logoUrl} onClose={brandEgg.close} />}
+      <Overlays
+        menu={menu}
+        menuItems={menuItems}
+        setMenu={setMenu}
+        palette={palette}
+        paletteCommands={paletteCommands}
+        paletteNotes={paletteNotes}
+        sys={sys}
+        setPalette={setPalette}
+        popOut={popOut}
+        leaveSettings={leaveSettings}
+        selectNote={selectNote}
+        prompt={prompt}
+        setPrompt={setPrompt}
+        confirm={confirm}
+        setConfirm={setConfirm}
+        showOnboarding={showOnboarding}
+        ostep={ostep}
+        setOstep={setOstep}
+        vaultInfo={vaultInfo}
+        profile={profile}
+        onVaultReady={onVaultReady}
+        setShowOnboarding={setShowOnboarding}
+        notify={notify}
+        movePick={movePick}
+        folderList={folderList}
+        setMovePick={setMovePick}
+        doMove={doMove}
+        delAsk={delAsk}
+        setDelAsk={setDelAsk}
+        trashWithUndo={trashWithUndo}
+        rowEl={rowEl}
+        undoDel={undoDel}
+        closeUndo={closeUndo}
+        undoTrash={undoTrash}
+        toast={toast}
+        brandEgg={brandEgg}
+      />
     </div>
   )
 }
