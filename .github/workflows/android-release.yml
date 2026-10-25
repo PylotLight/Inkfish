@@ -6,8 +6,10 @@ name: android-release
 # app only offers it with Settings › Updates › Beta updates on.
 # Trigger: push a tag `android-vX.Y.Z`
 #   git tag android-v0.2.0 && git push origin android-v0.2.0
-# or run manually with a version. The Mac release workflow only matches `v*`,
-# and these releases are never marked "latest", so the Homebrew cask is unaffected.
+# or run manually with a version. The Mac release workflow only matches `v*`. Android
+# releases are always GitHub pre-releases (a separate channel), so /releases/latest —
+# read by the CLI launcher, the README badge and the cask — always stays a desktop
+# release. The in-app updater reads the releases list, so it is unaffected.
 #
 # Secrets (same keystore as the cluster build — never rotate it):
 #   ANDROID_KEYSTORE_BASE64, ANDROID_STORE_PASSWORD, ANDROID_KEY_PASSWORD, ANDROID_KEY_ALIAS
@@ -166,6 +168,9 @@ jobs:
           tag_name: android-v${{ steps.v.outputs.version }}
           name: Android ${{ steps.v.outputs.version }}${{ steps.v.outputs.pre == 'true' && ' (test build)' || '' }}
           body_path: ANDROID_NOTES.md
-          prerelease: ${{ steps.v.outputs.pre == 'true' }}
+          # Always a pre-release: a stable android release would become /releases/latest
+          # (GitHub computes that from non-pre-releases regardless of make_latest) and
+          # break the CLI launcher's latest-resolution, the badge and the cask.
+          prerelease: true
           make_latest: 'false'
           files: Inkfish-android-${{ steps.v.outputs.version }}.apk

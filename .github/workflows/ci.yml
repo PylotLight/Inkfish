@@ -123,11 +123,15 @@ jobs:
           fi
           # unsupported-platform path: friendly message, exit 1, no network
           if bun packages/cli/bin/inkfish.mjs; then echo "::error::expected exit 1 on linux"; exit 1; fi
-      - name: stamp + pack like release.yml (latest release, no publish)
+      - name: stamp + pack like release.yml (newest desktop release, no publish)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          tag="$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).tag_name)')"
+          # Newest desktop release (vX.Y.Z, beta or stable) — not /releases/latest, which
+          # excludes prereleases (empty while only betas exist) and can pick up
+          # non-desktop releases.
+          tag="$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=30" | bun -e 'const rs = JSON.parse(await Bun.stdin.text()); const t = rs.find((r) => /^v\d+\.\d+\.\d+/.test(r.tag_name)); console.log(t ? t.tag_name : "")')"
+          [ -n "$tag" ] || { echo "::error::no desktop release found to stamp"; exit 1; }
           bun packages/cli/scripts/prepare-publish.mjs --version "${tag#v}"
           bun packages/cli/bin/inkfish.mjs --version
           cd packages/cli
