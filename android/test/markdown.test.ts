@@ -21,8 +21,6 @@ describe('Markdown list indentation', () => {
   })
 
   test('keeps indented list syntax inside code fences as code', () => {
-    expect(parseMarkdown('```md\n- parent\n  - child\n```')).toEqual([
-      { t: 'code', text: '- parent\n  - child' }
-    ])
+    expect(parseMarkdown('```md\n- parent\n  - child\n```')).toEqual([{ t: 'code', text: '- parent\n  - child' }])
   })
 })
