@@ -30,7 +30,7 @@ import {
   type NoteStatus,
   type Project
 } from './format'
-import { bodyOf, frontmatterHead, planSave, relocate, withHead } from './notesave'
+import { bodyOf, frontmatterHead, planSave, relocate, withHead, withTitle } from './notesave'
 import { relinkAfterRename } from './relink'
 import {
   appendToDailyFile,
@@ -1029,6 +1029,8 @@ export interface SaveContext {
   path?: string
   /** Front matter the note had when opened (kept if the note has to be recreated). */
   head?: string
+  /** Explicit display-title edit; written into front matter without changing the note body. */
+  title?: string
 }
 
 /**
@@ -1078,9 +1080,12 @@ export async function saveNote(id: string, markdown: string, ctx: SaveContext = 
     const info = await FileSystem.getInfoAsync(abs)
     if (!info.exists) {
       await mkdir(abs.slice(0, abs.lastIndexOf('/') + 1))
-      await writeText(abs, withHead(ctx.head ?? '', markdown))
+      const head = ctx.title?.trim() ? withTitle(ctx.head ?? '', ctx.title) : (ctx.head ?? '')
+      await writeText(abs, withHead(head, markdown))
     } else {
-      await writeText(abs, planSave({ path: rel, disk: await readText(abs), base: ctx.base, next: markdown }).file)
+      const disk = await readText(abs)
+      const titled = ctx.title?.trim() ? withHead(withTitle(frontmatterHead(disk), ctx.title), bodyOf(disk)) : disk
+      await writeText(abs, planSave({ path: rel, disk: titled, base: ctx.base, next: markdown }).file)
     }
     const e = await noteEntryForRel(rel)
     if (!e) return null
@@ -1089,7 +1094,10 @@ export async function saveNote(id: string, markdown: string, ctx: SaveContext = 
   }
   if (!doc) return null
   const abs = absForRel(doc.path)
-  const disk = await readText(abs)
+  const original = await readText(abs)
+  const disk = ctx.title?.trim()
+    ? withHead(withTitle(frontmatterHead(original), ctx.title), bodyOf(original))
+    : original
   const plan = planSave({ path: doc.path, disk, base: ctx.base ?? bodyOf(disk), next: markdown })
   await writeText(abs, plan.file)
   if (plan.conflict) {

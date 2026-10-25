@@ -105,7 +105,9 @@ export function stringifyFrontmatter(data: Record<string, unknown>): string {
 
 function unquote(s: string): string {
   s = s.trim()
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"')
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1).replace(/\\(["\\])/g, '$1')
+  }
   if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'")
   return s
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { bodyOf, frontmatterHead, planSave, relocate, withBody } from '../src/lib/notesave'
+import { bodyOf, frontmatterHead, planSave, relocate, withBody, withTitle } from '../src/lib/notesave'
 import { parseFrontmatter } from '../src/lib/format'
 import { keepFrontmatter } from '../../src/shared/autosave'
 import { titleFromMarkdown } from '../../src/shared/title-sync'
@@ -31,6 +31,22 @@ describe('withBody keeps front matter verbatim (Mac keepFrontmatter parity)', ()
       expect(bodyOf(f)).toBe(parseFrontmatter(f)[1])
       expect(frontmatterHead(f) + (frontmatterHead(f) ? '\n' : '') + bodyOf(f)).toBe(f)
     }
+  })
+})
+
+describe('withTitle updates display-title metadata without changing the body', () => {
+  test('adds a quoted title to a plain note', () => {
+    const head = withTitle('', 'Trip: Japan "2026"')
+    const file = withBody(head, '# Old heading\nbody')
+    expect(file).toBe('---\ntitle: "Trip: Japan \\"2026\\""\n---\n# Old heading\nbody\n')
+    expect(titleFromMarkdown(file)).toBe('Trip: Japan "2026"')
+  })
+
+  test('replaces an existing title and preserves other front matter and body', () => {
+    const head = frontmatterHead('---\nid: n-1\ntitle: Old\ntags: [travel]\n---\n# Body heading\ntext\n')
+    const file = withBody(withTitle(head, 'New title'), '# Body heading\ntext')
+    expect(file).toBe('---\nid: n-1\ntitle: "New title"\ntags: [travel]\n---\n# Body heading\ntext\n')
+    expect(titleFromMarkdown(file)).toBe('New title')
   })
 })
 

@@ -71,7 +71,10 @@ export function titleFromMarkdown(md: string): string {
       const fm = body.slice(3, end)
       const m = /^title:\s*(.+?)\s*$/m.exec(fm)
       if (m?.[1]) {
-        const v = m[1].replace(/^(['"])(.*)\1$/, '$2').trim()
+        const v = m[1]
+          .replace(/^(['"])(.*)\1$/, '$2')
+          .replace(/\\(["\\])/g, '$1')
+          .trim()
         if (v) return v
       }
       body = body.slice(end + 4)

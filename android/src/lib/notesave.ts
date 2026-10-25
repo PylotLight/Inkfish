@@ -39,6 +39,23 @@ export function withHead(head: string, body: string): string {
   return head ? `${head}\n${tidy(body)}` : tidy(body)
 }
 
+/** Set a note's display title in its front matter without touching its body or other metadata. */
+export function withTitle(head: string, title: string): string {
+  const line = `title: ${JSON.stringify(title.trim())}`
+  if (!head) return `---\n${line}\n---`
+  const lines = head.split('\n')
+  let found = false
+  const next = lines.map((raw) => {
+    if (/^title\s*:/.test(raw)) {
+      found = true
+      return line
+    }
+    return raw
+  })
+  if (!found) next.splice(1, 0, line)
+  return next.join('\n')
+}
+
 /** New file text for an editor save of `body`, keeping `existing`'s front matter verbatim. */
 export function withBody(existing: string, body: string): string {
   return withHead(frontmatterHead(existing), body)
