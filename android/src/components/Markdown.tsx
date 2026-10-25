@@ -1,14 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { Dimensions, Image, Text, View, type LayoutChangeEvent } from 'react-native'
 import { useTheme, type AppTheme } from '../theme'
-import {
-  fitImage,
-  isAudio,
-  resolveImage,
-  splitImages,
-  vaultFileUri,
-  type ImageToken
-} from '../lib/mdimages'
+import { fitImage, isAudio, resolveImage, splitImages, vaultFileUri, type ImageToken } from '../lib/mdimages'
 import { listAttachments, vaultRootUri } from '../lib/vault'
 import { parseMarkdown, type Block } from '../lib/markdown'
 
