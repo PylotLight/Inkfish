@@ -5,7 +5,7 @@
   "description": "Inkfish Android client (Expo + TypeScript) — local-only V1, same plain-.md vault format as Mac",
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --dev-client",
     "prebuild": "expo prebuild --platform android --clean",
     "android": "expo prebuild --platform android --clean && expo run:android",
     "typecheck": "bun check"
@@ -21,6 +21,7 @@
     "expo-camera": "~58.0.12",
     "expo-constants": "~58.0.13",
     "expo-crypto": "~58.0.7",
+    "expo-dev-client": "~58.0.15",
     "expo-file-system": "~58.0.11",
     "expo-intent-launcher": "~58.0.3",
     "expo-linking": "~58.0.14",
@@ -31,6 +32,10 @@
     "react-native": "0.88.0",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-svg": "15.16.0"
+  },
+  "overrides": {
+    "node-forge": "https://codeload.github.com/digitalbazaar/forge/tar.gz/db05494352dd3c9a5a07c5270333dcc78866cad2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",

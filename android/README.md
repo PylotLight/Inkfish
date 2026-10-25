@@ -15,6 +15,13 @@ npx expo start --dev-client
 
 `expo-share-intent` uses native Android code, so this app requires a custom development build; Expo Go cannot load it. Rebuild the dev client after changing native dependencies.
 
+The Android package also pins temporary security overrides for Expo CLI's
+transitive `node-forge` and Zod advisories. `node-forge` points at the proposed
+upstream fix in [PR #1159](https://github.com/digitalbazaar/forge/pull/1159),
+because no fixed npm release is published yet; Zod is pinned to 4.6.7, the
+advisory-fixed release. Keep these overrides until Expo publishes compatible
+updates, then remove them and rerun `npm audit` and the Android checks.
+
 ## What V1 does
 
 Navigation: floating toolbar **Home · Inbox · ＋ · Today · Settings** (Lucide
