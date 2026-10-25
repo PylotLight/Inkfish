@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { InboxItem, NoteDoc, NoteEntry, NoteKind, Project, SysInfo, VaultInfo } from '../../shared/types'
+import { useVaultData } from './hooks/useVaultData'
+import type { NoteDoc, NoteEntry, NoteKind } from '../../shared/types'
 import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
 import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
@@ -30,7 +31,6 @@ import {
   titleFromMarkdown,
   type TitleSyncScheduler
 } from '../../shared/title-sync'
-import { shortcutLabel, type AppProfileInfo } from '../../shared/profile'
 import {
   SIDE_COLLAPSED_KEY,
   isSidebarToggleKey,
@@ -63,11 +63,36 @@ export default function App(): React.JSX.Element {
 }
 
 function Main(): React.JSX.Element {
-  const [sys, setSys] = useState<SysInfo | null>(null)
+  const {
+    sys,
+    profile,
+    isMacUi,
+    captureKey,
+    projects,
+    allNotes,
+    allNotesRef,
+    inbox,
+    vaultInfo,
+    backend,
+    setBackend,
+    titles,
+    setTitles,
+    setAllNotes,
+    titleNamedRef,
+    refreshTitleNamed,
+    notify,
+    toast,
+    refreshInbox,
+    refreshProjects,
+    refreshNotes,
+    refreshAll,
+    showOnboarding,
+    setShowOnboarding,
+    ostep,
+    setOstep,
+    onVaultReady
+  } = useVaultData()
   const brandEgg = useBrandTripleClick()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [allNotes, setAllNotes] = useState<NoteEntry[]>([])
-  const [inbox, setInbox] = useState<InboxItem[]>([])
   const [scope, setScope] = useState<Scope>('home')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsReturn, setSettingsReturn] = useState<Scope>('home')
@@ -88,17 +113,11 @@ function Main(): React.JSX.Element {
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NoteEntry[] | null>(null)
-  const [showOnboarding, setShowOnboarding] = useState(false)
-  const [ostep, setOstep] = useState(0)
-  const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
   const [showMeeting, setShowMeeting] = useState(false)
   /** A capture is running — keep the Meetings page mounted while you browse. */
   const [meetingLive, setMeetingLive] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const [backend, setBackend] = useState('…')
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
   /** Custom display titles (app config) — filename otherwise. */
-  const [titles, setTitles] = useState<Record<string, string>>({})
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
   const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(
@@ -141,8 +160,6 @@ function Main(): React.JSX.Element {
   })
 
   // Refs so tab callbacks stay stable without re-creating per keystroke.
-  const allNotesRef = useRef<NoteEntry[]>([])
-  allNotesRef.current = allNotes
   const docRef = useRef<NoteDoc | null>(null)
   docRef.current = doc
   const docsCacheRef = useRef<Record<string, NoteDoc>>({})
@@ -183,16 +200,6 @@ function Main(): React.JSX.Element {
   const baseTitlesRef = useRef(new Map<string, string>())
   /** Notes with a title rename in flight. */
   const titleRenamingRef = useRef(new Set<string>())
-  /** Notes Inkfish named from their title (main keeps the list): they keep following it. */
-  const titleNamedRef = useRef(new Set<string>())
-  const refreshTitleNamed = useCallback(() => {
-    window.api.notes
-      .titleNamed()
-      .then((list) => {
-        titleNamedRef.current = new Set(list)
-      })
-      .catch(console.error)
-  }, [])
   /** Edits the editor sends under the old id between a rename landing and it re-rendering. */
   const renamedAliasRef = useRef<{ from: string; to: string; doc: NoteDoc | null } | null>(null)
   const titleSyncRunRef = useRef<(id: string, markdown: string) => void>(() => undefined)
@@ -247,100 +254,6 @@ function Main(): React.JSX.Element {
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
   }, [prefs.quickZoom])
-
-  const notify = useCallback((msg: string) => {
-    setToast(msg)
-    window.setTimeout(() => setToast(null), 2600)
-  }, [])
-
-  const refreshInbox = useCallback(() => {
-    window.api.inbox
-      .list()
-      .then((items) => {
-        setInbox(items)
-        const pending = items.filter((i) => i.status === 'inbox' || i.status === 'processing').length
-        void window.api.dock.setBadge(pending).catch(() => undefined)
-      })
-      .catch(console.error)
-  }, [])
-
-  const refreshProjects = useCallback(() => {
-    window.api.projects.list().then(setProjects).catch(console.error)
-  }, [])
-
-  // One fetch for every note — navigation is client-side, no IPC per click.
-  const refreshNotes = useCallback(() => {
-    window.api.notes.list(null).then(setAllNotes).catch(console.error)
-  }, [])
-
-  const refreshAll = useCallback(() => {
-    refreshInbox()
-    refreshNotes()
-    refreshProjects()
-    window.api.notes.titles().then(setTitles).catch(console.error)
-    refreshTitleNamed()
-  }, [refreshInbox, refreshNotes, refreshProjects, refreshTitleNamed])
-
-  // Release vs dev profile ("Inkfish Dev"): brand pill, window title, shortcut hints.
-  const [profile, setProfile] = useState<AppProfileInfo | null>(null)
-  useEffect(() => {
-    window.api.app
-      .profile()
-      .then((p) => {
-        setProfile(p)
-        document.title = p.name
-      })
-      .catch(console.error)
-    // Settings › Shortcuts changed: keep the hints in step.
-    return window.api.shortcuts.onChanged((s) =>
-      setProfile((p) =>
-        p
-          ? {
-              ...p,
-              captureShortcut: s.disabled ? '' : s.settings.capture,
-              dailyShortcut: s.disabled ? '' : s.settings.daily
-            }
-          : p
-      )
-    )
-  }, [])
-  const isMacUi = sys?.platform === 'darwin'
-  const captureKey = profile ? shortcutLabel(profile.captureShortcut, isMacUi) : '⌥Space'
-
-  useEffect(() => {
-    window.api.sys.info().then(setSys).catch(console.error)
-    window.api.vault
-      .info()
-      .then((v) => {
-        setVaultInfo(v)
-        setBackend('…')
-        if (!v.configured) {
-          setOstep(0)
-          setShowOnboarding(true)
-          return
-        }
-        window.api.vault.backend().then(setBackend).catch(console.error)
-        refreshInbox()
-        refreshProjects()
-        refreshNotes()
-        window.api.notes.titles().then(setTitles).catch(console.error)
-        refreshTitleNamed()
-        // 7-day trash sweep on launch (hook point for the future scheduler).
-        window.api.files
-          .purgeTrash()
-          .then((n) => {
-            if (n > 0) notify(`Trash swept — ${n} item${n === 1 ? '' : 's'} older than 7 days deleted`)
-          })
-          .catch(console.error)
-        // Restore blur preference (main resets to default on launch).
-        if (!loadPrefs().blur) window.api.glass.set(null).catch(() => undefined)
-        if (!localStorage.getItem('inkfish.onboarded')) {
-          setOstep(0)
-          setShowOnboarding(true)
-        }
-      })
-      .catch(console.error)
-  }, [refreshInbox, refreshNotes, refreshProjects, notify, refreshTitleNamed])
 
   // Search-as-you-type lives in the sidebar; results replace the tree.
   useEffect(() => {
@@ -518,15 +431,6 @@ function Main(): React.JSX.Element {
       offFlush()
     }
   }, [autosave, titleSync])
-
-  const onVaultReady = useCallback(
-    (v: VaultInfo) => {
-      setVaultInfo(v)
-      window.api.vault.backend().then(setBackend).catch(console.error)
-      refreshAll()
-    },
-    [refreshAll]
-  )
 
   const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
 
@@ -719,8 +623,6 @@ function Main(): React.JSX.Element {
   }, [allNotes, restored])
 
   // A paired phone synced: re-read lists (main already re-indexed the files).
-  useEffect(() => window.api.onVaultChanged(() => refreshAll()), [refreshAll])
-
   // --- mini windows ------------------------------------------------------------
   // Main tracks the open note so the global mini toggle can pop it out.
   const activeNoteId = sel?.origin === 'note' ? sel.id : null
