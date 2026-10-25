@@ -9,13 +9,13 @@ import { loadTabs, TABS_KEY, type MenuState, type Scope, type Selection, type Ta
 import type { Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
 import { dailyRefs } from '../../shared/journal'
-import type { RunnableCommand } from './views/CommandPalette'
 import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import Sidebar from './shell/Sidebar'
 import Center from './shell/Center'
 import Overlays from './shell/Overlays'
+import { buildPaletteCommands } from './shell/palette-commands'
 import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle } from '../../shared/mini-window-tear'
 import { createAutosave, type Autosave } from '../../shared/autosave'
@@ -1627,293 +1627,37 @@ function Main(): React.JSX.Element {
     pickScope('journal')
   }
   const activeTab = activeNoteId ? (tabs.find((t) => t.id === activeNoteId) ?? null) : null
-  const paletteCommands: RunnableCommand[] = [
-    {
-      id: 'new-note',
-      title: 'New Note',
-      section: 'Notes',
-      keywords: ['create', 'file', 'add'],
-      run: () => {
-        leaveSettings()
-        doCreateFile(targetDir)
-      }
-    },
-    {
-      id: 'new-folder',
-      title: 'New Folder',
-      section: 'Notes',
-      keywords: ['create', 'directory'],
-      run: () => {
-        leaveSettings()
-        doCreateFolder()
-      }
-    },
-    {
-      id: 'today',
-      title: "Open Today's Note",
-      section: 'Notes',
-      accelerator: 'CmdOrCtrl+Shift+D',
-      keywords: ['daily', 'journal', 'day-log', 'today'],
-      run: () => {
-        leaveSettings()
-        void openToday()
-      }
-    },
-    {
-      id: 'journal',
-      title: 'Open Journal',
-      section: 'Notes',
-      accelerator: 'CmdOrCtrl+Shift+J',
-      keywords: ['daily', 'journal', 'days', 'diary', 'log', 'calendar', 'history'],
-      run: () => openJournal()
-    },
-    {
-      id: 'day-prev',
-      title: 'Previous Day Note',
-      section: 'Notes',
-      keywords: ['daily', 'yesterday', 'journal', 'back'],
-      enabled: !!dayNav?.onPrev,
-      run: () => {
-        leaveSettings()
-        dayNav?.onPrev?.()
-      }
-    },
-    {
-      id: 'day-next',
-      title: 'Next Day Note',
-      section: 'Notes',
-      keywords: ['daily', 'tomorrow', 'journal', 'forward'],
-      enabled: !!dayNav?.onNext,
-      run: () => {
-        leaveSettings()
-        dayNav?.onNext?.()
-      }
-    },
-    {
-      id: 'search-text',
-      title: 'Search Note Text…',
-      section: 'Notes',
-      keywords: ['find', 'full text'],
-      run: () => {
-        leaveSettings()
-        setSideCollapsed(false)
-        setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
-      }
-    },
-    {
-      id: 'rename-note',
-      title: 'Rename Note…',
-      section: 'Notes',
-      enabled: !!openPath,
-      run: () => openPath && doRename(openPath, false)
-    },
-    {
-      id: 'move-note',
-      title: 'Move Note to…',
-      section: 'Notes',
-      keywords: ['folder', 'file', 'relocate', 'organize'],
-      enabled: !!openPath && !openPath.startsWith('inbox/') && !openPath.startsWith('daily/'),
-      run: () => {
-        leaveSettings()
-        if (openPath && doc) openMovePicker(openPath, 'file', titleOf(doc))
-      }
-    },
-    {
-      id: 'tag-search',
-      title: 'Search by Tag…',
-      section: 'Notes',
-      keywords: ['tags', '#', 'filter'],
-      run: () => {
-        leaveSettings()
-        setSideCollapsed(false)
-        setQuery('#')
-        setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
-      }
-    },
-    {
-      id: 'rescan',
-      title: 'Rescan Vault',
-      section: 'Notes',
-      keywords: ['reindex', 'refresh'],
-      run: () => {
-        window.api.vault
-          .reindex()
-          .then((r) => {
-            setBackend(r.backend)
-            refreshAll()
-            notify(`Re-indexed ${r.indexed} notes`)
-          })
-          .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
-      }
-    },
-    {
-      id: 'go-home',
-      title: 'Go to Home',
-      section: 'Navigate',
-      keywords: ['dashboard'],
-      run: () => {
-        leaveSettings()
-        pickScope('home')
-      }
-    },
-    {
-      id: 'go-notes',
-      title: 'Go to Notes',
-      section: 'Navigate',
-      keywords: ['files', 'tree'],
-      run: () => {
-        leaveSettings()
-        pickScope('notes')
-      }
-    },
-    {
-      id: 'go-inbox',
-      title: 'Go to Inbox',
-      section: 'Navigate',
-      keywords: ['captures', 'queue'],
-      run: () => {
-        leaveSettings()
-        pickScope('inbox')
-      }
-    },
-    {
-      id: 'meetings',
-      title: meetingLive ? 'Meetings (recording)' : 'Meetings',
-      section: 'Navigate',
-      keywords: ['record', 'transcribe', 'capture', 'call', 'zoom', 'teams'],
-      run: () => {
-        leaveSettings()
-        setShowMeeting(true)
-      }
-    },
-    {
-      id: 'meeting-record',
-      title: meetingLive ? 'Go to Live Meeting Recording' : 'Record a Meeting…',
-      section: 'Meetings',
-      keywords: ['start', 'capture', 'transcribe', 'mic'],
-      run: () => {
-        leaveSettings()
-        setShowMeeting(true)
-      }
-    },
-    {
-      id: 'meeting-close',
-      title: 'Close Meetings',
-      section: 'Meetings',
-      enabled: showMeeting,
-      keywords: ['back', 'exit'],
-      run: () => setShowMeeting(false)
-    },
-    {
-      id: 'ai-toggle-view',
-      title: 'AI: Raw / Processed View',
-      section: 'AI',
-      accelerator: 'Shift+Alt+P',
-      keywords: ['format', 'tidy', 'processed', 'raw', 'llm'],
-      enabled: !!doc,
-      run: () => {
-        leaveSettings()
-        sendAiCommand('toggle-view')
-      }
-    },
-    {
-      id: 'ai-process-note',
-      title: 'AI: Process Note',
-      section: 'AI',
-      keywords: ['format', 'tidy', 'summarise', 'summarize', 'checklist', 'typos'],
-      enabled: !!doc,
-      run: () => {
-        leaveSettings()
-        sendAiCommand('process-note')
-      }
-    },
-    {
-      id: 'ai-process-selection',
-      title: 'AI: Process Selection…',
-      section: 'AI',
-      accelerator: 'Shift+Alt+S',
-      keywords: ['format', 'rewrite', 'fix', 'selected'],
-      enabled: !!doc,
-      run: () => {
-        leaveSettings()
-        sendAiCommand('process-selection')
-      }
-    },
-    {
-      id: 'toggle-sidebar',
-      title: 'Toggle Sidebar',
-      section: 'View',
-      accelerator: 'CmdOrCtrl+\\',
-      keywords: ['collapse', 'hide'],
-      run: () => setSideCollapsed((v) => !v)
-    },
-    {
-      id: 'pop-out',
-      title: 'Pop Out to Mini Window',
-      section: 'Window',
-      accelerator: 'CmdOrCtrl+Shift+M',
-      keywords: ['float', 'pin', 'mini', 'detach', 'tear off', 'always on top', 'side tab', 'tuck'],
-      enabled: !!activeNoteId,
-      run: () => popOut(activeNoteId)
-    },
-    {
-      id: 'close-tab',
-      title: 'Close Tab',
-      section: 'Tabs',
-      enabled: !!activeTab,
-      run: () => activeTab && closeTab(activeTab.id)
-    },
-    {
-      id: 'close-other-tabs',
-      title: 'Close Other Tabs',
-      section: 'Tabs',
-      enabled: !!activeTab && tabs.length > 1,
-      run: () => activeTab && closeOthers(activeTab.id)
-    },
-    {
-      id: 'pin-tab',
-      title: activeTab?.pinned ? 'Unpin Tab' : 'Pin Tab',
-      section: 'Tabs',
-      enabled: !!activeTab,
-      run: () => activeTab && togglePin(activeTab.id)
-    },
-    {
-      id: 'settings',
-      title: 'Open Settings',
-      section: 'Settings',
-      keywords: ['preferences', 'options'],
-      accelerator: 'CmdOrCtrl+,',
-      run: () => openSettingsAt(sessionStorage.getItem('inkfish.settingsTab') ?? 'appearance')
-    },
-    ...(
-      [
-        ['appearance', 'Appearance', ['theme', 'font', 'accent', 'density', 'menu bar', 'tray']],
-        ['mini-window', 'Mini Window', ['float', 'dock', 'tuck']],
-        ['notes', 'Notes Location', ['vault', 'folder', 'move']],
-        ['sync', 'Sync', ['phone', 'android', 'pair', 'lan']],
-        ['trash', 'Trash', ['deleted', 'restore']],
-        ['audio', 'Audio', ['microphone', 'input']],
-        ['voice', 'Voice Engine', ['speech', 'transcription', 'stt', 'parakeet', 'redux']],
-        ['ai', 'AI Provider', ['openai', 'anthropic', 'api key', 'llm', 'model', 'connect']],
-        ['routing', 'Routing', ['route', 'inbox', 'file', 'folder', 'append', 'meetings folder', 'auto']],
-        ['apple-intelligence', 'Apple Intelligence', ['ai', 'summarize', 'classify']]
-      ] as Array<[string, string, string[]]>
-    ).map(([tab, label, keywords]): RunnableCommand => ({
-      id: `settings-${tab}`,
-      title: `Settings: ${label}`,
-      section: 'Settings',
-      keywords,
-      run: () => openSettingsAt(tab)
-    })),
-    { id: 'hide-window', title: 'Hide Inkfish', section: 'App', run: () => void window.api.win.hide() },
-    {
-      id: 'quit',
-      title: 'Quit Inkfish',
-      section: 'App',
-      keywords: ['exit', 'close app'],
-      run: () => void window.api.app.quit()
-    }
-  ]
+  const paletteCommands = buildPaletteCommands({
+    leaveSettings,
+    doCreateFile,
+    targetDir,
+    doCreateFolder,
+    openToday,
+    openJournal,
+    dayNav,
+    setSideCollapsed,
+    openPath,
+    doRename,
+    doc,
+    openMovePicker,
+    titleOf,
+    setQuery,
+    setBackend,
+    refreshAll,
+    notify,
+    pickScope,
+    meetingLive,
+    setShowMeeting,
+    showMeeting,
+    activeNoteId,
+    popOut,
+    activeTab,
+    tabs,
+    closeTab,
+    closeOthers,
+    togglePin,
+    openSettingsAt
+  })
   const paletteNotes = useMemo(
     () => allNotes.map((n) => ({ id: n.id, title: titleOf(n), path: n.path, tags: n.tags, updatedAt: n.updatedAt })),
     [allNotes, titleOf]
