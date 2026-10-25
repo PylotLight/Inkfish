@@ -20,7 +20,7 @@ bun scripts/release.ts --app both --pre      # test builds: v0.2.15-beta.1 + and
 ```
 
 **Pre-releases** (`--pre`): `X.Y.Z-beta.N` tags become GitHub pre-releases
-(not latest, no cask, no npm) that the apps only offer with "Beta updates"
+(not latest, cask updated, no npm) that the apps only offer with "Beta updates"
 on. A normal release afterwards ships `X.Y.Z`. Details:
 [DEVELOPING.md](../DEVELOPING.md#pre-releases-test-builds).
 

@@ -17,7 +17,7 @@
 //   commit: the workflow stamps app.json from the tag.
 //
 // --pre cuts a test build instead: vX.Y.Z-beta.N / android-vX.Y.Z-beta.N (GitHub
-//   pre-release, no cask, no npm, only offered to people with beta updates on).
+//   pre-release, cask updated, no npm, only offered to people with beta updates on).
 //   Running it again bumps N; a normal release afterwards ships X.Y.Z. Desktop
 //   pre-releases bump package.json but leave CHANGELOG.md alone (the final
 //   release's section covers the betas).
@@ -88,8 +88,8 @@ if (args.help) {
   --app       desktop (vX.Y.Z), android (android-vX.Y.Z) or both. Without it the
               script shows what changed since each app's last tag and asks.
   --yes       don't ask: release whatever changed (sync changes → both). For CI.
-  --pre       test build: X.Y.Z-beta.N (GitHub pre-release, no cask / npm,
-              only offered in-app with "beta updates" on). Again → beta.N+1;
+  --pre       test build: X.Y.Z-beta.N (GitHub pre-release, cask updated,
+              no npm, only offered in-app with "beta updates" on). Again → beta.N+1;
               a normal release afterwards ships X.Y.Z. --pre=rc for rc.N.
               'prerelease' as the first word means the same.
   --push      push the release commit + tags to origin when done

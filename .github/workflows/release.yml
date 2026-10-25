@@ -6,9 +6,10 @@ name: release
 # publishes the bunx/npx launcher to npm (gated by the NPM_PUBLISH repo variable).
 #
 # Pre-release tags (anything with a '-', e.g. v0.2.15-beta.1 from `release.ts --pre`)
-# are test builds: GitHub pre-release (never "latest"), notes say so, and the
-# Homebrew cask + npm jobs are skipped, so brew / bunx users never get them. The
-# app only offers them with "Include pre-releases" on (src/shared/update-feed.ts).
+# are test builds: GitHub pre-release (never "latest"), notes say so. The Homebrew
+# cask is updated like a stable release (brew users get the test build); the npm
+# job is skipped, so bunx users never get them. The app only offers them with
+# "Include pre-releases" on (src/shared/update-feed.ts).
 # See docs/releasing.md.
 # Workflows register from the default branch (main).
 on:
@@ -138,7 +139,7 @@ jobs:
           git-cliff ${PREV:+"$PREV..$TAG"} --tag "$TAG" --strip all --output CLIFF.md
           {
             if [ "$pre" = true ]; then
-              echo "> **test build** (pre-release${PREV:+, changes since $PREV}). Not offered to normal installs: only Macs with Settings → About & updates → Beta updates on see it. No Homebrew cask or npm update."
+              echo "> **test build** (pre-release${PREV:+, changes since $PREV}). Not offered to normal installs: only Macs with Settings → About & updates → Beta updates on see it. The Homebrew cask is updated to this build; no npm update."
               echo
             fi
             cat CLIFF.md
@@ -176,8 +177,6 @@ jobs:
   homebrew:
     name: 'Inkfish · Release · homebrew cask · ${{ github.ref_name }}'
     needs: release
-    # stable releases only: brew users never get a test build
-    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
