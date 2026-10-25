@@ -9,22 +9,17 @@ import type { KindFilter, RowActions, TreeTarget } from './views/FolderTree'
 import { loadTabs, TABS_KEY, type MenuState, type Scope, type Selection, type Tab } from './shell/types'
 import { DeletePopover, UndoToast, type Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
-import Home from './views/Home'
-import Journal from './views/Journal'
 import { dailyRefs } from '../../shared/journal'
-import NoteEditor from './views/NoteEditor'
 import Onboarding from './views/Onboarding'
-import Meetings from './views/Meetings'
 import CommandPalette, { type RunnableCommand } from './views/CommandPalette'
 import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
-import TabBar from './shell/TabBar'
-import InboxBar from './shell/InboxBar'
 import Sidebar from './shell/Sidebar'
+import Center from './shell/Center'
 import { isPopKey } from '../../shared/mini-window'
 import { popOutTitle } from '../../shared/mini-window-tear'
-import { createAutosave, draftForEditor, type Autosave } from '../../shared/autosave'
+import { createAutosave, type Autosave } from '../../shared/autosave'
 import {
   autoRenameTarget,
   createTitleSync,
@@ -43,10 +38,8 @@ import {
   parseSideCollapsed,
   serializeSideCollapsed
 } from '../../shared/sidebar'
-import SettingsView from './views/Settings'
 import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from './views/Dialogs'
 import { BrandEasterEgg, useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
-import { Icon } from './views/icons'
 import FolderPicker from './views/FolderPicker'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
 import { matchesTags, parseTagQuery } from '../../shared/tags'
@@ -2038,183 +2031,71 @@ function Main(): React.JSX.Element {
       />
 
       {/* Center: home dashboard, note stage, or full-page settings. */}
-      <div className="content inkfish center">
-        {/* Window drag strip along the top; while collapsed it also carries the live-recording
-            chip (the toggle itself is the fixed .titlebar-toggle above). */}
-        <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
-          {sideCollapsed && meetingLive && !showMeeting && (
-            <button
-              className="side-toggle rail-chip rec-live"
-              onClick={() => {
-                leaveSettings()
-                setShowMeeting(true)
-              }}
-              title="Meeting recording — open it"
-            >
-              <Icon name="record" size={12} /> Recording
-            </button>
-          )}
-        </div>
-        {settingsOpen ? (
-          <main className="view-scroll" aria-label="Settings">
-            <SettingsView
-              key={settingsNonce}
-              prefs={prefs}
-              vibrancySupported={sys?.platform === 'darwin'}
-              vault={vaultInfo}
-              sys={sys}
-              backend={backend}
-              onChange={setPrefs}
-              onBack={() => {
-                setSettingsOpen(false)
-                setScope(settingsReturn)
-              }}
-              onPickVault={() => {
-                setSettingsOpen(false)
-                setOstep(0)
-                setShowOnboarding(true)
-              }}
-              onRescan={() =>
-                window.api.vault
-                  .reindex()
-                  .then((r) => {
-                    setBackend(r.backend)
-                    refreshAll()
-                    notify(`Re-indexed ${r.indexed} notes`)
-                  })
-                  .catch((err: unknown) => notify(`Reindex failed: ${String(err)}`))
-              }
-              notify={notify}
-            />
-          </main>
-        ) : showMeeting ? null : (
-          <>
-            {scope === 'home' ? (
-              <main className="view-scroll" aria-label="Home">
-                <Home
-                  captureKey={captureKey}
-                  notes={finalNotes}
-                  inbox={inbox}
-                  today={todayEntry}
-                  days={journalDays}
-                  onOpenJournal={openJournal}
-                  titleOf={titleOf}
-                  onOpenNote={selectNote}
-                  onOpenInbox={() => pickScope('inbox')}
-                  onOpenToday={() => void openToday()}
-                  onTodayAppended={refreshAll}
-                  onOpenFolder={(rel) => {
-                    if (rel) {
-                      setTargetDir(rel)
-                      setRevealDir(rel)
-                    }
-                    setScope('notes')
-                  }}
-                  notify={notify}
-                />
-              </main>
-            ) : scope === 'journal' ? (
-              <main className="view-scroll" aria-label="Journal">
-                <Journal
-                  days={journalDays}
-                  onOpen={(id) => {
-                    selectNote(id)
-                    focusEndOn(id)
-                  }}
-                  onOpenToday={() => void openToday()}
-                />
-              </main>
-            ) : (
-              <main className="note-stage" aria-label="Note">
-                <TabBar
-                  tabs={tabs}
-                  activeId={sel?.origin === 'note' ? sel.id : null}
-                  allNotes={allNotes}
-                  titles={titles}
-                  titleOf={titleOf}
-                  onActivate={(id) => openEntry(id, 'note')}
-                  onClose={closeTab}
-                  onTogglePin={togglePin}
-                  onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
-                  onNew={() => doCreateFile(targetDir)}
-                  onPopOut={(id) => popOut(id)}
-                  onTearOut={(id) => popOut(id, { tear: true })}
-                  popTitle={popTitle}
-                />
-                {sel?.origin === 'inbox' && activeItem && (
-                  <InboxBar
-                    item={activeItem}
-                    projects={projects}
-                    onDelete={() => deleteInbox(activeItem.id)}
-                    onDone={(noteId) => {
-                      refreshAll()
-                      if (noteId) selectNote(noteId)
-                    }}
-                    notify={notify}
-                  />
-                )}
-                <NoteEditor
-                  doc={doc}
-                  title={doc ? titleOf(doc) : ''}
-                  draft={draftForEditor(doc, drafts)}
-                  onDraft={handleDraft}
-                  onFlush={() => void flushAll()}
-                  onRename={(t) => {
-                    if (doc) renameNote(doc.id, t)
-                  }}
-                  renameHint={
-                    prefs.nameFromTitle && sel?.origin === 'note' && doc && isTitleSyncPath(doc.path)
-                      ? 'Click to rename — renames the file'
-                      : 'Click to rename (display title only, file untouched)'
-                  }
-                  onEditorBlur={() => titleSync.flush()}
-                  {...(dayNav
-                    ? {
-                        dayNav: {
-                          onPrev: dayNav.onPrev,
-                          onNext: dayNav.onNext,
-                          prevLabel: dayNav.prevLabel,
-                          nextLabel: dayNav.nextLabel
-                        }
-                      }
-                    : {})}
-                  focusEnd={focusEnd}
-                  onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
-                  onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
-                  popOutTitle={popTitle}
-                  {...(sel?.origin === 'note' && doc && !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
-                    ? {
-                        onMoveClick: (x: number, y: number) => openMovePicker(doc.path, 'file', titleOf(doc), x, y),
-                        onSetTags: (t: string[]) => void setNoteTags(t),
-                        onTagClick: (t: string) => {
-                          setSideCollapsed(false)
-                          setQuery(`#${t}`)
-                        },
-                        allTags
-                      }
-                    : {})}
-                />
-              </main>
-            )}
-          </>
-        )}
-        {(showMeeting || meetingLive) && (
-          <main className="view-scroll" aria-label="Meetings" hidden={!showMeeting || settingsOpen}>
-            <Meetings
-              notes={finalNotes}
-              titleOf={titleOf}
-              onOpenNote={(id) => {
-                setShowMeeting(false)
-                selectNote(id)
-              }}
-              onRefresh={refreshAll}
-              onClose={() => setShowMeeting(false)}
-              onRecording={setMeetingLive}
-              notify={notify}
-            />
-          </main>
-        )}
-      </div>
+      <Center
+        sideCollapsed={sideCollapsed}
+        meetingLive={meetingLive}
+        showMeeting={showMeeting}
+        leaveSettings={leaveSettings}
+        setShowMeeting={setShowMeeting}
+        settingsOpen={settingsOpen}
+        settingsNonce={settingsNonce}
+        prefs={prefs}
+        sys={sys}
+        vaultInfo={vaultInfo}
+        backend={backend}
+        setPrefs={setPrefs}
+        setSettingsOpen={setSettingsOpen}
+        setScope={setScope}
+        settingsReturn={settingsReturn}
+        setOstep={setOstep}
+        setShowOnboarding={setShowOnboarding}
+        notify={notify}
+        refreshAll={refreshAll}
+        setBackend={setBackend}
+        scope={scope}
+        captureKey={captureKey}
+        finalNotes={finalNotes}
+        inbox={inbox}
+        todayEntry={todayEntry}
+        journalDays={journalDays}
+        openJournal={openJournal}
+        titleOf={titleOf}
+        selectNote={selectNote}
+        pickScope={pickScope}
+        openToday={openToday}
+        setTargetDir={setTargetDir}
+        setRevealDir={setRevealDir}
+        focusEndOn={focusEndOn}
+        tabs={tabs}
+        allNotes={allNotes}
+        titles={titles}
+        sel={sel}
+        openEntry={openEntry}
+        closeTab={closeTab}
+        togglePin={togglePin}
+        setMenu={(menu) => setMenu(menu)}
+        doCreateFile={doCreateFile}
+        targetDir={targetDir}
+        popOut={popOut}
+        popTitle={popTitle}
+        activeItem={activeItem}
+        projects={projects}
+        deleteInbox={deleteInbox}
+        doc={doc}
+        drafts={drafts}
+        handleDraft={handleDraft}
+        flushAll={flushAll}
+        renameNote={renameNote}
+        onEditorBlur={() => titleSync.flush()}
+        dayNav={dayNav}
+        focusEnd={focusEnd}
+        openMovePicker={openMovePicker}
+        setNoteTags={(t) => void setNoteTags(t)}
+        setSideCollapsed={setSideCollapsed}
+        setQuery={setQuery}
+        allTags={allTags}
+        setMeetingLive={setMeetingLive}
+      />
 
       {menu && <CtxMenu x={menu.x} y={menu.y} items={menuItems(menu.target)} onClose={() => setMenu(null)} />}
       {palette && (
