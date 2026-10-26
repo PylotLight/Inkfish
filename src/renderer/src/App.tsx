@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useVaultData } from './hooks/useVaultData'
 import { useShellUi } from './hooks/useShellUi'
 import { useCtxMenu } from './hooks/useCtxMenu'
@@ -8,12 +8,11 @@ import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
 import { type Scope } from './shell/types'
 import { dailyRefs } from '../../shared/journal'
-import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import Sidebar from './shell/Sidebar'
 import Center from './shell/Center'
 import Overlays from './shell/Overlays'
-import { buildPaletteCommands } from './shell/palette-commands'
+import { usePalette } from './hooks/usePalette'
 import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { foldersOf } from '../../shared/note-move'
 
@@ -293,15 +292,15 @@ function Main(): React.JSX.Element {
   const openPath = sel?.origin === 'note' ? (doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null) : null
 
   // --- ⌘K command palette / ⌘O note switcher (ported from Surffish) -------------------
-  const [palette, setPalette] = useState<PaletteMode | null>(null)
   /** The Journal: every daily note as one timeline (sidebar button, ribbon, Home → Daily, ⌘⇧J). */
   const openJournal = (): void => {
     leaveSettings()
     setShowMeeting(false)
     pickScope('journal')
   }
-  const activeTab = activeNoteId ? (tabs.find((t) => t.id === activeNoteId) ?? null) : null
-  const paletteCommands = buildPaletteCommands({
+  const { palette, setPalette, paletteCommands, paletteNotes } = usePalette({
+    allNotes,
+    openSettings,
     leaveSettings,
     doCreateFile,
     targetDir,
@@ -325,73 +324,12 @@ function Main(): React.JSX.Element {
     showMeeting,
     activeNoteId,
     popOut,
-    activeTab,
     tabs,
     closeTab,
     closeOthers,
     togglePin,
     openSettingsAt
   })
-  const paletteNotes = useMemo(
-    () => allNotes.map((n) => ({ id: n.id, title: titleOf(n), path: n.path, tags: n.tags, updatedAt: n.updatedAt })),
-    [allNotes, titleOf]
-  )
-
-  // ⌘K palette, ⌘O notes only, ⇧⌘P commands only, ⌘, settings. Capture phase so the editor
-  // can't swallow them; pressing the same shortcut again closes the palette.
-  const paletteRef = useRef<PaletteMode | null>(null)
-  paletteRef.current = palette
-  const openSettingsRef = useRef(openSettings)
-  openSettingsRef.current = openSettings
-  // "Open Settings › AI" from an AI error in the editor.
-  const openSettingsAtRef = useRef(openSettingsAt)
-  openSettingsAtRef.current = openSettingsAt
-  useEffect(() => {
-    const onOpen = (e: Event): void => openSettingsAtRef.current(String((e as CustomEvent<string>).detail || 'ai'))
-    window.addEventListener('inkfish:open-settings', onOpen)
-    return () => window.removeEventListener('inkfish:open-settings', onOpen)
-  }, [])
-  const openJournalRef = useRef<() => void>(() => undefined)
-  const openTodayRef = useRef(() => {
-    leaveSettings()
-    void openToday()
-  })
-  openTodayRef.current = () => {
-    leaveSettings()
-    void openToday()
-  }
-  openJournalRef.current = () => openJournal()
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return
-      const key = e.key.toLowerCase()
-      let mode: PaletteMode | null = null
-      if (key === 'k' && !e.shiftKey) mode = 'all'
-      else if (key === 'o' && !e.shiftKey) mode = 'notes'
-      else if (key === 'p' && e.shiftKey) mode = 'commands'
-      else if (key === ',' && !e.shiftKey) {
-        e.preventDefault()
-        openSettingsRef.current()
-        return
-      } else if (key === 'd' && e.shiftKey) {
-        e.preventDefault()
-        e.stopPropagation()
-        openTodayRef.current()
-        return
-      } else if (key === 'j' && e.shiftKey) {
-        e.preventDefault()
-        e.stopPropagation()
-        openJournalRef.current()
-        return
-      }
-      if (!mode) return
-      e.preventDefault()
-      e.stopPropagation()
-      setPalette(paletteRef.current === mode ? null : mode)
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [])
 
   return (
     <div className={`shell${sideCollapsed ? ' side-collapsed' : ''}`} data-platform={sys?.platform ?? 'unknown'}>
