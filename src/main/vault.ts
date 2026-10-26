@@ -17,232 +17,29 @@ import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Pro
 import { uniqueName } from '../shared/note-move'
 import type { InboxRoute } from '../shared/routing'
 import { appendToDailyFile, formatEntry, localDay as sharedLocalDay, migrateLegacyDaily } from '../shared/daily'
+import {
+  appDataDir,
+  markTitleNamed,
+  migrateTitleNamed,
+  migrateTitles,
+  readStoredRoot,
+  storeRoot,
+  undoneDir
+} from './vault/appdata'
+import { newId, parseFrontmatter, setFrontmatterTitle, slugify, stringifyFrontmatter } from './vault/frontmatter'
+import type {
+  CaseMergeReport,
+  InboxWriteInput,
+  MoveOptions,
+  RouteInput,
+  TrashEntry,
+  TrashScope,
+  VaultPaths
+} from './vault/types'
 
-/**
- * Vault writer (main process only). Plain `.md` files are the source of
- * truth; sqlite (`db.ts`) is just an index.
- *
- * Layout rule: the notes home (vault) holds ONLY finalised outputs — plain
- * note files and folders (a routed note lands in `<vault>/<project>/`, a
- * "project" is just the top-level folder name, no app container dir).
- * Everything working-state lives in the hidden app-data dir: raw inbox
- * captures, day-log scratch, trash, undone routings, index.
- * Never deletes raw inbox files.
- */
-
-export interface VaultPaths {
-  /** User-visible notes home: finalised outputs only. */
-  root: string
-  /** Staging in app data: raw captures, never in the vault. */
-  inboxDir: string
-  /** Staging in app data: day-log scratch, never in the vault. */
-  dailyDir: string
-  /** Final attachments in the vault (embedded by finalised notes). */
-  assetsDir: string
-  /** App-managed index in the hidden app-data dir — never in the notes home. */
-  dbPath: string
-}
-
-// --- homes: app data (hidden) vs notes (user-visible) ------------------------------
-// App data (config, sqlite index, models) lives in the platform app-data dir
-// (`app.getPath('userData')` — ~/.config/<app> on Linux, ~/Library/… on mac).
-// Override with INKFISH_DATA for dev/tests. The notes home is chosen by the
-// user in onboarding (or INKFISH_VAULT) and holds only plain .md + assets.
-
-let configDir: string | null = null
-
-export function setConfigDir(dir: string): void {
-  configDir = dir
-}
-
-export function appDataDir(): string | null {
-  const override = process.env['INKFISH_DATA']
-  if (override && override.trim()) return resolve(override)
-  return configDir
-}
-
-// --- notes home: env > stored choice > default ----------------------------------
-// The user's choice persists in the app-data dir (`inkfish.json`).
-// Main startup calls `setConfigDir(app.getPath('userData'))` once; everything
-// else resolves dynamically so a mid-session move just works.
-
-function configPath(): string | null {
-  if (!configDir) return null
-  return join(configDir, 'inkfish.json')
-}
-
-export function readStoredRoot(): string | null {
-  try {
-    const p = configPath()
-    if (!p || !existsSync(p)) return null
-    const data = JSON.parse(readFileSync(p, 'utf8')) as { vaultRoot?: unknown }
-    return typeof data.vaultRoot === 'string' && data.vaultRoot ? data.vaultRoot : null
-  } catch {
-    return null
-  }
-}
-
-export function storeRoot(root: string): void {
-  const p = configPath()
-  if (!p) return
-  mkdirSync(dirname(p), { recursive: true })
-  writeFileSync(p, JSON.stringify({ vaultRoot: root }, null, 2))
-}
-
-// --- profiles: named vault roots (work / personal), all state in app data --------
-
-export interface NoteProfile {
-  id: string
-  name: string
-  root: string
-}
-
-function profilesPath(): string | null {
-  if (!configDir) return null
-  return join(configDir, 'profiles.json')
-}
-
-/** All known profiles. The stored `vaultRoot` is the active one. */
-export function listProfiles(): NoteProfile[] {
-  try {
-    const p = profilesPath()
-    if (!p || !existsSync(p)) {
-      const root = readStoredRoot()
-      return root ? [{ id: 'default', name: 'default', root }] : []
-    }
-    const data = JSON.parse(readFileSync(p, 'utf8')) as { profiles?: NoteProfile[] }
-    return Array.isArray(data.profiles) ? data.profiles.filter((x) => x && x.root) : []
-  } catch {
-    return []
-  }
-}
-
-export function saveProfile(name: string, root: string): NoteProfile[] {
-  const p = profilesPath()
-  const id = slugify(name, 32) || 'profile'
-  const next = [...listProfiles().filter((x) => x.id !== id), { id, name: name.trim().slice(0, 80), root }]
-  if (p) {
-    mkdirSync(dirname(p), { recursive: true })
-    writeFileSync(p, JSON.stringify({ profiles: next }, null, 2))
-  }
-  return next
-}
-
-/** Switch the active vault root (persists choice, caller re-opens DB + rescans). */
-export function switchProfile(id: string): string {
-  const found = listProfiles().find((x) => x.id === id)
-  if (!found) throw new Error(`profile ${id} not found`)
-  storeRoot(found.root)
-  return found.root
-}
-
-/** Legacy custom display titles (id → title), kept in app data; new explicit titles live in front matter. */
-export function titlesPath(): string | null {
-  if (!configDir) return null
-  return join(configDir, 'titles.json')
-}
-
-export function loadTitles(): Record<string, string> {
-  try {
-    const p = titlesPath()
-    if (!p || !existsSync(p)) return {}
-    const data = JSON.parse(readFileSync(p, 'utf8')) as unknown
-    if (typeof data !== 'object' || data === null) return {}
-    const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 200)
-    }
-    return out
-  } catch {
-    return {}
-  }
-}
-
-export function setTitleOverride(id: string, title: string): Record<string, string> {
-  const p = titlesPath()
-  const all = loadTitles()
-  if (title.trim()) all[id] = title.trim().slice(0, 200)
-  else delete all[id]
-  if (p) {
-    mkdirSync(dirname(p), { recursive: true })
-    writeFileSync(p, JSON.stringify(all, null, 2))
-  }
-  return all
-}
-
-/** Move overrides for a renamed path (file or whole dir subtree). */
-export function migrateTitles(oldRel: string, newRel: string): Record<string, string> {
-  const p = titlesPath()
-  const titles = loadTitles()
-  const moved: Record<string, string> = {}
-  for (const [id, t] of Object.entries(titles)) {
-    if (id === oldRel || id.startsWith(`${oldRel}/`)) moved[newRel + id.slice(oldRel.length)] = t
-    else moved[id] = t
-  }
-  if (p) {
-    try {
-      writeFileSync(p, JSON.stringify(moved, null, 2))
-    } catch {
-      // ignore
-    }
-  }
-  return moved
-}
-// --- notes Inkfish named from their title (app data `title-named.json`) ------------
-// "Name files from title" follows Untitled notes and notes Inkfish itself renamed from their
-// title — not every imported note that happens to be named after its # heading (that's opt-in).
-// The mark is kept by vault rel and follows moves; a hand rename drops it.
-
-function titleNamedPath(): string | null {
-  if (!configDir) return null
-  return join(configDir, 'title-named.json')
-}
-
-export function loadTitleNamed(): string[] {
-  try {
-    const p = titleNamedPath()
-    if (!p || !existsSync(p)) return []
-    const data = JSON.parse(readFileSync(p, 'utf8')) as unknown
-    return Array.isArray(data) ? data.filter((x): x is string => typeof x === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-function saveTitleNamed(list: string[]): string[] {
-  const p = titleNamedPath()
-  const out = [...new Set(list)].sort()
-  if (p) {
-    try {
-      mkdirSync(dirname(p), { recursive: true })
-      writeFileSync(p, JSON.stringify(out, null, 2))
-    } catch {
-      // best effort: worst case the note stops following its title
-    }
-  }
-  return out
-}
-
-/** Mark (or unmark) `rel` as named by Inkfish from its title. */
-export function markTitleNamed(rel: string, named: boolean, from?: string): string[] {
-  const list = loadTitleNamed().filter((r) => r !== rel && r !== from)
-  if (named) list.push(rel)
-  return saveTitleNamed(list)
-}
-
-/** Carry marks across a move (file or whole dir subtree); `drop` forgets them instead (hand rename of a file). */
-export function migrateTitleNamed(oldRel: string, newRel: string, drop = false): string[] {
-  const list = loadTitleNamed()
-  let changed = false
-  const out: string[] = []
-  for (const r of list) {
-    if (r === oldRel || r.startsWith(`${oldRel}/`)) {
-      changed = true
-      if (!drop) out.push(newRel + r.slice(oldRel.length))
-    } else out.push(r)
-  }
-  return changed ? saveTitleNamed(out) : list
-}
+export * from './vault/types'
+export * from './vault/frontmatter'
+export * from './vault/appdata'
 
 export function envManaged(): boolean {
   return !!process.env['INKFISH_VAULT']?.trim()
@@ -370,11 +167,6 @@ export function renamePath(rel: string, newName: string, paths: VaultPaths = vau
   return relative(paths.root, dest)
 }
 
-export interface MoveOptions {
-  /** Name already taken in the destination: throw (default) or pick `Name 2.md`. */
-  onConflict?: 'error' | 'rename'
-}
-
 /** Move a file or dir into another folder ('' = root). Returns new vaultRel. */
 export function movePath(
   rel: string,
@@ -483,11 +275,6 @@ function mergeDirInto(srcDir: string, dstDir: string): { files: number } {
   return { files }
 }
 
-export interface CaseMergeReport {
-  dirs: number
-  files: number
-}
-
 /** Collapse sibling dirs/files that differ only by case, recursively.
  * Survivor spelling is the lowercase fold (or the already-lowercase member),
  * so macOS and Android always agree. Reserved top-level names are skipped.
@@ -568,18 +355,6 @@ export function mergeCaseDuplicates(root: string): CaseMergeReport {
 }
 
 // --- app trash (7-day sweep; hook for the future scheduler) -----------------------
-export interface TrashEntry {
-  id: string
-  originalRel: string
-  name: string
-  isDir: boolean
-  deletedAt: number
-  /** Which root originalRel is relative to. Missing on old entries = vault. */
-  scope?: TrashScope
-}
-
-export type TrashScope = 'vault' | 'inbox' | 'daily'
-
 const TRASH_RETENTION_MS = 7 * 24 * 3600 * 1000
 
 function trashDir(): string | null {
@@ -997,104 +772,7 @@ export function ensureVault(paths: VaultPaths = vaultPaths()): VaultPaths {
   return paths
 }
 
-export function newId(prefix = ''): string {
-  const rand = Math.random().toString(16).slice(2, 8)
-  const stamp = new Date().toISOString().slice(0, 10)
-  return prefix ? `${prefix}-${stamp}-${rand}` : `${stamp}-${rand}`
-}
-
-export function slugify(s: string, max = 48): string {
-  const slug =
-    s
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'untitled'
-  return slug.slice(0, max).replace(/-+$/, '') || 'untitled'
-}
-
-// --- frontmatter ---------------------------------------------------------------
-
-function fmEscape(v: string): string {
-  return v.includes(':') || v.includes('#') || v.includes('"') ? `"${v.replace(/"/g, '\\"')}"` : v
-}
-
-export function stringifyFrontmatter(data: Record<string, unknown>): string {
-  const lines = ['---']
-  for (const [k, v] of Object.entries(data)) {
-    if (v === undefined || v === null) continue
-    if (Array.isArray(v)) {
-      lines.push(`${k}: [${v.map((x) => fmEscape(String(x))).join(', ')}]`)
-    } else {
-      lines.push(`${k}: ${fmEscape(String(v))}`)
-    }
-  }
-  lines.push('---', '')
-  return lines.join('\n')
-}
-
-function unquote(s: string): string {
-  s = s.trim()
-  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\])/g, '$1')
-  return s
-}
-
-function parseList(s: string): string[] {
-  s = s.trim()
-  if (!s.startsWith('[') || !s.endsWith(']')) return s ? [unquote(s)] : []
-  const inner = s.slice(1, -1).trim()
-  if (!inner) return []
-  return inner.split(',').map((x) => unquote(x.trim()))
-}
-
-/** Minimal `---\nkey: value\n---\nbody` parser. Returns [data, body]. */
-export function parseFrontmatter(md: string): [Record<string, string | string[]>, string] {
-  if (!md.startsWith('---')) return [{}, md]
-  const end = md.indexOf('\n---', 3)
-  if (end === -1) return [{}, md]
-  const data: Record<string, string | string[]> = {}
-  for (const line of md.slice(3, end).split('\n')) {
-    const i = line.indexOf(':')
-    if (i === -1) continue
-    const key = line.slice(0, i).trim()
-    const val = line.slice(i + 1).trim()
-    if (!key) continue
-    data[key] = val.startsWith('[') ? parseList(val) : unquote(val)
-  }
-  return [data, md.slice(end + 4).replace(/^\n/, '')]
-}
-
-/** Set or clear a portable display title while preserving other frontmatter and the body verbatim. */
-export function setFrontmatterTitle(md: string, title: string): string {
-  const value = title.trim()
-  if (!md.startsWith('---')) return value ? `---\ntitle: ${JSON.stringify(value)}\n---\n${md}` : md
-  const end = md.indexOf('\n---', 3)
-  if (end === -1) return value ? `---\ntitle: ${JSON.stringify(value)}\n---\n${md}` : md
-  const block = md.slice(0, end + 4).split('\n')
-  const tail = md.slice(end + 4)
-  let found = false
-  const lines = block.flatMap((line) => {
-    if (!/^title\s*:/i.test(line)) return [line]
-    found = true
-    return value ? [`title: ${JSON.stringify(value)}`] : []
-  })
-  if (value && !found) lines.splice(1, 0, `title: ${JSON.stringify(value)}`)
-  if (!value && lines.slice(1, -1).every((line) => !line.trim())) return tail.replace(/^\n/, '')
-  return `${lines.join('\n')}${tail}`
-}
-
 // --- inbox ---------------------------------------------------------------------
-
-export interface InboxWriteInput {
-  kind: NoteKind
-  raw: string
-  projectHint?: string
-  source?: NoteSource
-  assets?: string[]
-  /** Route the capture popover previewed (`routeKey`), to flag a different outcome at filing. */
-  previewed?: string
-}
 
 export function writeInboxItem(
   input: InboxWriteInput,
@@ -1262,15 +940,6 @@ export function createProject(name: string, paths: VaultPaths = vaultPaths()): P
 
 // --- processed notes ------------------------------------------------------------
 
-export interface RouteInput {
-  inboxId: string
-  projectName: string
-  title: string
-  tags: string[]
-  markdown: string
-  kind: NoteKind
-}
-
 /** Write the processed note into `<vault>/<folder>/`, link back to the inbox id. */
 export function routeToProject(
   input: RouteInput,
@@ -1353,15 +1022,6 @@ export function stripAppended(text: string, inboxId: string): { text: string; re
   // Drop the blank line the append added in front.
   if (head.endsWith('\n\n')) head = head.slice(0, -1)
   return { text: head + text.slice(end), removed: text.slice(start, end) }
-}
-
-/** Undone routings land here (app data) — never as dotfiles inside the vault. */
-function undoneDir(): string {
-  const data = appDataDir()
-  if (!data) throw new Error('app data dir unavailable')
-  const dir = join(data, 'undone')
-  mkdirSync(dir, { recursive: true })
-  return dir
 }
 
 /**
