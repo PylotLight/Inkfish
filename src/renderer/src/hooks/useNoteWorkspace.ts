@@ -1,27 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { InboxItem, NoteDoc, NoteEntry } from '../../../shared/types'
-import { displayTitle, plain } from '../text'
+import { plain } from '../text'
 import { baseOf, dirOf, remapPath, type MoveKind } from '../../../shared/note-move'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../../shared/note-delete'
 import { createAutosave, type Autosave } from '../../../shared/autosave'
-import {
-  autoRenameTarget,
-  createTitleSync,
-  isTitleSyncPath,
-  isUntitledName,
-  matchesName,
-  sanitizeFileTitle,
-  stemOf,
-  titleFromMarkdown,
-  type TitleSyncScheduler
-} from '../../../shared/title-sync'
+import { titleFromMarkdown } from '../../../shared/title-sync'
 import { isPopKey } from '../../../shared/mini-window'
 import { popOutTitle } from '../../../shared/mini-window-tear'
 import type { Prefs } from '../theme'
 import type { RowActions } from '../views/FolderTree'
 import type { Anchor } from '../views/DeletePopover'
 import { loadTabs, TABS_KEY, type Scope, type Selection, type Tab } from '../shell/types'
+import { useTitles } from './useTitles'
 export interface NoteWorkspaceInput {
   allNotes: NoteEntry[]
   setAllNotes: Dispatch<SetStateAction<NoteEntry[]>>
@@ -77,6 +68,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     settingsOpen,
     setSettingsOpen
   } = input
+
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   /** Open tabs (notes only) — persisted so files stay open across launches. */
@@ -152,21 +144,21 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     })
   }
   const autosave = autosaveRef.current
+  const { baseTitlesRef, titleRenamingRef, renamedAliasRef, titleSync, renameNoteFileRef, renameNote, titleOf } =
+    useTitles({
+      prefs,
+      titles,
+      setTitles,
+      titleNamedRef,
+      notify,
+      allNotesRef,
+      docRef,
+      draftsRef,
+      selRef,
+      sel,
+      doc
+    })
 
-  // --- filename follows title (Settings → Notes → Name files from title) ----------------------
-  const prefsRef = useRef(prefs)
-  prefsRef.current = prefs
-  /** Per note: the title its file name was last synced from (or its saved title when first edited). */
-  const baseTitlesRef = useRef(new Map<string, string>())
-  /** Notes with a title rename in flight. */
-  const titleRenamingRef = useRef(new Set<string>())
-  /** Edits the editor sends under the old id between a rename landing and it re-rendering. */
-  const renamedAliasRef = useRef<{ from: string; to: string; doc: NoteDoc | null } | null>(null)
-  const titleSyncRunRef = useRef<(id: string, markdown: string) => void>(() => undefined)
-  const titleSyncRef = useRef<TitleSyncScheduler | null>(null)
-  if (!titleSyncRef.current)
-    titleSyncRef.current = createTitleSync({ run: (id, md) => titleSyncRunRef.current(id, md) })
-  const titleSync = titleSyncRef.current
   /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
   const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
 
@@ -613,44 +605,6 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     })
   }, [openToday])
 
-  /** Set once renameNoteFile exists (it's declared further down, after followPathChange). */
-  const renameNoteFileRef = useRef<
-    (id: string, path: string, title: string, opts: { baseAfter: string; toast?: boolean }) => Promise<string>
-  >(async (_id, path) => path)
-  const renameNote = useCallback(
-    (id: string, title: string) => {
-      // Name files from title: the header title IS the file name — rename the file.
-      const d = docRef.current
-      if (
-        prefsRef.current.nameFromTitle &&
-        d &&
-        d.id === id &&
-        selRef.current?.origin === 'note' &&
-        isTitleSyncPath(d.path) &&
-        title.trim()
-      ) {
-        const text = draftsRef.current[id] ?? d.markdown
-        renameNoteFileRef
-          .current(id, d.path, title.trim(), { baseAfter: titleFromMarkdown(text), toast: true })
-          .catch((err: unknown) => {
-            notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`)
-            window.api.notes.titles().then(setTitles).catch(console.error)
-          })
-        return
-      }
-      window.api.notes
-        .setTitle(id, title)
-        .then((all) => {
-          setTitles(all)
-          notify(title.trim() ? 'Title saved ✓' : 'Title reset to filename')
-        })
-        .catch((err: unknown) => notify(`Rename failed: ${String(err)}`))
-    },
-    [notify]
-  )
-
-  const titleOf = useCallback((e: { id: string; path: string; title: string }) => displayTitle(e, titles), [titles])
-
   // --- file CRUD ---------------------------------------------------------------
   /** File ops act on disk: write pending text first so a rename/trash never strands an edit. */
   const flushBeforeFileOp = (): void => {
@@ -828,47 +782,6 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     [autosave, titleSync, followPathChange, notify]
   )
   renameNoteFileRef.current = renameNoteFile
-
-  // A note named `Untitled…` that got a custom header title before this setting existed (the old
-  // ✎ rename only stored a display title): give the file that name when it's opened.
-  const openDocId = sel?.origin === 'note' ? (doc?.id ?? null) : null
-  useEffect(() => {
-    const d = docRef.current
-    if (!prefs.nameFromTitle || !openDocId || !d || d.id !== openDocId) return
-    const override = titles[d.id]?.trim()
-    if (!override || !isTitleSyncPath(d.path) || !isUntitledName(stemOf(d.path))) return
-    renameNoteFile(d.id, d.path, override, {
-      baseAfter: titleFromMarkdown(draftsRef.current[d.id] ?? d.markdown)
-    }).catch((err: unknown) => console.error('[title-sync] untitled migration failed:', err))
-  }, [openDocId, titles, prefs.nameFromTitle, renameNoteFile])
-
-  /** The debounced title→filename check (see shared/title-sync for the rule). */
-  titleSyncRunRef.current = (id: string, markdown: string): void => {
-    if (!prefsRef.current.nameFromTitle) return
-    if (titleRenamingRef.current.has(id)) {
-      // A rename is landing — look again once it has.
-      titleSync.schedule(id, markdown)
-      return
-    }
-    const path =
-      allNotesRef.current.find((n) => n.id === id)?.path ?? (docRef.current?.id === id ? docRef.current.path : null)
-    if (!path) return
-    const title = titleFromMarkdown(markdown)
-    const base = baseTitlesRef.current.get(id) ?? title
-    const target = autoRenameTarget(path, base, title, {
-      inkfishNamed: titleNamedRef.current.has(path),
-      headingNamed: prefsRef.current.renameHeadingNamed
-    })
-    if (!target) {
-      // Name and title agree (typed back to it, or renamed to match): it follows from here on.
-      if (title && matchesName(stemOf(path), sanitizeFileTitle(title))) baseTitlesRef.current.set(id, title)
-      return
-    }
-    renameNoteFile(id, path, title, { baseAfter: title }).catch((err: unknown) =>
-      console.error('[title-sync] rename failed:', err)
-    )
-  }
-
   /** Move a note/folder into `destDir` ('' = vault root): drag & drop and the folder picker. */
   const doMove = useCallback(
     async (rel: string, kind: MoveKind, destDir: string) => {
@@ -1184,6 +1097,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [treeRename, applyRename, deleteNote, cancelTitleSyncUnder]
   )
+
   return {
     sel,
     setSel,
