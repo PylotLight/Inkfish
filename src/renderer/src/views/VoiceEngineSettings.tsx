@@ -7,7 +7,6 @@ import {
   BENCH_MODES,
   corpusWer,
   fmtMsShort,
-  fmtSpeed,
   fmtWer,
   modeSeconds,
   speedFactor,
@@ -27,13 +26,12 @@ import {
   MIRRORS,
   loadHidden,
   loadScores,
-  phaseLabel,
   scoresKey,
   sizeLabel,
   wavSeconds,
   withTimeout
 } from './voice/helpers'
-import { RunResult } from './voice/RunResult'
+import { EngineRow } from './voice/EngineRow'
 
 /**
  * Settings › Voice Engine — FluidVoice-style: the active model up top, every
@@ -393,147 +391,6 @@ export default function VoiceEngineSettings(): React.JSX.Element {
   const bestAus = Math.min(...deepScored.flatMap(([, v]) => (ausWer(v) === undefined ? [] : [ausWer(v)!])))
   const fastest = Math.min(...Object.values(runs).flatMap((r) => (r.state === 'done' && r.ms > 0 ? [r.ms] : [])))
 
-  const row = (e: SttEngine, isActive: boolean): React.JSX.Element => {
-    const run = runs[e.id]
-    return (
-      <div
-        key={e.id}
-        className={`engine-row${isActive ? ' active' : ''}${e.available ? '' : ' off'}${hidden.has(e.id) ? ' is-hidden' : ''}`}
-        role="listitem"
-      >
-        <EngineIcon family={e.family} />
-        <div className="engine-main">
-          <div className="engine-name">{e.name}</div>
-          {e.subtitle && <div className="muted small">{e.subtitle}</div>}
-          <div className="engine-tags">
-            {(e.bytes || e.size) && (
-              <span className="tag" title={e.bytes ? 'On disk' : 'Approximate download'}>
-                {sizeLabel(e)}
-              </span>
-            )}
-            {e.languages && <span className="tag">{e.languages}</span>}
-            {!e.ready && !dl[e.id] && !busy[e.id] && <span className="tag dim">{e.detail}</span>}
-            {scores[e.id] && (
-              <>
-                <span
-                  className={`tag score${scores[e.id]!.wer === bestWer ? ' best' : ''}`}
-                  title="Word error rate on the benchmark clip — lower is more accurate"
-                >
-                  {fmtWer(scores[e.id]!.wer)} errors
-                </span>
-                <span
-                  className={`tag score${scores[e.id]!.speed === bestSpeed ? ' best' : ''}`}
-                  title="Seconds of audio per second of processing on this Mac — higher is faster"
-                >
-                  {fmtSpeed(scores[e.id]!.speed)}
-                </span>
-              </>
-            )}
-            {deepScores[e.id] && (
-              <span
-                className={`tag score${deepScores[e.id]!.wer === bestDeep ? ' best' : ''}`}
-                title="Word error rate on the Deep benchmark (Australian calls + hard read speech)"
-              >
-                Deep {fmtWer(deepScores[e.id]!.wer)}
-              </span>
-            )}
-          </div>
-          {(dl[e.id] || busy[e.id] === 'Downloading…') && (
-            <div className={`dl ${dl[e.id]?.state ?? 'downloading'}`}>
-              <div className="dl-track" aria-hidden>
-                <div
-                  className={`dl-bar${dl[e.id] && !(dl[e.id]!.bytes !== undefined && !dl[e.id]!.totalBytes) ? '' : ' indeterminate'}`}
-                  style={dl[e.id] ? { width: `${Math.max(2, dl[e.id]!.fraction * 100)}%` } : undefined}
-                />
-              </div>
-              <span className="muted small">{dl[e.id] ? phaseLabel(dl[e.id]!, e) : 'Downloading…'}</span>
-              {dl[e.id]?.error && (dl[e.id]!.state === 'error' || dl[e.id]!.state === 'retrying') && (
-                <span className="small error-text dl-error">
-                  {dl[e.id]!.blocked
-                    ? 'Hugging Face looks blocked — a VPN, firewall or network filter is the usual cause. Retry, or switch Download source below.'
-                    : dl[e.id]!.error}
-                </span>
-              )}
-            </div>
-          )}
-          {run && (
-            <div className={`engine-run ${run.state}`}>
-              {run.state === 'running' && <span className="muted small">Transcribing…</span>}
-              {run.state === 'done' && <RunResult run={run} fastest={run.ms === fastest} />}
-              {run.state === 'error' && <span className="small error-text">{run.text}</span>}
-            </div>
-          )}
-        </div>
-        <div className="engine-actions">
-          {dl[e.id] && (dl[e.id]!.state === 'downloading' || dl[e.id]!.state === 'retrying') ? (
-            <button className="btn ghost sm" onClick={() => pause(e)}>
-              Pause
-            </button>
-          ) : dl[e.id] && (dl[e.id]!.state === 'paused' || dl[e.id]!.state === 'error') ? (
-            <>
-              <button className="btn ghost sm" onClick={() => void download(e)}>
-                {dl[e.id]!.state === 'paused' ? 'Resume' : 'Retry'}
-              </button>
-              <button
-                className="icon-btn"
-                title="Cancel download"
-                aria-label={`Cancel ${e.name} download`}
-                onClick={() => void discard(e)}
-              >
-                ✕
-              </button>
-            </>
-          ) : busy[e.id] ? (
-            <span className="muted small">{busy[e.id]}</span>
-          ) : isActive ? (
-            <>
-              <span className="pill active">{chosen ? 'Active' : 'Active · Auto'}</span>
-              {e.ready && e.downloadable === false && e.family !== 'apple' && (
-                <button
-                  className="icon-btn"
-                  title="Delete model"
-                  aria-label={`Delete ${e.name}`}
-                  onClick={() => void remove(e)}
-                >
-                  ✕
-                </button>
-              )}
-            </>
-          ) : e.ready ? (
-            <>
-              <button className="btn sm mint" onClick={() => activate(e.id)}>
-                Activate
-              </button>
-              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
-              {e.family !== 'apple' && (
-                <button
-                  className="icon-btn"
-                  title="Delete model"
-                  aria-label={`Delete ${e.name}`}
-                  onClick={() => void remove(e)}
-                >
-                  ✕
-                </button>
-              )}
-            </>
-          ) : e.downloadable ? (
-            <>
-              <button className="btn ghost sm" onClick={() => void download(e)}>
-                Download
-              </button>
-              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
-            </>
-          ) : (
-            <>
-              <span className="muted small">Unavailable</span>
-              <HideButton e={e} hidden={hidden.has(e.id)} onToggle={toggleHidden} />
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <section className="settings-group">
       <h4>Voice Engine</h4>
@@ -549,7 +406,27 @@ export default function VoiceEngineSettings(): React.JSX.Element {
           <h5 className="engine-heading">Active model</h5>
           <div className="engine-list" role="list">
             {active ? (
-              row(active, true)
+              <EngineRow
+                engine={active}
+                active
+                chosen={!!chosen}
+                hidden={hidden.has(active.id)}
+                run={runs[active.id]}
+                fastest={fastest}
+                dl={dl[active.id]}
+                busy={busy[active.id]}
+                score={scores[active.id]}
+                deepScore={deepScores[active.id]}
+                bestWer={bestWer}
+                bestSpeed={bestSpeed}
+                bestDeep={bestDeep}
+                onActivate={activate}
+                onDownload={download}
+                onPause={pause}
+                onDiscard={discard}
+                onRemove={remove}
+                onHide={toggleHidden}
+              />
             ) : (
               <p className="muted small engine-empty">No engine ready yet — download one below.</p>
             )}
@@ -567,7 +444,30 @@ export default function VoiceEngineSettings(): React.JSX.Element {
             )}
           </h5>
           <div className="engine-list" role="list">
-            {visibleOthers.map((e) => row(e, false))}
+            {visibleOthers.map((e) => (
+              <EngineRow
+                key={e.id}
+                engine={e}
+                active={false}
+                chosen={false}
+                hidden={hidden.has(e.id)}
+                run={runs[e.id]}
+                fastest={fastest}
+                dl={dl[e.id]}
+                busy={busy[e.id]}
+                score={scores[e.id]}
+                deepScore={deepScores[e.id]}
+                bestWer={bestWer}
+                bestSpeed={bestSpeed}
+                bestDeep={bestDeep}
+                onActivate={activate}
+                onDownload={download}
+                onPause={pause}
+                onDiscard={discard}
+                onRemove={remove}
+                onHide={toggleHidden}
+              />
+            ))}
           </div>
         </>
       )}
@@ -812,45 +712,5 @@ export default function VoiceEngineSettings(): React.JSX.Element {
         )}
       </div>
     </section>
-  )
-}
-
-function HideButton({
-  e,
-  hidden,
-  onToggle
-}: {
-  e: SttEngine
-  hidden: boolean
-  onToggle: (id: string) => void
-}): React.JSX.Element {
-  return (
-    <button
-      className="icon-btn"
-      title={hidden ? 'Show in lists and benchmarks' : 'Hide from lists and benchmarks'}
-      aria-label={`${hidden ? 'Show' : 'Hide'} ${e.name}`}
-      aria-pressed={hidden}
-      onClick={() => onToggle(e.id)}
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-        <circle cx="12" cy="12" r="3" />
-        {!hidden && <path d="M3 3l18 18" />}
-      </svg>
-    </button>
-  )
-}
-
-function EngineIcon({ family }: { family?: string }): React.JSX.Element {
-  return (
-    <span className={`engine-icon ${family ?? 'apple'}`} aria-hidden>
-      {family === 'nvidia' ? (
-        'NV'
-      ) : (
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-          <path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z" />
-        </svg>
-      )}
-    </span>
   )
 }
