@@ -132,6 +132,7 @@ export async function getNote(id: string): Promise<NoteDoc | null> {
   return null
 }
 
+/** Tests/bench: forget every in-memory cache, like a fresh app process. */
 export function resetMemoryForTests(): void {
   noteEntryCache.clear()
   resetDaysForTests()
