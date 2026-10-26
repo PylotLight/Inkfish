@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVaultData } from './hooks/useVaultData'
+import { useShellUi } from './hooks/useShellUi'
 import type { NoteDoc, NoteEntry, NoteKind } from '../../shared/types'
-import { applyPrefs, loadPrefs, type Prefs } from './theme'
 import { displayTitle, plain } from './text'
 import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
-import type { KindFilter, RowActions, TreeTarget } from './views/FolderTree'
+import type { RowActions, TreeTarget } from './views/FolderTree'
 import { loadTabs, TABS_KEY, type MenuState, type Scope, type Selection, type Tab } from './shell/types'
 import type { Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
@@ -31,16 +31,9 @@ import {
   titleFromMarkdown,
   type TitleSyncScheduler
 } from '../../shared/title-sync'
-import {
-  SIDE_COLLAPSED_KEY,
-  isSidebarToggleKey,
-  parseSideCollapsed,
-  serializeSideCollapsed
-} from '../../shared/sidebar'
 import type { MenuItem } from './views/Dialogs'
 import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
-import { matchesTags, parseTagQuery } from '../../shared/tags'
 import { routeSummary } from '../../shared/routing'
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
@@ -92,14 +85,37 @@ function Main(): React.JSX.Element {
     setOstep,
     onVaultReady
   } = useVaultData()
+  const {
+    scope,
+    setScope,
+    settingsOpen,
+    setSettingsOpen,
+    settingsReturn,
+    settingsNonce,
+    kind,
+    setKind,
+    targetDir,
+    setTargetDir,
+    revealDir,
+    setRevealDir,
+    query,
+    setQuery,
+    results,
+    showMeeting,
+    setShowMeeting,
+    meetingLive,
+    setMeetingLive,
+    prefs,
+    setPrefs,
+    updateBadge,
+    sideCollapsed,
+    setSideCollapsed,
+    pickDir,
+    openSettings,
+    openSettingsAt,
+    leaveSettings
+  } = useShellUi({ allNotesRef })
   const brandEgg = useBrandTripleClick()
-  const [scope, setScope] = useState<Scope>('home')
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsReturn, setSettingsReturn] = useState<Scope>('home')
-  const [kind, setKind] = useState<KindFilter>('all')
-  /** Dir new files/folders land in ('' = vault root). Set by clicking a folder. */
-  const [targetDir, setTargetDir] = useState('')
-  const [revealDir, setRevealDir] = useState<string | null>(null)
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   /** Open tabs (notes only) — persisted so files stay open across launches. */
@@ -111,12 +127,6 @@ function Main(): React.JSX.Element {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<NoteEntry[] | null>(null)
-  const [showMeeting, setShowMeeting] = useState(false)
-  /** A capture is running — keep the Meetings page mounted while you browse. */
-  const [meetingLive, setMeetingLive] = useState(false)
-  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
   /** Custom display titles (app config) — filename otherwise. */
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
@@ -149,16 +159,6 @@ function Main(): React.JSX.Element {
     rel: string
     wasOpen: boolean
   } | null>(null)
-  /** Collapsible core sidebar (Blobfish-style) — persisted; toggled from the sidebar header,
-   *  the collapsed rail, ⌘\ or the palette. */
-  const [sideCollapsed, setSideCollapsed] = useState<boolean>(() => {
-    try {
-      return parseSideCollapsed(localStorage.getItem(SIDE_COLLAPSED_KEY))
-    } catch {
-      return false
-    }
-  })
-
   // Refs so tab callbacks stay stable without re-creating per keystroke.
   const docRef = useRef<NoteDoc | null>(null)
   docRef.current = doc
@@ -209,80 +209,6 @@ function Main(): React.JSX.Element {
   const titleSync = titleSyncRef.current
   /** Write every pending note now (tab switch, new note, close, blur, quit, ⌘S). */
   const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
-
-  useEffect(() => {
-    applyPrefs(prefs)
-  }, [prefs])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SIDE_COLLAPSED_KEY, serializeSideCollapsed(sideCollapsed))
-    } catch {
-      // ignore
-    }
-  }, [sideCollapsed])
-
-  // ⌘\ toggles the sidebar (Obsidian/Blobfish-style). Capture phase so a focused editor or
-  // input can't swallow it first.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!isSidebarToggleKey(e)) return
-      e.preventDefault()
-      e.stopPropagation()
-      setSideCollapsed((v) => !v)
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [])
-
-  // Quick font size adjustment: Ctrl+Scroll / pinch inside the note stage
-  // scales content type only (UI chrome untouched), like Obsidian.
-  useEffect(() => {
-    if (!prefs.quickZoom) return
-    const onWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey) return
-      const el = e.target as HTMLElement | null
-      if (!el?.closest?.('.note-stage')) return
-      e.preventDefault()
-      setPrefs((prev) => {
-        const delta = e.deltaY < 0 ? 1 : e.deltaY > 0 ? -1 : 0
-        if (!delta) return prev
-        const next = Math.min(28, Math.max(11, prev.fontSize + delta))
-        return next === prev.fontSize ? prev : { ...prev, fontSize: next }
-      })
-    }
-    window.addEventListener('wheel', onWheel, { passive: false })
-    return () => window.removeEventListener('wheel', onWheel)
-  }, [prefs.quickZoom])
-
-  // Search-as-you-type lives in the sidebar; results replace the tree.
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults(null)
-      return
-    }
-    const t = window.setTimeout(() => {
-      // `#tag` / `tag:foo` tokens filter by front matter tags; any other words still full-text.
-      const tq = parseTagQuery(query)
-      if (tq) {
-        const tagged = allNotesRef.current.filter(
-          (n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/') && matchesTags(n.tags, tq.tags)
-        )
-        if (!tq.text) {
-          setResults(tagged)
-          return
-        }
-        const ok = new Set(tagged.map((n) => n.id))
-        window.api.notes
-          .search(tq.text)
-          .then((r) => setResults(r.filter((n) => ok.has(n.id))))
-          .catch(console.error)
-        return
-      }
-      window.api.notes.search(query.trim()).then(setResults).catch(console.error)
-    }, 180)
-    return () => window.clearTimeout(t)
-  }, [query])
 
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
@@ -1478,50 +1404,12 @@ function Main(): React.JSX.Element {
     }
   }
 
-  const pickDir = (rel: string): void => {
-    setTargetDir(rel)
-    setRevealDir(rel)
-  }
-
-  const openSettings = (): void => {
-    setSettingsReturn(scope)
-    setSettingsOpen(true)
-  }
-
-  // Update notifications: dot on the Settings button; a notification click opens About & updates.
-  const [updateBadge, setUpdateBadge] = useState(false)
-  useEffect(() => {
-    void window.api.updates
-      .get()
-      .then((u) => setUpdateBadge(u.showBadge))
-      .catch(() => undefined)
-    return window.api.updates.onChanged((u) => setUpdateBadge(u.showBadge))
-  }, [])
-  useEffect(
-    () =>
-      window.api.updates.onReveal(() => {
-        sessionStorage.setItem('inkfish.settingsTab', 'about')
-        setSettingsOpen(true)
-      }),
-    []
-  )
-
   const pendingCount = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing').length
   const activeItem = scope === 'inbox' ? (inbox.find((i) => i.id === sel?.id) ?? null) : null
   const openPath = sel?.origin === 'note' ? (doc?.path ?? allNotes.find((n) => n.id === sel.id)?.path ?? null) : null
 
   // --- ⌘K command palette / ⌘O note switcher (ported from Surffish) -------------------
   const [palette, setPalette] = useState<PaletteMode | null>(null)
-  /** Bumped to remount Settings on a specific section picked from the palette. */
-  const [settingsNonce, setSettingsNonce] = useState(0)
-  const openSettingsAt = (tab: string): void => {
-    sessionStorage.setItem('inkfish.settingsTab', tab)
-    setSettingsNonce((n) => n + 1)
-    if (!settingsOpen) openSettings()
-  }
-  const leaveSettings = (): void => {
-    if (settingsOpen) setSettingsOpen(false)
-  }
   /** The Journal: every daily note as one timeline (sidebar button, ribbon, Home → Daily, ⌘⇧J). */
   const openJournal = (): void => {
     leaveSettings()
