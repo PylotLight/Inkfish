@@ -11,9 +11,8 @@ import {
   writeFileSync,
   type Dirent
 } from 'node:fs'
-import { homedir } from 'node:os'
-import { basename, dirname, extname, join, relative, resolve } from 'node:path'
-import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus, Project } from '../shared/types'
+import { basename, dirname, extname, join, relative } from 'node:path'
+import type { InboxItem, MeetingSaveInput, NoteKind, NoteSource, NoteStatus } from '../shared/types'
 import { uniqueName } from '../shared/note-move'
 import type { InboxRoute } from '../shared/routing'
 import { appendToDailyFile, formatEntry, localDay as sharedLocalDay, migrateLegacyDaily } from '../shared/daily'
@@ -26,7 +25,11 @@ import {
   storeRoot,
   undoneDir
 } from './vault/appdata'
-import { newId, parseFrontmatter, setFrontmatterTitle, slugify, stringifyFrontmatter } from './vault/frontmatter'
+import { ensureVault } from './vault/bootstrap'
+import { assertInside, childDirNamed, foldName, resolveDirRel, uniqueFile } from './vault/fs'
+import { newId, parseFrontmatter, slugify, stringifyFrontmatter } from './vault/frontmatter'
+import { vaultPaths } from './vault/paths'
+import { RESERVED_DIRS, slugToId } from './vault/projects'
 import type {
   CaseMergeReport,
   InboxWriteInput,
@@ -40,77 +43,10 @@ import type {
 export * from './vault/types'
 export * from './vault/frontmatter'
 export * from './vault/appdata'
-
-export function envManaged(): boolean {
-  return !!process.env['INKFISH_VAULT']?.trim()
-}
-
-// --- file management (Obsidian-style tree CRUD) ---------------------------------
-// All rels are vault-relative (`a/b.md`, `a/b`). Throws on missing/outside-root.
-
-function assertInside(root: string, abs: string, what: string): void {
-  const rel = relative(root, abs)
-  if (rel === '' || rel.startsWith('..')) throw new Error(`${what} is outside the notes home`)
-}
-
-/** Case-fold for comparing names across filesystems. macOS APFS is usually
- * case-insensitive while Android/Linux ext4 is case-sensitive, so `Personal`
- * and `personal` are one dir on Mac but two on Android. The rule below must
- * stay identical to Android's fold — both sides converge on the same survivor. */
-function foldName(s: string): string {
-  return s.toLowerCase()
-}
-
-/** Resolve each segment of dirRel to its on-disk spelling when a
- * case-insensitive match exists (e.g. `Personal/x` → `personal/x`).
- * Segments without a match pass through for the caller to create. */
-export function resolveDirRel(dirRel: string, paths: VaultPaths = vaultPaths()): string {
-  if (!dirRel) return ''
-  const out: string[] = []
-  let cur = paths.root
-  for (const seg of dirRel.split('/')) {
-    if (!seg || seg === '.') continue
-    let use = seg
-    try {
-      const hit = readdirSync(cur, { withFileTypes: true }).find(
-        (e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== seg && foldName(e.name) === foldName(seg)
-      )
-      if (hit) use = hit.name
-    } catch {
-      // unreadable/missing — caller creates it
-    }
-    out.push(use)
-    cur = join(cur, use)
-  }
-  return out.join('/')
-}
-
-/** Find a direct child dir of `dir` matching `name` case-insensitively.
- * Returns the on-disk spelling, or null. Hidden dirs never match by default. */
-function childDirNamed(dir: string, name: string, includeHidden = false): string | null {
-  let entries: Dirent<string>[]
-  try {
-    entries = readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return null
-  }
-  const want = foldName(name)
-  for (const e of entries) {
-    if (!includeHidden && e.name.startsWith('.')) continue
-    if (e.isDirectory() && foldName(e.name) === want) return e.name
-  }
-  return null
-}
-
-function uniqueFile(dir: string, base: string, ext: string): string {
-  let name = `${base}${ext}`
-  let i = 1
-  while (existsSync(join(dir, name))) {
-    i++
-    name = `${base} ${i}${ext}`
-  }
-  return name
-}
+export * from './vault/paths'
+export * from './vault/fs'
+export * from './vault/bootstrap'
+export * from './vault/projects'
 
 /** New `Untitled.md` (numbered) in dirRel ('' = vault root). Returns vaultRel. */
 export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths()): string {
@@ -522,61 +458,6 @@ export function purgeTrash(): number {
   return purged
 }
 
-// Default notes-home folder under ~ (suggested in onboarding, adopted if it already exists).
-// A dev profile sets "Inkfish Dev" so it never silently adopts the release app's ~/Inkfish;
-// picking that folder in onboarding / Settings is still allowed, it just has to be explicit.
-let defaultVaultName = 'Inkfish'
-
-export function setDefaultVaultName(name: string): void {
-  defaultVaultName = name.trim() || 'Inkfish'
-}
-
-export function defaultVaultRoot(): string {
-  return join(homedir(), defaultVaultName)
-}
-
-export function resolveVaultRoot(): string {
-  const override = process.env['INKFISH_VAULT']
-  if (override && override.trim()) return resolve(override)
-  return readStoredRoot() ?? defaultVaultRoot()
-}
-
-/** Has a vault home been established? Stored choice, env override, or a
- * pre-existing default vault (adopted from earlier versions) all count.
- * False only on true first run — the onboarding wizard must pick first. */
-export function vaultConfigured(): boolean {
-  if (envManaged()) return true
-  if (readStoredRoot()) return true
-  return existsSync(defaultVaultRoot())
-}
-
-export function vaultPaths(root: string = resolveVaultRoot()): VaultPaths {
-  const data = appDataDir()
-  // Staging + index must never live inside the notes home (it would pollute
-  // sync, Obsidian, and git). Fail loud instead of falling back into the vault.
-  if (!data) throw new Error('app data dir unavailable — refusing to place index inside notes home')
-  const staging = join(data, 'staging')
-  return {
-    root,
-    inboxDir: join(staging, 'inbox'),
-    dailyDir: join(staging, 'daily'),
-    assetsDir: join(root, 'assets'),
-    dbPath: join(data, 'inkfish.db')
-  }
-}
-
-/** Resolve a note rel to an absolute path — staging rels (`inbox/`, `daily/`) live in app data. */
-export function resolveNoteAbs(rel: string, paths: VaultPaths = vaultPaths()): string {
-  if (rel === 'inbox' || rel.startsWith('inbox/')) return join(paths.inboxDir, rel.slice('inbox/'.length))
-  if (rel === 'daily' || rel.startsWith('daily/')) return join(paths.dailyDir, rel.slice('daily/'.length))
-  return join(paths.root, rel)
-}
-
-/** True for staging rels (working state) vs finalised vault content. */
-export function isStagingRel(rel: string): boolean {
-  return rel === 'inbox' || rel.startsWith('inbox/') || rel === 'daily' || rel.startsWith('daily/')
-}
-
 /** Local calendar day (YYYY-MM-DD). A day log follows the wall clock, not UTC —
  *  in Melbourne `toISOString()` filed everything before 11am under yesterday. */
 export const localDay = sharedLocalDay
@@ -633,143 +514,6 @@ export function appendDaily(
   const { abs, vaultRel } = ensureDaily(at, paths, opts.source)
   writeFileSync(abs, appendToDailyFile(readFileSync(abs, 'utf8'), formatEntry(text, opts.kind ?? 'text', at)), 'utf8')
   return { vaultRel, path: abs }
-}
-
-/** One-time move: legacy `projects/<name>/` container → top-level `<name>/`
- * folders. A "project" is just the folder name now, not an app dir.
- * Merges into existing same-named folders (collisions get `name 2.md`);
- * old dotfile residue (`.<f>.undone`) goes to app-data undone. */
-export function migrateProjects(paths: VaultPaths = vaultPaths()): { moved: number; skipped: number } {
-  const legacy = join(paths.root, 'projects')
-  if (!existsSync(legacy)) return { moved: 0, skipped: 0 }
-  let moved = 0
-  let skipped = 0
-  const moveOne = (from: string, toDir: string, name: string): void => {
-    mkdirSync(toDir, { recursive: true })
-    const ext = extname(name)
-    const base = ext ? name.slice(0, -ext.length) : name
-    const target = join(toDir, uniqueFile(toDir, base || 'untitled', ext || '.md'))
-    try {
-      renameSync(from, target)
-      moved++
-    } catch {
-      skipped++
-    }
-  }
-  const walk = (dir: string): void => {
-    let entries: Dirent<string>[]
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      const abs = join(dir, e.name)
-      if (e.isDirectory()) {
-        walk(abs)
-        continue
-      }
-      if (e.name.startsWith('.')) {
-        // Old app residue — relocate to app-data undone, never left in vault.
-        try {
-          moveOne(abs, undoneDir(), e.name.replace(/^\.+/, ''))
-        } catch {
-          skipped++
-        }
-        continue
-      }
-      const rel = relative(legacy, abs)
-      const first = rel.split('/')[0]
-      if (!first || !e.name.endsWith('.md')) {
-        skipped++
-        continue
-      }
-      // rel already starts with the project dir — re-root it onto the vault.
-      moveOne(abs, join(paths.root, dirname(rel)), e.name)
-    }
-  }
-  walk(legacy)
-  // Remove emptied dirs bottom-up (deepest first).
-  const rmdirs = (dir: string): void => {
-    let entries: Dirent<string>[]
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) if (e.isDirectory()) rmdirs(join(dir, e.name))
-    try {
-      if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true })
-    } catch {
-      // leave leftovers alone
-    }
-  }
-  rmdirs(legacy)
-  if (moved > 0 || skipped > 0) console.log(`[inkfish] projects migration: ${moved} moved, ${skipped} skipped`)
-  return { moved, skipped }
-}
-
-/** Throw unless a notes home is established — write paths must not
- * implicitly create directories before the user picks a location. */
-export function requireNotes(): VaultPaths {
-  if (!vaultConfigured()) throw new Error('notes folder not chosen yet')
-  return ensureVault()
-}
-
-/** One-time move: legacy `inbox/` + `daily/` inside the vault → staging in
- * app data. Moves files only (never deletes); skips on name collision. */
-export function migrateStaging(paths: VaultPaths = vaultPaths()): { moved: number; skipped: number } {
-  let moved = 0
-  let skipped = 0
-  for (const [legacy, dest] of [
-    [join(paths.root, 'inbox'), paths.inboxDir],
-    [join(paths.root, 'daily'), paths.dailyDir]
-  ] as Array<[string, string]>) {
-    if (!existsSync(legacy)) continue
-    let entries: Dirent<string>[]
-    try {
-      entries = readdirSync(legacy, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    mkdirSync(dest, { recursive: true })
-    for (const e of entries) {
-      if (!e.isFile() || !e.name.endsWith('.md')) {
-        skipped++
-        continue
-      }
-      const from = join(legacy, e.name)
-      const to = join(dest, e.name)
-      if (existsSync(to)) {
-        skipped++
-        continue
-      }
-      try {
-        renameSync(from, to)
-        moved++
-      } catch {
-        skipped++
-      }
-    }
-    try {
-      if (readdirSync(legacy).length === 0) rmSync(legacy, { recursive: true })
-    } catch {
-      // leave leftovers alone
-    }
-  }
-  if (moved > 0 || skipped > 0) console.log(`[inkfish] staging migration: ${moved} moved, ${skipped} skipped`)
-  return { moved, skipped }
-}
-
-export function ensureVault(paths: VaultPaths = vaultPaths()): VaultPaths {
-  // Vault: finalised outputs only (plain files/folders + attachments).
-  // Staging (inbox/daily) lives in app data.
-  mkdirSync(paths.assetsDir, { recursive: true })
-  mkdirSync(paths.inboxDir, { recursive: true })
-  mkdirSync(paths.dailyDir, { recursive: true })
-  migrateStaging(paths)
-  migrateProjects(paths)
-  return paths
 }
 
 // --- inbox ---------------------------------------------------------------------
@@ -895,47 +639,6 @@ export function listInbox(paths: VaultPaths = vaultPaths()): InboxItem[] {
     if (item) items.push(item)
   }
   return items.sort((a, b) => b.createdAt - a.createdAt)
-}
-
-// --- projects ------------------------------------------------------------------
-
-const PROJECT_COLORS = ['#6ea8fe', '#7ee2a8', '#e5a56e', '#c79bfe', '#e5636f', '#6ed3e5']
-
-export function slugToId(slug: string): string {
-  return slugify(slug, 32)
-}
-
-/** Dirs that are staging/app-owned, not projects. User folders are never
- * touched — only these reserved names stay out of the project list. */
-const RESERVED_DIRS = new Set(['inbox', 'daily', 'assets'])
-
-export function listProjects(paths: VaultPaths = vaultPaths()): Project[] {
-  const found: Project[] = []
-  const seen = new Set<string>()
-  const push = (name: string, dir: string): void => {
-    const id = slugToId(name)
-    if (seen.has(id)) return
-    seen.add(id)
-    found.push({ id, name, dir, color: PROJECT_COLORS[found.length % PROJECT_COLORS.length] })
-  }
-  // A "project" is just a top-level folder — ours or imported. No app
-  // container dir: routed notes land in `<vault>/<name>/` directly.
-  // Empty folders count too.
-  if (existsSync(paths.root)) {
-    for (const f of readdirSync(paths.root, { withFileTypes: true })) {
-      if (!f.isDirectory() || f.name.startsWith('.') || RESERVED_DIRS.has(f.name)) continue
-      push(f.name, f.name)
-    }
-  }
-  return found.sort((a, b) => a.name.localeCompare(b.name))
-}
-
-export function createProject(name: string, paths: VaultPaths = vaultPaths()): Project {
-  const slug = slugify(name, 32)
-  if (!slug || slug === 'untitled') throw new Error('project name is empty')
-  const dir = join(paths.root, slug)
-  mkdirSync(dir, { recursive: true })
-  return { id: slugToId(slug), name: slug, dir: slug }
 }
 
 // --- processed notes ------------------------------------------------------------

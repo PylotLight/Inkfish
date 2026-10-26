@@ -25,12 +25,6 @@ export interface VaultPaths {
   dbPath: string
 }
 
-// --- homes: app data (hidden) vs notes (user-visible) ------------------------------
-// App data (config, sqlite index, models) lives in the platform app-data dir
-// (`app.getPath('userData')` — ~/.config/<app> on Linux, ~/Library/… on mac).
-// Override with INKFISH_DATA for dev/tests. The notes home is chosen by the
-// user in onboarding (or INKFISH_VAULT) and holds only plain .md + assets.
-
 export interface NoteProfile {
   id: string
   name: string
