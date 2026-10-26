@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVaultData } from './hooks/useVaultData'
 import { useShellUi } from './hooks/useShellUi'
+import { useCtxMenu } from './hooks/useCtxMenu'
 import type { NoteDoc, NoteEntry, NoteKind } from '../../shared/types'
 import { displayTitle, plain } from './text'
 import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
-import type { RowActions, TreeTarget } from './views/FolderTree'
-import { loadTabs, TABS_KEY, type MenuState, type Scope, type Selection, type Tab } from './shell/types'
+import type { RowActions } from './views/FolderTree'
+import { loadTabs, TABS_KEY, type Scope, type Selection, type Tab } from './shell/types'
 import type { Anchor } from './views/DeletePopover'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../shared/note-delete'
 import { dailyRefs } from '../../shared/journal'
-import { sendAiCommand } from './nativeAi'
 import type { PaletteMode } from '../../shared/command-palette'
 import MiniNote, { isMiniWindow } from './views/MiniNote'
 import Sidebar from './shell/Sidebar'
@@ -31,7 +31,6 @@ import {
   titleFromMarkdown,
   type TitleSyncScheduler
 } from '../../shared/title-sync'
-import type { MenuItem } from './views/Dialogs'
 import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { baseOf, dirOf, foldersOf, remapPath, type MoveKind } from '../../shared/note-move'
 import { routeSummary } from '../../shared/routing'
@@ -128,7 +127,6 @@ function Main(): React.JSX.Element {
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
   /** Custom display titles (app config) — filename otherwise. */
-  const [menu, setMenu] = useState<MenuState | null>(null)
   /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
   const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(
     null
@@ -1226,97 +1224,28 @@ function Main(): React.JSX.Element {
   )
 
   /** Context menu items for a tree target, the open note, or a tab. */
-  const menuItems = useCallback(
-    (target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }): MenuItem[] => {
-      if (target.kind === 'tab') {
-        const tab = tabsRef.current.find((t) => t.id === target.id)
-        if (!tab) return []
-        return [
-          { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(tab.id) },
-          { label: tab.pinned ? 'Unpin tab' : 'Pin tab', action: () => togglePin(tab.id) },
-          { label: 'Close tab', action: () => closeTab(tab.id) },
-          { label: 'Close other tabs', action: () => closeOthers(tab.id) },
-          { label: 'Close unpinned tabs', action: () => closeUnpinned() }
-        ]
-      }
-      if (target.kind === 'open-note') {
-        if (!doc || sel?.origin !== 'note') return []
-        const rel = doc.path
-        const name = titleOf(doc)
-        return [
-          { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(doc.id) },
-          { label: 'Raw / Processed view  ⇧⌥P', action: () => sendAiCommand('toggle-view') },
-          { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
-          { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
-          { label: 'Move to…', action: () => openMovePicker(rel, 'file', name, menu?.x, menu?.y) },
-          { label: 'Rename…', action: () => startNoteRename(doc) },
-          { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
-        ]
-      }
-      if (target.kind === 'dir') {
-        const name = target.name
-        return [
-          { label: 'New file here', action: () => doCreateFile(target.rel) },
-          {
-            label: 'New subfolder…',
-            action: () =>
-              setPrompt({
-                title: `New folder in ${name}`,
-                initial: '',
-                confirm: 'Create',
-                onSubmit: (v) => {
-                  window.api.files
-                    .mkdir(target.rel, v)
-                    .then((rel) => {
-                      setRevealDir(rel)
-                      notify(`Folder ${v} ✓`)
-                      refreshNotes()
-                    })
-                    .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
-                }
-              })
-          },
-          { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
-          { label: 'Move to…', action: () => openMovePicker(target.rel, 'dir', name, menu?.x, menu?.y) },
-          { label: 'Rename…', action: () => doRename(target.rel, true) },
-          { label: `Delete “${name}”…`, danger: true, action: () => doTrash(target.rel, name) }
-        ]
-      }
-      const name = target.name
-      const entry =
-        allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
-      return [
-        { label: 'Rename  F2', action: () => (entry ? startNoteRename(entry) : doRename(target.rel, false)) },
-        { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
-        ...(entry ? [{ label: 'Open in Mini Window', action: () => popOut(entry.id) }] : []),
-        { label: 'Move to…', action: () => openMovePicker(target.rel, 'file', name, menu?.x, menu?.y) },
-        {
-          label: `Delete “${name.slice(0, 32)}”  ⌘⌫`,
-          danger: true,
-          action: () => (entry ? void deleteNote(entry, null, false) : doTrash(target.rel, name))
-        }
-      ]
-    },
-    [
-      doc,
-      sel,
-      titleOf,
-      doCreateFile,
-      doRename,
-      doTrash,
-      startNoteRename,
-      deleteNote,
-      notify,
-      refreshNotes,
-      togglePin,
-      closeTab,
-      closeOthers,
-      closeUnpinned,
-      popOut,
-      openMovePicker,
-      menu
-    ]
-  )
+  const { menu, setMenu, menuItems } = useCtxMenu({
+    tabsRef,
+    allNotesRef,
+    doc,
+    sel,
+    titleOf,
+    doCreateFile,
+    doRename,
+    doTrash,
+    startNoteRename,
+    deleteNote,
+    notify,
+    refreshNotes,
+    togglePin,
+    closeTab,
+    closeOthers,
+    closeUnpinned,
+    popOut,
+    openMovePicker,
+    setPrompt,
+    setRevealDir
+  })
 
   // --- derived -------------------------------------------------------------------
   // Staging (inbox/daily working state) lives in app data and is surfaced via
