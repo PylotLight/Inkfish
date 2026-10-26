@@ -3,6 +3,7 @@ import { useVaultData } from './hooks/useVaultData'
 import { useShellUi } from './hooks/useShellUi'
 import { useCtxMenu } from './hooks/useCtxMenu'
 import { useNoteWorkspace } from './hooks/useNoteWorkspace'
+import { usePalette } from './hooks/usePalette'
 import type { NoteEntry, NoteKind } from '../../shared/types'
 import { dailyTitle, dayOfPath, localDay } from '../../shared/daily'
 import Capture from './views/Capture'
@@ -12,9 +13,24 @@ import MiniNote, { isMiniWindow } from './views/MiniNote'
 import Sidebar from './shell/Sidebar'
 import Center from './shell/Center'
 import Overlays from './shell/Overlays'
-import { usePalette } from './hooks/usePalette'
 import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
 import { foldersOf } from '../../shared/note-move'
+
+/**
+ * The shell: picks the window (capture popover, mini window, main) and
+ * composes the main window as Sidebar | Center | Overlays.
+ *
+ * Hooks own their state; the shell only passes data down:
+ *  - useVaultData     vault contents: notes, inbox, projects, titles, backend, profile
+ *  - useShellUi       shell UI: scope, settings, search, meeting, prefs, sidebar
+ *  - useNoteWorkspace note session: tabs, doc, drafts, autosave, mini windows
+ *                     (wires useTitles + useFileActions for title sync and file ops)
+ *  - useCtxMenu       right-click menu (items in shell/ctx-menu-items.ts)
+ *  - usePalette       ⌘K/⌘O palette + global shortcuts (commands in shell/palette-commands.ts)
+ *
+ * Children (presentational, in shell/): Sidebar (nav + folder tree), Center
+ * (home dashboard, note stage, settings), Overlays (menu, palette, dialogs).
+ */
 
 /** Popover windows load the same bundle with `#capture` — render capture only. */
 export function isCaptureWindow(): boolean {
@@ -371,7 +387,7 @@ function Main(): React.JSX.Element {
         revealDir={revealDir}
         selectNote={selectNote}
         pickDir={pickDir}
-        setMenu={(menu) => setMenu(menu)}
+        setMenu={setMenu}
         doCreateFile={doCreateFile}
         doCreateFolder={doCreateFolder}
         targetDir={targetDir}
@@ -427,7 +443,7 @@ function Main(): React.JSX.Element {
         openEntry={openEntry}
         closeTab={closeTab}
         togglePin={togglePin}
-        setMenu={(menu) => setMenu(menu)}
+        setMenu={setMenu}
         doCreateFile={doCreateFile}
         targetDir={targetDir}
         popOut={popOut}
