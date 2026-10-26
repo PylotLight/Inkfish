@@ -27,11 +27,11 @@ describe('classify (rules engine, offline)', () => {
     expect(r.tags).toContain('urgent')
   })
 
-  test('never guesses projects[0]: nothing related stays in the inbox for review', async () => {
+  test('never guesses projects[0]: unrelated captures propose a root-level note', async () => {
     const r = await classify({ raw: 'xyzzy unrelated', kind: 'text', projects })
-    expect(r.action).toBe('review')
+    expect(r.action).toBe('new')
     expect(r.projectName).toBe('')
-    expect(r.reason).toContain('left in inbox')
+    expect(r.reason).toContain('propose a new note at the vault root')
     expect(r.confidence).toBeLessThan(0.5)
   })
 
@@ -46,9 +46,9 @@ describe('classify (rules engine, offline)', () => {
     expect(r.projectName).toBe('work')
   })
 
-  test('no folders at all → review, no invented "general"', async () => {
+  test('no folders at all → root-level note proposal, no invented "general"', async () => {
     const r = await classify({ raw: 'anything at all here', kind: 'text', projects: [] })
-    expect(r.action).toBe('review')
+    expect(r.action).toBe('new')
     expect(r.projectName).toBe('')
   })
 
@@ -59,7 +59,8 @@ describe('classify (rules engine, offline)', () => {
       projects,
       llm: async () => '{"action":"new","folder":"the work project","title":"x","tags":[],"confidence":0.9}'
     })
-    expect(bad.action).toBe('review')
+    expect(bad.action).toBe('new')
+    expect(bad.projectName).toBe('')
     const good = await classify({
       raw: 'xyzzy unrelated words here',
       kind: 'text',
@@ -70,6 +71,28 @@ describe('classify (rules engine, offline)', () => {
     expect(good.projectName).toBe('personal')
     expect(good.provider).toBe('api')
     expect(good.title).toBe('Xyzzy')
+  })
+
+  test('AI can provide title and tags for a root-level proposal when there are no folders', async () => {
+    let called = false
+    const r = await classify({
+      raw: 'call the dentist about Thursday',
+      kind: 'text',
+      projects: [],
+      llm: async (system) => {
+        called = true
+        expect(system).toContain('folder ""')
+        return '{"action":"new","folder":"","title":"Dentist appointment","tags":["personal"],"confidence":0.3}'
+      }
+    })
+    expect(called).toBe(true)
+    expect(r).toMatchObject({
+      action: 'new',
+      projectName: '',
+      title: 'Dentist appointment',
+      tags: ['personal'],
+      provider: 'api'
+    })
   })
 
   test('explicit picker beats the AI provider', async () => {

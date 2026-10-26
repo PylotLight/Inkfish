@@ -14,16 +14,18 @@ import {
   type RoutingPrefs
 } from '../shared/routing'
 import type { ClassifyResult, NoteEntry, NoteKind } from '../shared/types'
-import { classify, intelEligible, rulesRoute, type ClassifyInput, type RouteLlm } from './ai'
+import { classify, formatBody, intelEligible, rulesRoute, type ClassifyInput, type RouteLlm } from './ai'
 import { indexFile, indexPath, removePath, routeHits, routeMeta } from './db'
 import {
   appDataDir,
   appendToNote,
   listProjects,
+  proposeNotePath,
   readInboxItem,
   routeToProject,
   setInboxRoute,
   setInboxStatus,
+  slugify,
   undoRoute,
   type VaultPaths
 } from './vault'
@@ -105,7 +107,8 @@ export function previewRoute(
   const input = routeInputFor(raw, kind, hint, paths)
   const { decision } = rulesRoute(input)
   const prefs = input.prefs ?? DEFAULT_ROUTING_PREFS
-  return toRoutePreview(decision, { autoFile: prefs.autoFile, aiMayRefine: aiReady && intelEligible(input) })
+  const preview = toRoutePreview(decision, { autoFile: prefs.autoFile, aiMayRefine: aiReady && intelEligible(input) })
+  return decision.action === 'new' && !decision.folder ? { ...preview, suggested: true } : preview
 }
 
 // --- route one inbox capture -----------------------------------------------------------------
@@ -118,16 +121,44 @@ export interface RouteOutcome {
 }
 
 export interface RouteOptions {
-  /** File it now (false = record the suggestion only; Settings › Routing auto-file off). */
+  /** File it now (false = record a suggestion only); root-level proposals always wait for approval. */
   apply: boolean
   /** Explicit folder (Move → / picker) — overrides the capture's own hint. */
   hint?: string
   /** "Route" clicked: a capture the user kept in the inbox gets routed normally this time. */
   manual?: boolean
+  /** Apply the exact persisted suggestion instead of invoking classification again. */
+  approveSuggestion?: boolean
   llm?: RouteLlm | null
 }
 
 const inboxRel = (id: string): string => `inbox/${id}.md`
+
+function savedProposal(item: NonNullable<ReturnType<typeof readInboxItem>>): {
+  route: InboxRoute
+  result: ClassifyResult
+} | null {
+  const route = item.route
+  if (!route?.suggested || (route.action !== 'new' && route.action !== 'append') || !route.rel) return null
+  if (route.action === 'new' && !route.title) return null
+  const targetTitle = route.rel.split('/').pop()?.replace(/\.md$/i, '') ?? route.rel
+  return {
+    route,
+    result: {
+      projectId: route.folder ? slugify(route.folder, 32) : '',
+      projectName: route.folder,
+      title: route.title ?? targetTitle,
+      tags: route.tags ?? [],
+      markdown: route.markdown ?? formatBody(item.raw, item.kind),
+      provider: route.provider,
+      confidence: route.confidence,
+      action: route.action,
+      targetRel: route.action === 'append' ? route.rel : null,
+      targetTitle: route.action === 'append' ? targetTitle : null,
+      reason: route.reason
+    }
+  }
+}
 
 /**
  * Classify + file one inbox capture: a new note in a folder, a dated section appended to a related
@@ -144,17 +175,32 @@ export async function routeInboxItem(
   setInboxStatus(id, 'processing', paths)
   reindexInbox()
   try {
-    let hint = opts.hint ?? item.projectHint
-    if (opts.manual && hint === KEEP_IN_INBOX) hint = undefined
-    const result = await classify({ ...routeInputFor(item.raw, item.kind, hint, paths), llm: opts.llm ?? null })
-    const route: InboxRoute = {
-      action: result.action,
-      folder: result.projectName,
-      rel: result.action === 'append' ? (result.targetRel ?? '') : '',
-      reason: result.reason,
-      confidence: result.confidence,
-      provider: result.provider,
-      suggested: false
+    const approved = opts.approveSuggestion ? savedProposal(item) : null
+    let result: ClassifyResult
+    let route: InboxRoute
+    if (approved) {
+      result = approved.result
+      route = { ...approved.route, suggested: false }
+    } else {
+      let hint = opts.hint ?? item.projectHint
+      if (opts.manual && hint === KEEP_IN_INBOX) hint = undefined
+      result = await classify({ ...routeInputFor(item.raw, item.kind, hint, paths), llm: opts.llm ?? null })
+      const baselineMarkdown = formatBody(item.raw, item.kind)
+      route = {
+        action: result.action,
+        folder: result.projectName,
+        rel: '',
+        reason: result.reason,
+        confidence: result.confidence,
+        provider: result.provider,
+        suggested: false,
+        ...(result.action === 'new' ? { title: result.title, tags: result.tags } : {}),
+        ...(result.markdown !== baselineMarkdown ? { markdown: result.markdown } : {})
+      }
+      if (result.action === 'append') route.rel = result.targetRel ?? ''
+      else if (result.action === 'new') {
+        route.rel = proposeNotePath(result.projectName, result.title, item.createdAt, paths)
+      }
     }
     // The capture showed a preview; say so when filing ended up somewhere else (AI refined it, vault changed).
     const previewed = item.previewed
@@ -163,7 +209,8 @@ export async function routeInboxItem(
     const notePreview = (): void => {
       if (previewed) route.reason = `${route.reason} · preview said ${routeKeyLabel(previewed)}`
     }
-    if (result.action === 'review' || !opts.apply) {
+    const approvalRequired = !approved && result.action === 'new' && !result.projectName
+    if (result.action === 'review' || !opts.apply || approvalRequired) {
       if (differs(route.rel)) notePreview()
       route.suggested = result.action !== 'review'
       setInboxStatus(id, 'inbox', paths)
@@ -183,13 +230,17 @@ export async function routeInboxItem(
           title: result.title,
           tags: result.tags,
           markdown: result.markdown,
-          kind: item.kind
+          kind: item.kind,
+          vaultRel: route.rel,
+          createdAt: item.createdAt
         },
         paths
       )
     }
     route.rel = written.vaultRel
     if (differs(result.action === 'append' ? written.vaultRel : '')) notePreview()
+    route.suggested = false
+    route.markdown = undefined
     setInboxStatus(id, 'ready', paths)
     setInboxRoute(id, route, paths)
     reindexInbox()

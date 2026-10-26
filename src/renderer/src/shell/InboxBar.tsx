@@ -29,7 +29,14 @@ export default function InboxBar({
 
   return (
     <div className="inboxbar glass">
-      <span className="qsub muted" title={item.route ? `${item.route.provider} · ${item.route.reason}` : undefined}>
+      <span
+        className="qsub muted"
+        title={
+          item.route
+            ? `${item.route.provider} · ${item.route.reason}${item.route.suggested ? ` · ${item.route.title ?? ''} · ${item.route.rel}${item.route.tags?.length ? ` · tags: ${item.route.tags.join(', ')}` : ''}` : ''}`
+            : undefined
+        }
+      >
         {item.kind}
         {item.status === 'processing'
           ? ' · routing…'
@@ -46,7 +53,10 @@ export default function InboxBar({
           disabled={busy}
           onClick={() =>
             void run(
-              () => window.api.inbox.process(item.id),
+              () =>
+                window.api.inbox.process(item.id, {
+                  approveSuggestion: item.route?.suggested === true
+                }),
               (r) => {
                 const res = r as Awaited<ReturnType<typeof window.api.inbox.process>>
                 if ('error' in res) {
@@ -64,7 +74,7 @@ export default function InboxBar({
             )
           }
         >
-          Route now
+          {item.route?.suggested ? 'File proposal' : 'Route now'}
         </button>
       )}
       <select

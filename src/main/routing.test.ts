@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -61,16 +61,46 @@ const ok = <T>(out: T | { error: string }): T => {
 }
 
 describe('routeInboxItem', () => {
-  test('unrelated capture stays in the inbox (no first-folder guess, meetings folder never wins)', async () => {
+  test('unmatched capture proposes a root note and approval files that exact proposal', async () => {
     const { v, r, paths } = await setup()
     const { item } = v.writeInboxItem({ kind: 'text', raw: 'book the dentist for thursday arvo' }, paths)
     const out = ok(await r.routeInboxItem(item.id, paths, { apply: true }))
     expect(out.note).toBeNull()
-    expect(out.route.action).toBe('review')
+    expect(out.route).toMatchObject({ action: 'new', folder: '', suggested: true })
+    expect(out.route.title).toBeTruthy()
+    expect(out.route.rel).toMatch(/^\d{4}-\d{2}-\d{2}-/)
+    expect(existsSync(join(paths.root, out.route.rel))).toBe(false)
     const back = v.readInboxItem(item.id, paths)
     expect(back?.status).toBe('inbox')
-    expect(back?.route?.reason).toContain('left in inbox')
+    expect(back?.route).toMatchObject({ title: out.route.title, rel: out.route.rel, suggested: true })
+    expect(back?.route?.markdown).toBeUndefined()
+
+    const approved = ok(
+      await r.routeInboxItem(item.id, paths, {
+        apply: true,
+        manual: true,
+        approveSuggestion: true,
+        llm: async () => {
+          throw new Error('saved proposals must not be reclassified')
+        }
+      })
+    )
+    expect(approved.note?.path).toBe(out.route.rel)
+    expect(approved.route.suggested).toBe(false)
+    expect(readFileSync(join(paths.root, approved.note!.path), 'utf8')).toContain(`# ${out.route.title}`)
+    expect(readFileSync(join(paths.root, approved.note!.path), 'utf8')).toContain('book the dentist for thursday arvo')
     expect(readdirSync(join(dir, 'Abc Meetings'))).toHaveLength(2)
+  })
+
+  test('pending root proposals reserve their paths so duplicate captures do not collide', async () => {
+    const { v, r, paths } = await setup()
+    const first = v.writeInboxItem({ kind: 'text', raw: 'call the dentist about Thursday' }, paths).item
+    const second = v.writeInboxItem({ kind: 'text', raw: 'call the dentist about Thursday' }, paths).item
+    const a = ok(await r.routeInboxItem(first.id, paths, { apply: true }))
+    const b = ok(await r.routeInboxItem(second.id, paths, { apply: true }))
+    expect(a.route.suggested).toBe(true)
+    expect(b.route.suggested).toBe(true)
+    expect(a.route.rel).not.toBe(b.route.rel)
   })
 
   test('content picks the folder; new note written there', async () => {
@@ -112,6 +142,34 @@ describe('routeInboxItem', () => {
     expect(out.note).toBeNull()
     expect(out.route).toMatchObject({ action: 'new', folder: 'Garden', suggested: true })
     expect(readdirSync(join(dir, 'Garden')).sort()).toEqual(['Compost.md', 'Tomato log.md'])
+  })
+
+  test('File applies the saved append target rather than asking the router again', async () => {
+    const { v, r, paths } = await setup()
+    r.saveRoutingPrefs({ autoFile: false })
+    const target = join(dir, 'Garden/Tomato log.md')
+    const before = readFileSync(target, 'utf8')
+    const { item } = v.writeInboxItem(
+      { kind: 'text', raw: 'tomato seedlings need staking, change the watering schedule' },
+      paths
+    )
+    const suggestion = ok(await r.routeInboxItem(item.id, paths, { apply: false }))
+    expect(suggestion.route).toMatchObject({ action: 'append', rel: 'Garden/Tomato log.md', suggested: true })
+
+    const filed = ok(
+      await r.routeInboxItem(item.id, paths, {
+        apply: true,
+        manual: true,
+        approveSuggestion: true,
+        llm: async () => {
+          throw new Error('saved proposals must not be reclassified')
+        }
+      })
+    )
+    expect(filed.note?.path).toBe('Garden/Tomato log.md')
+    expect(filed.route.suggested).toBe(false)
+    expect(readFileSync(target, 'utf8').startsWith(before)).toBe(true)
+    expect(readFileSync(target, 'utf8')).toContain('change the watering schedule')
   })
 
   test('explicit folder wins (Move →), new note even if unrelated', async () => {

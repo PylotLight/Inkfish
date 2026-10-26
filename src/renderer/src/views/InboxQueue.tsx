@@ -70,6 +70,17 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
                   {item.route.reason}
                 </span>
               )}
+              {item.route?.suggested && item.route.action === 'new' && (
+                <span className="qsub muted small">
+                  Proposed: {item.route.title || 'New note'} · {item.route.rel || 'vault root'}
+                  {item.route.tags?.length ? ` · tags: ${item.route.tags.join(', ')}` : ''}
+                </span>
+              )}
+              {item.route?.suggested && item.route.markdown && (
+                <span className="qsub muted small" title="Proposed note content">
+                  Content: {item.route.markdown.replace(/\s+/g, ' ').trim().slice(0, 120)}
+                </span>
+              )}
             </button>
             <div className="row qactions">
               {item.status !== 'processing' && (
@@ -78,7 +89,9 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
                   title={item.route?.suggested ? 'File it where suggested' : 'Route now'}
                   onClick={() =>
                     void act(async () => {
-                      const r = await window.api.inbox.process(item.id)
+                      const r = await window.api.inbox.process(item.id, {
+                        approveSuggestion: item.route?.suggested === true
+                      })
                       if ('error' in r) throw new Error(r.error)
                       notify(r.note ? `Routed ✓ ${routeSummary(r.route, 'ready')}` : `Left in inbox: ${r.route.reason}`)
                     }, '')

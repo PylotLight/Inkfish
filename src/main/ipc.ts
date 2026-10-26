@@ -205,7 +205,7 @@ function info(): VaultInfo {
 /** Background worker: classify + route one inbox item, never deleting raw. */
 async function processInboxItem(
   id: string,
-  opts: { apply: boolean; hint?: string; manual?: boolean }
+  opts: { apply: boolean; hint?: string; manual?: boolean; approveSuggestion?: boolean }
 ): Promise<RouteOutcome | { error: string }> {
   let paths: VaultPaths
   try {
@@ -399,8 +399,14 @@ export function registerIpc(): void {
   ipcMain.handle('inbox:count', (): number => countInbox())
 
   // "Route" clicked: file it now (applies a suggestion; low confidence still stays for review).
-  ipcMain.handle('inbox:process', (_e: IpcMainInvokeEvent, id: string): ReturnType<typeof processInboxItem> =>
-    processInboxItem(id, { apply: true, manual: true })
+  ipcMain.handle(
+    'inbox:process',
+    (
+      _e: IpcMainInvokeEvent,
+      id: string,
+      options?: { approveSuggestion?: boolean }
+    ): ReturnType<typeof processInboxItem> =>
+      processInboxItem(id, { apply: true, manual: true, approveSuggestion: options?.approveSuggestion === true })
   )
 
   // Capture popover's live preview: the rules router on the same inputs filing uses (no model call).

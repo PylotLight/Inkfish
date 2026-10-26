@@ -244,8 +244,11 @@ const api = {
     list: (): Promise<InboxItem[]> => ipcRenderer.invoke('inbox:list'),
     count: (): Promise<number> => ipcRenderer.invoke('inbox:count'),
     /** File it now. `note` is null when the router left it in the inbox (see `route.reason`). */
-    process: (id: string): Promise<{ note: NoteEntry | null; route: InboxRoute } | { error: string }> =>
-      ipcRenderer.invoke('inbox:process', id),
+    process: (
+      id: string,
+      options?: { approveSuggestion?: boolean }
+    ): Promise<{ note: NoteEntry | null; route: InboxRoute } | { error: string }> =>
+      ipcRenderer.invoke('inbox:process', id, options),
     reassign: (
       id: string,
       projectName: string

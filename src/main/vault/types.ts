@@ -75,4 +75,8 @@ export interface RouteInput {
   tags: string[]
   markdown: string
   kind: NoteKind
+  /** Exact vault-relative path shown in the proposal; absent for legacy callers. */
+  vaultRel?: string
+  /** Capture time used to keep the proposed filename stable through approval. */
+  createdAt?: number
 }

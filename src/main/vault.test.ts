@@ -155,6 +155,28 @@ describe('projects + routing', () => {
     expect(v.readInboxItem(item.id, paths)?.route).toBeUndefined()
     expect(v.readInboxItem(item.id, paths)?.raw).toBe('hello')
   })
+
+  test('saved new-note proposal details survive inbox reload', async () => {
+    const v = await vault()
+    const paths = v.ensureVault()
+    const { item } = v.writeInboxItem({ kind: 'text', raw: 'original capture' }, paths)
+    const proposal = {
+      action: 'new' as const,
+      folder: '',
+      rel: '2026-10-26-dentist-appointment.md',
+      reason: 'no match; propose a new note at the vault root',
+      confidence: 0.2,
+      provider: 'rules',
+      suggested: true,
+      title: 'Dentist appointment',
+      tags: ['personal'],
+      markdown: '# Dentist appointment\n\nCall Thursday.\n'
+    }
+    v.setInboxRoute(item.id, proposal, paths)
+    expect(v.readInboxItem(item.id, paths)?.route).toMatchObject(proposal)
+    v.setInboxRoute(item.id, null, paths)
+    expect(v.readInboxItem(item.id, paths)?.route).toBeUndefined()
+  })
 })
 
 describe('assets', () => {

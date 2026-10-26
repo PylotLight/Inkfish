@@ -625,11 +625,11 @@ export function aiRoutePrompt(
   const system =
     'You file a quick note into a personal notes vault. Reply with one JSON object only, no prose: ' +
     '{"action":"new"|"append","folder":string,"targetNote":string|null,"title":string,"tags":string[],"confidence":number}. ' +
-    '"folder" must be exactly one of the listed folders. ' +
+    '"folder" must be exactly one of the listed folders, or the empty string to propose a new note in the vault root when no listed folder fits. ' +
     (allowAppend
       ? '"append" only when the note clearly continues one listed existing note; then "targetNote" is that note\'s exact path. '
       : 'Always use "new". ') +
-    'If none fits, use the best folder with a low confidence (0..1). Prefer existing tags. Title: short, plain, max 8 words.'
+    'If no existing note or folder is a good fit, use action "new" and folder "" rather than forcing an unrelated match. Prefer existing tags. Title: short, plain, max 8 words.'
   const notes = cand.notes.length
     ? cand.notes
         .map((n) => `- path: ${n.path}\n  title: ${n.title}\n  tags: ${n.tags.join(', ')}\n  snippet: ${n.snippet}`)
@@ -653,6 +653,7 @@ export function parseAiRoute(text: string, cand: { folders: string[]; notes: Sco
   }
   const wanted = typeof j.folder === 'string' ? j.folder.trim() : ''
   const folder = wanted ? cand.folders.find((f) => f === wanted) : undefined
+  if (wanted && !folder) return null
   let action: 'new' | 'append' = j.action === 'append' ? 'append' : 'new'
   let targetNote: string | null = null
   if (action === 'append') {
@@ -660,7 +661,7 @@ export function parseAiRoute(text: string, cand: { folders: string[]; notes: Sco
     targetNote = cand.notes.find((n) => n.path === t)?.path ?? null
     if (!targetNote) action = 'new'
   }
-  if (!folder && !targetNote) return null
+  if (!folder && !targetNote && action !== 'new') return null
   const conf = typeof j.confidence === 'number' ? j.confidence : Number(j.confidence)
   return {
     action,
@@ -692,6 +693,18 @@ export function applyAiRoute(
   }
   const out = { ...rules, tags: tags.slice(0, 8), provider }
   const who = provider === 'apple' ? 'Apple Intelligence' : 'AI'
+  if (ai.action === 'new' && !ai.folder) {
+    if (rules.reason.includes('default folder ')) return out
+    return {
+      ...out,
+      action: 'new',
+      folder: '',
+      target: null,
+      targetTitle: null,
+      confidence: ai.confidence,
+      reason: `${who}: propose a new note at the vault root (${pct(ai.confidence)})`
+    }
+  }
   if (ai.action === 'append' && ai.targetNote && prefs.allowAppend && ai.confidence >= prefs.appendThreshold) {
     const n = rules.notes.find((x) => x.path === ai.targetNote)
     return {
@@ -723,13 +736,17 @@ export function applyAiRoute(
 export interface InboxRoute {
   action: RouteAction
   folder: string
-  /** Vault rel of the note written / appended to (append target for a suggestion; '' for review). */
+  /** Vault rel of the written/proposed note or append target; '' only when kept for review. */
   rel: string
   reason: string
   confidence: number
   provider: string
-  /** True when it was only suggested (auto-file off), not filed. */
+  /** True when awaiting approval (auto-file off or a root-level proposal), not filed. */
   suggested: boolean
+  /** Proposed note title, tags and content, retained so File applies this exact suggestion. */
+  title?: string
+  tags?: string[]
+  markdown?: string
 }
 
 /** Short inbox label for a route result: where it went (or would go) and how. */
@@ -741,7 +758,11 @@ export function routeSummary(route: InboxRoute | undefined, status: string): str
   const where =
     route.action === 'append'
       ? `${suggested ? 'add' : 'added'} to ${name(route.rel) || route.folder}`
-      : `new note in ${route.folder || name(route.rel)}`
+      : suggested
+        ? route.title || route.rel
+          ? `new note ${route.title ? `"${route.title}"` : name(route.rel)}${route.rel ? ` at ${route.rel}` : ''}`
+          : `new note in ${route.folder || 'vault root'}`
+        : `new note in ${route.folder || name(route.rel)}`
   return suggested ? `suggested: ${where}` : where
 }
 

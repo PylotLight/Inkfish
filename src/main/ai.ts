@@ -96,7 +96,7 @@ function titleFromRaw(raw: string): string {
   return sentence.slice(0, 80).trim() || 'Untitled'
 }
 
-function formatBody(raw: string, kind: NoteKind): string {
+export function formatBody(raw: string, kind: NoteKind): string {
   const text = raw.trim()
   if (kind === 'meeting') return text // meeting import already formats
   // Normalize: collapse 3+ blank lines, ensure list markers are `- `.
@@ -142,6 +142,15 @@ function toResult(d: RouteDecision, input: ClassifyInput): ClassifyResult {
 /** Offline router only (no models). */
 export function rulesRoute(input: ClassifyInput): { decision: RouteDecision; result: ClassifyResult } {
   const decision = decideRoute(routeInput(input, input.prefs ?? DEFAULT_ROUTING_PREFS))
+  // A normal unmatched capture gets a concrete proposal rather than a dead-end review row. The
+  // explicit “keep in inbox” picker choice remains a review decision.
+  if (decision.action === 'review' && decision.provider === 'rules') {
+    decision.action = 'new'
+    decision.folder = ''
+    decision.target = null
+    decision.targetTitle = null
+    decision.reason = `${decision.reason.replace(/, left in inbox$/, '')}; propose a new note at the vault root`
+  }
   return { decision, result: toResult(decision, input) }
 }
 
@@ -152,8 +161,8 @@ export function intelEligible(input: ClassifyInput): boolean {
 
 /**
  * Route one capture. Rules first (offline, vault content), then the user's AI provider when it is
- * connected and allowed, else Apple Intelligence when on — both only pick between the candidates the
- * rules found (exact matches), and an explicit picker choice always wins.
+ * connected and allowed, else Apple Intelligence when on — both pick exact existing candidates or
+ * explicitly propose a new note at the vault root when nothing fits; an explicit picker choice wins.
  */
 export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
   const prefs = input.prefs ?? DEFAULT_ROUTING_PREFS
@@ -166,7 +175,7 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
   let aiDone = false
 
   // 1. The user's own AI provider (Settings › AI provider), when connected.
-  if (!fixed && input.llm && prefs.useAiProvider && intelEligible(input) && cand.folders.length) {
+  if (!fixed && input.llm && prefs.useAiProvider && intelEligible(input)) {
     try {
       const { system, user } = aiRoutePrompt(input.raw, cand, prefs.allowAppend)
       const reply = await input.llm(system, user)

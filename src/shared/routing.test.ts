@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
   appendHint,
+  applyAiRoute,
+  aiRoutePrompt,
   DEFAULT_ROUTING_PREFS,
   KEEP_IN_INBOX,
   parseRouteHint,
@@ -201,6 +203,31 @@ describe('helpers', () => {
     ).toBe('new')
     expect(parseAiRoute('not json', cand)).toBeNull()
   })
+  test('AI can propose a root-level new note when no listed folder fits', () => {
+    const cand = { folders: [], notes: [] }
+    const prompt = aiRoutePrompt('call the dentist about Thursday', cand, true)
+    expect(prompt.system).toContain('folder ""')
+    const ai = parseAiRoute(
+      '{"action":"new","folder":"","title":"Dentist appointment","tags":["personal"],"confidence":0.3}',
+      cand
+    )
+    expect(ai).toMatchObject({ action: 'new', folder: '', title: 'Dentist appointment' })
+    const result = applyAiRoute(
+      decideRoute(input('call the dentist about Thursday')),
+      ai!,
+      'api',
+      DEFAULT_ROUTING_PREFS,
+      new Map()
+    )
+    expect(result).toMatchObject({ action: 'new', folder: '', provider: 'api' })
+    const configured = decideRoute(
+      input('call the dentist about Thursday', { prefs: { ...DEFAULT_ROUTING_PREFS, defaultFolder: 'Unsorted' } })
+    )
+    expect(applyAiRoute(configured, ai!, 'api', DEFAULT_ROUTING_PREFS, new Map())).toMatchObject({
+      action: 'new',
+      folder: 'Unsorted'
+    })
+  })
   test('prefs sanitize: no default folder, clamps, strips ..', () => {
     expect(sanitizeRoutingPrefs({})).toEqual(DEFAULT_ROUTING_PREFS)
     expect(DEFAULT_ROUTING_PREFS.defaultFolder).toBe('')
@@ -228,6 +255,12 @@ describe('routeSummary', () => {
     expect(routeSummary({ ...base, action: 'new', rel: '', suggested: true }, 'inbox')).toBe(
       'suggested: new note in Garden'
     )
+    expect(
+      routeSummary(
+        { ...base, action: 'new', title: 'Dentist appointment', rel: '2026-10-26-dentist.md', suggested: true },
+        'inbox'
+      )
+    ).toBe('suggested: new note "Dentist appointment" at 2026-10-26-dentist.md')
     expect(routeSummary({ ...base, action: 'append', suggested: true }, 'inbox')).toBe('suggested: add to Tomato log')
     expect(routeSummary(undefined, 'inbox')).toBe('')
   })

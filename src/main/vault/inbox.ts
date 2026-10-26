@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import type { InboxItem, NoteKind, NoteSource, NoteStatus } from '../../shared/types'
 import type { InboxRoute } from '../../shared/routing'
 import { undoneDir } from './appdata'
@@ -85,7 +85,10 @@ const ROUTE_KEYS = [
   'routeReason',
   'routeConfidence',
   'routeProvider',
-  'routeSuggested'
+  'routeSuggested',
+  'routeTitle',
+  'routeTags',
+  'routeMarkdown'
 ] as const
 
 /** Record (or clear, with null) the router's result on the raw inbox capture. */
@@ -103,6 +106,9 @@ export function setInboxRoute(id: string, route: InboxRoute | null, paths: Vault
     flat['routeConfidence'] = route.confidence.toFixed(2)
     flat['routeProvider'] = route.provider
     flat['routeSuggested'] = route.suggested ? 'true' : 'false'
+    flat['routeTitle'] = route.title ?? ''
+    flat['routeTags'] = route.tags ?? []
+    if (route.markdown) flat['routeMarkdown'] = Buffer.from(route.markdown, 'utf8').toString('base64')
   }
   writeFileSync(file, `${stringifyFrontmatter(flat)}${body}`, 'utf8')
   return true
@@ -113,6 +119,8 @@ function readRoute(fm: Record<string, string | string[]>): InboxRoute | undefine
   const action = s('routeAction')
   if (action !== 'new' && action !== 'append' && action !== 'review') return undefined
   const conf = Number(s('routeConfidence'))
+  const tags = Array.isArray(fm['routeTags']) ? fm['routeTags'].filter((t): t is string => typeof t === 'string') : []
+  const encodedMarkdown = s('routeMarkdown')
   return {
     action,
     folder: s('routeFolder'),
@@ -120,7 +128,10 @@ function readRoute(fm: Record<string, string | string[]>): InboxRoute | undefine
     reason: s('routeReason'),
     confidence: Number.isFinite(conf) ? conf : 0,
     provider: s('routeProvider'),
-    suggested: s('routeSuggested') === 'true'
+    suggested: s('routeSuggested') === 'true',
+    ...(s('routeTitle') ? { title: s('routeTitle') } : {}),
+    ...(tags.length ? { tags } : {}),
+    ...(encodedMarkdown ? { markdown: Buffer.from(encodedMarkdown, 'base64').toString('utf8') } : {})
   }
 }
 
@@ -137,31 +148,82 @@ export function listInbox(paths: VaultPaths = vaultPaths()): InboxItem[] {
 
 // --- processed notes ------------------------------------------------------------
 
-/** Write the processed note into `<vault>/<folder>/`, link back to the inbox id. */
+/** Stable collision-safe vault-relative path shown for a new-note proposal. */
+export function proposeNotePath(
+  folder: string,
+  title: string,
+  createdAt: number,
+  paths: VaultPaths = vaultPaths()
+): string {
+  if (folder.split(/[\\/]/).some((part) => part === '..')) throw new Error('invalid note folder')
+  const requestedFolder = folder.trim().replace(/^[/\\]+|[/\\]+$/g, '')
+  const folderRel = requestedFolder
+    ? existsSync(join(paths.root, requestedFolder))
+      ? requestedFolder
+      : resolveDirRel(requestedFolder, paths)
+    : ''
+  const dir = join(paths.root, folderRel)
+  const stamp = new Date(Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now())
+    .toISOString()
+    .slice(0, 10)
+  const base = `${stamp}-${slugify(title)}`
+  const reserved = new Set<string>()
+  if (existsSync(paths.inboxDir)) {
+    for (const entry of readdirSync(paths.inboxDir)) {
+      if (!entry.endsWith('.md')) continue
+      try {
+        const [fm] = parseFrontmatter(readFileSync(join(paths.inboxDir, entry), 'utf8'))
+        if (fm['routeAction'] === 'new' && fm['routeSuggested'] === 'true' && typeof fm['routeRel'] === 'string') {
+          reserved.add(fm['routeRel'])
+        }
+      } catch {
+        // Ignore unreadable inbox items; they cannot safely reserve a proposal path.
+      }
+    }
+  }
+  let suffix = 1
+  let filename = ''
+  let rel = ''
+  do {
+    filename = `${base}${suffix === 1 ? '' : ` ${suffix}`}.md`
+    rel = folderRel ? join(folderRel, filename) : filename
+    suffix++
+  } while (existsSync(join(dir, filename)) || reserved.has(rel))
+  assertInside(paths.root, join(paths.root, rel), rel)
+  return rel
+}
+
+/** Write the processed note at its approved path (or propose a safe path for legacy callers). */
 export function routeToProject(
   input: RouteInput,
   paths: VaultPaths = vaultPaths()
 ): { noteId: string; path: string; vaultRel: string } {
   ensureVault(paths)
-  const folder = input.projectName.trim().replace(/^\/+|\/+$/g, '')
-  if (!folder) throw new Error('no folder to file into')
-  // Exact folder, else an existing case variant (Personal vs personal); a new one is created as named.
-  const rel = existsSync(join(paths.root, folder)) ? folder : resolveDirRel(folder, paths)
-  const dir = join(paths.root, rel)
-  assertInside(paths.root, dir, folder)
-  mkdirSync(dir, { recursive: true })
+  const title =
+    input.title
+      .trim()
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 80) || 'Untitled'
+  const rel = input.vaultRel ?? proposeNotePath(input.projectName, title, input.createdAt ?? Date.now(), paths)
+  if (!rel || rel.split(/[\\/]/).some((part) => part === '..') || !rel.toLowerCase().endsWith('.md')) {
+    throw new Error('invalid proposed note path')
+  }
+  const file = join(paths.root, rel)
+  assertInside(paths.root, file, rel)
+  if (existsSync(file)) throw new Error(`${rel} already exists`)
+  mkdirSync(dirname(file), { recursive: true })
   const noteId = newId('n')
-  const createdAt = Date.now()
-  const file = join(dir, `${new Date(createdAt).toISOString().slice(0, 10)}-${slugify(input.title)}.md`)
+  const createdAt = Number.isFinite(input.createdAt) && (input.createdAt ?? 0) > 0 ? input.createdAt! : Date.now()
+  const folderRel = dirname(rel) === '.' ? '' : dirname(rel)
   const fm = stringifyFrontmatter({
     id: noteId,
     inbox: input.inboxId,
-    project: slugToId(rel.split('/')[0] ?? rel),
+    ...(folderRel ? { project: slugToId(folderRel.split('/')[0] ?? folderRel) } : {}),
     kind: input.kind,
     created: new Date(createdAt).toISOString(),
     tags: input.tags
   })
-  writeFileSync(file, `${fm}# ${input.title}\n\n${input.markdown.replace(/\s+$/, '')}\n`, 'utf8')
+  writeFileSync(file, `${fm}# ${title}\n\n${input.markdown.replace(/\s+$/, '')}\n`, 'utf8')
   return { noteId, path: file, vaultRel: relative(paths.root, file) }
 }
 
