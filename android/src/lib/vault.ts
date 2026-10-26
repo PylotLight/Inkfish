@@ -42,76 +42,34 @@ import {
   type DailyEntry
 } from '../../../src/shared/daily'
 import { summarizeDay } from '../../../src/shared/journal'
+import {
+  APP,
+  ASSETS,
+  DAILY,
+  INBOX,
+  UNDONE,
+  VAULT,
+  followMoves,
+  idToRel,
+  moved,
+  noteEntryCache,
+  recordMoves,
+  rememberIds
+} from './vault/state'
+import {
+  ensureTree,
+  mkdir,
+  readText,
+  resetTreeForTests,
+  RESERVED,
+  SKIP_STAT,
+  writeText
+} from './vault/paths'
 
-const DOC = FileSystem.documentDirectory ?? ''
-const APP = `${DOC}inkfish/`
-const VAULT = `${APP}vault/`
-const STAGING = `${APP}staging/`
-const INBOX = `${STAGING}inbox/`
-const DAILY = `${STAGING}daily/`
-const ASSETS = `${VAULT}assets/`
-const UNDONE = `${STAGING}undone/`
+export * from './vault/state'
+export * from './vault/paths'
 
-export function vaultRootUri(): string {
-  return VAULT
-}
-export function stagingUri(): string {
-  return STAGING
-}
-/** Roots the sync layer maps `inbox/`, `daily/` and vault paths onto. */
-export function syncRoots(): { app: string; vault: string; inbox: string; daily: string } {
-  return { app: APP, vault: VAULT, inbox: INBOX, daily: DAILY }
-}
 
-/** Dirs that are staging/app-owned, never projects (same set as Mac). */
-const RESERVED = new Set(['inbox', 'daily', 'assets'])
-
-async function mkdir(uri: string): Promise<void> {
-  const info = await FileSystem.getInfoAsync(uri)
-  if (!info.exists) await FileSystem.makeDirectoryAsync(uri, { intermediates: true })
-}
-
-let ensureTreeTask: Promise<void> | null = null
-let treeMade = false
-
-/**
- * Make the app's folders (once per launch). Cheap: no vault walk. Case-duplicate
- * healing used to run here on EVERY call — a full sequential stat walk of the
- * vault, images included, before every list, open and save. Now it runs only
- * when an index scan (below) or the sync walk actually sees a case-duplicate.
- */
-export function ensureTree(): Promise<void> {
-  if (treeMade) return Promise.resolve()
-  if (ensureTreeTask) return ensureTreeTask
-  const task = (async () => {
-    await Promise.all([VAULT, INBOX, DAILY, ASSETS, UNDONE].map((d) => mkdir(d)))
-    treeMade = true
-  })()
-  ensureTreeTask = task
-  task
-    .finally(() => {
-      if (ensureTreeTask === task) ensureTreeTask = null
-    })
-    .catch(() => undefined)
-  return task
-}
-
-/**
- * Names that are certainly files, not folders (images, audio, docs): listing
- * code records them without a stat. Saves one bridge call per attachment.
- */
-const SKIP_STAT =
-  /\.(png|jpe?g|gif|webp|heic|heif|bmp|svg|avif|tiff?|m4a|mp3|wav|ogg|opus|aac|flac|mp4|mov|webm|pdf|zip|json|txt|csv)$/i
-
-async function writeText(uri: string, text: string): Promise<void> {
-  await FileSystem.writeAsStringAsync(uri, text, {
-    encoding: FileSystem.EncodingType.UTF8
-  })
-}
-
-async function readText(uri: string): Promise<string> {
-  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 })
-}
 
 async function childDirs(dir: string): Promise<string[]> {
   try {
@@ -504,14 +462,6 @@ async function walkVault(dir: string, relBase: string, out: string[]): Promise<v
   out.push(...scan.files.map((file) => file.rel))
 }
 
-const noteEntryCache = new Map<string, { size: number; mtime: number; entry: NoteEntry }>()
-/** Note id → vault rel from the latest index, so opening a note is one file, not a vault scan. */
-const idToRel = new Map<string, string>()
-
-function rememberIds(entries: readonly NoteEntry[]): void {
-  idToRel.clear()
-  for (const e of entries) idToRel.set(e.id, e.path)
-}
 
 async function entriesFromFiles(files: ScannedFile[]): Promise<NoteEntry[]> {
   const entries = await mapLimit(files, 8, async (file): Promise<NoteEntry | null> => {
@@ -935,29 +885,6 @@ export async function getNote(id: string): Promise<NoteDoc | null> {
   return null
 }
 
-// --- moves this app knows about (sync renames, phone renames) --------------------
-// Notes without a front matter `id` are identified by their path, so an open
-// editor loses its note when sync (or the drawer) renames it. Remember recent
-// moves so the editor and `saveNote` can follow them.
-
-const moved = new Map<string, string>()
-
-export function recordMoves(moves: ReadonlyArray<{ from: string; to: string }>): void {
-  for (const m of moves) {
-    if (m.from === m.to) continue
-    moved.set(m.from, m.to)
-    moved.delete(m.to)
-  }
-  // Keep it small: only the latest few hundred matter for open views.
-  while (moved.size > 500) moved.delete(moved.keys().next().value as string)
-}
-
-/** Where `path` lives now after any recorded moves (itself when it never moved). */
-export function followMoves(path: string): string {
-  let p = path
-  for (let i = 0; i < 20 && moved.has(p); i++) p = moved.get(p)!
-  return p
-}
 
 // --- every vault file (notes + attachments) ---------------------------------------
 
@@ -1018,7 +945,7 @@ export function resetMemoryForTests(): void {
   moved.clear()
   attachmentsTask = null
   indexTask = null
-  treeMade = false
+  resetTreeForTests()
   rescanWanted = false
 }
 
