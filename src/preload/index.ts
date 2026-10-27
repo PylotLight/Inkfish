@@ -435,6 +435,7 @@ const api = {
   menubar: {
     settings: (): Promise<{ settings: MenuBarSettings; platform: string }> => ipcRenderer.invoke('menubar:settings'),
     set: (patch: Partial<MenuBarSettings>): Promise<MenuBarSettings> => ipcRenderer.invoke('menubar:set', patch),
+    background: (): Promise<void> => ipcRenderer.invoke('menubar:background'),
     /** Changed elsewhere (the tray's right-click menu). */
     onChanged: (cb: (s: MenuBarSettings) => void): (() => void) => {
       const fn = (_e: unknown, s: MenuBarSettings): void => cb(s)

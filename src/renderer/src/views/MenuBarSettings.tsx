@@ -105,6 +105,23 @@ export default function MenuBarSettings(): React.JSX.Element {
         <p className="muted small setting-hint">{click?.hint} Right-click the icon for the full menu.</p>
       </div>
 
+      <p className="muted small setting-hint">
+        Hides the main window without quitting. Global capture shortcuts keep working; restore Inkfish from the tray
+        menu.
+      </p>
+
+      <div className="setting-row inline">
+        <span className="setting-label">Send Inkfish to background</span>
+        <button
+          className="btn ghost sm"
+          disabled={!s?.showIcon}
+          title={!s?.showIcon ? `Turn on the ${where} icon first` : undefined}
+          onClick={() => void window.api.menubar.background().catch(console.error)}
+        >
+          Send now
+        </button>
+      </div>
+
       {s?.click === 'window' && (
         <div className="setting-row inline">
           <span className="setting-label">

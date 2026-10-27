@@ -4,13 +4,14 @@ import { dirname, join } from 'node:path'
 import {
   DEFAULT_MENU_BAR_SETTINGS,
   MENU_BAR_SETTINGS_FILE,
+  backgroundMenuBarPatch,
   menuBarPopoutBounds,
   parseMenuBarSettings,
   type MenuBarRect,
   type MenuBarSettings
 } from '../shared/menubar'
 import { createAppTray, destroyTray, hasTray, type TrayCallbacks } from './tray'
-import { getMainWindow, showWindow } from './window'
+import { getMainWindow, hideToBackground, showWindow } from './window'
 
 /**
  * Menu bar mode (shared/menubar.ts): owns whether the Tray exists, what its click opens, and the
@@ -131,6 +132,13 @@ export function updateMenuBarSettings(patch: Partial<MenuBarSettings>): MenuBarS
   return next
 }
 
+/** Keep Inkfish running for quick capture while removing the main window from view. */
+export function sendToBackground(): void {
+  const patch = backgroundMenuBarPatch(process.platform)
+  if (patch) updateMenuBarSettings(patch)
+  hideToBackground()
+}
+
 /**
  * Start-up: create the Tray (unless turned off) with the app's callbacks, and hide the Dock icon in
  * menu-bar-only mode. Replaces calling createAppTray directly.
@@ -148,4 +156,5 @@ export function startMenuBar(cb: TrayCallbacks): void {
   ipcMain.handle('menubar:set', (_e: IpcMainInvokeEvent, patch: unknown): MenuBarSettings =>
     updateMenuBarSettings(typeof patch === 'object' && patch !== null ? (patch as Partial<MenuBarSettings>) : {})
   )
+  ipcMain.handle('menubar:background', () => sendToBackground())
 }

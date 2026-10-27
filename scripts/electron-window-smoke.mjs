@@ -114,6 +114,26 @@ const step = (name) => console.log(`· ${name}`)
 step('main window shows on launch')
 if (!(await main(`return !!(await __smoke.wait(() => __smoke.main()?.isVisible()))`))) fail('main window never showed')
 
+step('send to background hides the main window; Show Inkfish restores it without changing global shortcuts')
+const background = await main(`
+  const m = __smoke.main()
+  const shortcutsBefore = await m.webContents.executeJavaScript('window.api.shortcuts.get()')
+  await m.webContents.executeJavaScript('window.api.menubar.background()')
+  const hidden = await __smoke.wait(() => !m.isVisible())
+  const shortcutsAfter = await m.webContents.executeJavaScript('window.api.shortcuts.get()')
+  E.app.emit('activate')
+  const restored = await __smoke.wait(() => m.isVisible())
+  return {
+    hidden: !!hidden,
+    restored: !!restored,
+    shortcutsBefore: shortcutsBefore.registered,
+    shortcutsAfter: shortcutsAfter.registered
+  }`)
+if (!background.hidden) fail('send to background left the main window visible')
+if (!background.restored) fail('Show Inkfish did not restore the hidden main window')
+if (JSON.stringify(background.shortcutsBefore) !== JSON.stringify(background.shortcutsAfter))
+  fail(`background mode changed global shortcuts: ${JSON.stringify(background)}`)
+
 step('capture popover → Esc hides it and the main window stays hidden')
 const esc = await main(`
   const m = __smoke.main(); m.hide()

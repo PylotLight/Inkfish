@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  backgroundMenuBarPatch,
   DEFAULT_MENU_BAR_SETTINGS,
   MENU_BAR_GAP,
   MENU_BAR_MARGIN,
@@ -17,6 +18,11 @@ describe('menu bar settings', () => {
   test('hiding the Dock needs the icon (never both gone)', () => {
     expect(parseMenuBarSettings({ showIcon: false, hideDock: true }).hideDock).toBe(false)
     expect(parseMenuBarSettings({ showIcon: true, hideDock: true }).hideDock).toBe(true)
+  })
+  test('send to background hides the Dock on macOS without changing other platforms', () => {
+    expect(backgroundMenuBarPatch('darwin')).toEqual({ hideDock: true })
+    expect(backgroundMenuBarPatch('linux')).toBeNull()
+    expect(backgroundMenuBarPatch('win32')).toBeNull()
   })
   test('junk falls back', () => {
     expect(parseMenuBarSettings({ click: 'nope', showIcon: 'yes' })).toEqual(DEFAULT_MENU_BAR_SETTINGS)

@@ -16,6 +16,7 @@ import {
 const isMac = process.platform === 'darwin'
 
 let mainWindow: BrowserWindow | null = null
+let mainWindowHiddenToBackground = false
 
 const DEFAULT_VIBRANCY: VibrancyName = 'fullscreen-ui'
 let currentVibrancy: VibrancyName | null = isMac ? DEFAULT_VIBRANCY : null
@@ -164,14 +165,14 @@ export function createWindow(): BrowserWindow {
   win.on('ready-to-show', () => {
     if (saved?.maximized) win.maximize()
     if (saved?.fullScreen) win.setFullScreen(true)
-    win.show()
+    if (!mainWindowHiddenToBackground) win.show()
   })
   // A page that fails to load never fires ready-to-show, which left an invisible window that
   // "Show" kept finding — reveal it so the user at least gets something (and can reload).
   win.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
     if (!isMainFrame || code === -3 /* ABORTED: a newer navigation replaced it */) return
     console.warn(`[window] main renderer failed to load (${code} ${desc})`)
-    if (!win.isDestroyed() && !win.isVisible()) win.show()
+    if (!mainWindowHiddenToBackground && !win.isDestroyed() && !win.isVisible()) win.show()
   })
   win.webContents.on('render-process-gone', (_e, details) => {
     console.warn(`[window] main renderer gone: ${details.reason}`)
@@ -238,6 +239,7 @@ function watchDisplays(): void {
 }
 
 export function showWindow(): void {
+  mainWindowHiddenToBackground = false
   // app.hide()/dock.hide() on macOS also require re-showing the app itself.
   if (isMac) app.show()
   const { win, created } = ensureMainWindow()
@@ -250,6 +252,12 @@ export function showWindow(): void {
 }
 
 export function hideWindow(): void {
+  getMainWindow()?.hide()
+}
+
+/** Hide without quitting or closing the window; global capture shortcuts stay registered. */
+export function hideToBackground(): void {
+  mainWindowHiddenToBackground = true
   getMainWindow()?.hide()
 }
 

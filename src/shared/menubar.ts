@@ -53,6 +53,11 @@ export function parseMenuBarSettings(value: unknown): MenuBarSettings {
   }
 }
 
+/** Menu-bar preference applied when the user sends Inkfish to the background. */
+export function backgroundMenuBarPatch(platform: string): Pick<MenuBarSettings, 'hideDock'> | null {
+  return platform === 'darwin' ? { hideDock: true } : null
+}
+
 export interface MenuBarRect {
   x: number
   y: number

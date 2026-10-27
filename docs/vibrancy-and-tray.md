@@ -36,6 +36,12 @@ so you can compare `fullscreen-ui`, `sidebar`, `hud`, etc. against a bright wall
 | Hide app       | `app.hide()`      | ⌘H behavior — app deactivates |
 | Tray-only mode | `app.dock.hide()` | Dock icon removed entirely    |
 
+The tray’s **Send Inkfish to background** command hides the main window without quitting. On macOS it
+also turns on the existing menu-bar-only preference, removing Inkfish from the Dock and app switcher;
+the tray’s **Show Inkfish** command restores the window. On Linux and Windows, it hides the window
+while leaving the system-tray icon available. Global capture shortcuts remain registered, so quick
+capture can still open and save notes while the main window is hidden.
+
 Restoring always calls `app.show()` first (see `showWindow()`), so the window can't get
 stuck hidden after `app.hide()` / `dock.hide()`. These are dev/prod identical — no
 dev-mode limitation.

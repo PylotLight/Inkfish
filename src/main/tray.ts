@@ -6,6 +6,7 @@ import { shortcutFor } from './shortcuts'
 
 export interface TrayCallbacks {
   onShow(): void
+  onBackground(): void
   onCapture(): void
   onCaptureAt(x?: number, y?: number, w?: number, h?: number): void
   onDailyAt(x?: number, y?: number, w?: number, h?: number): void
@@ -64,6 +65,7 @@ export function createAppTray(cb: TrayCallbacks): void {
       { label: `Add to today's note${hint(shortcutFor('daily'))}`, click: () => cb.onDailyAt(...atTray()) },
       { label: "Open today's note", click: cb.onOpenToday },
       { label: `Show ${profile.name}`, click: cb.onShow },
+      { label: `Send ${profile.name} to background`, click: cb.onBackground },
       { type: 'separator' },
       ...(cb.menuExtras?.() ?? []),
       {

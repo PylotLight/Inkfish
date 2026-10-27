@@ -22,7 +22,7 @@ import { installAppMenu } from './app-menu'
 import { initAiApi } from './ai-api'
 import { registerSysTap, stopSysTap } from './systap'
 import { destroyTray } from './tray'
-import { startMenuBar } from './menubar'
+import { sendToBackground, startMenuBar } from './menubar'
 import { createWindow, getMainWindow, sendToMain, showWindow } from './window'
 import { createPopover, toggleDaily, toggleDailyAtTray, togglePopover, togglePopoverAtTray } from './popover'
 import { registerAssetProtocol } from './assets-protocol'
@@ -161,6 +161,7 @@ app
     // Tray (unless turned off in Settings → Menu bar) + menu-bar-only Dock mode.
     startMenuBar({
       onShow: showWindow,
+      onBackground: sendToBackground,
       onCapture: togglePopover,
       onCaptureAt: (x, y, w, h) => togglePopoverAtTray(x, y, w, h),
       onDailyAt: (x, y, w, h) => toggleDailyAtTray(x, y, w, h),
