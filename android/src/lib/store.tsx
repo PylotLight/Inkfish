@@ -275,7 +275,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const undoInbox = useCallback(
     async (id: string) => {
       const item = (await vault.listInbox()).find((i) => i.id === id)
-      if (!item || item.status === 'processing') throw new Error(`inbox item ${id} cannot be undone while ${item?.status ?? 'missing'}`)
+      if (!item || item.status === 'processing')
+        throw new Error(`inbox item ${id} cannot be undone while ${item?.status ?? 'missing'}`)
       await vault.undoRoute(id)
       await refresh()
     },

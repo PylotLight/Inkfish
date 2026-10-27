@@ -84,7 +84,9 @@ describe('legacy cleanup', () => {
   })
   test('migrateLegacyDaily → front matter only, or null to leave it', () => {
     expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n`, '2026-10-20')).toBe(fm)
-    expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')).toBeNull()
+    expect(
+      migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')
+    ).toBeNull()
   })
   test('stripLegacyTitle drops only a leading ISO-date H1', () => {
     expect(stripLegacyTitle('# 2026-10-20\n\n- 09:00 a\n')).toBe('- 09:00 a\n')

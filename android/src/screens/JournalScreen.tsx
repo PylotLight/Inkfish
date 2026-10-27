@@ -380,7 +380,9 @@ const DayPage = memo(function DayPage({ info, width }: { info: DayInfo; width: n
     <ScrollView style={{ width }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60, paddingTop: 4 }}>
       {body === null ? (
         // Index preview until the file is read (a few ms).
-        info.entries.map((e, i) => <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time ? `${e.time}  ` : ''}${e.text}`}</Text>)
+        info.entries.map((e, i) => (
+          <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time ? `${e.time}  ` : ''}${e.text}`}</Text>
+        ))
       ) : body.trim() ? (
         <Markdown text={body} notePath={info.path} />
       ) : (
