@@ -21,7 +21,7 @@ let package = Package(
   platforms: [.macOS(.v14)],
   dependencies: [
     // Parakeet Redux via CoreML. Apache-2.0.
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.5")
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7")
   ],
   targets: [
     .executableTarget(
