@@ -111,6 +111,9 @@ describe('projects + routing', () => {
     const b = v.writeInboxItem({ kind: 'text', raw: 'second' }, paths).item
     const at = new Date(2026, 9, 23, 14, 2)
     v.appendToNote('garden/Tomato log.md', { inboxId: a.id, markdown: 'tomatoes need staking', at }, paths)
+    const firstWrite = readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')
+    v.appendToNote('garden/Tomato log.md', { inboxId: a.id, markdown: 'tomatoes need staking', at }, paths)
+    expect(readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')).toBe(firstWrite)
     v.appendToNote('garden/Tomato log.md', { inboxId: b.id, markdown: 'water every morning', at }, paths)
     const text = readFileSync(join(paths.root, 'garden', 'Tomato log.md'), 'utf8')
     expect(text.startsWith(original)).toBe(true)
@@ -289,10 +292,10 @@ describe('vault home', () => {
       expect(existsSync(out.path)).toBe(true)
       const again = v.appendDaily('second update', {}, paths)
       expect(again.vaultRel).toBe(out.vaultRel)
-      // Compact entries: front matter, then one `- HH:MM text` line each — no H1, no ## per entry.
+      // Compact entries: front matter, then one plain bullet each — no H1 or time prefix.
       const { readFileSync } = await import('node:fs')
       const body = readFileSync(out.path, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '')
-      expect(body).toMatch(/^- \d{2}:\d{2} standup: shipped x\n- \d{2}:\d{2} second update\n$/)
+      expect(body).toBe('- standup: shipped x\n- second update\n')
       // Staging rels resolve into app data, vault rels into the vault.
       expect(v.resolveNoteAbs(out.vaultRel, paths)).toBe(out.path)
       expect(v.resolveNoteAbs('work/n.md', paths)).toBe(join(paths.root, 'work/n.md'))

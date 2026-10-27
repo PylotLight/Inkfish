@@ -9,7 +9,7 @@ import { Markdown } from '../components/Markdown'
 import { longDate } from '../lib/when'
 
 /**
- * Today's note — appends compact `- HH:MM text` lines to `daily/YYYY-MM-DD.md`, like Mac.
+ * Today's note — appends compact plain bullets to `daily/YYYY-MM-DD.md`, like Mac.
  * Reads like a journal: date, the log, then a single add-line with an inline
  * send arrow (no block Append button).
  */

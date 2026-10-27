@@ -254,6 +254,8 @@ export function appendToNote(
   if (!existsSync(abs)) throw new Error(`${targetRel} not found`)
   const { open, close } = appendMarker(input.inboxId)
   const existing = readFileSync(abs, 'utf8')
+  // A retry after the note write but before the inbox status update must not duplicate the entry.
+  if (existing.includes(open)) return { path: abs, vaultRel: relative(paths.root, abs) }
   const sep = existing.endsWith('\n\n') ? '' : existing.endsWith('\n') ? '\n' : '\n\n'
   const section = `${appendHeading(input.at ?? new Date())}\n${open}\n${input.markdown.replace(/\s+$/, '')}\n${close}\n`
   writeFileSync(abs, `${existing}${sep}${section}`, 'utf8')

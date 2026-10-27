@@ -70,6 +70,7 @@ import {
   listInbox,
   listProfiles,
   listProjects,
+  readInboxItem,
   loadTitles,
   migrateTitles,
   meetingToMarkdown,
@@ -428,13 +429,20 @@ export function registerIpc(): void {
   // Move → folder: the user's choice always wins (new note there).
   ipcMain.handle('inbox:reassign', async (_e: IpcMainInvokeEvent, id: string, projectName: string) => {
     const paths = requireNotes()
-    undoInboxRoute(id, paths)
+    const item = readInboxItem(id, paths)
+    if (!item) return { error: `inbox item ${id} not found` }
+    if (item.status !== 'inbox') return { error: `inbox item ${id} cannot be moved while status is ${item.status}` }
     const res = await processInboxItem(id, { apply: true, hint: projectName })
     if ('error' in res) return res
     return { note: res.note?.id ?? null, path: res.route.rel, route: res.route }
   })
 
-  ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => undoInboxRoute(id, requireNotes()))
+  ipcMain.handle('inbox:undo', (_e: IpcMainInvokeEvent, id: string): boolean => {
+    const paths = requireNotes()
+    const item = readInboxItem(id, paths)
+    if (!item || item.status === 'processing') return false
+    return undoInboxRoute(id, paths)
+  })
 
   ipcMain.handle('inbox:delete', (_e: IpcMainInvokeEvent, id: string): boolean => {
     const paths = requireNotes()

@@ -60,7 +60,7 @@ export function HomeScreen({
   const { inbox, notes, days, readDaily } = useStore()
   const upd = useUpdates()
   const [query, setQuery] = useState<string | null>(null)
-  const [todayLines, setTodayLines] = useState<string[]>([])
+  const [todayLines, setTodayLines] = useState<Array<{ time: string; text: string }>>([])
 
   const pending = inbox.filter((i) => i.status === 'inbox' || i.status === 'processing')
   const recent = useMemo(() => notes.slice(0, 8), [notes])
@@ -79,7 +79,7 @@ export function HomeScreen({
   // Today preview: the last few logged entries (section bodies, newest last).
   useEffect(() => {
     void readDaily().then(({ body }) => {
-      const entries = parseEntries(body).map((e) => `${e.time}  ${e.text}`)
+      const entries = parseEntries(body).map((e) => ({ time: e.time, text: e.text }))
       setTodayLines(entries.slice(-3))
     })
   }, [readDaily, notes, inbox])
@@ -192,10 +192,12 @@ export function HomeScreen({
         </Pressable>
       ) : (
         todayLines.map((l, k) => (
-          <Pressable key={k} onPress={onToday} style={[ui.listRow, { paddingVertical: 7 }]}>
-            <Text style={[ui.meta, { marginTop: 0, width: 40, fontVariant: ['tabular-nums'] }]}>{l.slice(0, 5)}</Text>
+          <Pressable key={`${l.time}-${k}`} onPress={onToday} style={[ui.listRow, { paddingVertical: 7 }]}>
+            {l.time ? (
+              <Text style={[ui.meta, { marginTop: 0, width: 40, fontVariant: ['tabular-nums'] }]}>{l.time}</Text>
+            ) : null}
             <Text style={[ui.title, { flex: 1, fontWeight: '400' }]} numberOfLines={1}>
-              {l.slice(5).trim()}
+              {l.text}
             </Text>
           </Pressable>
         ))
@@ -246,7 +248,7 @@ export function HomeScreen({
                   {d.entries.length > 0 ? (
                     d.entries.slice(0, 2).map((e, k) => (
                       <Text key={k} style={[ui.meta, { marginTop: 1 }]} numberOfLines={1}>
-                        <Text style={{ color: c.faint }}>{`${e.time}  `}</Text>
+                        {e.time ? <Text style={{ color: c.faint }}>{`${e.time}  `}</Text> : null}
                         {e.text || '…'}
                       </Text>
                     ))

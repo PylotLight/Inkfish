@@ -83,7 +83,7 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
               )}
             </button>
             <div className="row qactions">
-              {item.status !== 'processing' && (
+              {item.status === 'inbox' && (
                 <button
                   className="btn ghost sm"
                   title={item.route?.suggested ? 'File it where suggested' : 'Route now'}
@@ -104,6 +104,7 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
                 className="sm qmove"
                 defaultValue=""
                 aria-label={`Move ${item.raw.slice(0, 30)} to folder`}
+                disabled={item.status !== 'inbox'}
                 onChange={(e) => {
                   const v = e.target.value
                   if (v) void act(() => window.api.inbox.reassign(item.id, v), `Moved → ${v}`)
