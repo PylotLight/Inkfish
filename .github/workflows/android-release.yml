@@ -153,7 +153,11 @@ jobs:
               echo "> **test build** (pre-release${PREV:+, changes since $PREV}). Only phones with Settings › Updates › Beta updates on are offered it."
               echo
             fi
-            git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared | head -40
+            # The menu-bar module is path-shared but desktop-only; Android doesn't use it.
+            # Exclude its implementation and test while retaining all other shared changes.
+            git log ${RANGE:-HEAD} --no-merges --pretty='- %s' -- android src/shared \
+              ':(exclude)src/shared/menubar.ts' ':(exclude)src/shared/menubar.test.ts' \
+              | head -40
             # Which Mac build this phone build was tested against (newest stable v* tag, android-v* excluded;
             # newest v* of any kind for a test build).
             if [ "${{ steps.v.outputs.pre }}" = true ]; then MAC=$(git -c versionsort.suffix=- tag --list 'v[0-9]*' --sort=-v:refname | head -1 || true)
