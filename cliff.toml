@@ -65,7 +65,7 @@ commit_parsers = [
   { message = ".*", group = "Other" },
 ]
 protect_breaking_commits = false
-tag_pattern = "v[0-9]*"
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
 skip_tags = ""
 # pre-release tags (v0.2.15-beta.1): their commits fold into the next stable section, so
 # CHANGELOG.md only has real releases and the final's notes cover its betas
