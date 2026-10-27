@@ -94,12 +94,20 @@ describe('summarizeDay', () => {
   })
 
   test('free text without entries becomes a snippet; empty stays empty', () => {
-    expect(summarizeDay('# heading\n\njust some *thoughts*\n- a list item\n')).toEqual({
+    expect(summarizeDay('# heading\n\njust some *thoughts*')).toEqual({
       count: 0,
       entries: [],
-      text: 'heading · just some thoughts · a list item'
+      text: 'heading · just some thoughts'
     })
     expect(summarizeDay('')).toEqual({ count: 0, entries: [], text: '' })
+  })
+
+  test('untimed bullets appear as preview entries without a time', () => {
+    expect(summarizeDay('- add more mulch\n')).toEqual({
+      count: 1,
+      entries: [{ time: '', text: 'add more mulch' }],
+      text: ''
+    })
   })
 
   test('plainLine drops images, links and emphasis', () => {

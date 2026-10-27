@@ -37,7 +37,7 @@ describe('daily notes (Mac)', () => {
     }
   })
 
-  test('append writes compact tight bullets (multi-line indented, kind tagged)', () => {
+  test('append writes compact plain bullets (multi-line indented)', () => {
     const paths = tmpPaths()
     try {
       ensureDaily(at, paths)
@@ -45,7 +45,7 @@ describe('daily notes (Mac)', () => {
       appendDaily('standup\nshipped the thing', { date: new Date(2026, 9, 20, 9, 5), kind: 'voice' }, paths)
       const { abs } = ensureDaily(at, paths)
       const body = readFileSync(abs, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '')
-      expect(body).toBe('- 00:37 coffee with sam\n- 09:05 · voice · standup\n  shipped the thing\n')
+      expect(body).toBe('- coffee with sam\n- standup\n  shipped the thing\n')
     } finally {
       rmSync(paths.root, { recursive: true, force: true })
     }
@@ -58,7 +58,7 @@ describe('daily notes (Mac)', () => {
       writeFileSync(abs, `${FM}plan: ship daily notes\n\n\n`)
       appendDaily('a', { date: at }, paths)
       appendDaily('b', { date: at }, paths)
-      expect(readFileSync(abs, 'utf8')).toBe(`${FM}plan: ship daily notes\n\n- 00:37 a\n- 00:37 b\n`)
+      expect(readFileSync(abs, 'utf8')).toBe(`${FM}plan: ship daily notes\n\n- a\n- b\n`)
     } finally {
       rmSync(paths.root, { recursive: true, force: true })
     }
@@ -96,7 +96,7 @@ describe('daily notes (Mac)', () => {
       const abs = join(paths.dailyDir, '2026-10-20.md')
       writeFileSync(abs, `${FM}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n`)
       appendDaily('first real thing', { date: new Date(2026, 9, 20, 8, 1) }, paths)
-      expect(readFileSync(abs, 'utf8')).toBe(`${FM}- 08:01 first real thing\n`)
+      expect(readFileSync(abs, 'utf8')).toBe(`${FM}- first real thing\n`)
       expect(existsSync(abs)).toBe(true)
     } finally {
       rmSync(paths.root, { recursive: true, force: true })

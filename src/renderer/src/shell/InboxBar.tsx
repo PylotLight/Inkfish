@@ -47,7 +47,7 @@ export default function InboxBar({
               : ''}
       </span>
       <span className="flex-sp" />
-      {item.status !== 'processing' && (
+      {item.status === 'inbox' && (
         <button
           className="btn mint sm"
           disabled={busy}
@@ -80,7 +80,7 @@ export default function InboxBar({
       <select
         className="sm"
         defaultValue=""
-        disabled={busy}
+        disabled={busy || item.status !== 'inbox'}
         aria-label="Move to folder"
         onChange={(e) => {
           const v = e.target.value

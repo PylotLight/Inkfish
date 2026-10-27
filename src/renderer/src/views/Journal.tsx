@@ -424,7 +424,7 @@ const DayRow = memo(function DayRow({
           <ul className="jentries">
             {sum.entries.map((e, i) => (
               <li key={`${e.time}-${i}`}>
-                <span className="jtime">{e.time}</span>
+                {e.time && <span className="jtime">{e.time}</span>}
                 <span className="jtext">
                   {e.kind && <span className="jkind">{e.kind}</span>}
                   {highlight(e.text || '…', query)}

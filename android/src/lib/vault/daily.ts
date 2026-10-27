@@ -21,15 +21,15 @@ function todayName(d = new Date()): string {
   return localDay(d)
 }
 
-/** Append a compact `- HH:MM text` line to today's note (same shape as Mac — see shared/daily). */
-export async function appendDaily(raw: string, kind: NoteKind = 'text'): Promise<string> {
+/** Append a compact plain bullet to today's note (same shape as Mac — see shared/daily). */
+export async function appendDaily(raw: string, _kind: NoteKind = 'text'): Promise<string> {
   await ensureTree()
   const text = raw.trim()
   if (!text) throw new Error('daily note is empty')
   const now = new Date()
   const rel = `daily/${todayName(now)}.md`
   const uri = `${DAILY}${todayName(now)}.md`
-  const entry = formatEntry(text, kind, now)
+  const entry = formatEntry(text)
   const exists = (await FileSystem.getInfoAsync(uri)).exists
   if (!exists) {
     const fm = stringifyFrontmatter({

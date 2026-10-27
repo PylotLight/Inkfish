@@ -6,10 +6,10 @@
  *  - is named by ISO date (sorts, syncs, never renamed); the app shows a friendly title
  *    (`Tue 20 Oct`) in the header/tabs instead — so the body has NO `# 2026-10-20` H1 repeating it.
  *  - starts empty (front matter only). No "Day started." filler.
- *  - appended entries are compact, one bullet each, with a small time prefix:
+ *  - appended entries are compact, plain bullets:
  *
- *        - 09:10 coffee with sam
- *        - 11:30 · voice · standup notes
+ *        - coffee with sam
+ *        - standup notes
  *          second line of a multi-line entry (indented under its bullet)
  *
  * Older notes used `# YYYY-MM-DD` + one `## HH:MM` section per entry; everything here still
@@ -25,11 +25,6 @@ const pad = (n: number): string => String(n).padStart(2, '0')
 /** Local calendar day (YYYY-MM-DD). A day note follows the wall clock, not UTC. */
 export function localDay(d: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-/** `HH:MM` on the local clock. */
-export function localTime(d: Date = new Date()): string {
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** `2026-10-20` → local midnight Date, or null when it isn't a real date. */
@@ -79,13 +74,11 @@ export function dailyTitleForPath(path: string, now: Date = new Date()): string 
   return day ? dailyTitle(day, now) : null
 }
 
-/** One entry line: `- 09:10 text`; non-text kinds get a tag (`- 09:10 · voice · text`).
- *  Multi-line text is indented under the bullet so it stays one list item. */
-export function formatEntry(raw: string, kind: string = 'text', at: Date = new Date()): string {
+/** One plain bullet; multi-line text is indented so it stays one list item. */
+export function formatEntry(raw: string): string {
   const text = raw.replace(/\r\n?/g, '\n').trim()
   const [first = '', ...rest] = text.split('\n')
-  const tag = kind && kind !== 'text' ? ` · ${kind} ·` : ''
-  const head = `- ${localTime(at)}${tag} ${first}`.replace(/\s+$/, '')
+  const head = `- ${first}`.replace(/\s+$/, '')
   const tail = rest.map((l) => (l.trim() ? `  ${l}` : ''))
   return [head, ...tail].join('\n')
 }
@@ -94,13 +87,15 @@ export function formatEntry(raw: string, kind: string = 'text', at: Date = new D
 const ENTRY_RE = /^- (\d{1,2}:\d{2})(?=\s|$)/
 /** Legacy per-entry heading (`## 09:10`, `## 09:10 · voice`). */
 const LEGACY_RE = /^## (\d{1,2}:\d{2})(?=\s|$)/
+/** Current plain daily bullet, or a manually typed list item in a day note. */
+const PLAIN_BULLET_RE = /^- (.*)$/
 
 /** True when the last block of `body` is an entry bullet (so the next one joins the same list). */
 function endsWithEntry(body: string): boolean {
   const lines = body.replace(/\s+$/, '').split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i] ?? ''
-    if (ENTRY_RE.test(l)) return true
+    if (ENTRY_RE.test(l) || PLAIN_BULLET_RE.test(l)) return true
     if (/^\s+\S/.test(l)) continue // continuation line of a multi-line entry
     return false
   }
@@ -129,6 +124,7 @@ export function stripLegacyTitle(body: string): string {
 }
 
 export interface DailyEntry {
+  /** Empty for a current untimed bullet; legacy entries retain their displayed time. */
   time: string
   /** First non-blank line of the entry, kind tag removed. */
   text: string
@@ -165,13 +161,25 @@ export function parseEntries(body: string): DailyEntry[] {
       let text = ''
       for (let j = i + 1; j < lines.length; j++) {
         const t = (lines[j] ?? '').trim()
-        if (/^## /.test(lines[j] ?? '') || ENTRY_RE.test(lines[j] ?? '')) break
+        if (/^## /.test(lines[j] ?? '') || ENTRY_RE.test(lines[j] ?? '') || PLAIN_BULLET_RE.test(lines[j] ?? '')) break
         if (t) {
           text = t
           break
         }
       }
       out.push({ time: legacy[1]!.padStart(5, '0'), text, ...(kind ? { kind } : {}) })
+      continue
+    }
+    const plain = PLAIN_BULLET_RE.exec(line)
+    if (plain) {
+      let text = (plain[1] ?? '').trim()
+      if (!text) {
+        for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j] ?? ''); j++) {
+          text = (lines[j] ?? '').trim()
+          break
+        }
+      }
+      out.push({ time: '', text })
     }
   }
   return out
@@ -192,8 +200,9 @@ export function splitEntries(body: string): {
   for (const line of lines) {
     const b = ENTRY_RE.exec(line)
     const l = b ? null : LEGACY_RE.exec(line)
-    if (b || l) {
-      blocks.push({ time: (b ?? l)![1]!.padStart(5, '0'), lines: [line], bullet: !!b })
+    const plain = b || l ? null : PLAIN_BULLET_RE.exec(line)
+    if (b || l || plain) {
+      blocks.push({ time: b || l ? (b ?? l)![1]!.padStart(5, '0') : '', lines: [line], bullet: !!b || !!plain })
     } else if (blocks.length) {
       blocks[blocks.length - 1]!.lines.push(line)
     } else {

@@ -39,36 +39,37 @@ describe('daily titles + paths', () => {
 })
 
 describe('daily entries', () => {
-  test('formatEntry: compact time prefix, kind tag, indented continuation', () => {
-    expect(formatEntry('coffee', 'text', now)).toBe('- 00:37 coffee')
-    expect(formatEntry('  hi  ', undefined, new Date(2026, 9, 20, 9, 5))).toBe('- 09:05 hi')
-    expect(formatEntry('standup\n\nshipped x', 'voice', now)).toBe('- 00:37 · voice · standup\n\n  shipped x')
-    expect(formatEntry('![](assets/a.png)', 'image', now)).toBe('- 00:37 · image · ![](assets/a.png)')
+  test('formatEntry writes a plain bullet and indents continuation lines', () => {
+    expect(formatEntry('coffee')).toBe('- coffee')
+    expect(formatEntry('  hi  ')).toBe('- hi')
+    expect(formatEntry('standup\n\nshipped x')).toBe('- standup\n\n  shipped x')
+    expect(formatEntry('![](assets/a.png)')).toBe('- ![](assets/a.png)')
   })
   test('appendEntry: empty → entry; after entry → tight; after prose → blank line', () => {
-    expect(appendEntry('', '- 00:37 a')).toBe('- 00:37 a\n')
-    expect(appendEntry('\n\n', '- 00:37 a')).toBe('- 00:37 a\n')
-    expect(appendEntry('- 00:37 a\n\n', '- 01:00 b')).toBe('- 00:37 a\n- 01:00 b\n')
-    expect(appendEntry('- 00:37 a\n  more\n', '- 01:00 b')).toBe('- 00:37 a\n  more\n- 01:00 b\n')
-    expect(appendEntry('some notes', '- 01:00 b')).toBe('some notes\n\n- 01:00 b\n')
-    expect(appendEntry('## 09:00\n\nold entry\n', '- 10:00 b')).toBe('## 09:00\n\nold entry\n\n- 10:00 b\n')
+    expect(appendEntry('', '- a')).toBe('- a\n')
+    expect(appendEntry('\n\n', '- a')).toBe('- a\n')
+    expect(appendEntry('- a\n\n', '- b')).toBe('- a\n- b\n')
+    expect(appendEntry('- a\n  more\n', '- b')).toBe('- a\n  more\n- b\n')
+    expect(appendEntry('some notes', '- b')).toBe('some notes\n\n- b\n')
+    expect(appendEntry('## 09:00\n\nold entry\n', '- b')).toBe('## 09:00\n\nold entry\n\n- b\n')
   })
   test('appendToDailyFile keeps front matter verbatim', () => {
     const fm = '---\nkind: daily\nsource: tray\n---\n'
-    expect(appendToDailyFile(fm, '- 00:37 a')).toBe(`${fm}- 00:37 a\n`)
-    expect(appendToDailyFile(`${fm}- 00:37 a\n`, '- 00:40 b')).toBe(`${fm}- 00:37 a\n- 00:40 b\n`)
+    expect(appendToDailyFile(fm, '- a')).toBe(`${fm}- a\n`)
+    expect(appendToDailyFile(`${fm}- a\n`, '- b')).toBe(`${fm}- a\n- b\n`)
     expect(splitDailyFile('no fm')).toEqual({ fm: '', body: 'no fm' })
   })
-  test('parseEntries reads new bullets and old ## sections', () => {
+  test('parseEntries reads plain bullets, timestamped bullets, and old ## sections', () => {
     const body =
-      '# 2026-10-20\n\n## 08:00 · voice\n\nold one\n\nnotes\n\n- 09:10 coffee\n- 9:30 · image · ![](a.png)\n- 10:00\n  later line\n'
+      '# 2026-10-20\n\n## 08:00 · voice\n\nold one\n\nnotes\n\n- follow up\n- 09:10 coffee\n- 9:30 · image · ![](a.png)\n- 10:00\n  later line\n'
     expect(parseEntries(body)).toEqual([
       { time: '08:00', text: 'old one', kind: 'voice' },
+      { time: '', text: 'follow up' },
       { time: '09:10', text: 'coffee' },
       { time: '09:30', text: '![](a.png)', kind: 'image' },
       { time: '10:00', text: 'later line' }
     ])
-    expect(parseEntries('just prose\n- not a time')).toEqual([])
+    expect(parseEntries('just prose\n- not a time')).toEqual([{ time: '', text: 'not a time' }])
   })
 })
 
@@ -83,9 +84,7 @@ describe('legacy cleanup', () => {
   })
   test('migrateLegacyDaily → front matter only, or null to leave it', () => {
     expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n`, '2026-10-20')).toBe(fm)
-    expect(
-      migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')
-    ).toBeNull()
+    expect(migrateLegacyDaily(`${fm}# 2026-10-20\n\n## 00:37\n\n_Day started._\n\n## 01:00\n\nx\n`, '2026-10-20')).toBeNull()
   })
   test('stripLegacyTitle drops only a leading ISO-date H1', () => {
     expect(stripLegacyTitle('# 2026-10-20\n\n- 09:00 a\n')).toBe('- 09:00 a\n')
@@ -94,12 +93,17 @@ describe('legacy cleanup', () => {
   })
 })
 
-describe('daily sync merge (new format)', () => {
+describe('daily sync merge', () => {
   const head = '---\nkind: daily\n---\n'
-  test('bullet union, deduped, time-sorted, one tight list', () => {
+  test('timestamped bullet union remains deduped and time-sorted', () => {
     const ours = `${head}- 09:10 coffee\n- 13:00 lunch\n`
     const theirs = `${head}- 09:10 coffee\n- 11:30 standup\n  with notes\n`
     expect(mergeDaily(ours, theirs)).toBe(`${head}- 09:10 coffee\n- 11:30 standup\n  with notes\n- 13:00 lunch\n`)
+  })
+  test('untimed bullets merge once after legacy timestamps and keep stable order', () => {
+    const ours = `${head}- 09:10 coffee\n- first note\n- shared note\n`
+    const theirs = `${head}- 09:10 coffee\n- shared note\n- second note\n`
+    expect(mergeDaily(ours, theirs)).toBe(`${head}- 09:10 coffee\n- first note\n- shared note\n- second note\n`)
   })
   test('free text above entries keeps ours; empty notes stay empty', () => {
     const ours = `${head}plan for today\n\n- 09:10 coffee\n`
@@ -107,9 +111,9 @@ describe('daily sync merge (new format)', () => {
     expect(mergeDaily(ours, theirs)).toBe(`${head}plan for today\n\n- 08:00 run\n- 09:10 coffee\n`)
     expect(mergeDaily(head, head)).toBe(head)
   })
-  test('old ## sections and new bullets merge together', () => {
+  test('old ## sections and new plain bullets merge together', () => {
     const ours = `${head}# 2026-10-08\n\n## 09:10\n\ncoffee\n`
-    const theirs = `${head}- 10:00 standup\n`
-    expect(mergeDaily(ours, theirs)).toBe(`${head}# 2026-10-08\n\n## 09:10\n\ncoffee\n\n- 10:00 standup\n`)
+    const theirs = `${head}- standup\n`
+    expect(mergeDaily(ours, theirs)).toBe(`${head}# 2026-10-08\n\n## 09:10\n\ncoffee\n\n- standup\n`)
   })
 })

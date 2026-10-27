@@ -65,27 +65,31 @@ export function InboxScreen({
         </View>
         {expanded && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginLeft: 26, marginBottom: 8 }}>
-            <Pressable
-              onPress={() => {
-                setOpen(null)
-                void routeInbox(item.id).then(refresh)
-              }}
-              style={ui.chip}
-            >
-              <Text style={ui.chipTextOn}>Auto-route</Text>
-            </Pressable>
-            {projects.map((p) => (
-              <Pressable
-                key={p.id}
-                onPress={() => {
-                  setOpen(null)
-                  void routeInbox(item.id, p.name).then(refresh)
-                }}
-                style={ui.chip}
-              >
-                <Text style={ui.chipText}>{p.name}</Text>
-              </Pressable>
-            ))}
+            {item.status === 'inbox' && (
+              <>
+                <Pressable
+                  onPress={() => {
+                    setOpen(null)
+                    void routeInbox(item.id).then(refresh)
+                  }}
+                  style={ui.chip}
+                >
+                  <Text style={ui.chipTextOn}>Auto-route</Text>
+                </Pressable>
+                {projects.map((p) => (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => {
+                      setOpen(null)
+                      void routeInbox(item.id, p.name).then(refresh)
+                    }}
+                    style={ui.chip}
+                  >
+                    <Text style={ui.chipText}>{p.name}</Text>
+                  </Pressable>
+                ))}
+              </>
+            )}
             {done && (
               <Pressable
                 onPress={() => {

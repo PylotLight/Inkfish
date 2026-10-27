@@ -230,7 +230,9 @@ const DayRow = memo(function DayRow({
         {info.entries.length > 0 ? (
           info.entries.map((e, i) => (
             <View key={`${e.time}-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 1 }}>
-              <Text style={[ui.meta, { marginTop: 0, width: 40, fontVariant: ['tabular-nums'] }]}>{e.time}</Text>
+              {e.time ? (
+                <Text style={[ui.meta, { marginTop: 0, width: 40, fontVariant: ['tabular-nums'] }]}>{e.time}</Text>
+              ) : null}
               <Text style={{ flex: 1, color: c.text, fontSize: 14, lineHeight: 19, opacity: 0.86 }} numberOfLines={2}>
                 {e.kind ? <Text style={{ color: c.faint }}>{`${e.kind} · `}</Text> : null}
                 {e.text || '…'}
@@ -378,7 +380,7 @@ const DayPage = memo(function DayPage({ info, width }: { info: DayInfo; width: n
     <ScrollView style={{ width }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60, paddingTop: 4 }}>
       {body === null ? (
         // Index preview until the file is read (a few ms).
-        info.entries.map((e, i) => <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time}  ${e.text}`}</Text>)
+        info.entries.map((e, i) => <Text key={i} style={[ui.meta, { fontSize: 15 }]}>{`${e.time ? `${e.time}  ` : ''}${e.text}`}</Text>)
       ) : body.trim() ? (
         <Markdown text={body} notePath={info.path} />
       ) : (

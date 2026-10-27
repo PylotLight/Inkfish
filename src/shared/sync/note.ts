@@ -4,7 +4,7 @@ import { mergeText } from './diff3'
 /**
  * Note-aware merges. Frontmatter merges per top-level key (raw lines kept, so
  * neither app's YAML formatting is rewritten); bodies use diff3; day logs are
- * a union of their timestamped entries (see shared/daily).
+ * a union of their daily bullets, including legacy timestamped entries (see shared/daily).
  */
 
 interface Fm {
@@ -102,8 +102,8 @@ export function mergeNote(base: string, ours: string, theirs: string): NoteMerge
   return { clean: body.clean, text: joinFrontmatter(fm, body.text) }
 }
 
-/** Day log: union of timestamped entries (`- HH:MM …` bullets and legacy `## HH:MM` sections),
- *  deduped, time-ordered. Free text above the first entry keeps ours. Never conflicts. */
+/** Day log: union of plain/timestamped bullets and legacy `## HH:MM` sections, deduped.
+ *  Timestamped entries sort by time; untimed bullets retain stable side/order after them. */
 export function mergeDaily(ours: string, theirs: string): string {
   const parse = (md: string): { fm: Fm | null; head: string; blocks: ReturnType<typeof splitEntries>['blocks'] } => {
     const { fm, body } = splitFrontmatter(md)
@@ -120,8 +120,13 @@ export function mergeDaily(ours: string, theirs: string): string {
     seen.add(key)
     all.push({ ...b, i: all.length })
   }
-  // Stable sort by time; same-minute entries keep ours-then-theirs order.
-  all.sort((a, b) => a.time.localeCompare(b.time) || a.i - b.i)
+  // Stable sort timestamped entries by time, then keep untimed bullets in side/order sequence.
+  all.sort((a, b) => {
+    if (a.time && b.time) return a.time.localeCompare(b.time) || a.i - b.i
+    if (a.time) return -1
+    if (b.time) return 1
+    return a.i - b.i
+  })
   const head = o.head || t.head
   const entries = joinEntries(all)
   const body = head && entries ? `${head}\n\n${entries}\n` : head ? `${head}\n` : entries ? `${entries}\n` : ''

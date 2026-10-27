@@ -128,6 +128,18 @@ describe('routeInboxItem', () => {
     expect(appended).toMatch(/\n## \d{4}-\d{2}-\d{2} \d{2}:\d{2}\n<!-- inkfish:inbox /)
     expect(appended).toContain('fix the watering schedule')
 
+    expect(await r.routeInboxItem(item.id, paths, { apply: true })).toEqual({
+      error: `inbox item ${item.id} is already routed; undo it before routing again`
+    })
+    expect(readFileSync(join(dir, 'Garden/Tomato log.md'), 'utf8')).toBe(appended)
+
+    const busy = v.writeInboxItem({ kind: 'text', raw: 'another tomato update' }, paths).item
+    v.setInboxStatus(busy.id, 'processing', paths)
+    expect(await r.routeInboxItem(busy.id, paths, { apply: true })).toEqual({
+      error: `inbox item ${busy.id} is already being routed`
+    })
+    expect(v.readInboxItem(busy.id, paths)?.status).toBe('processing')
+
     expect(r.undoInboxRoute(item.id, paths)).toBe(true)
     expect(readFileSync(join(dir, 'Garden/Tomato log.md'), 'utf8')).toBe(before)
     expect(v.readInboxItem(item.id, paths)?.status).toBe('inbox')

@@ -51,7 +51,7 @@ export function ensureDaily(
   return { abs, vaultRel, created: false, migrated: false }
 }
 
-/** Append a compact `- HH:MM text` entry to today's day note. Creates the file on first use. */
+/** Append a compact plain-bullet entry to today's day note. Creates the file on first use. */
 export function appendDaily(
   raw: string,
   opts: { kind?: NoteKind; date?: Date; source?: NoteSource } = {},
@@ -61,6 +61,6 @@ export function appendDaily(
   if (!text) throw new Error('daily note is empty')
   const at = opts.date ?? new Date()
   const { abs, vaultRel } = ensureDaily(at, paths, opts.source)
-  writeFileSync(abs, appendToDailyFile(readFileSync(abs, 'utf8'), formatEntry(text, opts.kind ?? 'text', at)), 'utf8')
+  writeFileSync(abs, appendToDailyFile(readFileSync(abs, 'utf8'), formatEntry(text)), 'utf8')
   return { vaultRel, path: abs }
 }

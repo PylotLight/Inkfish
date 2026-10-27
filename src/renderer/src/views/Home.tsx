@@ -182,7 +182,7 @@ function TodaySection({
   const [busy, setBusy] = useState(false)
   const [sections, setSections] = useState<Array<{ time: string; text: string }>>([])
 
-  // Read the note's timestamped entries (`- HH:MM …`, or older `## HH:MM` sections) for the preview.
+  // Read today's bullets and legacy timestamped entries for the preview.
   useEffect(() => {
     if (!entry) {
       setSections([])
@@ -235,7 +235,7 @@ function TodaySection({
             <li key={`${s.time}-${i}`}>
               <div className="hrow static">
                 <span className="hrow-title">{s.text || '(empty)'}</span>
-                <span className="hrow-time">{s.time}</span>
+                {s.time && <span className="hrow-time">{s.time}</span>}
               </div>
             </li>
           ))}
@@ -309,7 +309,7 @@ function DailySection({
                 {sum.entries.length > 0 ? (
                   sum.entries.map((e, i) => (
                     <span key={`${e.time}-${i}`} className="hday-line">
-                      <span className="hday-time">{e.time}</span>
+                      {e.time && <span className="hday-time">{e.time}</span>}
                       <span className="hday-text">{e.text || '…'}</span>
                     </span>
                   ))

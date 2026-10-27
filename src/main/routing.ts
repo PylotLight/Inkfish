@@ -171,6 +171,9 @@ export async function routeInboxItem(
 ): Promise<RouteOutcome | { error: string }> {
   const item = readInboxItem(id, paths)
   if (!item) return { error: `inbox item ${id} not found` }
+  if (item.status === 'processing') return { error: `inbox item ${id} is already being routed` }
+  if (item.status === 'ready') return { error: `inbox item ${id} is already routed; undo it before routing again` }
+  if (item.status !== 'inbox') return { error: `inbox item ${id} cannot be routed from status ${item.status}` }
   const reindexInbox = (): void => void indexFile(join(paths.inboxDir, `${id}.md`), inboxRel(id))
   setInboxStatus(id, 'processing', paths)
   reindexInbox()

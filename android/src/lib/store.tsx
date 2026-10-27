@@ -86,6 +86,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
   const [days, setDays] = useState<vault.DayInfo[]>([])
   const refreshTask = useRef<Promise<void> | null>(null)
   const refreshAgain = useRef(false)
+  const routingInbox = useRef(new Set<string>())
 
   const apply = useCallback((index: vault.VaultIndex, ib: InboxItem[]): void => {
     setProjects((previous) =>
@@ -233,34 +234,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
 
   const routeInbox = useCallback(
     async (id: string, projectName?: string) => {
-      const items = await vault.listInbox()
-      const item = items.find((i) => i.id === id)
-      if (!item) throw new Error(`inbox item ${id} not found`)
-      await vault.undoRoute(id)
-      const fresh = await vault.listProjects()
-      const r = rulesClassify(item.raw, item.kind, fresh, projectName ?? item.projectHint, notesRef.current)
-      // Unsure: stays in the inbox (pick a folder to file it).
-      if (r.action === 'review') {
-        await vault.setInboxStatus(id, 'inbox')
-        await refresh()
-        return
+      if (routingInbox.current.has(id)) throw new Error(`inbox item ${id} is already being routed`)
+      routingInbox.current.add(id)
+      try {
+        const items = await vault.listInbox()
+        const item = items.find((i) => i.id === id)
+        if (!item) throw new Error(`inbox item ${id} not found`)
+        if (item.status !== 'inbox') throw new Error(`inbox item ${id} cannot be routed from status ${item.status}`)
+        await vault.setInboxStatus(id, 'processing')
+        try {
+          const fresh = await vault.listProjects()
+          const r = rulesClassify(item.raw, item.kind, fresh, projectName ?? item.projectHint, notesRef.current)
+          // Unsure: stays in the inbox (pick a folder to file it).
+          if (r.action === 'review') {
+            await vault.setInboxStatus(id, 'inbox')
+            return
+          }
+          await vault.routeToProject({
+            inboxId: id,
+            projectName: r.projectName,
+            title: r.title,
+            tags: r.tags,
+            markdown: r.markdown,
+            kind: item.kind
+          })
+          await vault.setInboxStatus(id, 'ready')
+        } catch (error) {
+          await vault.setInboxStatus(id, 'inbox')
+          throw error
+        } finally {
+          await refresh()
+        }
+      } finally {
+        routingInbox.current.delete(id)
       }
-      await vault.routeToProject({
-        inboxId: id,
-        projectName: r.projectName,
-        title: r.title,
-        tags: r.tags,
-        markdown: r.markdown,
-        kind: item.kind
-      })
-      await vault.setInboxStatus(id, 'ready')
-      await refresh()
     },
     [refresh]
   )
 
   const undoInbox = useCallback(
     async (id: string) => {
+      const item = (await vault.listInbox()).find((i) => i.id === id)
+      if (!item || item.status === 'processing') throw new Error(`inbox item ${id} cannot be undone while ${item?.status ?? 'missing'}`)
       await vault.undoRoute(id)
       await refresh()
     },
