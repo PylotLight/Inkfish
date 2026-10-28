@@ -25,7 +25,7 @@ export interface IntelPrefs {
   engine: IntelEngineId
   /** OpenAI-compatible API root; restricted to loopback for the embedded-model path. */
   localBaseUrl: string
-  /** Exact advertised ID for an LFM3 checkpoint verified for the selected runtime. */
+  /** Exact advertised ID for an LFM3 checkpoint supported by the selected runtime; some runtimes are experimental. */
   localModel: string
   /** Clean up captured text (filler, self-corrections, punctuation) before filing. */
   cleanup: boolean

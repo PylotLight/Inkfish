@@ -21,7 +21,7 @@ import {
   intelRuntime,
   isIntelRuntimeId,
   isLoopbackIntelUrl,
-  isSupportedLfm3TextModelId,
+  isSupportedLfmModelId,
   type IntelRuntimeId
 } from '../src/shared/intel-runtime'
 import { completeLocalChat, localIntelStatus } from '../src/main/intel-local'
@@ -40,7 +40,7 @@ function intArg(name: string, fallback: number): number {
 const engineValue = arg('engine') ?? 'llama.cpp'
 if (!isIntelRuntimeId(engineValue))
   throw new Error(
-    `Unsupported engine '${engineValue}'. Choose: ${['llama.cpp-managed', 'onnx-managed', 'llama.cpp', 'ollama', 'lm-studio', 'vllm', 'sglang', 'custom'].join(', ')}`
+    `Unsupported engine '${engineValue}'. Choose: ${['llama.cpp-managed', 'onnx-managed', 'mlx-vlm', 'llama.cpp', 'ollama', 'lm-studio', 'vllm', 'sglang', 'custom'].join(', ')}`
   )
 const engine: IntelRuntimeId = engineValue
 const runtime = intelRuntime(engine)
@@ -48,13 +48,9 @@ const baseUrl = (arg('url') ?? runtime.defaultBaseUrl).replace(/\/+$/, '')
 if (engine === 'onnx-managed' && arg('url')) throw new Error('--url is not used by the in-process ONNX engine; omit it')
 if (engine !== 'onnx-managed' && !isLoopbackIntelUrl(baseUrl))
   throw new Error('--url must point to localhost, 127.0.0.1 or ::1')
-const model = arg('model') ?? (engine === 'onnx-managed' ? runtime.modelExample : '')
-const isVisionModel = ['LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M', 'LiquidAI/LFM3-VL-2B-ONNX'].includes(model)
-const validModel =
-  engine === 'onnx-managed'
-    ? ['LiquidAI/LFM3-1.7B-ONNX', 'LiquidAI/LFM3-VL-2B-ONNX'].includes(model)
-    : isSupportedLfm3TextModelId(model) || isVisionModel
-if (!validModel) throw new Error('--model must be an exact supported LFM3-1.7B or LFM3-VL-2B model ID')
+const model = arg('model') ?? (engine === 'onnx-managed' || engine === 'mlx-vlm' ? runtime.modelExample : '')
+if (!isSupportedLfmModelId(engine, model))
+  throw new Error('--model must be an exact LFM3-1.7B or LFM3-VL-2B model ID supported by the selected engine')
 const selectedCases = selectIntelBenchCases(model)
 const runs = Math.min(10, intArg('runs', 3))
 const pidArg = arg('pid')

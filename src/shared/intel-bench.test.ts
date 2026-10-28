@@ -55,12 +55,14 @@ describe('document-processing benchmark scoring', () => {
       false
     )
     expect(selectIntelBenchCases('LiquidAI/LFM3-1.7B-ONNX').some((item) => item.task === 'vision-fields')).toBe(false)
+    expect(selectIntelBenchCases('LiquidAI/LFM3-1.7B').some((item) => item.task === 'vision-fields')).toBe(false)
     expect(
       selectIntelBenchCases('LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M').filter((item) => item.task === 'vision-fields')
     ).toHaveLength(3)
     expect(
       selectIntelBenchCases('LiquidAI/LFM3-VL-2B-ONNX').filter((item) => item.task === 'vision-fields')
     ).toHaveLength(3)
+    expect(selectIntelBenchCases('LiquidAI/LFM3-VL-2B').filter((item) => item.task === 'vision-fields')).toHaveLength(3)
   })
 
   test('scores invoice fields after declared date and amount normalization', () => {

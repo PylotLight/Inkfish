@@ -9,14 +9,14 @@ import {
   type IntelStyle,
   type IntelTask
 } from '../../../shared/intelligence'
-import { LFM_CATALOG, LFM_MODEL_KEYS, type LfmModelKey } from '../../../shared/lfm-catalog'
+import { getLfmModelIdForRuntime, LFM_CATALOG, LFM_MODEL_KEYS, type LfmModelKey } from '../../../shared/lfm-catalog'
 import type { ManagedLfmStatus } from '../../../shared/managed-llm'
 import type { ManagedOnnxStatus } from '../../../shared/managed-onnx'
 import {
   INTEL_RUNTIMES,
   intelRuntime,
   getLfmModelForRuntime,
-  isSupportedLfm3TextModelId
+  isSupportedLfmModelId
 } from '../../../shared/intel-runtime'
 import { ipcError } from '../audio'
 
@@ -51,7 +51,9 @@ function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSett
             : s.reason === 'platformUnsupported'
               ? engine === 'onnx-managed'
                 ? 'Managed ONNX currently supports macOS Apple silicon with the CPU execution provider.'
-                : 'The managed llama.cpp bundle currently supports macOS Apple silicon only. Other runtimes can connect to a local server.'
+                : engine === 'mlx-vlm'
+                  ? 'MLX-VLM is experimental and requires macOS on Apple silicon (arm64), plus its separately installed pinned Python runtime.'
+                  : 'The managed llama.cpp bundle currently supports macOS Apple silicon only. Other runtimes can connect to a local server.'
               : s.reason === 'modelNotDownloaded'
                 ? 'Choose a model, review and accept the LFM Open License, then download the weights below.'
                 : s.reason === 'invalidUrl'
@@ -59,7 +61,7 @@ function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSett
                   : s.reason === 'incompatible'
                     ? 'The server answered, but its /models route did not return the expected OpenAI-compatible model list.'
                     : s.reason === 'invalidModel' || s.reason === 'modelUnavailable' || s.reason === 'modelNotFound'
-                      ? 'Choose an LFM3 model verified for the selected runtime and use its exact model ID. LFM3-VL image inputs are supported through managed ONNX and llama.cpp.'
+                      ? 'Choose an LFM3 model supported by the selected runtime and use its exact model ID. LFM3-VL image inputs are supported through managed ONNX, llama.cpp, and experimental MLX-VLM.'
                       : 'Start the selected local engine and expose its OpenAI-compatible /v1/chat/completions API, then check again.',
       openSettings: false
     }
@@ -232,6 +234,7 @@ export default function IntelligenceSettings(): React.JSX.Element {
   const onnxModelKey = (getLfmModelForRuntime('onnx-managed', prefs.localModel)?.key ?? 'lfm3-1.7b') as LfmModelKey
   const onnxModel = onnxManaged?.models.find((model) => model.modelKey === onnxModelKey)
   const onnxProgress = onnxModel?.progress
+  const mlxModelKey = (getLfmModelForRuntime('mlx-vlm', prefs.localModel)?.key ?? 'lfm3-1.7b') as LfmModelKey
 
   const runManagedAction = async (action: () => Promise<ManagedLfmStatus>): Promise<void> => {
     setManagedBusy(true)
@@ -317,8 +320,9 @@ export default function IntelligenceSettings(): React.JSX.Element {
       } else if (engine === 'onnx-managed') {
         const current = getLfmModelForRuntime(engine, prefs.localModel)
         patch.localModel = (current?.onnx ?? LFM_CATALOG['lfm3-1.7b'].onnx)!.modelId
-      } else if (!isSupportedLfm3TextModelId(prefs.localModel)) {
-        patch.localModel = intelRuntime(engine).modelExample
+      } else {
+        const current = getLfmModelForRuntime(engine, prefs.localModel)
+        if (!current?.modalities.includes('text')) patch.localModel = intelRuntime(engine).modelExample
       }
       const previousDefault =
         prefs.engine === 'apple' ? DEFAULT_INTEL_PREFS.localBaseUrl : intelRuntime(prefs.engine).defaultBaseUrl
@@ -341,8 +345,8 @@ export default function IntelligenceSettings(): React.JSX.Element {
       <section className="settings-group">
         <h4>Embedded model</h4>
         <p className="muted small setting-hint" style={{ marginTop: 0 }}>
-          Choose Apple Foundation Models, a managed local llama.cpp or ONNX Runtime, or a verified loopback endpoint.
-          Inkfish never sends embedded-model requests to a remote host.
+          Choose Apple Foundation Models, a managed local llama.cpp or ONNX Runtime, or a loopback endpoint (including
+          experimental MLX-VLM). Inkfish never sends embedded-model requests to a remote host.
         </p>
 
         <label className="field">
@@ -373,17 +377,37 @@ export default function IntelligenceSettings(): React.JSX.Element {
                 placeholder={selectedRuntime.defaultBaseUrl}
               />
             </label>
-            <label className="field">
-              <span>
-                LFM3-1.7B model ID <span className="muted small">(required; must match /models)</span>
-              </span>
-              <input
-                value={prefs.localModel}
-                onChange={(e) => update({ localModel: e.target.value }, true)}
-                aria-label="Local model ID"
-                placeholder={selectedRuntime.modelExample}
-              />
-            </label>
+            {prefs.engine === 'mlx-vlm' ? (
+              <label className="field">
+                <span>MLX-VLM checkpoint</span>
+                <select
+                  value={mlxModelKey}
+                  onChange={(e) => {
+                    const key = e.target.value as LfmModelKey
+                    update({ localModel: getLfmModelIdForRuntime(key, 'mlx-vlm')! }, true)
+                  }}
+                  aria-label="MLX-VLM checkpoint"
+                >
+                  {LFM_MODEL_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {LFM_CATALOG[key].name} · {key === 'lfm3-vl-2b' ? 'text + document images' : 'text documents'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="field">
+                <span>
+                  Local model ID <span className="muted small">(required; must match /models)</span>
+                </span>
+                <input
+                  value={prefs.localModel}
+                  onChange={(e) => update({ localModel: e.target.value }, true)}
+                  aria-label="Local model ID"
+                  placeholder={selectedRuntime.modelExample}
+                />
+              </label>
+            )}
             <p className="muted small setting-hint">
               {selectedRuntime.hint} Format: {selectedRuntime.formats}. {selectedRuntime.platform}.
             </p>

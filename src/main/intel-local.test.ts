@@ -15,8 +15,13 @@ const config = {
   baseUrl: 'http://127.0.0.1:8080/v1',
   model: 'LiquidAI/LFM3-1.7B-GGUF:Q4_K_M'
 }
-
 const visionConfig = { ...config, model: 'LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M' }
+const mlxConfig = {
+  engine: 'mlx-vlm' as const,
+  baseUrl: 'http://127.0.0.1:8080/v1',
+  model: 'LiquidAI/LFM3-1.7B'
+}
+const mlxVisionConfig = { ...mlxConfig, model: 'LiquidAI/LFM3-VL-2B' }
 const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jclcAAAAASUVORK5CYII='
 
 function response(content: string, usage?: { prompt_tokens: number; completion_tokens: number }): Response {
@@ -26,10 +31,11 @@ function response(content: string, usage?: { prompt_tokens: number; completion_t
 }
 
 describe('LFM3 local runtime catalog', () => {
-  test('includes only runtimes verified for LFM3-1.7B and an OpenAI-compatible endpoint', () => {
+  test('catalogs runtimes that accept LFM3-1.7B and an OpenAI-compatible endpoint', () => {
     expect(INTEL_RUNTIMES.map((runtime) => runtime.id)).toEqual([
       'llama.cpp-managed',
       'onnx-managed',
+      'mlx-vlm',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -39,6 +45,7 @@ describe('LFM3 local runtime catalog', () => {
     ])
     expect(INTEL_RUNTIMES.every((runtime) => isSupportedLfm3TextModelId(runtime.modelExample))).toBe(true)
     expect(isIntelRuntimeId('uzu')).toBe(false)
+    expect(isIntelRuntimeId('mlx-vlm')).toBe(true)
     expect(isIntelRuntimeId('mlx-lm')).toBe(false)
     expect(isIntelRuntimeId('onnx')).toBe(false)
     expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-1.7B')).toBe(true)
@@ -53,6 +60,12 @@ describe('LFM3 local runtime catalog', () => {
     expect(isSupportedLfmModelId('ollama', 'LiquidAI/LFM3-VL-2B')).toBe(false)
     expect(isSupportedLfmModelId('onnx-managed', 'LiquidAI/LFM3-1.7B-ONNX')).toBe(true)
     expect(isSupportedLfmModelId('onnx-managed', 'LiquidAI/LFM3-VL-2B-ONNX')).toBe(true)
+    expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-1.7B')).toBe(true)
+    expect(isSupportedLfmModelId('mlx-vlm', mlxConfig.model)).toBe(true)
+    expect(isSupportedLfmModelId('mlx-vlm', mlxVisionConfig.model)).toBe(true)
+    expect(isSupportedLfmModelId('mlx-vlm', 'LiquidAI/LFM3-1.7B-ONNX')).toBe(false)
+    expect(isSupportedLfmModelId('mlx-vlm', config.model)).toBe(false)
+    expect(isSupportedLfmModelId('llama.cpp', mlxConfig.model)).toBe(false)
   })
 
   test('allows only loopback HTTP(S) endpoints and normalizes a safe local URL', () => {
@@ -106,6 +119,22 @@ describe('local engine status and chat', () => {
     expect(status.runtime).toBe('ONNX Runtime (managed)')
     expect(['available', 'modelNotDownloaded', 'platformUnsupported', 'runtimeMissing']).toContain(status.reason)
     expect(calls).toBe(0)
+  })
+
+  test('reports the MLX-VLM Apple-silicon limit before probing on unsupported platforms', async () => {
+    let calls = 0
+    const status = await localIntelStatus(mlxConfig, async () => {
+      calls++
+      return new Response(JSON.stringify({ data: [{ id: mlxConfig.model }] }))
+    })
+    if (process.platform !== 'darwin' || process.arch !== 'arm64') {
+      expect(status).toMatchObject({ available: false, reason: 'platformUnsupported' })
+      expect(status.detail).toContain('macOS on Apple silicon')
+      expect(calls).toBe(0)
+    } else {
+      expect(status).toMatchObject({ available: true, runtime: 'MLX-VLM (experimental)' })
+      expect(calls).toBe(1)
+    }
   })
 
   test('rejects unrelated and cross-runtime VL IDs before making a request', async () => {
@@ -235,6 +264,34 @@ describe('local engine status and chat', () => {
       )
     ).rejects.toThrow('Image inputs require the LFM3-VL-2B vision model')
     expect(calls).toBe(0)
+  })
+
+  test('serializes a local image request for the exact experimental MLX-VLM vision checkpoint', async () => {
+    let payload: Record<string, unknown> | undefined
+    let url = ''
+    await completeLocalChat(
+      mlxVisionConfig,
+      [{ role: 'user', content: 'Read this invoice', images: [{ mime: 'image/png', data: tinyPng }] }],
+      {},
+      async (input, init) => {
+        url = String(input)
+        payload = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return response('mocked API response')
+      }
+    )
+    expect(url).toBe('http://127.0.0.1:8080/v1/chat/completions')
+    expect(payload).toMatchObject({
+      model: 'LiquidAI/LFM3-VL-2B',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Read this invoice' },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${tinyPng}` } }
+          ]
+        }
+      ]
+    })
   })
 
   test('does not report an arbitrary HTTP response as a compatible model server', async () => {

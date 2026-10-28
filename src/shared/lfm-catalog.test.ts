@@ -27,6 +27,7 @@ describe('LFM catalog', () => {
     expect(LFM_RUNTIME_KEYS).toEqual([
       'llama.cpp-managed',
       'onnx-managed',
+      'mlx-vlm',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -37,6 +38,7 @@ describe('LFM catalog', () => {
     expect(LFM_CATALOG['lfm3-1.7b'].supportedRuntimes).toEqual([
       'llama.cpp-managed',
       'onnx-managed',
+      'mlx-vlm',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -47,6 +49,7 @@ describe('LFM catalog', () => {
     expect(LFM_SUPPORT_MATRIX['lfm3-1.7b']).toEqual({
       'llama.cpp-managed': true,
       'onnx-managed': true,
+      'mlx-vlm': true,
       'llama.cpp': true,
       ollama: true,
       'lm-studio': true,
@@ -54,10 +57,16 @@ describe('LFM catalog', () => {
       sglang: true,
       custom: true
     })
-    expect(LFM_CATALOG['lfm3-vl-2b'].supportedRuntimes).toEqual(['llama.cpp-managed', 'onnx-managed', 'llama.cpp'])
+    expect(LFM_CATALOG['lfm3-vl-2b'].supportedRuntimes).toEqual([
+      'llama.cpp-managed',
+      'onnx-managed',
+      'mlx-vlm',
+      'llama.cpp'
+    ])
     expect(LFM_SUPPORT_MATRIX['lfm3-vl-2b']).toEqual({
       'llama.cpp-managed': true,
       'onnx-managed': true,
+      'mlx-vlm': true,
       'llama.cpp': true,
       ollama: false,
       'lm-studio': false,
@@ -111,6 +120,8 @@ describe('LFM catalog', () => {
     })
     expect(getLfmModelIdForRuntime('lfm3-1.7b', 'onnx-managed')).toBe(text.modelId)
     expect(getLfmModelIdForRuntime('lfm3-vl-2b', 'onnx-managed')).toBe(vision.modelId)
+    expect(getLfmModelIdForRuntime('lfm3-1.7b', 'mlx-vlm')).toBe('LiquidAI/LFM3-1.7B')
+    expect(getLfmModelIdForRuntime('lfm3-vl-2b', 'mlx-vlm')).toBe('LiquidAI/LFM3-VL-2B')
     expect(getLfmModelIdForRuntime('lfm3-vl-2b', 'ollama')).toBeUndefined()
   })
 
@@ -119,7 +130,7 @@ describe('LFM catalog', () => {
       status: 'blocked',
       reason: 'No verified LFM3 model or converter specification.'
     })
-    expect(LFM_NON_INTEGRATED_CANDIDATES.mlx.status).toBe('not-enabled')
+    expect('mlx' in LFM_NON_INTEGRATED_CANDIDATES).toBe(false)
     expect('onnx' in LFM_NON_INTEGRATED_CANDIDATES).toBe(false)
     expect(LFM_NON_INTEGRATED_CANDIDATES.sglangVl.status).toBe('not-enabled')
     expect(LFM_NON_INTEGRATED_CANDIDATES.vllmVl.status).toBe('not-enabled')

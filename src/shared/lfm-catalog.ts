@@ -4,6 +4,7 @@ export type LfmModelKey = (typeof LFM_MODEL_KEYS)[number]
 export const LFM_RUNTIME_KEYS = [
   'llama.cpp-managed',
   'onnx-managed',
+  'mlx-vlm',
   'llama.cpp',
   'ollama',
   'lm-studio',
@@ -12,6 +13,12 @@ export const LFM_RUNTIME_KEYS = [
   'custom'
 ] as const
 export type LfmRuntimeKey = (typeof LFM_RUNTIME_KEYS)[number]
+
+/** Exact Liquid AI model IDs loaded through the experimental MLX-VLM adapter. */
+export const LFM_MLX_MODEL_IDS = {
+  'lfm3-1.7b': 'LiquidAI/LFM3-1.7B',
+  'lfm3-vl-2b': 'LiquidAI/LFM3-VL-2B'
+} as const satisfies Readonly<Record<LfmModelKey, string>>
 
 export interface LfmArtifact {
   file: string
@@ -167,6 +174,7 @@ export const LFM_CATALOG: Readonly<Record<LfmModelKey, LfmModel>> = {
     supportedRuntimes: [
       'llama.cpp-managed',
       'onnx-managed',
+      'mlx-vlm',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -196,7 +204,7 @@ export const LFM_CATALOG: Readonly<Record<LfmModelKey, LfmModel>> = {
       }
     },
     onnx: { modelId: 'LiquidAI/LFM3-VL-2B-ONNX', artifacts: vlOnnxArtifacts },
-    supportedRuntimes: ['llama.cpp-managed', 'onnx-managed', 'llama.cpp']
+    supportedRuntimes: ['llama.cpp-managed', 'onnx-managed', 'mlx-vlm', 'llama.cpp']
   }
 }
 
@@ -204,6 +212,7 @@ export const LFM_SUPPORT_MATRIX: Readonly<Record<LfmModelKey, Readonly<Record<Lf
   'lfm3-1.7b': {
     'llama.cpp-managed': true,
     'onnx-managed': true,
+    'mlx-vlm': true,
     'llama.cpp': true,
     ollama: true,
     'lm-studio': true,
@@ -214,6 +223,7 @@ export const LFM_SUPPORT_MATRIX: Readonly<Record<LfmModelKey, Readonly<Record<Lf
   'lfm3-vl-2b': {
     'llama.cpp-managed': true,
     'onnx-managed': true,
+    'mlx-vlm': true,
     'llama.cpp': true,
     ollama: false,
     'lm-studio': false,
@@ -230,7 +240,6 @@ export interface LfmCandidate {
 
 // Candidates are deliberately metadata only and are not runnable in-app.
 export const LFM_NON_INTEGRATED_CANDIDATES = {
-  mlx: { status: 'not-enabled', reason: 'Not enabled in-app.' },
   sglangVl: { status: 'not-enabled', reason: 'VL support is not enabled in-app.' },
   vllmVl: { status: 'not-enabled', reason: 'VL support is not enabled in-app.' },
   uzu: { status: 'blocked', reason: 'No verified LFM3 model or converter specification.' }
@@ -247,7 +256,9 @@ export function getLfmModelByApiModelId(apiModelId: string): LfmModel | undefine
 export function getLfmModelIdForRuntime(modelKey: LfmModelKey, runtime: LfmRuntimeKey): string | undefined {
   const model = LFM_CATALOG[modelKey]
   if (!model || !model.supportedRuntimes.includes(runtime)) return undefined
-  return runtime === 'onnx-managed' ? model.onnx?.modelId : model.apiModelId
+  if (runtime === 'onnx-managed') return model.onnx?.modelId
+  if (runtime === 'mlx-vlm') return LFM_MLX_MODEL_IDS[modelKey]
+  return model.apiModelId
 }
 
 export function isLfmModelKey(value: unknown): value is LfmModelKey {

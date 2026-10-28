@@ -78,6 +78,14 @@ export async function localIntelStatus(
   fetcher: Fetcher = (input, init) => fetch(input, init)
 ): Promise<{ available: boolean; reason: string; detail: string; runtime: string }> {
   const runtime = intelRuntime(config.engine)
+  if (config.engine === 'mlx-vlm' && (process.platform !== 'darwin' || process.arch !== 'arm64'))
+    return {
+      available: false,
+      reason: 'platformUnsupported',
+      detail:
+        'Experimental MLX-VLM requires macOS on Apple silicon (arm64) and an externally installed pinned Python runtime.',
+      runtime: runtime.name
+    }
   if (config.engine === 'onnx-managed') {
     const model = getLfmModelForRuntime(config.engine, config.model.trim())
     if (!model)
@@ -120,7 +128,7 @@ export async function localIntelStatus(
       available: false,
       reason: 'invalidModel',
       detail:
-        'Enter an LFM3 model ID verified for the selected runtime; vision is enabled only for llama.cpp with LFM3-VL-2B.',
+        'Enter an LFM3 model ID supported by the selected runtime; image inputs require LFM3-VL-2B on managed ONNX, llama.cpp, or experimental MLX-VLM.',
       runtime: runtime.name
     }
   }

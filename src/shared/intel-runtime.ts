@@ -2,14 +2,15 @@ import {
   getLfmModelByApiModelId,
   getLfmModelIdForRuntime,
   LFM_CATALOG,
+  LFM_MLX_MODEL_IDS,
   LFM_SUPPORT_MATRIX,
   type LfmModel,
   type LfmModelKey
 } from './lfm-catalog'
 
 /**
- * Local inference runtimes currently supported by Inkfish. Managed entries
- * bundle their own in-process/child runtime; other entries use loopback APIs.
+ * Local inference runtimes currently available in Inkfish. MLX-VLM is explicitly
+ * experimental; managed entries bundle their own in-process/child runtime.
  */
 export const INTEL_RUNTIMES = [
   {
@@ -29,6 +30,15 @@ export const INTEL_RUNTIMES = [
     formats: 'LFM3-1.7B Q4 text; LFM3-VL-2B Q4 decoder + Q8 vision encoder',
     platform: 'macOS Apple silicon · ONNX Runtime CPU',
     hint: 'Inkfish manages official ONNX artifacts and runs tokenizer, vision encoder and generation in-process on this Mac. Downloads are license-gated; the model unloads after 10 minutes idle.'
+  },
+  {
+    id: 'mlx-vlm',
+    name: 'MLX-VLM (experimental)',
+    defaultBaseUrl: 'http://127.0.0.1:8080/v1',
+    modelExample: getLfmModelIdForRuntime('lfm3-1.7b', 'mlx-vlm')!,
+    formats: 'LFM3-1.7B text and LFM3-VL-2B image · native MLX',
+    platform: 'macOS Apple silicon (arm64) · external Python runtime',
+    hint: 'Experimental, not bundled or validated with native Apple-silicon inference. Install the exact upstream MLX-VLM commit pinned in docs/lfm3.md, run its server on loopback, and select the exact LiquidAI model ID. The external server downloads and caches model weights; select LFM3-VL-2B for images.'
   },
   {
     id: 'llama.cpp',
@@ -94,9 +104,12 @@ const TEXT_MODEL = LFM_CATALOG[TEXT_KEY]
 const VISION_MODEL = LFM_CATALOG[VISION_KEY]
 const TEXT_ONNX_ID = TEXT_MODEL.onnx!.modelId.toLowerCase()
 const VISION_ONNX_ID = VISION_MODEL.onnx!.modelId.toLowerCase()
+const TEXT_MLX_ID = LFM_MLX_MODEL_IDS[TEXT_KEY].toLowerCase()
+const VISION_MLX_ID = LFM_MLX_MODEL_IDS[VISION_KEY].toLowerCase()
 const TEXT_ALIASES = new Set([
   TEXT_MODEL.apiModelId.toLowerCase(),
   TEXT_ONNX_ID,
+  TEXT_MLX_ID,
   'liquidai/lfm3-1.7b-gguf',
   'liquidai/lfm3-1.7b',
   'lfm3-1.7b',
@@ -109,6 +122,7 @@ const TEXT_ALIASES = new Set([
 const VISION_ALIASES = new Set([
   VISION_MODEL.apiModelId.toLowerCase(),
   VISION_ONNX_ID,
+  VISION_MLX_ID,
   'liquidai/lfm3-vl-2b-gguf',
   'liquidai/lfm3-vl-2b',
   'lfm3-vl-2b-q4_k_m.gguf'
@@ -116,6 +130,11 @@ const VISION_ALIASES = new Set([
 
 function knownModelKey(value: string, runtime?: IntelRuntimeId): LfmModelKey | undefined {
   const id = value.trim().toLowerCase()
+  if (runtime === 'mlx-vlm') {
+    if (id === TEXT_MLX_ID) return TEXT_KEY
+    if (id === VISION_MLX_ID) return VISION_KEY
+    return undefined
+  }
   const exact = getLfmModelByApiModelId(value.trim())
   if (exact) return exact.key
   if (TEXT_ALIASES.has(id)) {
@@ -156,7 +175,7 @@ export function isSupportedLfm3TextModelId(value: string): boolean {
   return key === TEXT_KEY
 }
 
-/** Accept model IDs only when the selected engine has verified support for that model modality. */
+/** Accept model IDs only when the selected engine declares support for that model modality. */
 export function isSupportedLfmModelId(runtime: IntelRuntimeId, value: string): boolean {
   return getLfmModelForRuntime(runtime, value) !== undefined
 }

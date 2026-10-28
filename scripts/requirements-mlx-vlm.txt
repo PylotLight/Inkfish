@@ -1,0 +1,3 @@
+# Experimental optional backend; do not install as part of the Inkfish app build.
+# Pin the upstream commit carrying native LFM3 and LFM3-VL model support.
+mlx-vlm @ git+https://github.com/Blaizzy/mlx-vlm.git@44a309d87ee5faebe5829f9aef5a76dbb31fde88
