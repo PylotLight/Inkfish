@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createManagedOnnxRuntime } from './onnx-managed'
+import { createManagedOnnxRuntime, formatOnnxMemoryAllocationError, isOnnxMemoryAllocationError } from './onnx-managed'
 
 function tempDataDir(): string {
   return mkdtempSync(join(tmpdir(), 'inkfish-onnx-test-'))
@@ -59,6 +59,34 @@ describe('managed ONNX lifecycle and safety', () => {
       { modelKey: 'lfm3-1.7b', modelId: 'LiquidAI/LFM3-1.7B-ONNX', installed: false },
       { modelKey: 'lfm3-vl-2b', modelId: 'LiquidAI/LFM3-VL-2B-ONNX', installed: false }
     ])
+  })
+
+  test('identifies Intel Macs as unsupported instead of implying a memory problem', () => {
+    const runtime = createManagedOnnxRuntime({ platform: 'darwin', arch: 'x64', userDataDir: () => null })
+    const status = runtime.status()
+
+    expect(status).toMatchObject({
+      supportedPlatform: false,
+      platform: 'macOS Intel (x64)',
+      detail: expect.stringContaining('macOS Intel (x64)')
+    })
+  })
+
+  test('recognizes allocator failures without classifying unrelated ONNX errors as memory failures', () => {
+    expect(isOnnxMemoryAllocationError(new Error('Failed to allocate memory for tensor'))).toBe(true)
+    expect(isOnnxMemoryAllocationError({ code: 'ENOMEM', message: 'native runtime error' })).toBe(true)
+    expect(isOnnxMemoryAllocationError(new Error('Invalid graph input name'))).toBe(false)
+  })
+
+  test('formats an actionable memory error and retains the native cause', () => {
+    const cause = new Error('std::bad_alloc')
+    const formatted = formatOnnxMemoryAllocationError('lfm3-vl-2b', 'vision encoder', cause)
+
+    expect(formatted.message).toContain('could not allocate enough memory')
+    expect(formatted.message).toContain('vision encoder')
+    expect(formatted.message).toContain('6.5 GB')
+    expect(formatted.message).toContain('try the smaller LFM3 1.7B text model')
+    expect((formatted as Error & { cause?: unknown }).cause).toBe(cause)
   })
 
   test('pauses before downloading when network routing is changing', async () => {

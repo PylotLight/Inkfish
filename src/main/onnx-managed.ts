@@ -236,8 +236,30 @@ function runtimePackagesReady(): boolean {
 
 function platformLabel(platform: NodeJS.Platform, arch: string): string {
   if (platform === 'darwin' && arch === 'arm64') return 'macOS Apple silicon'
+  if (platform === 'darwin' && arch === 'x64') return 'macOS Intel (x64)'
   if (platform === 'darwin') return `macOS ${arch}`
   return `${platform} ${arch}`
+}
+
+const ONNX_MEMORY_ERROR_PATTERN =
+  /\b(?:out of memory|not enough memory|failed to allocate|allocation failed|memory allocation|cannot allocate memory|bad_alloc|ENOMEM|OOM|array buffer allocation failed)\b/i
+
+export function isOnnxMemoryAllocationError(error: unknown): boolean {
+  const candidate = error as { message?: unknown; code?: unknown } | null
+  const detail = [candidate?.message, candidate?.code, error]
+    .filter((value) => value !== undefined && value !== null)
+    .join(' ')
+  return ONNX_MEMORY_ERROR_PATTERN.test(detail)
+}
+
+export function formatOnnxMemoryAllocationError(modelKey: LfmModelKey, phase: string, cause: unknown): Error {
+  const estimatedRam = modelKey === 'lfm3-vl-2b' ? VISION_RAM_ESTIMATE : TEXT_RAM_ESTIMATE
+  const imageFallback =
+    modelKey === 'lfm3-vl-2b' ? ' If you do not need document images, try the smaller LFM3 1.7B text model.' : ''
+  return new Error(
+    `ONNX Runtime could not allocate enough memory while loading the ${phase} for ${LFM_CATALOG[modelKey].name} (estimated RAM: ${(estimatedRam / 1e9).toFixed(1)} GB). Close memory-heavy apps and retry.${imageFallback}`,
+    { cause }
+  )
 }
 
 function mimeBytesMatch(mime: IntelImage['mime'], bytes: Buffer): boolean {
@@ -701,9 +723,11 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
     if (!modelInstalled(modelKey))
       throw new Error(`${LFM_CATALOG[modelKey].name} ONNX artifacts are not fully downloaded. Download them first.`)
     const ramEstimate = modelKey === 'lfm3-vl-2b' ? VISION_RAM_ESTIMATE : TEXT_RAM_ESTIMATE
-    if (totalMemory() < ramEstimate || freeMemory() < MIN_FREE_RAM)
+    const availableRam = freeMemory()
+    const installedRam = totalMemory()
+    if (installedRam < ramEstimate || availableRam < MIN_FREE_RAM)
       throw new Error(
-        `This model is estimated to need ${(ramEstimate / 1e9).toFixed(1)} GB of RAM; close other apps or choose a machine with more available memory.`
+        `Not enough memory is available to load ${LFM_CATALOG[modelKey].name}. It is estimated to need ${(ramEstimate / 1e9).toFixed(1)} GB RAM; this Mac has ${(installedRam / 1e9).toFixed(1)} GB total and ${(availableRam / 1e9).toFixed(1)} GB currently free. Close memory-heavy apps and retry.`
       )
     if (loaded) await unloadLoadedModel()
 
@@ -717,16 +741,16 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
         )
       }
     }
-    const modules = await loadRuntime()
-    modules.transformers.env.allowRemoteModels = false
-    modules.transformers.env.allowLocalModels = true
-    if (modelKey === 'lfm3-vl-2b') prepareVisionProcessorConfig(directory)
-    const tokenizer = await modules.transformers.AutoTokenizer.from_pretrained(directory, { local_files_only: true })
-    const chatTemplate = readFileSync(join(directory, 'chat_template.jinja'), 'utf8')
-    const threads = Math.max(1, Math.min(4, cpus().length))
-    const sessionOptions = { executionProviders: ['cpu'], intraOpNumThreads: threads, interOpNumThreads: 1 }
     let decoder: OrtSessionLike | undefined
     try {
+      const modules = await loadRuntime()
+      modules.transformers.env.allowRemoteModels = false
+      modules.transformers.env.allowLocalModels = true
+      if (modelKey === 'lfm3-vl-2b') prepareVisionProcessorConfig(directory)
+      const tokenizer = await modules.transformers.AutoTokenizer.from_pretrained(directory, { local_files_only: true })
+      const chatTemplate = readFileSync(join(directory, 'chat_template.jinja'), 'utf8')
+      const threads = Math.max(1, Math.min(4, cpus().length))
+      const sessionOptions = { executionProviders: ['cpu'], intraOpNumThreads: threads, interOpNumThreads: 1 }
       const decoderPath =
         modelKey === 'lfm3-vl-2b'
           ? join(directory, 'onnx', 'decoder_q4.onnx')
@@ -749,6 +773,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
       return loaded
     } catch (error) {
       await releaseSession(decoder)
+      if (isOnnxMemoryAllocationError(error)) throw formatOnnxMemoryAllocationError(modelKey, 'model', error)
       throw error
     }
   }
@@ -756,11 +781,19 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
   async function ensureVision(ready: LoadedModel): Promise<OrtSessionLike> {
     if (ready.modelKey !== 'lfm3-vl-2b') throw new Error('Image inputs require the LFM3-VL-2B ONNX model.')
     if (ready.vision) return ready.vision
-    ready.vision = await ready.ort.InferenceSession.create(join(ready.directory, 'onnx', 'vision_encoder_q8.onnx'), {
-      executionProviders: ['cpu'],
-      intraOpNumThreads: Math.max(1, Math.min(4, cpus().length)),
-      interOpNumThreads: 1
-    })
+    try {
+      ready.vision = await ready.ort.InferenceSession.create(join(ready.directory, 'onnx', 'vision_encoder_q8.onnx'), {
+        executionProviders: ['cpu'],
+        intraOpNumThreads: Math.max(1, Math.min(4, cpus().length)),
+        interOpNumThreads: 1
+      })
+    } catch (error) {
+      if (isOnnxMemoryAllocationError(error)) {
+        await unloadLoadedModel()
+        throw formatOnnxMemoryAllocationError(ready.modelKey, 'vision encoder', error)
+      }
+      throw error
+    }
     return ready.vision
   }
 
