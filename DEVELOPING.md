@@ -121,6 +121,7 @@ Release notes carry a `tested with android-vX` (Mac) / `tested with vY` (Android
 - [docs/sync.md](docs/sync.md): Mac ↔ Android LAN sync design
 - [docs/intelligence.md](docs/intelligence.md): on-device Apple Intelligence cleanup and filing
 - [docs/lfm3.md](docs/lfm3.md): LFM3 research — local models for note parsing and runtime options
+- [docs/local-llm.md](docs/local-llm.md): implementation plan — local LLM runtimes (llama.cpp first) + in-app benchmark
 - [docs/stt-options.md](docs/stt-options.md): speech-to-text engines
 - [docs/releasing.md](docs/releasing.md): cutting a release, Homebrew tap, signing, npm
 - [docs/troubleshooting.md](docs/troubleshooting.md): terminal garbage, `spawn ENOEXEC`, opaque window, stale preload

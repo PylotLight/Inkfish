@@ -50,7 +50,10 @@ Prefs live in app data as `intelligence.json`, so the main-process router reads 
   **LFM3-1.7B** (Liquid AI, 2026-10-27) — 1.73B, ~1 GB at 4-bit, 256K context, strong
   structured output; ready in llama.cpp/Ollama today, in MLX/uzu once upstream lands.
   Smaller and better at the cleanup/organise tasks than the earlier Gemma 4 E4B /
-  Qwen3.5 4B candidates. See [docs/lfm3.md](lfm3.md) for the runtime matrix and path.
+  Qwen3.5 4B candidates. See [docs/lfm3.md](lfm3.md) for the runtime matrix and
+  [docs/local-llm.md](local-llm.md) for the implementation plan (multiple
+  pluggable runtimes, llama.cpp first, plus an in-app benchmark like the
+  voice engine system).
 - A LoRA fine-tune on raw→clean pairs (Fluid-1 is a fine-tuned Gemma; Liquid ships
   single-GPU SFT/GRPO notebooks for LFM3 too). Apple also supports Foundation Models
   adapters.
