@@ -59,25 +59,69 @@ export interface MacPeer {
   lastSync?: number
 }
 
-async function withTimeout<T>(ms: number, f: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withTimeout<T>(ms: number, f: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
   const ac = new AbortController()
+  const cancel = (): void => ac.abort()
+  if (parent?.aborted) cancel()
+  else parent?.addEventListener('abort', cancel, { once: true })
   const t = setTimeout(() => ac.abort(), ms)
   try {
     return await f(ac.signal)
   } finally {
     clearTimeout(t)
+    parent?.removeEventListener('abort', cancel)
   }
 }
 
-export async function hello(fetchFn: Fetch, host: string, port: number, timeoutMs = 1500): Promise<Hello | null> {
+export async function hello(
+  fetchFn: Fetch,
+  host: string,
+  port: number,
+  timeoutMs = 1500,
+  signal?: AbortSignal
+): Promise<Hello | null> {
   try {
-    return await withTimeout(timeoutMs, async (signal) => {
-      const r = await fetchFn(`http://${host}:${port}/v1/hello`, { signal })
-      return r.ok ? parseHello(await r.text()) : null
-    })
+    return await withTimeout(
+      timeoutMs,
+      async (requestSignal) => {
+        const r = await fetchFn(`http://${host}:${port}/v1/hello`, { signal: requestSignal })
+        return r.ok ? parseHello(await r.text()) : null
+      },
+      signal
+    )
   } catch {
     return null
   }
+}
+
+/** Probe known addresses together so one stale IP cannot delay a live one. */
+async function findAmong(
+  fetchFn: Fetch,
+  hosts: string[],
+  peer: Pick<MacPeer, 'id' | 'port'>
+): Promise<{ host: string; hello: Hello } | null> {
+  if (!hosts.length) return null
+  return new Promise((resolve) => {
+    const ac = new AbortController()
+    let remaining = hosts.length
+    let settled = false
+    for (const host of hosts) {
+      void hello(fetchFn, host, peer.port, 1500, ac.signal).then((result) => {
+        if (settled) return
+        if (result?.id === peer.id) {
+          settled = true
+          ac.abort()
+          resolve({ host, hello: result })
+          return
+        }
+        remaining--
+        if (remaining === 0) {
+          settled = true
+          resolve(null)
+        }
+      })
+    }
+  })
 }
 
 /** Throws SyncIncompatible when this phone and the Mac that sent `h` can't sync. Older Macs (no fields) count as protocol 1. */
@@ -104,23 +148,25 @@ export async function findMacHello(
   peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>
 ): Promise<{ host: string; hello: Hello } | null> {
   const first = [...new Set([peer.lastHost, ...peer.hosts].filter((h): h is string => !!h))]
-  for (const h of first) {
-    const r = await hello(fetchFn, h, peer.port)
-    if (r?.id === peer.id) return { host: h, hello: r }
-  }
+  const known = await findAmong(fetchFn, first, peer)
+  if (known) return known
   const prefixes = [
     ...new Set(first.map((h) => h.split('.').slice(0, 3).join('.')).filter((p) => /^\d+\.\d+\.\d+$/.test(p)))
   ]
   const candidates = prefixes
     .flatMap((p) => Array.from({ length: 254 }, (_, i) => `${p}.${i + 1}`))
     .filter((h) => !first.includes(h))
+  const ac = new AbortController()
   let found: { host: string; hello: Hello } | null = null
   let i = 0
   const worker = async (): Promise<void> => {
     while (!found && i < candidates.length) {
       const h = candidates[i++]!
-      const r = await hello(fetchFn, h, peer.port, 900)
-      if (r?.id === peer.id) found = { host: h, hello: r }
+      const r = await hello(fetchFn, h, peer.port, 900, ac.signal)
+      if (r?.id === peer.id) {
+        found = { host: h, hello: r }
+        ac.abort()
+      }
     }
   }
   await Promise.all(Array.from({ length: 32 }, worker))

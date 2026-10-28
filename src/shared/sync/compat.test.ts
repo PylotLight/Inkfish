@@ -144,6 +144,76 @@ describe('handshake over the wire', () => {
     expect(await httpRemote(fetchFn, found!.host, mac, 'phone-abcdef12', random).manifest()).toEqual({})
   })
 
+  test('known addresses are probed together; a stale address does not delay a live one', async () => {
+    const started: string[] = []
+    const fetchFn: Fetch = async (url, init) => {
+      const host = new URL(url).hostname
+      started.push(host)
+      if (host === '192.168.1.21')
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ app: 'inkfish', v: 1, id: 'mac-1234567890', name: 'Mac' })
+        }
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 250)
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t)
+            resolve()
+          },
+          { once: true }
+        )
+      })
+      return { ok: false, status: 404, text: async () => '' }
+    }
+    const startedAt = Date.now()
+    const found = await findMacHello(fetchFn, {
+      id: 'mac-1234567890',
+      lastHost: '192.168.1.10',
+      hosts: ['192.168.1.20', '192.168.1.21'],
+      port: 47821
+    })
+    expect(found?.host).toBe('192.168.1.21')
+    expect(new Set(started)).toEqual(new Set(['192.168.1.10', '192.168.1.20', '192.168.1.21']))
+    expect(Date.now() - startedAt).toBeLessThan(150)
+  })
+
+  test('subnet scan cancels in-flight probes when the paired Mac answers', async () => {
+    const fetchFn: Fetch = async (url, init) => {
+      const host = new URL(url).hostname
+      if (host === '192.168.1.10')
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ app: 'inkfish', v: 1, id: 'other-mac', name: 'Other' })
+        }
+      if (host === '192.168.1.1')
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ app: 'inkfish', v: 1, id: 'mac-1234567890', name: 'Mac' })
+        }
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 250)
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t)
+            resolve()
+          },
+          { once: true }
+        )
+      })
+      return { ok: false, status: 404, text: async () => '' }
+    }
+    const startedAt = Date.now()
+    const found = await findMacHello(fetchFn, { id: 'mac-1234567890', hosts: ['192.168.1.10'], port: 47821 })
+    expect(found?.host).toBe('192.168.1.1')
+    expect(Date.now() - startedAt).toBeLessThan(150)
+  })
+
   test('old phone (no headers) ↔ new Mac still syncs', async () => {
     const { fetchFn, mac } = wire(undefined, null)
     expect(await httpRemote(fetchFn, '192.168.1.20', mac, 'phone-abcdef12', random).manifest()).toEqual({})
