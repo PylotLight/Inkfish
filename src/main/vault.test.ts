@@ -632,7 +632,7 @@ describe('file ops', () => {
   })
 
   test('metadata: size + mtime indexed from fs', async () => {
-    const v = await vault()
+    await vault()
     const db = await import('./db')
     const { writeFileSync } = await import('node:fs')
     writeFileSync(join(dir, 'sized.md'), '# Sized\n' + 'x'.repeat(3000))

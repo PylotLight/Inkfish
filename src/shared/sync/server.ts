@@ -4,7 +4,6 @@ import { ignored } from './plan'
 import {
   aad,
   openJson,
-  PAIR_TTL_MS,
   safeRel,
   sealJson,
   SKEW_MS,

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { NoteEntry, NoteKind } from '../../../shared/types'
 import { canDropInto, dirOf, type MoveKind } from '../../../shared/note-move'
 import { fmtBytes, timeAgo } from '../text'
@@ -383,13 +383,13 @@ function FolderTree({
     if (expandTimer.current) window.clearTimeout(expandTimer.current.t)
     expandTimer.current = null
   }
-  const endDrag = (): void => {
+  const endDrag = useCallback((): void => {
     dragRef.current = null
     scrollRef.current = null
     clearExpand()
     setDropDir(null)
     setDragging(false)
-  }
+  }, [])
   // Esc mid-drag: Chromium cancels the native drag and fires dragend (→ endDrag). Belt and braces
   // for a cancelled drag that never reports back.
   useEffect(() => {
@@ -399,7 +399,7 @@ function FolderTree({
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [dragging])
+  }, [dragging, endDrag])
 
   const dnd: Dnd | null = onMove
     ? {

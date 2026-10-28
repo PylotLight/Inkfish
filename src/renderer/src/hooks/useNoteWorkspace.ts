@@ -58,7 +58,6 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     refreshProjects,
     refreshAll,
     notify,
-    scope,
     setScope,
     targetDir,
     setTargetDir,
@@ -281,7 +280,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
         titleSync.schedule(id, markdown)
       }
     },
-    [liftDraft, autosave, titleSync]
+    [liftDraft, autosave, titleSync, baseTitlesRef, renamedAliasRef]
   )
 
   // Flush whenever the window stops being the place you type, and on quit/close.
@@ -317,7 +316,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
       setScope('notes')
       openEntry(id, 'note')
     },
-    [openEntry]
+    [openEntry, setScope]
   )
 
   /** Set whenever a day note opens so the editor puts the caret at its end, ready to type. */
@@ -340,7 +339,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     } catch (err: unknown) {
       notify(`Today failed: ${String(err)}`)
     }
-  }, [notify, selectNote, focusEndOn])
+  }, [notify, selectNote, focusEndOn, setAllNotes])
 
   /** Delete an inbox capture permanently (routed outputs moved aside, raw removed). */
   const deleteInbox = useCallback(
@@ -565,7 +564,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
         setSettingsOpen(false)
         selectNote(id)
       }),
-    [selectNote]
+    [selectNote, setSettingsOpen]
   )
 
   // Live sync: text typed in a mini shows up in this note's tab. The mini that typed it owns

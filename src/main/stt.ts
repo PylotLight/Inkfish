@@ -273,7 +273,8 @@ export async function prepareEngine(
         throw new Error(
           blocked
             ? `Couldn't reach Hugging Face (${msg}). A VPN, firewall or network filter may be blocking it — retry, or switch the download source.`
-            : msg
+            : msg,
+          { cause: e }
         )
       }
     }

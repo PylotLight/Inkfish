@@ -274,7 +274,8 @@ export function Drawer({ open, onClose, onOpenNote, onOpenJournal }: Props): Rea
   }, [notes, projects, dirs])
   // Reuse row objects for unchanged items so memoized rows stay memoized when
   // a directory is toggled. The cache is scoped to the current vault snapshot.
-  const rowCache = useMemo(() => new Map<string, Row>(), [tree])
+  const rowCacheSnapshot = useMemo(() => ({ tree, rows: new Map<string, Row>() }), [tree])
+  const rowCache = rowCacheSnapshot.rows
 
   const needle = q.trim().toLowerCase()
   const data: Row[] = useMemo(() => {

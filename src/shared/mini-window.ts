@@ -209,29 +209,33 @@ export function acceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boolean)
  * only modifiers are down / the key has no accelerator name. Lets Settings say why a combo is refused.
  */
 export function rawAcceleratorFromKeyEvent(event: ShortcutKeyEvent, isMac: boolean): string | null {
-  let key: string | null = null
-  if (event.code === 'Space') key = 'Space'
-  else if (/^Key[A-Z]$/.test(event.code)) key = event.code.slice(3)
-  else if (/^Digit[0-9]$/.test(event.code)) key = event.code.slice(5)
-  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(event.code)) key = event.code
-  else {
-    const named: Record<string, string> = {
-      ArrowUp: 'Up',
-      ArrowDown: 'Down',
-      ArrowLeft: 'Left',
-      ArrowRight: 'Right',
-      Enter: 'Return',
-      Escape: 'Escape',
-      Tab: 'Tab',
-      Backspace: 'Backspace',
-      Delete: 'Delete',
-      Home: 'Home',
-      End: 'End',
-      PageUp: 'PageUp',
-      PageDown: 'PageDown'
-    }
-    key = named[event.key] ?? null
-  }
+  const key: string | null =
+    event.code === 'Space'
+      ? 'Space'
+      : /^Key[A-Z]$/.test(event.code)
+        ? event.code.slice(3)
+        : /^Digit[0-9]$/.test(event.code)
+          ? event.code.slice(5)
+          : /^F([1-9]|1[0-9]|2[0-4])$/.test(event.code)
+            ? event.code
+            : (() => {
+                const named: Record<string, string> = {
+                  ArrowUp: 'Up',
+                  ArrowDown: 'Down',
+                  ArrowLeft: 'Left',
+                  ArrowRight: 'Right',
+                  Enter: 'Return',
+                  Escape: 'Escape',
+                  Tab: 'Tab',
+                  Backspace: 'Backspace',
+                  Delete: 'Delete',
+                  Home: 'Home',
+                  End: 'End',
+                  PageUp: 'PageUp',
+                  PageDown: 'PageDown'
+                }
+                return named[event.key] ?? null
+              })()
   if (!key) return null
   const parts: string[] = []
   if (isMac) {

@@ -57,7 +57,9 @@ async function connect() {
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
       if (list[0]?.webSocketDebuggerUrl) return list[0].webSocketDebuggerUrl
-    } catch {}
+    } catch {
+      // DevTools is not ready yet; retry until the deadline.
+    }
     await sleep(200)
   }
   fail('no inspector')

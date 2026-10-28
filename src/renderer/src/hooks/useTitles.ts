@@ -85,7 +85,7 @@ export function useTitles(input: TitlesInput) {
         })
         .catch((err: unknown) => notify(`Rename failed: ${String(err)}`))
     },
-    [notify]
+    [notify, docRef, selRef, draftsRef, setTitles]
   )
 
   const titleOf = useCallback((e: { id: string; path: string; title: string }) => displayTitle(e, titles), [titles])
@@ -103,7 +103,7 @@ export function useTitles(input: TitlesInput) {
         baseAfter: titleFromMarkdown(draftsRef.current[d.id] ?? d.markdown)
       })
       .catch((err: unknown) => console.error('[title-sync] untitled migration failed:', err))
-  }, [openDocId, titles, prefs.nameFromTitle])
+  }, [openDocId, titles, prefs.nameFromTitle, docRef, draftsRef])
   /** The debounced title→filename check (see shared/title-sync for the rule). */
   titleSyncRunRef.current = (id: string, markdown: string): void => {
     if (!prefsRef.current.nameFromTitle) return

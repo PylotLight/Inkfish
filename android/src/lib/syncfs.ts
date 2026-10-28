@@ -136,7 +136,7 @@ export const androidFs: SyncFs = {
     }
     try {
       await attempt()
-    } catch (e) {
+    } catch {
       // The parent can vanish mid-op (a heal or another sync won the race) —
       // recreate it and retry once before giving up.
       await mkdirp(parent)
@@ -243,7 +243,7 @@ export function stateFor(macId: string): SyncState {
       await FileSystem.writeAsStringAsync(`${texts}${hash}`, text, UTF8)
     },
     async pruneTexts(keep) {
-      let names: string[] = []
+      let names: string[]
       try {
         names = await FileSystem.readDirectoryAsync(texts)
       } catch {

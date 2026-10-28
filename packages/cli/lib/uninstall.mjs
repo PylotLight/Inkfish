@@ -68,7 +68,7 @@ const CACHE_ENTRY = /^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|\.download-[\w-]+\.zi
  */
 export function removeCacheDir(root) {
   /** @type {string[]} */
-  let names = []
+  let names
   try {
     names = readdirSync(root)
   } catch {

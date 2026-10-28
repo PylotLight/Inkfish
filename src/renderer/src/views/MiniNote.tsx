@@ -162,7 +162,7 @@ export default function MiniNote(): React.JSX.Element {
   useEffect(() => {
     if (hintChecked.current || !state) return
     hintChecked.current = true
-    let seen: string | null = null
+    let seen: string | null
     try {
       seen = localStorage.getItem(MINI_HINT_KEY)
     } catch {
@@ -190,6 +190,10 @@ export default function MiniNote(): React.JSX.Element {
     if (state?.docked) setHint(null)
   }, [state?.docked])
 
+  const backToMain = useCallback(async (): Promise<void> => {
+    await autosave.flushAll()
+    await window.api.mini.returnToMain()
+  }, [autosave])
   // ⌘⇧M hands the note back to the main window.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -199,12 +203,7 @@ export default function MiniNote(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  const backToMain = async (): Promise<void> => {
-    await autosave.flushAll()
-    await window.api.mini.returnToMain()
-  }
+  }, [backToMain])
 
   const close = async (): Promise<void> => {
     await autosave.flushAll()

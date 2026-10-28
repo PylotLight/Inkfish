@@ -41,7 +41,6 @@ const INLINE_MAX = 24
  * Keys: j/k or ↑/↓ between days, Enter opens, / filters, t opens today.
  */
 export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX.Element {
-  const version = useBodiesVersion()
   const [query, setQuery] = useState('')
   const [q, setQ] = useState('')
   const [ftsIds, setFtsIds] = useState<Set<string> | null>(null)
@@ -89,11 +88,9 @@ export default function Journal({ days, onOpen, onOpenToday }: Props): React.JSX
     }
   }, [q])
 
-  const filtered = useMemo(
-    () => filterDays(days, q, (d) => cachedBody(d.id, d.updatedAt) ?? d.snippet, ftsIds ?? undefined),
-    // `version`: newly read bodies can match the filter too (cheap — hundreds of short strings).
-    [days, q, ftsIds, version]
-  )
+  // Body loads notify this hook; filtering is cheap and should see the new cached text immediately.
+  useBodiesVersion()
+  const filtered = filterDays(days, q, (d) => cachedBody(d.id, d.updatedAt) ?? d.snippet, ftsIds ?? undefined)
   const dayList = useMemo(() => filtered.map((d) => d.day), [filtered])
   const byDay = useMemo(() => new Map(days.map((d) => [d.day, d])), [days])
   const visibleDays = useMemo(() => filtered.slice(0, limit), [filtered, limit])

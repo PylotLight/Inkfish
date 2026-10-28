@@ -11,13 +11,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { stopUtilityProcess } from './utility-process'
-import {
-  isConnected,
-  parseAiSettings,
-  type AiApiStatus,
-  type AiProviderSettings,
-  type AiTestResult
-} from '../shared/ai-api'
+import { isConnected, parseAiSettings, type AiApiStatus, type AiTestResult } from '../shared/ai-api'
 import { AI_APIS, learnEndpoint, type AiApi, type AiEndpoint, type DiscoveryResult } from '../shared/ai-models'
 import { formatAiError, scrubDetail, toErrorDetail, type AiErrorDetail } from '../shared/ai-errors'
 import { discoverModels } from './ai-discovery'

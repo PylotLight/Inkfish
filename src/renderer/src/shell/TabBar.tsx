@@ -9,7 +9,6 @@ export default function TabBar({
   tabs,
   activeId,
   allNotes,
-  titles,
   titleOf,
   onActivate,
   onClose,

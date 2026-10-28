@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process'
-import { basename, join } from 'node:path'
 import type { ClassifyResult, NoteKind, Project } from '../shared/types'
 import { intelRun, intelStatus, loadIntelPrefs } from './intelligence'
 import {

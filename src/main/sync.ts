@@ -389,7 +389,7 @@ const macFs: SyncFs = {
       [paths.inboxDir, 'inbox'],
       [paths.dailyDir, 'daily']
     ] as const) {
-      let names: string[] = []
+      let names: string[]
       try {
         names = readdirSync(dir)
       } catch {

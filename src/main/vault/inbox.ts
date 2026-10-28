@@ -182,8 +182,8 @@ export function proposeNotePath(
     }
   }
   let suffix = 1
-  let filename = ''
-  let rel = ''
+  let filename: string
+  let rel: string
   do {
     filename = `${base}${suffix === 1 ? '' : ` ${suffix}`}.md`
     rel = folderRel ? join(folderRel, filename) : filename

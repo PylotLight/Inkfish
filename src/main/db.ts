@@ -511,7 +511,7 @@ export function listNotes(projectId?: string | null, limit = 200): NoteEntry[] {
   return must().list(projectId, limit).map(rowToEntry)
 }
 
-export function getNote(id: string, root: string): NoteDoc | null {
+export function getNote(id: string, _root: string): NoteDoc | null {
   const row = must().get(id)
   if (!row) return null
   return { ...rowToEntry(row), markdown: row.body }

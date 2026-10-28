@@ -30,11 +30,8 @@ export function BenchControls({
   hidden,
   note,
   setNote,
-  scores,
   setScores,
-  deepScores,
   setDeepScores,
-  runs,
   setRuns,
   scored,
   deepScored,
@@ -64,7 +61,7 @@ export function BenchControls({
   const [recording, setRecording] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const useClip = async (blob: Blob, label: string, ref?: string): Promise<Clip> => {
+  const loadClip = async (blob: Blob, label: string, ref?: string): Promise<Clip> => {
     const wav = await toWav(blob)
     const c: Clip = { dataUrl: await blobToDataUrl(wav), wav, label, seconds: wavSeconds(wav), reference: ref }
     setClip(c)
@@ -88,7 +85,7 @@ export function BenchControls({
     rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop())
       setRecording(false)
-      void useClip(new Blob(chunks, { type: rec.mimeType }), `${CLIP_SECONDS} s recording`)
+      void loadClip(new Blob(chunks, { type: rec.mimeType }), `${CLIP_SECONDS} s recording`)
     }
     rec.start()
     setRecording(true)
@@ -298,7 +295,7 @@ export function BenchControls({
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) void useClip(f, f.name).catch((err) => setNote(`Couldn't read ${f.name}: ${ipcError(err)}`))
+            if (f) void loadClip(f, f.name).catch((err) => setNote(`Couldn't read ${f.name}: ${ipcError(err)}`))
             e.target.value = ''
           }}
         />

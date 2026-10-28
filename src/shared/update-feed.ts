@@ -255,7 +255,7 @@ export function releaseNotesToText(html: string): string {
     .replace(/<[^>]*>/g, '')
   text = decodeXmlEntities(text)
     .replace(/\r\n?/g, '\n')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/\p{Cc}/gu, (c) => (c === '\t' || c === '\n' || c === '\r' ? c : ''))
     .split('\n')
     .map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim())
     .join('\n')

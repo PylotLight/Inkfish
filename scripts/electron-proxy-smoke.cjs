@@ -167,7 +167,7 @@ function socksMock() {
           socksDestinations.push(receivedHost)
           process.stdout.write('SMOKE_SOCKS ' + JSON.stringify({ host: receivedHost, port }) + '\n')
         }
-      } catch (e) {
+      } catch {
         socket.destroy()
       }
     })

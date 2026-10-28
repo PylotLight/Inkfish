@@ -205,7 +205,6 @@ function NoteEditor({
       el?.focus()
       el?.select()
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** Close and hand focus back to the editor with the current hit selected. */
@@ -322,7 +321,6 @@ function NoteEditor({
       view.destroy()
       viewRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cmFailed, hasDoc])
 
   // Swap document content when selection changes — lifted draft wins over
@@ -396,7 +394,6 @@ function NoteEditor({
     }
     const ta = document.querySelector<HTMLTextAreaElement>('.ed-fallback')
     ta?.setSelectionRange(m.from, m.to)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findOpen, findQuery, findOpts, findIndex, findNav])
 
   const stepFind = useCallback((dir: 1 | -1) => {
@@ -415,7 +412,6 @@ function NoteEditor({
     else handleText(src.slice(0, m.from) + insert + src.slice(m.to))
     // Same index now points at the next hit (the replaced one usually no longer matches).
     setFindNav((n) => n + 1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findIndex, findQuery, replaceText, findOpts, handleText])
 
   const replaceAll = useCallback(() => {
@@ -441,7 +437,6 @@ function NoteEditor({
       handleText(out + src.slice(at))
     }
     setFindIndex(0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findQuery, replaceText, findOpts, handleText])
 
   // Window-level shortcuts (capture phase): work wherever focus is, as long as this note is on screen.

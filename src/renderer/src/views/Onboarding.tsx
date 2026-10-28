@@ -79,7 +79,7 @@ export default function Onboarding({
   }
 
   /** Commit the location: creates + indexes BEFORE anything else runs (no folders are seeded). */
-  const useLocation = async (): Promise<void> => {
+  const commitLocation = async (): Promise<void> => {
     if (vault?.managed) {
       // Dev/test env owns the location and main already initialized it.
       setStep(1)
@@ -140,7 +140,7 @@ export default function Onboarding({
               <button
                 className="btn mint"
                 disabled={(!picked.trim() || busy) && vault?.managed !== true}
-                onClick={() => void useLocation()}
+                onClick={() => void commitLocation()}
               >
                 {busy
                   ? 'Setting up…'

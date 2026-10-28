@@ -101,7 +101,7 @@ describe('launcher', () => {
     expect(text).toContain('ok: downloaded')
     expect(text).toMatch(/ok: verified sha256 [0-9a-f]{12}…/)
     expect(text).toContain('ok: unpacked with unzip')
-    expect(text).not.toMatch(/\x1b\[/)
+    expect(text).not.toContain(String.fromCharCode(27) + '[')
     expect(existsSync(join(cacheDir, '0.2.10', 'Inkfish.app', 'Contents', 'Info.plist'))).toBe(true)
     expect(readdirSync(cacheDir).filter((n) => n.startsWith('.'))).toEqual([]) // no temp files left
 

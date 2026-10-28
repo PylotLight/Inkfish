@@ -87,20 +87,12 @@ export interface FileActionsInput {
  */
 export function useFileActions(input: FileActionsInput) {
   const {
-    sel,
     setSel,
-    doc,
     setDoc,
-    tabs,
     setTabs,
-    tabsRef,
     selRef,
-    docsCache,
     setDocsCache,
-    docsCacheRef,
-    drafts,
     setDrafts,
-    draftsRef,
     autosave,
     renameInflightRef,
     openEntry,
@@ -116,7 +108,6 @@ export function useFileActions(input: FileActionsInput) {
     notify,
     targetDir,
     setTargetDir,
-    revealDir,
     setRevealDir,
     setPrompt,
     setConfirm,
@@ -161,7 +152,7 @@ export function useFileActions(input: FileActionsInput) {
         })
         .catch((err: unknown) => notify(`Create failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, selectNote, autosave]
+    [notify, refreshInbox, refreshProjects, selectNote, autosave, setAllNotes]
   )
 
   const doCreateFolder = useCallback(() => {
@@ -182,7 +173,7 @@ export function useFileActions(input: FileActionsInput) {
           .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
       }
     })
-  }, [targetDir, notify, refreshNotes])
+  }, [targetDir, notify, refreshNotes, setPrompt, setRevealDir])
 
   /**
    * A file/folder moved `rel` → `newRel` on disk (rename, drag & drop, Move to…): ids are paths by
@@ -242,7 +233,7 @@ export function useFileActions(input: FileActionsInput) {
         }
       }
     },
-    [autosave, refreshTitleNamed]
+    [autosave, refreshTitleNamed, setTabs, setDrafts, setDocsCache, setTargetDir, selRef, setSel, setDoc]
   )
 
   /**
@@ -308,7 +299,22 @@ export function useFileActions(input: FileActionsInput) {
         titleRenamingRef.current.delete(id)
       }
     },
-    [autosave, titleSync, followPathChange, notify]
+    [
+      autosave,
+      titleSync,
+      followPathChange,
+      notify,
+      renameInflightRef,
+      selRef,
+      docRef,
+      allNotesRef,
+      titleRenamingRef,
+      baseTitlesRef,
+      renamedAliasRef,
+      titleNamedRef,
+      setTitles,
+      setAllNotes
+    ]
   )
   renameNoteFileRef.current = renameNoteFile
 
@@ -343,13 +349,28 @@ export function useFileActions(input: FileActionsInput) {
         notify(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [autosave, notify, followPathChange, refreshInbox, refreshProjects]
+    [
+      autosave,
+      notify,
+      followPathChange,
+      refreshInbox,
+      refreshProjects,
+      selRef,
+      docRef,
+      allNotesRef,
+      setAllNotes,
+      setTitles,
+      setRevealDir
+    ]
   )
 
   /** Open the "Move to…" picker for a tree target / the open note (centred under the top bar by default). */
-  const openMovePicker = useCallback((rel: string, kind: MoveKind, name: string, x?: number, y?: number) => {
-    setMovePick({ rel, kind, name, x: x ?? Math.round(window.innerWidth / 2 - 160), y: y ?? 96 })
-  }, [])
+  const openMovePicker = useCallback(
+    (rel: string, kind: MoveKind, name: string, x?: number, y?: number) => {
+      setMovePick({ rel, kind, name, x: x ?? Math.round(window.innerWidth / 2 - 160), y: y ?? 96 })
+    },
+    [setMovePick]
+  )
 
   /** Header tag chips → front matter `tags:` (body untouched; pending text written first). */
   const setNoteTags = useCallback(
@@ -371,7 +392,7 @@ export function useFileActions(input: FileActionsInput) {
         notify(`Tags failed: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [autosave, notify, refreshNotes]
+    [autosave, notify, refreshNotes, docRef, selRef, setDoc, setDocsCache]
   )
 
   /** Path of the open note (to follow it across a rename/move). */
@@ -385,7 +406,7 @@ export function useFileActions(input: FileActionsInput) {
     (rel: string) => {
       for (const n of allNotesRef.current) if (n.path === rel || n.path.startsWith(`${rel}/`)) titleSync.cancel(n.id)
     },
-    [titleSync]
+    [titleSync, allNotesRef]
   )
 
   /**
@@ -415,7 +436,7 @@ export function useFileActions(input: FileActionsInput) {
         })
         .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, followPathChange, cancelTitleSyncUnder]
+    [notify, refreshInbox, refreshProjects, followPathChange, cancelTitleSyncUnder, setAllNotes, setTitles]
   )
 
   const doRename = useCallback(
@@ -508,7 +529,7 @@ export function useFileActions(input: FileActionsInput) {
       if (!res) return
       setUndoDel({ key: Date.now(), message: `Trashed ${name}`, trashId: res.id, rel, wasOpen: res.wasOpen })
     },
-    [performTrash]
+    [performTrash, setUndoDel]
   )
 
   /** Undo: restore the trash entry; reopen it if it was the open note. */
@@ -531,10 +552,10 @@ export function useFileActions(input: FileActionsInput) {
         notify(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [notify, refreshInbox, refreshProjects, selectNote]
+    [notify, refreshInbox, refreshProjects, selectNote, setAllNotes, setTitles]
   )
 
-  const closeUndo = useCallback(() => setUndoDel(null), [])
+  const closeUndo = useCallback(() => setUndoDel(null), [setUndoDel])
 
   /** Folders (and anything that isn't a single note): the modal confirm, then Trash + Undo. */
   const doTrash = useCallback(
@@ -568,7 +589,7 @@ export function useFileActions(input: FileActionsInput) {
         return
       }
       await autosave.flushAll()
-      let md: string | null = null
+      let md: string | null
       try {
         md = (await window.api.notes.get(entry.id))?.markdown ?? null
       } catch {

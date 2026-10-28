@@ -200,7 +200,7 @@ function TodaySection({
     return () => {
       live = false
     }
-  }, [entry?.id, entry?.updatedAt])
+  }, [entry])
 
   const append = async (): Promise<void> => {
     const body = draft.trim()
