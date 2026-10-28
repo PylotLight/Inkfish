@@ -10,4 +10,5 @@ if [ -n "$newest" ] && sudo -n true 2>/dev/null; then
 else
   echo "keeping $(xcode-select -p 2>/dev/null || echo 'no xcode-select path')"
 fi
+echo "selected developer directory: $(xcode-select -p 2>/dev/null || echo 'no xcode-select path')"
 xcrun swift --version

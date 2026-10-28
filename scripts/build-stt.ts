@@ -65,6 +65,16 @@ function newestStableDeveloperDir(): string | undefined {
 }
 
 function selectedDeveloperDir(): string | undefined {
+  // CI explicitly runs the Xcode selector first; honor its system selection
+  // rather than independently choosing a possibly different installed copy.
+  if (process.env['CI']) {
+    try {
+      const selected = execFileSync('xcode-select', ['-p'], { encoding: 'utf8' }).trim()
+      if (selected) return selected
+    } catch {
+      // Fall through to an explicit override or the installed stable Xcode.
+    }
+  }
   if (process.env['DEVELOPER_DIR']) return resolve(process.env['DEVELOPER_DIR'])
   const stable = newestStableDeveloperDir()
   if (stable) return stable
@@ -77,7 +87,7 @@ function selectedDeveloperDir(): string | undefined {
 
 const buildEnv: NodeJS.ProcessEnv = { ...process.env }
 const developerDir = selectedDeveloperDir()
-if (developerDir && !buildEnv['DEVELOPER_DIR']) {
+if (developerDir && (process.env['CI'] || !buildEnv['DEVELOPER_DIR'])) {
   buildEnv['DEVELOPER_DIR'] = developerDir
   console.log(`[stt:build] using Xcode developer directory: ${developerDir}`)
 }
