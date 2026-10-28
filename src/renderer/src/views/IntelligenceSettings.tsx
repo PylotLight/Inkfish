@@ -13,12 +13,7 @@ import {
 import { getLfmModelIdForRuntime, LFM_CATALOG, LFM_MODEL_KEYS, type LfmModelKey } from '../../../shared/lfm-catalog'
 import type { ManagedLfmStatus } from '../../../shared/managed-llm'
 import type { ManagedOnnxStatus } from '../../../shared/managed-onnx'
-import {
-  INTEL_RUNTIMES,
-  intelRuntime,
-  getLfmModelForRuntime,
-  isSupportedLfmModelId
-} from '../../../shared/intel-runtime'
+import { INTEL_RUNTIMES, intelRuntime, getLfmModelForRuntime } from '../../../shared/intel-runtime'
 import { ipcError } from '../audio'
 
 const STYLES: Array<{ id: IntelStyle; name: string; hint: string }> = [

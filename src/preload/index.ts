@@ -1,5 +1,4 @@
 import type { ProxySettings, ProxyTestResult } from '../shared/proxy-settings'
-import { randomUUID } from 'node:crypto'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
 import type {
@@ -415,7 +414,7 @@ const api = {
       input: { task: IntelTask; text: string; prefs?: Partial<IntelPrefs>; images?: IntelImage[] },
       onUpdate?: (update: IntelRunUpdate) => void
     ): Promise<IntelResult> => {
-      const runId = onUpdate ? randomUUID() : undefined
+      const runId = onUpdate ? globalThis.crypto.randomUUID() : undefined
       const listener = (_event: unknown, payload: { runId?: string; update?: IntelRunUpdate }): void => {
         if (payload.runId === runId && payload.update) onUpdate?.(payload.update)
       }
