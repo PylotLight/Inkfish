@@ -4,10 +4,12 @@ import {
   INTEL_SAMPLE,
   type IntelPrefs,
   type IntelResult,
+  type IntelEngineId,
   type IntelStatus,
   type IntelStyle,
   type IntelTask
 } from '../../../shared/intelligence'
+import { INTEL_RUNTIMES, intelRuntime, isSupportedLfm3TextModelId } from '../../../shared/intel-runtime'
 import { ipcError } from '../audio'
 
 const STYLES: Array<{ id: IntelStyle; name: string; hint: string }> = [
@@ -29,7 +31,21 @@ const TASKS: Array<{ id: IntelTask; label: string }> = [
 type Run = { state: 'running'; task: IntelTask } | { state: 'done'; r: IntelResult } | { state: 'error'; text: string }
 
 /** What to tell the user for each unavailable reason, and whether a System Settings button helps. */
-function fixFor(s: IntelStatus): { hint: string; openSettings: boolean } | null {
+function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSettings: boolean } | null {
+  if (engine !== 'apple') {
+    if (s.available) return null
+    return {
+      hint:
+        s.reason === 'invalidUrl'
+          ? 'Use a localhost, 127.0.0.1 or ::1 URL. Embedded inference will not connect to a remote host.'
+          : s.reason === 'incompatible'
+            ? 'The server answered, but its /models route did not return the expected OpenAI-compatible model list.'
+            : s.reason === 'invalidModel' || s.reason === 'modelUnavailable' || s.reason === 'modelNotFound'
+              ? 'Select the exact /models ID for the LFM3-1.7B text checkpoint. Other model families and the vision checkpoint are not enabled in this text-only path.'
+              : 'Start the selected local engine and expose its OpenAI-compatible /v1/chat/completions API, then check again.',
+      openSettings: false
+    }
+  }
   switch (s.reason) {
     case 'available':
       return null
@@ -55,9 +71,8 @@ function fixFor(s: IntelStatus): { hint: string; openSettings: boolean } | null 
 }
 
 /**
- * Settings › Apple Intelligence — status of the on-device Foundation Models
- * LLM, what Inkfish uses it for on capture, and a playground to test cleanup,
- * organising and summaries on any text before turning it on.
+ * Settings › Intelligence — embedded runtime status, capture behaviour and a
+ * playground for testing cleanup, organisation and summaries.
  */
 export default function IntelligenceSettings(): React.JSX.Element {
   const [status, setStatus] = useState<IntelStatus | null>(null)
@@ -66,10 +81,18 @@ export default function IntelligenceSettings(): React.JSX.Element {
   const [input, setInput] = useState(INTEL_SAMPLE)
   const [run, setRun] = useState<Run | null>(null)
   const saveTimer = useRef<number | null>(null)
+  const pendingPrefs = useRef<Partial<IntelPrefs> | null>(null)
 
   const check = async (fresh = true): Promise<void> => {
     setChecking(true)
     try {
+      if (saveTimer.current && pendingPrefs.current) {
+        window.clearTimeout(saveTimer.current)
+        saveTimer.current = null
+        const pending = pendingPrefs.current
+        pendingPrefs.current = null
+        await window.api.intel.setPrefs(pending)
+      }
       setStatus(await window.api.intel.status(fresh))
     } catch (e) {
       setStatus({ available: false, reason: 'helper', detail: ipcError(e) })
@@ -92,9 +115,19 @@ export default function IntelligenceSettings(): React.JSX.Element {
   const update = (patch: Partial<IntelPrefs>, debounce = false): void => {
     setPrefs((p) => ({ ...p, ...patch }))
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    const save = (): void => void window.api.intel.setPrefs(patch).catch(() => undefined)
-    if (debounce) saveTimer.current = window.setTimeout(save, 400)
-    else save()
+    const combined = { ...(pendingPrefs.current ?? {}), ...patch }
+    if (debounce) {
+      pendingPrefs.current = combined
+      saveTimer.current = window.setTimeout(() => {
+        pendingPrefs.current = null
+        saveTimer.current = null
+        void window.api.intel.setPrefs(combined).catch(() => undefined)
+      }, 400)
+    } else {
+      pendingPrefs.current = null
+      saveTimer.current = null
+      void window.api.intel.setPrefs(combined).catch(() => undefined)
+    }
   }
 
   const test = async (task: IntelTask): Promise<void> => {
@@ -107,34 +140,115 @@ export default function IntelligenceSettings(): React.JSX.Element {
     }
   }
 
-  const on = prefs.provider === 'apple'
-  const fix = status ? fixFor(status) : null
+  const on = prefs.provider !== 'off'
+  const selectedRuntime = prefs.engine === 'apple' ? null : intelRuntime(prefs.engine)
+  const fix = status ? fixFor(status, prefs.engine) : null
   const ready = status?.available ?? false
+
+  const selectEngine = (engine: IntelEngineId): void => {
+    const patch: Partial<IntelPrefs> = {
+      engine,
+      provider: prefs.provider === 'off' ? 'off' : engine === 'apple' ? 'apple' : 'local'
+    }
+    if (engine !== 'apple') {
+      if (!isSupportedLfm3TextModelId(prefs.localModel)) patch.localModel = intelRuntime(engine).modelExample
+      const previousDefault =
+        prefs.engine === 'apple' ? DEFAULT_INTEL_PREFS.localBaseUrl : intelRuntime(prefs.engine).defaultBaseUrl
+      if (!prefs.localBaseUrl || prefs.localBaseUrl === previousDefault)
+        patch.localBaseUrl = intelRuntime(engine).defaultBaseUrl
+    }
+    const combined = { ...(pendingPrefs.current ?? {}), ...patch }
+    pendingPrefs.current = null
+    setPrefs((p) => ({ ...p, ...combined }))
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = null
+    void window.api.intel
+      .setPrefs(combined)
+      .then(() => check(true))
+      .catch(() => undefined)
+  }
 
   return (
     <>
       <section className="settings-group">
-        <h4>Apple Intelligence</h4>
+        <h4>Embedded model</h4>
         <p className="muted small setting-hint" style={{ marginTop: 0 }}>
-          Apple&apos;s on-device language model cleans up dictation and files notes into projects. It runs on this Mac,
-          needs no download from Inkfish, and nothing leaves the machine.
+          Choose a verified local endpoint for the LFM3-1.7B text model. Endpoints are loopback-only; Inkfish does not
+          bundle runtime binaries or model weights. LFM3-VL-2B is not enabled here because this path does not send image
+          payloads.
         </p>
+
+        <label className="field">
+          <span>Inference engine</span>
+          <select
+            value={prefs.engine}
+            onChange={(e) => selectEngine(e.target.value as IntelEngineId)}
+            aria-label="Inference engine"
+          >
+            <option value="apple">Apple Foundation Models</option>
+            {INTEL_RUNTIMES.map((runtime) => (
+              <option key={runtime.id} value={runtime.id}>
+                {runtime.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedRuntime && (
+          <>
+            <label className="field">
+              <span>Local API URL</span>
+              <input
+                type="url"
+                value={prefs.localBaseUrl}
+                onChange={(e) => update({ localBaseUrl: e.target.value }, true)}
+                aria-label="Local model API URL"
+                placeholder={selectedRuntime.defaultBaseUrl}
+              />
+            </label>
+            <label className="field">
+              <span>
+                LFM3-1.7B model ID <span className="muted small">(required; must match /models)</span>
+              </span>
+              <input
+                value={prefs.localModel}
+                onChange={(e) => update({ localModel: e.target.value }, true)}
+                aria-label="Local model ID"
+                placeholder={selectedRuntime.modelExample}
+              />
+            </label>
+            <p className="muted small setting-hint">
+              {selectedRuntime.hint} Format: {selectedRuntime.formats}. {selectedRuntime.platform}.
+            </p>
+          </>
+        )}
 
         <div className={`engine-row${ready ? ' active' : ''}`}>
           <span className="engine-icon" aria-hidden>
             AI
           </span>
           <div className="engine-main">
-            <div className="engine-name">Apple Foundation Models</div>
+            <div className="engine-name">
+              {prefs.engine === 'apple' ? 'Apple Foundation Models' : selectedRuntime?.name}
+            </div>
             <span className="muted small">
               {status ? status.detail : 'Checking…'}
-              {status?.runtime && <span className="engine-runtime">{status.runtime}</span>}
+              {prefs.engine === 'apple' && status?.runtime && <span className="engine-runtime">{status.runtime}</span>}
             </span>
             {fix && <p className="muted small setting-hint">{fix.hint}</p>}
             <div className="engine-tags">
-              <span className="tag">On-device · ~3B</span>
-              <span className="tag dim">Built in · macOS 26+</span>
-              {status?.languages && status.languages.length > 0 && (
+              {prefs.engine === 'apple' ? (
+                <>
+                  <span className="tag">On-device · ~3B</span>
+                  <span className="tag dim">Built in · macOS 26+</span>
+                </>
+              ) : (
+                <>
+                  <span className="tag">Local · OpenAI-compatible</span>
+                  <span className="tag dim">{selectedRuntime?.formats}</span>
+                </>
+              )}
+              {prefs.engine === 'apple' && status?.languages && status.languages.length > 0 && (
                 <span className="tag dim" title={status.languages.join(', ')}>
                   {status.languages.length} languages
                 </span>
@@ -149,7 +263,7 @@ export default function IntelligenceSettings(): React.JSX.Element {
               </button>
             )}
             <button className="btn ghost sm" disabled={checking} onClick={() => void check(true)}>
-              {checking ? 'Checking…' : 'Check again'}
+              {checking ? 'Checking…' : prefs.engine === 'apple' ? 'Check again' : 'Check connection'}
             </button>
           </div>
         </div>
@@ -160,7 +274,7 @@ export default function IntelligenceSettings(): React.JSX.Element {
 
         <div className="setting-row inline">
           <div className="setting-label">
-            Use Apple Intelligence
+            Use embedded intelligence
             <span className="muted small setting-hint">
               Off, or while it&apos;s unavailable, Inkfish files notes with its keyword rules. The raw capture is always
               kept.
@@ -170,8 +284,8 @@ export default function IntelligenceSettings(): React.JSX.Element {
             role="switch"
             aria-checked={on}
             className={`switch${on ? ' on' : ''}`}
-            onClick={() => update({ provider: on ? 'off' : 'apple' })}
-            aria-label="Use Apple Intelligence"
+            onClick={() => update({ provider: on ? 'off' : prefs.engine === 'apple' ? 'apple' : 'local' })}
+            aria-label="Use embedded intelligence"
           >
             <span className="knob" />
           </button>
@@ -320,7 +434,7 @@ export default function IntelligenceSettings(): React.JSX.Element {
               ↺ Sample
             </button>
           </div>
-          {!ready && status && <p className="muted small setting-hint">Available once Apple Intelligence is ready.</p>}
+          {!ready && status && <p className="muted small setting-hint">Available once the selected engine is ready.</p>}
 
           {run?.state === 'error' && (
             <p className="small setting-hint error-text" style={{ overflowWrap: 'anywhere' }}>

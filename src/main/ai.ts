@@ -22,15 +22,13 @@ import { listEngines } from './stt'
 /**
  * AI abstraction: `transcribe()` / `classify()` / `summarize()` / `speak()`.
  *
- * Provider chain: Apple Intelligence where present → rules engine.
+ * Provider chain: Apple Foundation Models or a local inference runtime → rules engine.
  * No account, offline default. Each result reports which `provider` produced
  * it so the UI can show it and the router can distrust low-confidence rules.
  *
- * Apple Intelligence = the on-device Foundation Models LLM (macOS 26), reached
- * through the bundled `inkfish-stt` helper (`ai run`, see ./intelligence.ts).
- * It cleans up and files captures when enabled in Settings › Apple
- * Intelligence; anything it can't do (off, unavailable, error, unknown
- * project) falls back to the rules engine, so capture never blocks on it.
+ * Embedded intelligence can use Apple Foundation Models or a verified local
+ * LFM3-1.7B endpoint. It cleans up and files captures when enabled in Settings
+ * › Intelligence; anything unavailable falls back to rules.
  * STT = bundled native helper only (see ./stt.ts, stt/README.md) — never python/pip.
  */
 
@@ -160,7 +158,7 @@ export function intelEligible(input: ClassifyInput): boolean {
 
 /**
  * Route one capture. Rules first (offline, vault content), then the user's AI provider when it is
- * connected and allowed, else Apple Intelligence when on — both pick exact existing candidates or
+ * connected and allowed, else the selected embedded engine when on — both pick exact existing candidates or
  * explicitly propose a new note at the vault root when nothing fits; an explicit picker choice wins.
  */
 export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
@@ -189,9 +187,9 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
     }
   }
 
-  // 2. Apple Intelligence: cleanup, and organise when the provider didn't answer.
+  // 2. Embedded intelligence: cleanup, and organise when the provider didn't answer.
   const intel = loadIntelPrefs()
-  if (intel.provider !== 'apple' || (!intel.cleanup && !intel.organize) || !intelEligible(input)) return out
+  if (intel.provider === 'off' || (!intel.cleanup && !intel.organize) || !intelEligible(input)) return out
   try {
     if (!(await intelStatus()).available) return out
     const organize = intel.organize && !aiDone
@@ -211,7 +209,8 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
         confidence: folder ? Math.max(prefs.minConfidence, 0.6) : 0
       }
       // Keep a rules append (the model can't see notes); otherwise take its folder.
-      if (routed.action !== 'append') routed = applyAiRoute(routed, ai, 'apple', prefs, vocab)
+      const source = r.provider === 'local' ? 'local' : 'apple'
+      if (routed.action !== 'append') routed = applyAiRoute(routed, ai, source, prefs, vocab)
       const { title, markdown } = out
       out = { ...toResult(routed, input), title, markdown }
       if (intel.actionItems && r.actionItems.length) {
@@ -220,7 +219,7 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
         if (missing.length) out.markdown += `\n\n## Action items\n${missing.map((a) => `- [ ] ${a}`).join('\n')}`
       }
     }
-    if (out.provider === 'rules') out.provider = 'apple'
+    if (out.provider === 'rules') out.provider = r.provider === 'local' ? 'local' : 'apple'
     return out
   } catch {
     return out
@@ -235,11 +234,11 @@ export function summarizeExtractive(text: string, maxSentences = 3): string {
 }
 
 export async function summarize(text: string, maxSentences = 3): Promise<{ text: string; provider: string }> {
-  if (loadIntelPrefs().provider === 'apple' && text.trim()) {
+  if (loadIntelPrefs().provider !== 'off' && text.trim()) {
     try {
       if ((await intelStatus()).available) {
         const r = await intelRun({ task: 'summarize', text })
-        if (r.summary.trim()) return { text: r.summary.trim(), provider: 'apple' }
+        if (r.summary.trim()) return { text: r.summary.trim(), provider: r.provider }
       }
     } catch {
       // fall through to extractive

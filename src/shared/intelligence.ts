@@ -1,16 +1,22 @@
-/**
- * Apple Intelligence (Foundation Models) contracts, shared main ↔ renderer.
- * Safe to import from any process.
- */
+/** Embedded intelligence settings and results shared main ↔ renderer. Safe to import anywhere. */
+
+import type { IntelRuntimeId } from './intel-runtime'
 
 export type IntelTask = 'cleanup' | 'organize' | 'summarize'
+export type IntelEngineId = 'apple' | IntelRuntimeId
 
 /** Cleanup strength: light = punctuation + filler only; structured = also bullets/headings. */
 export type IntelStyle = 'light' | 'standard' | 'structured'
 
 export interface IntelPrefs {
-  /** 'apple' = use Apple Intelligence when available; 'off' = rules engine only. */
-  provider: 'apple' | 'off'
+  /** Apple Foundation Models, a local OpenAI-compatible runtime, or rules-only fallback. */
+  provider: 'apple' | 'local' | 'off'
+  /** Selected engine. Apple Foundation Models remains the default. */
+  engine: IntelEngineId
+  /** OpenAI-compatible API root; restricted to loopback for the embedded-model path. */
+  localBaseUrl: string
+  /** Exact advertised ID for the LFM3-1.7B text checkpoint; required for local inference. */
+  localModel: string
   /** Clean up captured text (filler, self-corrections, punctuation) before filing. */
   cleanup: boolean
   /** Let the model pick the title, project and tags. */
@@ -26,6 +32,9 @@ export interface IntelPrefs {
 
 export const DEFAULT_INTEL_PREFS: IntelPrefs = {
   provider: 'apple',
+  engine: 'apple',
+  localBaseUrl: 'http://127.0.0.1:8080/v1',
+  localModel: '',
   cleanup: true,
   organize: true,
   actionItems: true,
@@ -36,7 +45,7 @@ export const DEFAULT_INTEL_PREFS: IntelPrefs = {
 
 export interface IntelStatus {
   available: boolean
-  /** available | deviceNotEligible | appleIntelligenceNotEnabled | modelNotReady | osTooOld | sdkMissing | helper | unsupported | unknown */
+  /** Includes local invalidModel, modelUnavailable and modelNotFound outcomes. */
   reason: string
   detail: string
   languages?: string[]
@@ -55,7 +64,7 @@ export interface IntelResult {
   ms: number
   runtime: string
   chunks?: number
-  provider: 'apple' | 'rules'
+  provider: 'apple' | 'local' | 'rules'
 }
 
 /** Messy dictation used by the Settings playground. */

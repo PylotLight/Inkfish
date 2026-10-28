@@ -9,15 +9,15 @@ import {
   type IntelStatus,
   type IntelTask
 } from '../shared/intelligence'
+import { isIntelRuntimeId } from '../shared/intel-runtime'
+import { localIntelStatus, runLocalIntel } from './intel-local'
 import { helperPath } from './stt'
 import { appDataDir } from './vault'
 
 /**
- * Apple Intelligence — the on-device Foundation Models LLM (macOS 26), used
- * for note cleanup ("fluid intelligence"-style) and organising captures into
- * projects. Runs inside the bundled `inkfish-stt` helper (`ai status` /
- * `ai run`, see stt/Sources/InkfishSTT/Intelligence.swift); nothing leaves
- * the Mac. Every caller falls back to the rules engine when it's unavailable.
+ * Embedded intelligence: Apple Foundation Models or a user-run local inference
+ * server. The local path only connects to loopback OpenAI-compatible servers and
+ * sends no API key; callers fall back to the rules engine when unavailable.
  */
 
 // --- prefs (app data, so the main-process router can read them) -------------------
@@ -49,8 +49,20 @@ export function saveIntelPrefs(patch: Partial<IntelPrefs>): IntelPrefs {
 }
 
 function sanitize(p: IntelPrefs): IntelPrefs {
+  const engine = p.engine === 'apple' || isIntelRuntimeId(p.engine) ? p.engine : 'apple'
   return {
-    provider: p.provider === 'off' ? 'off' : 'apple',
+    provider: p.provider === 'off' ? 'off' : engine === 'apple' ? 'apple' : 'local',
+    engine,
+    // Keep an invalid value visible in Settings so status can explain why it is blocked.
+    // localIntelStatus/completeLocalChat independently reject every non-loopback URL.
+    localBaseUrl:
+      String(p.localBaseUrl ?? '')
+        .trim()
+        .replace(/\/+$/, '')
+        .slice(0, 500) || DEFAULT_INTEL_PREFS.localBaseUrl,
+    localModel: String(p.localModel ?? '')
+      .trim()
+      .slice(0, 200),
     cleanup: Boolean(p.cleanup),
     organize: Boolean(p.organize),
     actionItems: Boolean(p.actionItems),
@@ -90,8 +102,17 @@ function call(args: string[], stdin: string | null, timeoutMs: number): Promise<
 let cached: { at: number; status: IntelStatus } | null = null
 const STATUS_TTL_MS = 60_000
 
-/** Availability of the on-device model. Cached for a minute; `fresh` re-checks. */
+/** Availability of the selected engine. Apple status is cached for a minute; local checks are live. */
 export async function intelStatus(fresh = false): Promise<IntelStatus> {
+  const prefs = loadIntelPrefs()
+  if (prefs.engine !== 'apple') {
+    const local = await localIntelStatus({
+      engine: prefs.engine,
+      baseUrl: prefs.localBaseUrl,
+      model: prefs.localModel
+    })
+    return local
+  }
   if (!fresh && cached && Date.now() - cached.at < STATUS_TTL_MS) return cached.status
   let status: IntelStatus
   if (process.platform !== 'darwin') {
@@ -121,7 +142,20 @@ export interface IntelRunInput {
 
 /** Run one task on the on-device model. Throws when unavailable — callers fall back. */
 export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
-  const prefs = { ...loadIntelPrefs(), ...(input.prefs ?? {}) }
+  // Renderer-supplied playground overrides are untrusted; re-sanitize the endpoint before any request.
+  const prefs = sanitize({ ...loadIntelPrefs(), ...(input.prefs ?? {}) })
+  if (prefs.engine !== 'apple') {
+    return runLocalIntel({
+      config: { engine: prefs.engine, baseUrl: prefs.localBaseUrl, model: prefs.localModel },
+      task: input.task,
+      text: input.text,
+      projects: input.projects ?? [],
+      style: prefs.style,
+      instructions: prefs.instructions,
+      temperature: prefs.temperature,
+      cleanup: input.task === 'organize' ? prefs.cleanup : false
+    })
+  }
   const req = {
     task: input.task,
     text: input.text,

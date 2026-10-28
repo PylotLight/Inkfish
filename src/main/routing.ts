@@ -95,7 +95,7 @@ export function routeInputFor(raw: string, kind: NoteKind, hint: string | undefi
 
 /**
  * Live preview for the capture popover: the offline rules router only (no model call), on the same
- * inputs filing uses. `aiReady` = an AI provider / Apple Intelligence may refine it at filing time.
+ * inputs filing uses. `aiReady` = an external AI provider or enabled embedded engine may refine it at filing time.
  */
 export function previewRoute(
   raw: string,

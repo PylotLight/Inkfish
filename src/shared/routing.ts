@@ -310,7 +310,7 @@ export interface RouteDecision {
   confidence: number
   /** One line for the inbox: why it went there (or didn't). */
   reason: string
-  provider: 'picker' | 'rules' | 'apple' | 'api'
+  provider: 'picker' | 'rules' | 'apple' | 'local' | 'api'
   folders: ScoredFolder[]
   notes: ScoredNote[]
 }
@@ -677,7 +677,7 @@ export function parseAiRoute(text: string, cand: { folders: string[]; notes: Sco
 export function applyAiRoute(
   rules: RouteDecision,
   ai: AiRouteAnswer,
-  provider: 'apple' | 'api',
+  provider: 'apple' | 'local' | 'api',
   prefs: RoutingPrefs,
   vocab: ReadonlyMap<string, number>
 ): RouteDecision {
@@ -692,7 +692,7 @@ export function applyAiRoute(
     }
   }
   const out = { ...rules, tags: tags.slice(0, 8), provider }
-  const who = provider === 'apple' ? 'Apple Intelligence' : 'AI'
+  const who = provider === 'apple' ? 'Apple Intelligence' : provider === 'local' ? 'Local model' : 'AI'
   if (ai.action === 'new' && !ai.folder) {
     if (rules.reason.includes('default folder ')) return out
     return {
@@ -806,7 +806,7 @@ export interface RoutePreview {
   override: boolean
   /** Settings › Routing auto-file is off: it would only be suggested, the capture waits in the inbox. */
   suggested: boolean
-  /** An AI model may still refine this at filing time (provider / Apple Intelligence). */
+  /** An AI model may still refine this at filing time (provider / embedded intelligence). */
   aiMayRefine: boolean
   /** Quick switches for the preview menu. */
   alt: {

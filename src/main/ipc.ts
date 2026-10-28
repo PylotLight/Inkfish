@@ -417,7 +417,7 @@ export function registerIpc(): void {
     const intel = loadIntelPrefs()
     const aiReady =
       (prefs.useAiProvider && aiConfigured()) ||
-      (intel.provider === 'apple' && intel.organize && process.platform === 'darwin')
+      (intel.provider !== 'off' && intel.organize && (intel.engine !== 'apple' || process.platform === 'darwin'))
     try {
       return previewRoute(raw, kind, hint || 'auto', requireNotes(), aiReady) satisfies RoutePreview
     } catch (err) {
@@ -780,7 +780,7 @@ export function registerIpc(): void {
   ipcMain.handle('ai:summarize', (_e: IpcMainInvokeEvent, text: string): Promise<{ text: string; provider: string }> =>
     summarize(text)
   )
-  // --- Apple Intelligence (Foundation Models) ----------------------------------------
+  // --- Embedded intelligence (Apple Foundation Models or local inference server) -----
   ipcMain.handle('intel:status', (_e: IpcMainInvokeEvent, fresh?: boolean): Promise<IntelStatus> => intelStatus(fresh))
   ipcMain.handle('intel:prefs', (): IntelPrefs => loadIntelPrefs())
   ipcMain.handle('intel:set-prefs', (_e: IpcMainInvokeEvent, patch: Partial<IntelPrefs>): IntelPrefs =>
