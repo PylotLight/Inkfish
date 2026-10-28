@@ -50,7 +50,6 @@ export function PairScanner({
             key={cameraKey}
             style={StyleSheet.absoluteFill}
             facing="back"
-            autofocus="on"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={busy ? undefined : ({ data }) => handle(data)}
             onCameraReady={() => {
