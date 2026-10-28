@@ -9,7 +9,9 @@ import {
   type IntelImage,
   type IntelPrefs,
   type IntelResult,
+  type IntelRunUpdate,
   type IntelStatus,
+  type IntelThinkingLevel,
   type IntelTask
 } from '../shared/intelligence'
 import { getLfmModelForRuntime, isIntelRuntimeId } from '../shared/intel-runtime'
@@ -73,7 +75,8 @@ function sanitize(p: IntelPrefs): IntelPrefs {
     actionItems: Boolean(p.actionItems),
     style: p.style === 'light' || p.style === 'structured' ? p.style : 'standard',
     temperature: Math.max(0, Math.min(1, Number.isFinite(p.temperature) ? p.temperature : 0.2)),
-    instructions: String(p.instructions ?? '').slice(0, 1200)
+    instructions: String(p.instructions ?? '').slice(0, 1200),
+    thinkingLevel: (p.thinkingLevel === 'off' ? 'off' : 'on') as IntelThinkingLevel
   }
 }
 
@@ -157,6 +160,8 @@ export interface IntelRunInput {
   text: string
   projects?: string[]
   images?: IntelImage[]
+  /** Main-process-only callback used by the settings playground's streamed inference trace. */
+  onUpdate?: (update: IntelRunUpdate) => void
   /** Overrides for the settings playground; omitted fields use saved prefs. */
   prefs?: Partial<IntelPrefs>
 }
@@ -263,7 +268,9 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
         instructions: prefs.instructions,
         temperature: prefs.temperature,
         cleanup: input.task === 'organize' ? prefs.cleanup : false,
-        images
+        images,
+        thinkingLevel: prefs.thinkingLevel,
+        onUpdate: input.onUpdate
       })
     }
     return runLocalIntel({

@@ -17,8 +17,9 @@ import { cpus, freemem, totalmem } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { LfmArtifact, LfmModelKey } from '../shared/lfm-catalog'
 import { getLfmModelByKey, isLfmModelKey, LFM_CATALOG } from '../shared/lfm-catalog'
-import type { IntelImage } from '../shared/intelligence'
+import type { IntelImage, IntelRunStats, IntelRunUpdate, IntelThinkingLevel } from '../shared/intelligence'
 import type { ManagedOnnxDownloadProgress, ManagedOnnxModelStatus, ManagedOnnxStatus } from '../shared/managed-onnx'
+import { splitLfm3ThinkingText } from '../shared/managed-onnx'
 import { createModelDownloadProxy, type ModelDownloadProxy } from './model-download-proxy'
 import { onProxyChanging, getProxySettings, isProxyTransitioning } from './proxy-state'
 import { appDataDir } from './vault/appdata'
@@ -64,10 +65,10 @@ interface TokenizerLike {
   eos_token_id: number
   apply_chat_template(
     messages: Array<{ role: 'system' | 'user'; content: string }>,
-    options: { add_generation_prompt: true; tokenize: false; chat_template: string }
+    options: { add_generation_prompt: true; tokenize: false; chat_template: string; enable_thinking: boolean }
   ): string
   (text: string, options: { add_special_tokens: false }): { input_ids: TensorLike }
-  decode(tokenIds: number[], options: { skip_special_tokens: true }): string
+  decode(tokenIds: number[], options: { skip_special_tokens: boolean }): string
 }
 interface RawImageLike {
   width: number
@@ -123,12 +124,17 @@ export interface ManagedOnnxChatOptions {
   temperature?: number
   maxTokens?: number
   timeoutMs?: number
+  thinkingLevel?: IntelThinkingLevel
+  onUpdate?: (update: IntelRunUpdate) => void
 }
 export interface ManagedOnnxChatResult {
   content: string
+  thinking?: string
   ms: number
   promptTokens: number
   completionTokens: number
+  thinkingLevel: IntelThinkingLevel
+  stats: IntelRunStats
 }
 
 export interface ManagedOnnxRuntimeDependencies {
@@ -883,7 +889,8 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
       .apply_chat_template(templateMessages, {
         add_generation_prompt: true,
         tokenize: false,
-        chat_template: ready.chatTemplate
+        chat_template: ready.chatTemplate,
+        enable_thinking: options.thinkingLevel !== 'off'
       })
       .replaceAll('<|image|>', () => {
         const count = encodedImages?.counts[imageIndex++]
@@ -918,6 +925,11 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
     const requestedTemperature =
       typeof options.temperature === 'number' && Number.isFinite(options.temperature) ? options.temperature : 0.2
     const temperature = Math.max(0, Math.min(1, requestedTemperature))
+    const thinkingLevel = options.thinkingLevel === 'off' ? 'off' : 'on'
+    const generationStarted = Date.now()
+    let timeToFirstTokenMs = 0
+    let thinkingTokenCount = 0
+    let split = { thinking: '', content: '' }
     for (let step = 0; step < maximum; step++) {
       if (closing) throw new Error('Managed ONNX Runtime is shutting down.')
       if (Date.now() - started > timeout)
@@ -953,6 +965,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
       if (!vocabSize || !rows) throw new Error('The LFM3 ONNX decoder returned empty logits')
       const token = chooseToken(logitsTensor.data, (rows - 1) * vocabSize, vocabSize, temperature)
       generated.push(token)
+      if (step === 0) timeToFirstTokenMs = Date.now() - generationStarted
       for (const metadata of ready.decoder.outputMetadata) {
         if (metadata.name.startsWith('present_conv.')) {
           const output = outputs[metadata.name]
@@ -962,13 +975,47 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
           if (output) cache[metadata.name.replace('present.', 'past_key_values.')] = output
         }
       }
+      const decoded = ready.tokenizer.decode(generated, { skip_special_tokens: false })
+      split = splitLfm3ThinkingText(decoded, thinkingLevel)
+      if (thinkingLevel === 'on' && thinkingTokenCount === 0 && decoded.includes('</think>'))
+        thinkingTokenCount = generated.length
+      const generationMs = Date.now() - generationStarted
+      const thinkingTokens = thinkingLevel === 'on' ? thinkingTokenCount || generated.length : 0
+      const stats: IntelRunStats = {
+        promptTokens: promptLength,
+        completionTokens: generated.length,
+        thinkingTokens,
+        answerTokens: generated.length - thinkingTokens,
+        generationMs,
+        timeToFirstTokenMs,
+        tokensPerSecond: generationMs > 0 ? (generated.length * 1000) / generationMs : 0
+      }
+      try {
+        options.onUpdate?.({ ...split, stats })
+      } catch {
+        // Renderer progress must not interrupt native inference.
+      }
       if (token === ready.tokenizer.eos_token_id) break
     }
+    const generationMs = Date.now() - generationStarted
+    const thinkingTokens = thinkingLevel === 'on' ? thinkingTokenCount || generated.length : 0
+    const stats: IntelRunStats = {
+      promptTokens: promptLength,
+      completionTokens: generated.length,
+      thinkingTokens,
+      answerTokens: generated.length - thinkingTokens,
+      generationMs,
+      timeToFirstTokenMs,
+      tokensPerSecond: generationMs > 0 ? (generated.length * 1000) / generationMs : 0
+    }
     return {
-      content: ready.tokenizer.decode(generated, { skip_special_tokens: true }).trim(),
+      content: split.content.trim(),
+      ...(split.thinking.trim() ? { thinking: split.thinking.trim() } : {}),
       ms: Date.now() - started,
       promptTokens: promptLength,
-      completionTokens: generated.length
+      completionTokens: generated.length,
+      thinkingLevel,
+      stats
     }
   }
 

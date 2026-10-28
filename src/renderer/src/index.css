@@ -4901,6 +4901,46 @@ html[data-density='compact'] .note-stage {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.intel-live {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--border) 12%, transparent);
+}
+.intel-diagnostics {
+  margin: 8px 0;
+}
+.intel-thinking {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+.intel-thinking summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.intel-thinking .intel-body {
+  max-height: 240px;
+  margin: 8px 0 0;
+  overflow: auto;
+}
+.intel-stats {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.intel-stats dt {
+  color: var(--muted);
+}
+.intel-stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 
 /* Settings › Sync pairing QR */
 .sync-pair {

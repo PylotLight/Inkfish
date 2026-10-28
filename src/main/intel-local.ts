@@ -3,8 +3,11 @@ import {
   INTEL_MAX_IMAGES,
   type IntelImage,
   type IntelResult,
+  type IntelRunStats,
+  type IntelRunUpdate,
   type IntelTask,
-  type IntelStyle
+  type IntelStyle,
+  type IntelThinkingLevel
 } from '../shared/intelligence'
 import { intelRuntime, isLoopbackIntelUrl, getLfmModelForRuntime, type IntelRuntimeId } from '../shared/intel-runtime'
 import { loopbackPortOwnedByPid } from './loopback-owner'
@@ -26,9 +29,11 @@ export interface LocalChatMessage {
 
 export interface LocalChatResult {
   content: string
+  thinking?: string
   ms: number
   promptTokens?: number
   completionTokens?: number
+  stats?: IntelRunStats
 }
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
@@ -199,7 +204,13 @@ export async function localIntelStatus(
 export async function completeLocalChat(
   config: IntelLocalConfig,
   messages: LocalChatMessage[],
-  options: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {},
+  options: {
+    temperature?: number
+    maxTokens?: number
+    timeoutMs?: number
+    thinkingLevel?: IntelThinkingLevel
+    onUpdate?: (update: IntelRunUpdate) => void
+  } = {},
   fetcher: Fetcher = (input, init) => fetch(input, init)
 ): Promise<LocalChatResult> {
   const model = config.model.trim()
@@ -347,6 +358,8 @@ export interface LocalIntelRunInput {
   temperature: number
   cleanup: boolean
   images?: IntelImage[]
+  thinkingLevel?: IntelThinkingLevel
+  onUpdate?: (update: IntelRunUpdate) => void
 }
 
 export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher): Promise<IntelResult> {
@@ -356,16 +369,49 @@ export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher
   if (!status.available) throw new Error(status.detail)
   const started = Date.now()
   const system = baseInstructions(input.instructions)
-  const complete = (user: string, maxTokens = 1024, images?: IntelImage[]): Promise<LocalChatResult> =>
-    completeLocalChat(
+  const runs: LocalChatResult[] = []
+  const complete = async (user: string, maxTokens = 1024, images?: IntelImage[]): Promise<LocalChatResult> => {
+    const result = await completeLocalChat(
       input.config,
       [
         { role: 'system', content: system },
         { role: 'user', content: user, ...(images?.length ? { images } : {}) }
       ],
-      { temperature: input.temperature, maxTokens, timeoutMs: 120_000 },
+      {
+        temperature: input.temperature,
+        maxTokens,
+        timeoutMs: 120_000,
+        thinkingLevel: input.thinkingLevel,
+        onUpdate: input.onUpdate
+      },
       fetcher
     )
+    if (input.config.engine === 'onnx-managed') runs.push(result)
+    return result
+  }
+  const diagnostics = (): Pick<IntelResult, 'thinking' | 'thinkingLevel' | 'inference'> => {
+    if (input.config.engine !== 'onnx-managed' || !input.onUpdate || runs.length === 0) return {}
+    const stats = runs.flatMap((run) => (run.stats ? [run.stats] : []))
+    if (!stats.length) return {}
+    const generationMs = stats.reduce((total, item) => total + item.generationMs, 0)
+    const completionTokens = stats.reduce((total, item) => total + item.completionTokens, 0)
+    return {
+      thinking: runs
+        .map((run) => run.thinking?.trim())
+        .filter(Boolean)
+        .join('\n\n'),
+      thinkingLevel: input.thinkingLevel ?? 'on',
+      inference: {
+        promptTokens: stats.reduce((total, item) => total + item.promptTokens, 0),
+        completionTokens,
+        thinkingTokens: stats.reduce((total, item) => total + item.thinkingTokens, 0),
+        answerTokens: stats.reduce((total, item) => total + item.answerTokens, 0),
+        generationMs,
+        timeToFirstTokenMs: stats[0]!.timeToFirstTokenMs,
+        tokensPerSecond: generationMs > 0 ? (completionTokens * 1000) / generationMs : 0
+      }
+    }
+  }
 
   if (input.task === 'cleanup') {
     const cleaned: string[] = []
@@ -387,7 +433,8 @@ export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher
       ms: Date.now() - started,
       runtime: runtimeLabel(input.config),
       chunks: Math.max(1, cleaned.length),
-      provider: 'local'
+      provider: 'local',
+      ...diagnostics()
     }
   }
 
@@ -431,7 +478,8 @@ export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher
       actionItems: strings(r.actionItems, 20),
       ms: Date.now() - started,
       runtime: runtimeLabel(input.config),
-      provider: 'local'
+      provider: 'local',
+      ...diagnostics()
     }
   }
 
@@ -454,6 +502,7 @@ export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher
     actionItems: [],
     ms: Date.now() - started,
     runtime: runtimeLabel(input.config),
-    provider: 'local'
+    provider: 'local',
+    ...diagnostics()
   }
 }

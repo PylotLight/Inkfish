@@ -4,6 +4,7 @@ import {
   INTEL_SAMPLE,
   type IntelPrefs,
   type IntelResult,
+  type IntelRunUpdate,
   type IntelEngineId,
   type IntelStatus,
   type IntelStyle,
@@ -36,7 +37,10 @@ const TASKS: Array<{ id: IntelTask; label: string }> = [
   { id: 'summarize', label: 'Summarise' }
 ]
 
-type Run = { state: 'running'; task: IntelTask } | { state: 'done'; r: IntelResult } | { state: 'error'; text: string }
+type Run =
+  | { state: 'running'; task: IntelTask; update?: IntelRunUpdate }
+  | { state: 'done'; r: IntelResult }
+  | { state: 'error'; text: string }
 
 /** What to tell the user for each unavailable reason, and whether a System Settings button helps. */
 function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSettings: boolean } | null {
@@ -214,7 +218,12 @@ export default function IntelligenceSettings(): React.JSX.Element {
     if (!input.trim()) return
     setRun({ state: 'running', task })
     try {
-      setRun({ state: 'done', r: await window.api.intel.run({ task, text: input, prefs }) })
+      setRun({
+        state: 'done',
+        r: await window.api.intel.run({ task, text: input, prefs }, (update) => {
+          setRun((current) => (current?.state === 'running' ? { ...current, update } : current))
+        })
+      })
     } catch (e) {
       setRun({ state: 'error', text: ipcError(e) })
     }
@@ -571,6 +580,21 @@ export default function IntelligenceSettings(): React.JSX.Element {
                 ))}
               </select>
             </label>
+            <label className="field">
+              <span>Thinking mode</span>
+              <select
+                value={prefs.thinkingLevel}
+                onChange={(e) => update({ thinkingLevel: e.target.value as IntelPrefs['thinkingLevel'] })}
+                aria-label="ONNX thinking level"
+              >
+                <option value="on">On (default)</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <p className="muted small setting-hint">
+              LFM3 supports thinking on or off in its chat template; it does not expose a low/medium/high effort scale.
+              The playground shows the reasoning trace separately from the answer.
+            </p>
             <p className="muted small setting-hint">
               Runs locally with ONNX Runtime CPU on macOS Apple silicon. Estimated RAM: about{' '}
               {onnxModel
@@ -915,6 +939,9 @@ export default function IntelligenceSettings(): React.JSX.Element {
               {run.text}
             </p>
           )}
+          {run?.state === 'running' && prefs.engine === 'onnx-managed' && (
+            <IntelLiveOutput update={run.update} thinkingLevel={prefs.thinkingLevel} />
+          )}
           {run?.state === 'done' && <IntelOutput r={run.r} />}
         </div>
       </section>
@@ -932,6 +959,9 @@ function IntelOutput({ r }: { r: IntelResult }): React.JSX.Element {
         </span>
         <span className="engine-ms">{(r.ms / 1000).toFixed(1)} s</span>
       </div>
+      {r.inference && (
+        <IntelDiagnostics thinking={r.thinking ?? ''} thinkingLevel={r.thinkingLevel ?? 'on'} stats={r.inference} />
+      )}
       {r.task === 'organize' && (
         <dl className="intel-fields">
           <dt>Title</dt>
@@ -957,6 +987,67 @@ function IntelOutput({ r }: { r: IntelResult }): React.JSX.Element {
       {r.text && <pre className="intel-body">{r.text}</pre>}
       {r.task === 'summarize' && <p className="intel-body">{r.summary}</p>}
       {r.runtime && <span className="muted small engine-runtime">{r.runtime}</span>}
+    </div>
+  )
+}
+
+function IntelLiveOutput({
+  update,
+  thinkingLevel
+}: {
+  update?: IntelRunUpdate
+  thinkingLevel: IntelPrefs['thinkingLevel']
+}): React.JSX.Element {
+  return (
+    <div className="intel-live" aria-live="polite">
+      <div className="row between intel-out-head">
+        <span className="muted small">ONNX generation · thinking {thinkingLevel}</span>
+        {update && <span className="engine-ms">{update.stats.completionTokens} tokens</span>}
+      </div>
+      {update ? (
+        <>
+          <IntelDiagnostics thinking={update.thinking} thinkingLevel={thinkingLevel} stats={update.stats} />
+          <span className="muted small">Streaming output</span>
+          <pre className="intel-body">{update.content || 'Waiting for the answer…'}</pre>
+        </>
+      ) : (
+        <span className="muted small">Preparing the ONNX request…</span>
+      )}
+    </div>
+  )
+}
+
+function IntelDiagnostics({
+  thinking,
+  thinkingLevel,
+  stats
+}: {
+  thinking: string
+  thinkingLevel: IntelPrefs['thinkingLevel']
+  stats: IntelRunUpdate['stats']
+}): React.JSX.Element {
+  return (
+    <div className="intel-diagnostics">
+      <details className="intel-thinking" open>
+        <summary>
+          Reasoning trace · {thinkingLevel} · {stats.thinkingTokens} tokens
+        </summary>
+        <pre className="intel-body">{thinking || 'No visible reasoning tokens so far.'}</pre>
+      </details>
+      <dl className="intel-stats">
+        <dt>Prompt</dt>
+        <dd>{stats.promptTokens} tokens</dd>
+        <dt>Generated</dt>
+        <dd>
+          {stats.completionTokens} tokens · {stats.thinkingTokens} thinking / {stats.answerTokens} answer
+        </dd>
+        <dt>First token</dt>
+        <dd>{(stats.timeToFirstTokenMs / 1000).toFixed(2)} s</dd>
+        <dt>Generation</dt>
+        <dd>{(stats.generationMs / 1000).toFixed(2)} s</dd>
+        <dt>Throughput</dt>
+        <dd>{stats.tokensPerSecond.toFixed(1)} tokens/s</dd>
+      </dl>
     </div>
   )
 }

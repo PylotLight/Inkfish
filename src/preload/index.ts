@@ -1,7 +1,15 @@
 import type { ProxySettings, ProxyTestResult } from '../shared/proxy-settings'
+import { randomUUID } from 'node:crypto'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
-import type { IntelImage, IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type {
+  IntelImage,
+  IntelPrefs,
+  IntelResult,
+  IntelRunUpdate,
+  IntelStatus,
+  IntelTask
+} from '../shared/intelligence'
 import type { LfmModelKey } from '../shared/lfm-catalog'
 import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
 import type { ManagedOnnxDownloadProgress, ManagedOnnxStatus } from '../shared/managed-onnx'
@@ -403,12 +411,21 @@ const api = {
     prefs: (): Promise<IntelPrefs> => ipcRenderer.invoke('intel:prefs'),
     setPrefs: (patch: Partial<IntelPrefs>): Promise<IntelPrefs> => ipcRenderer.invoke('intel:set-prefs', patch),
     /** Playground run; `prefs` overrides saved settings for this call only. */
-    run: (input: {
-      task: IntelTask
-      text: string
-      prefs?: Partial<IntelPrefs>
-      images?: IntelImage[]
-    }): Promise<IntelResult> => ipcRenderer.invoke('intel:run', input),
+    run: async (
+      input: { task: IntelTask; text: string; prefs?: Partial<IntelPrefs>; images?: IntelImage[] },
+      onUpdate?: (update: IntelRunUpdate) => void
+    ): Promise<IntelResult> => {
+      const runId = onUpdate ? randomUUID() : undefined
+      const listener = (_event: unknown, payload: { runId?: string; update?: IntelRunUpdate }): void => {
+        if (payload.runId === runId && payload.update) onUpdate?.(payload.update)
+      }
+      if (runId) ipcRenderer.on('intel:run-update', listener)
+      try {
+        return (await ipcRenderer.invoke('intel:run', input, runId)) as IntelResult
+      } finally {
+        if (runId) ipcRenderer.removeListener('intel:run-update', listener)
+      }
+    },
     openSystemSettings: (): Promise<boolean> => ipcRenderer.invoke('intel:open-system-settings')
   },
   stt: {

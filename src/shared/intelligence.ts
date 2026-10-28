@@ -4,6 +4,25 @@ import type { IntelRuntimeId } from './intel-runtime'
 
 export type IntelTask = 'cleanup' | 'organize' | 'summarize'
 export type IntelEngineId = 'apple' | IntelRuntimeId
+/** LFM3 exposes thinking as a binary chat-template option, not a low/medium/high effort scale. */
+export type IntelThinkingLevel = 'off' | 'on'
+
+export interface IntelRunStats {
+  promptTokens: number
+  completionTokens: number
+  thinkingTokens: number
+  answerTokens: number
+  generationMs: number
+  timeToFirstTokenMs: number
+  tokensPerSecond: number
+}
+
+/** Cumulative snapshots are sent during ONNX generation so the renderer can display a live trace. */
+export interface IntelRunUpdate {
+  thinking: string
+  content: string
+  stats: IntelRunStats
+}
 
 /** Cleanup strength: light = punctuation + filler only; structured = also bullets/headings. */
 export type IntelStyle = 'light' | 'standard' | 'structured'
@@ -38,6 +57,8 @@ export interface IntelPrefs {
   temperature: number
   /** Extra guidance: names, vocabulary, formatting habits. */
   instructions: string
+  /** Managed LFM3 only; ONNX and LFM3 templates support thinking on/off. */
+  thinkingLevel: IntelThinkingLevel
 }
 
 export const DEFAULT_INTEL_PREFS: IntelPrefs = {
@@ -50,7 +71,8 @@ export const DEFAULT_INTEL_PREFS: IntelPrefs = {
   actionItems: true,
   style: 'standard',
   temperature: 0.2,
-  instructions: ''
+  instructions: '',
+  thinkingLevel: 'on'
 }
 
 export interface IntelStatus {
@@ -75,6 +97,10 @@ export interface IntelResult {
   runtime: string
   chunks?: number
   provider: 'apple' | 'local' | 'rules'
+  /** Playground-only ONNX diagnostics; omitted from normal capture results. */
+  thinking?: string
+  thinkingLevel?: IntelThinkingLevel
+  inference?: IntelRunStats
 }
 
 /** Messy dictation used by the Settings playground. */

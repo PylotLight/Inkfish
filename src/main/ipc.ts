@@ -132,7 +132,7 @@ import { aiConfigured, routeCompletion } from './ai-api'
 import type { RoutePreview, RoutingPrefs } from '../shared/routing'
 import { shortcutFor } from './shortcuts'
 import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
-import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
+import type { IntelPrefs, IntelResult, IntelRunUpdate, IntelStatus } from '../shared/intelligence'
 import { isLfmModelKey } from '../shared/lfm-catalog'
 import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
 import type { ManagedOnnxDownloadProgress, ManagedOnnxStatus } from '../shared/managed-onnx'
@@ -873,11 +873,26 @@ export function registerIpc(): void {
     void shell.openExternal('https://huggingface.co/LiquidAI/LFM3-1.7B-ONNX/blob/main/LICENSE')
     return true
   })
-  ipcMain.handle('intel:run', (_e: IpcMainInvokeEvent, input: Omit<IntelRunInput, 'projects'>): Promise<IntelResult> =>
-    intelRun({
-      ...input,
-      projects: vaultConfigured() ? listProjects(requireNotes()).map((p) => p.name) : []
-    })
+  ipcMain.handle(
+    'intel:run',
+    (
+      event: IpcMainInvokeEvent,
+      input: Omit<IntelRunInput, 'projects' | 'onUpdate'>,
+      runId?: unknown
+    ): Promise<IntelResult> => {
+      const validRunId =
+        typeof runId === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(runId)
+      const onUpdate = validRunId
+        ? (update: IntelRunUpdate): void => {
+            if (!event.sender.isDestroyed()) event.sender.send('intel:run-update', { runId, update })
+          }
+        : undefined
+      return intelRun({
+        ...input,
+        projects: vaultConfigured() ? listProjects(requireNotes()).map((p) => p.name) : [],
+        ...(onUpdate ? { onUpdate } : {})
+      })
+    }
   )
   ipcMain.handle('intel:open-system-settings', (): boolean => {
     if (process.platform !== 'darwin') return false
