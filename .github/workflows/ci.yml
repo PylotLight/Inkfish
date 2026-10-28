@@ -97,6 +97,22 @@ jobs:
       - run: bun run typecheck
       - run: bun run build
 
+  lint-format:
+    name: "Inkfish · CI · lint + format · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_LINUX_RUNNER == ''
+    runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # Bun's built-in linter is checked against the rolling canary channel.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: canary
+      - name: lint
+        run: bun lint
+      - name: format check
+        run: bun run format:check
+
   # bunx/npx launcher (packages/cli, published as @pylotlight/inkfish by release.yml). Its own tiny
   # job: no bun install, no Electron. Unit tests (also part of `bun test` above), a smoke of the bin
   # under Bun and Node, and the release job's stamp + `npm pack --dry-run` against the latest release.

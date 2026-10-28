@@ -13,18 +13,21 @@ bun run dev        # dev server + app (wrapped: cleans terminal state on exit)
 
 ```bash
 bun test           # unit tests (also runs packages/cli's tests)
-bun run format:check # check formatting with Bun (bun >= 1.4.4)
+bun lint           # built-in JS/TS lint; use the Bun canary channel (see below)
+bun run format:check # check formatting with Bun (also available as bun fmt --check)
 bun run typecheck  # bun check (tsc-compatible) over src/, scripts/ and config
 bun run build      # builds the Swift helper (stt/bin/inkfish-stt), then out/{main,preload,renderer}/
 bun run start      # launch the built app
 ```
 
-## Scripts
+Run `bun lint` with the latest Bun canary to match CI. Switch an existing Bun installation with `bun upgrade --canary`, and return to stable afterward with `bun upgrade --stable`; see [Bun's canary build instructions](https://bun.com/docs/installation#canary-builds). The repository's `.bun-version` remains the stable pin for the regular test, typecheck and build jobs.
 
-| `format` / `format:check` | format the repository / check formatting with Bun |
+## Scripts
 
 | Script                          | What it does                                                                                |
 | ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `lint`                          | `bun lint`: built-in JavaScript and TypeScript linter (run with Bun canary)                 |
+| `format` / `format:check`       | format the repository / check formatting with Bun                                           |
 | `dev`                           | `bun scripts/dev.ts`: dev server + app with terminal cleanup on exit                        |
 | `dev:bare`                      | raw `electron-vite dev` (no wrapper)                                                        |
 | `build`                         | Swift transcription helper + production build into `out/`                                   |
@@ -73,7 +76,7 @@ Any unpackaged run (`bun run dev`, `bun run start`, `electron .`) is **Inkfish D
 
 ## CI
 
-`.github/workflows/ci.yml` on PRs and main: `bun test` + typecheck + build on Linux, the bunx launcher job (`cli`), the Android typecheck when `android/` or `src/shared/` changes, and the Swift helper build on macOS when `stt/` changes. Repo variables `INKFISH_LINUX_RUNNER` / `INKFISH_MAC_RUNNER` / `INKFISH_CI_CACHE` point it at self-hosted runners (see the comment at the top of the workflow).
+`.github/workflows/ci.yml` on PRs and main: `bun test` + typecheck + build on Linux, a lint/format job (`bun lint` and `bun run format:check`) on Bun canary, the bunx launcher job (`cli`), the Android typecheck when `android/` or `src/shared/` changes, and the Swift helper build on macOS when `stt/` changes. The main verification job continues to use `.bun-version`; the dedicated lint/format job intentionally uses `bun-version: canary`. Repo variables `INKFISH_LINUX_RUNNER` / `INKFISH_MAC_RUNNER` / `INKFISH_CI_CACHE` point it at self-hosted runners (see the comment at the top of the workflow).
 
 ## Releasing
 
