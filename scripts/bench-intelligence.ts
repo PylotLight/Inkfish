@@ -152,7 +152,7 @@ if (pid !== undefined) {
 }
 
 const samples: Sample[] = []
-let warmupMs: number | null = null
+let warmupMs: number | null
 try {
   const warmup = await completeLocalChat(
     config,

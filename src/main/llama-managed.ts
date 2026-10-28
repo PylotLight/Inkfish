@@ -397,7 +397,6 @@ export function createManagedLfmRuntime(dependencies: ManagedLfmRuntimeDependenc
     ]
     let stderr = ''
     let settled = false
-    let timer: ReturnType<typeof setInterval> | undefined
     const progressBytes = (): number => {
       try {
         return Math.min(statSync(part).size, artifact.bytes)
@@ -415,7 +414,7 @@ export function createManagedLfmRuntime(dependencies: ManagedLfmRuntimeDependenc
       })
     }
     update()
-    timer = setInterval(update, 400)
+    const timer = setInterval(update, 400)
     try {
       await new Promise<void>((resolve, reject) => {
         const child = spawnChild(curlCommand, args, { env, stdio: ['ignore', 'ignore', 'pipe'] })

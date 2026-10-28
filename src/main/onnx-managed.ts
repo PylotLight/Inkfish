@@ -460,7 +460,6 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
     ]
     let stderr = ''
     let settled = false
-    let timer: ReturnType<typeof setInterval> | undefined
     const currentBytes = (): number => {
       try {
         return Math.min(artifact.bytes, lstatSync(part).size)
@@ -478,7 +477,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
       })
     }
     update()
-    timer = setInterval(update, 500)
+    const timer = setInterval(update, 500)
     try {
       await new Promise<void>((resolveChild, rejectChild) => {
         const child = spawnChild('/usr/bin/curl', args, {

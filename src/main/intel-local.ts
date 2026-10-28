@@ -397,7 +397,7 @@ export async function runLocalIntel(input: LocalIntelRunInput, fetcher?: Fetcher
       `Projects:\n${projects.length ? projects.map((name) => `- ${name}`).join('\n') : '(no projects yet)'}`,
       `Note:\n<note>\n${text}\n</note>`
     ].join('\n\n')
-    let r = jsonObject((await complete(user, 1400, input.images)).content)
+    const r = jsonObject((await complete(user, 1400, input.images)).content)
     let cleaned = str(r.cleaned)
     if (input.cleanup && !wantsClean) {
       const perChunk: string[] = []
