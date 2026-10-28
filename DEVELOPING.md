@@ -108,7 +108,7 @@ Release notes carry a `tested with android-vX` (Mac) / `tested with vY` (Android
 
 ## Repo map
 
-- `src/main`, `src/preload`, `src/renderer`, `src/shared`: the Electron app ([docs/architecture.md](docs/architecture.md))
+- `src/main`, `src/preload`, `src/renderer`: the Electron app; `src/shared`: the shared layer imported by **both** the desktop and the Android app (the cross-app contract — see [docs/architecture.md](docs/architecture.md) → _The four deliverables_ / _The shared layer_)
 - `stt/`: the bundled Swift helper `inkfish-stt` (speech-to-text, Apple Intelligence, system audio tap) ([stt/README.md](stt/README.md))
 - `android/`: the Expo Android companion app ([android/README.md](android/README.md))
 - `packages/cli/`: the `bunx @pylotlight/inkfish` launcher ([packages/cli/DEVELOPING.md](packages/cli/DEVELOPING.md))
