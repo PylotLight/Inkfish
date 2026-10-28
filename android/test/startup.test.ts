@@ -226,7 +226,12 @@ describe('journal days (staging/daily summaries)', () => {
     fs.resetCounts()
     const days = await vault.listDays()
     expect(days).toHaveLength(300)
-    expect(days[0]!.day > days[299]!.day).toBe(true)
+    expect(days.map((day) => day.day)).toEqual(
+      days
+        .map((day) => day.day)
+        .sort()
+        .reverse()
+    )
     expect(days[0]!.path).toBe(`daily/${days[0]!.day}.md`)
     expect(days[0]!.id).toBe(days[0]!.path)
     expect(days[0]!.count).toBe(5)

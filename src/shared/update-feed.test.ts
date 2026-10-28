@@ -131,7 +131,11 @@ describe('settings + feed URL', () => {
     expect(applyUpdateSettings(prefs(), { feedUrl: 'ftp://x' })).toEqual({ ok: false, error: INVALID_FEED_URL_MESSAGE })
     expect(applyUpdateSettings(prefs(), null).ok).toBe(false)
     const r = applyUpdateSettings(prefs(), { betaChannel: true })
-    expect(r.ok && r.changed && r.preferences.betaChannel).toBe(true)
+    expect(r).toMatchObject({
+      ok: true,
+      changed: true,
+      preferences: { betaChannel: true }
+    })
   })
   test('GitHub 404 means private repo', () => {
     expect(describeFeedHttpFailure(404, DEFAULT_UPDATE_FEED_URL).message).toBe(
