@@ -120,6 +120,7 @@ Release notes carry a `tested with android-vX` (Mac) / `tested with vY` (Android
 - [docs/vibrancy-and-tray.md](docs/vibrancy-and-tray.md): translucency rules, tray behaviour, hiding semantics
 - [docs/sync.md](docs/sync.md): Mac ↔ Android LAN sync design
 - [docs/intelligence.md](docs/intelligence.md): on-device Apple Intelligence cleanup and filing
+- [docs/lfm3.md](docs/lfm3.md): LFM3 research — local models for note parsing and runtime options
 - [docs/stt-options.md](docs/stt-options.md): speech-to-text engines
 - [docs/releasing.md](docs/releasing.md): cutting a release, Homebrew tap, signing, npm
 - [docs/troubleshooting.md](docs/troubleshooting.md): terminal garbage, `spawn ENOEXEC`, opaque window, stale preload

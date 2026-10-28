@@ -138,7 +138,7 @@ anonymity guarantee.
 ## Docs
 
 - [Troubleshooting](docs/troubleshooting.md)
-- [Sync design](docs/sync.md) · [On-device AI](docs/intelligence.md) · [Speech-to-text engines](docs/stt-options.md)
+- [Sync design](docs/sync.md) · [On-device AI](docs/intelligence.md) · [LFM3 research](docs/lfm3.md) · [Speech-to-text engines](docs/stt-options.md)
 
 ## Development
 
