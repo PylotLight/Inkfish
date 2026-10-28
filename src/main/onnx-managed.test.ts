@@ -52,7 +52,12 @@ describe('managed ONNX lifecycle and safety', () => {
   })
 
   test('reports the exact LFM3 model set and keeps unsupported platform state explicit', () => {
-    const runtime = createManagedOnnxRuntime({ platform: 'win32', arch: 'x64', userDataDir: () => null })
+    const runtime = createManagedOnnxRuntime({
+      platform: 'win32',
+      arch: 'x64',
+      runningUnderARM64Translation: true,
+      userDataDir: () => null
+    })
     const status = runtime.status()
     expect(status).toMatchObject({ supportedPlatform: false, platform: 'win32 x64', loaded: false })
     expect(status.models.map(({ modelKey, modelId, installed }) => ({ modelKey, modelId, installed }))).toEqual([
@@ -62,7 +67,12 @@ describe('managed ONNX lifecycle and safety', () => {
   })
 
   test('identifies Intel Macs as unsupported instead of implying a memory problem', () => {
-    const runtime = createManagedOnnxRuntime({ platform: 'darwin', arch: 'x64', userDataDir: () => null })
+    const runtime = createManagedOnnxRuntime({
+      platform: 'darwin',
+      arch: 'x64',
+      runningUnderARM64Translation: false,
+      userDataDir: () => null
+    })
     const status = runtime.status()
 
     expect(status).toMatchObject({
@@ -70,6 +80,22 @@ describe('managed ONNX lifecycle and safety', () => {
       platform: 'macOS Intel (x64)',
       detail: expect.stringContaining('macOS Intel (x64)')
     })
+  })
+
+  test('recognizes an x64 app under Rosetta as Apple silicon, not Intel', () => {
+    const runtime = createManagedOnnxRuntime({
+      platform: 'darwin',
+      arch: 'x64',
+      runningUnderARM64Translation: true,
+      userDataDir: () => null
+    })
+    const status = runtime.status()
+
+    expect(status).toMatchObject({
+      supportedPlatform: true,
+      platform: 'macOS Apple silicon (x64 under Rosetta)'
+    })
+    expect(status.detail).not.toContain('Intel')
   })
 
   test('recognizes allocator failures without classifying unrelated ONNX errors as memory failures', () => {

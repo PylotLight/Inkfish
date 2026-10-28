@@ -141,6 +141,7 @@ export interface ManagedOnnxRuntimeDependencies {
   userDataDir?: () => string | null
   platform?: NodeJS.Platform
   arch?: string
+  runningUnderARM64Translation?: boolean
   freeMemory?: () => number
   totalMemory?: () => number
   spawnChild?: (command: string, args: string[], options: SpawnOptions) => ChildProcess
@@ -234,7 +235,9 @@ function runtimePackagesReady(): boolean {
   }
 }
 
-function platformLabel(platform: NodeJS.Platform, arch: string): string {
+function platformLabel(platform: NodeJS.Platform, arch: string, runningUnderARM64Translation = false): string {
+  if (platform === 'darwin' && arch === 'x64' && runningUnderARM64Translation)
+    return 'macOS Apple silicon (x64 under Rosetta)'
   if (platform === 'darwin' && arch === 'arm64') return 'macOS Apple silicon'
   if (platform === 'darwin' && arch === 'x64') return 'macOS Intel (x64)'
   if (platform === 'darwin') return `macOS ${arch}`
@@ -295,6 +298,17 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
   const arch = deps.arch ?? process.arch
   const freeMemory = deps.freeMemory ?? freemem
   const totalMemory = deps.totalMemory ?? totalmem
+  const isRunningUnderRosetta = (): boolean => {
+    if (platform !== 'darwin' || arch !== 'x64') return false
+    if (deps.runningUnderARM64Translation !== undefined) return deps.runningUnderARM64Translation
+    if (!process.versions.electron) return false
+    try {
+      const electron = require('electron') as { app?: { runningUnderARM64Translation?: boolean } }
+      return electron.app?.runningUnderARM64Translation === true
+    } catch {
+      return false
+    }
+  }
   const spawnChild = deps.spawnChild ?? spawn
   const makeProxy = deps.createProxy ?? createModelDownloadProxy
   const getProxy = deps.proxySettings ?? getProxySettings
@@ -308,7 +322,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
   let runtimeModules: Promise<RuntimeModules> | null = null
 
   function supportedPlatform(): boolean {
-    return platform === 'darwin' && arch === 'arm64'
+    return platform === 'darwin' && (arch === 'arm64' || isRunningUnderRosetta())
   }
 
   function userDataDirectory(): string {
@@ -354,7 +368,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
   }
 
   function status(): ManagedOnnxStatus {
-    const label = platformLabel(platform, arch)
+    const label = platformLabel(platform, arch, isRunningUnderRosetta())
     const packagesReady = runtimePackagesReady()
     const models: ManagedOnnxModelStatus[] = (['lfm3-1.7b', 'lfm3-vl-2b'] as const).map((modelKey) => {
       const model = LFM_CATALOG[modelKey]
@@ -558,7 +572,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
     if (!acceptedLicense) throw new Error('Review and accept the LFM Open License before downloading model weights')
     if (!supportedPlatform())
       throw new Error(
-        `Managed ONNX Runtime is not available on ${platformLabel(platform, arch)}; supported platform: macOS Apple silicon`
+        `Managed ONNX Runtime is not available on ${platformLabel(platform, arch, isRunningUnderRosetta())}; supported platform: macOS Apple silicon`
       )
     if (!runtimePackagesReady())
       throw new Error('The bundled ONNX Runtime Node and Transformers.js packages are not available.')
@@ -716,7 +730,7 @@ export function createManagedOnnxRuntime(deps: ManagedOnnxRuntimeDependencies = 
     if (loaded?.modelKey === modelKey) return loaded
     if (!supportedPlatform())
       throw new Error(
-        `Managed ONNX Runtime is supported on macOS Apple silicon only; current platform is ${platformLabel(platform, arch)}.`
+        `Managed ONNX Runtime is supported on macOS Apple silicon only; current platform is ${platformLabel(platform, arch, isRunningUnderRosetta())}.`
       )
     if (!runtimePackagesReady())
       throw new Error('The bundled ONNX Runtime Node and Transformers.js packages are missing.')
