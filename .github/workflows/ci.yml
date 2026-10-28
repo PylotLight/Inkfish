@@ -3,7 +3,7 @@ name: ci
 # Fast path for PRs and main. Runs on GitHub-hosted runners by default; point it at
 # self-hosted ones with repo variables (Settings → Secrets and variables → Actions → Variables):
 #   INKFISH_LINUX_RUNNER  runs-on label for Linux jobs (e.g. an ARC scale set name). Default ubuntu-latest.
-#   INKFISH_MAC_RUNNER    runs-on label for the macOS job. Default macos-15.
+#   INKFISH_MAC_RUNNER    runs-on label for the macOS job. Default xcode-27 (macOS 27 + Xcode 27).
 #   INKFISH_CI_CACHE      optional persistent dir on the runner (or mount a writable /cache) to keep
 #                         bun/npm/Electron download caches across ephemeral pods.
 # The repo is public: when a self-hosted label is set, fork PRs are skipped so untrusted code
@@ -199,7 +199,7 @@ jobs:
     name: "Inkfish · CI · mac stt helper · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     needs: changes
     if: needs.changes.outputs.stt == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_MAC_RUNNER == '')
-    runs-on: ${{ vars.INKFISH_MAC_RUNNER || 'macos-15' }}
+    runs-on: ${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -212,8 +212,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: stt/.build
-          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
-          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
+          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
+          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
       # plain node: imports only, no bun install needed
       - run: bun scripts/build-stt.ts --force
       - run: ls -la stt/bin && file stt/bin/inkfish-stt

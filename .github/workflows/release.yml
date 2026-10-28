@@ -36,9 +36,9 @@ jobs:
           #     os: ubuntu-latest
           #     target: --linux
           # (plus a libfuse apt step for AppImage — see git history).
-          # Repo variable INKFISH_MAC_RUNNER points this at a self-hosted Mac (default macos-15).
+          # Repo variable INKFISH_MAC_RUNNER points this at a self-hosted Mac (default xcode-27).
           - name: macos
-            os: ${{ vars.INKFISH_MAC_RUNNER || 'macos-15' }}
+            os: ${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}
             target: --mac
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -49,8 +49,7 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      # Newest Xcode on the image: Swift 6.2 + macOS 26 SDK enables the
-      # SpeechAnalyzer engine (older SDKs build a stub). FluidAudio needs Swift 6.
+      # The xcode-27 image provides the macOS 27 SDK and Swift 6.2+ for native code.
       # Falls back to the current Xcode on a self-hosted Mac without sudo.
       - name: select xcode
         if: matrix.name == 'macos'
@@ -64,8 +63,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: stt/.build
-          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
-          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
+          key: stt-${{ runner.os }}-${{ runner.arch }}-${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-${{ hashFiles('stt/Sources/**') }}
+          restore-keys: stt-${{ runner.os }}-${{ runner.arch }}-${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}-${{ hashFiles('stt/Package.swift', 'stt/Package.resolved') }}-
 
       # bun packages + the Electron zips @electron/get and electron-builder download.
       - name: restore bun + electron caches
