@@ -5,10 +5,11 @@
 //   inkfish-stt ai run      ← stdin {task, text, projects, style, instructions, temperature}
 //                           → {task, text, title, project, tags, summary, actionItems, ms, runtime}
 //
-// Compiled only with the macOS 26 SDK (Swift 6.2+); older toolchains get a stub
+// Compiled only with the macOS 26 SDK (Swift 6.2+) and the FoundationModels macro
+// plugin that backs @Generable/@Guide; toolchains without the plugin get a stub
 // that reports "unavailable" so the helper still builds everywhere.
 import Foundation
-#if compiler(>=6.2) && canImport(FoundationModels)
+#if compiler(>=6.2) && canImport(FoundationModels) && canImport(FoundationModelsMacros)
 import FoundationModels
 #endif
 
@@ -58,7 +59,7 @@ enum Intelligence {
   static let organiseChars = 6_000
 
   static func status() -> IntelStatus {
-    #if compiler(>=6.2) && canImport(FoundationModels)
+    #if compiler(>=6.2) && canImport(FoundationModels) && canImport(FoundationModelsMacros)
     if #available(macOS 26, *) {
       let model = SystemLanguageModel.default
       let langs = model.supportedLanguages.map { lang -> String in
@@ -88,7 +89,7 @@ enum Intelligence {
   }
 
   static func run(_ req: IntelRequest) async throws -> IntelResult {
-    #if compiler(>=6.2) && canImport(FoundationModels)
+    #if compiler(>=6.2) && canImport(FoundationModels) && canImport(FoundationModelsMacros)
     if #available(macOS 26, *) {
       let s = status()
       guard s.available else { throw STTError(s.detail, code: 3) }
@@ -146,7 +147,7 @@ enum Intelligence {
   }
 }
 
-#if compiler(>=6.2) && canImport(FoundationModels)
+#if compiler(>=6.2) && canImport(FoundationModels) && canImport(FoundationModelsMacros)
 @available(macOS 26, *)
 @Generable
 struct CleanedNote {
