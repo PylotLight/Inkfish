@@ -7,7 +7,7 @@ import {
   isSupportedLfm3TextModelId,
   normalizeIntelBaseUrl
 } from '../shared/intel-runtime'
-import { completeLocalChat, localIntelStatus, runLocalIntel } from './intel-local'
+import { completeLocalChat, completeStructuredJsonWithFallback, localIntelStatus, runLocalIntel } from './intel-local'
 import { sanitizeIntelImages } from './intelligence'
 
 const config = {
@@ -399,5 +399,41 @@ describe('local engine status and chat', () => {
             : response('not-json')
       )
     ).rejects.toThrow('Local model did not return a JSON object')
+  })
+
+  test('retries malformed ONNX structured output with thinking off', async () => {
+    const levels: string[] = []
+    const completed = await completeStructuredJsonWithFallback(
+      async (thinkingLevel) => {
+        levels.push(thinkingLevel)
+        return {
+          content:
+            levels.length === 1 ? 'The reasoning trace used the output budget.' : '{"summary":"A short summary."}',
+          ms: 1
+        }
+      },
+      'on',
+      true
+    )
+
+    expect(levels).toEqual(['on', 'off'])
+    expect(completed.value).toEqual({ summary: 'A short summary.' })
+    expect(completed.result.content).toBe('{"summary":"A short summary."}')
+  })
+
+  test('does not retry malformed output when thinking is already off or fallback is unsupported', async () => {
+    let calls = 0
+    const generate = async () => {
+      calls++
+      return { content: 'not JSON', ms: 1 }
+    }
+
+    await expect(completeStructuredJsonWithFallback(generate, 'off', true)).rejects.toThrow(
+      'Local model did not return a JSON object'
+    )
+    await expect(completeStructuredJsonWithFallback(generate, 'on', false)).rejects.toThrow(
+      'Local model did not return a JSON object'
+    )
+    expect(calls).toBe(2)
   })
 })
