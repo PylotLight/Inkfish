@@ -8,6 +8,7 @@ import {
 } from '../shared/intelligence'
 import { intelRuntime, isLoopbackIntelUrl, getLfmModelForRuntime, type IntelRuntimeId } from '../shared/intel-runtime'
 import { loopbackPortOwnedByPid } from './loopback-owner'
+import { completeManagedOnnxChat, getManagedOnnxStatus } from './onnx-managed'
 
 export interface IntelLocalConfig {
   engine: IntelRuntimeId
@@ -77,6 +78,30 @@ export async function localIntelStatus(
   fetcher: Fetcher = (input, init) => fetch(input, init)
 ): Promise<{ available: boolean; reason: string; detail: string; runtime: string }> {
   const runtime = intelRuntime(config.engine)
+  if (config.engine === 'onnx-managed') {
+    const model = getLfmModelForRuntime(config.engine, config.model.trim())
+    if (!model)
+      return {
+        available: false,
+        reason: 'invalidModel',
+        detail: 'Select an LFM3 model verified for managed ONNX Runtime.',
+        runtime: runtime.name
+      }
+    const managed = getManagedOnnxStatus()
+    if (!managed.supportedPlatform)
+      return { available: false, reason: 'platformUnsupported', detail: managed.detail, runtime: runtime.name }
+    if (!managed.runtimeReady)
+      return { available: false, reason: 'runtimeMissing', detail: managed.detail, runtime: runtime.name }
+    const selected = managed.models.find((item) => item.modelKey === model.key)
+    if (!selected?.installed)
+      return {
+        available: false,
+        reason: 'modelNotDownloaded',
+        detail: `${model.name} ONNX artifacts are not downloaded.`,
+        runtime: runtime.name
+      }
+    return { available: true, reason: 'available', detail: managed.detail, runtime: runtime.name }
+  }
   let base: string
   try {
     base = validBaseUrl(config)
@@ -174,7 +199,10 @@ export async function completeLocalChat(
   if (!modelInfo) throw new Error('The selected model is not supported by this local runtime')
   const totalImageBytes = validateImages(messages.flatMap((message) => message.images ?? []))
   if (totalImageBytes && !modelInfo.modalities.includes('image'))
-    throw new Error('Image inputs require the LFM3-VL-2B vision model on llama.cpp')
+    throw new Error('Image inputs require the LFM3-VL-2B vision model on a supported local runtime')
+  if (config.engine === 'onnx-managed') {
+    return completeManagedOnnxChat(modelInfo.key, messages, options)
+  }
   const base = validBaseUrl(config)
   if (!managedProcessOwnsEndpoint(config, base))
     throw new Error('The managed llama-server process does not own this loopback port; refusing to send document data.')

@@ -43,6 +43,7 @@ jobs:
     outputs:
       android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
       stt: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.stt == 'true' }}
+      onnx: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.onnx == 'true' }}
     steps:
       # PRs are diffed through the API (no checkout); pushes to main need history to diff against.
       - uses: actions/checkout@v7
@@ -65,6 +66,26 @@ jobs:
             stt:
               - 'stt/**'
               - 'scripts/build-stt.ts'
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/**'
+            onnx:
+              - 'package.json'
+              - 'bun.lock'
+              - 'src/main/onnx-managed.ts'
+              - 'src/main/onnx-managed.test.ts'
+              - 'src/main/intel-local.ts'
+              - 'src/main/intel-local.test.ts'
+              - 'src/main/intelligence.ts'
+              - 'src/main/ipc.ts'
+              - 'src/main/index.ts'
+              - 'src/preload/index.ts'
+              - 'src/renderer/src/views/IntelligenceSettings.tsx'
+              - 'src/shared/managed-onnx.ts'
+              - 'src/shared/lfm-catalog.ts'
+              - 'src/shared/intel-runtime.ts'
+              - 'src/shared/intel-bench.ts'
+              - 'src/shared/intel-bench.test.ts'
+              - 'scripts/bench-intelligence.ts'
               - '.github/workflows/ci.yml'
               - '.github/scripts/**'
 
@@ -227,3 +248,31 @@ jobs:
         run: |
           (stt/bin/inkfish-stt tap --apps com.example.none > /dev/null 2> tap.err & echo $! > tap.pid; sleep 4; kill "$(cat tap.pid)" 2>/dev/null) || true
           cat tap.err
+
+  mac-onnx:
+    name: "Inkfish · CI · managed ONNX runtime · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
+    needs: changes
+    if: needs.changes.outputs.onnx == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.INKFISH_MAC_RUNNER == '')
+    runs-on: ${{ vars.INKFISH_MAC_RUNNER || 'xcode-27' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: select xcode
+        run: bash .github/scripts/select-xcode.sh
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: restore bun install cache
+        if: env.CI_PERSISTENT_CACHE != '1'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+      # Skip the root Electron download, then run only ONNX Runtime Node's native CPU installer.
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: node ./node_modules/onnxruntime-node/script/install
+      - name: smoke native ONNX Runtime Node binding
+        run: |
+          node --input-type=module -e 'import { InferenceSession } from "onnxruntime-node"; if (typeof InferenceSession?.create !== "function") throw new Error("ONNX Runtime binding did not load"); console.log("ONNX Runtime Node", process.versions.node, "binding loaded")'
+      - run: bun test src/main/onnx-managed.test.ts src/shared/lfm-catalog.test.ts src/shared/intel-runtime.test.ts

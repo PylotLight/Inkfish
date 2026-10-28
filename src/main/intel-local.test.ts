@@ -8,6 +8,7 @@ import {
   normalizeIntelBaseUrl
 } from '../shared/intel-runtime'
 import { completeLocalChat, localIntelStatus, runLocalIntel } from './intel-local'
+import { sanitizeIntelImages } from './intelligence'
 
 const config = {
   engine: 'llama.cpp' as const,
@@ -28,6 +29,7 @@ describe('LFM3 local runtime catalog', () => {
   test('includes only runtimes verified for LFM3-1.7B and an OpenAI-compatible endpoint', () => {
     expect(INTEL_RUNTIMES.map((runtime) => runtime.id)).toEqual([
       'llama.cpp-managed',
+      'onnx-managed',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -41,6 +43,7 @@ describe('LFM3 local runtime catalog', () => {
     expect(isIntelRuntimeId('onnx')).toBe(false)
     expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-1.7B')).toBe(true)
     expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-1.7B-GGUF:Q4_K_M')).toBe(true)
+    expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-1.7B-ONNX')).toBe(true)
     expect(isSupportedLfm3TextModelId('lfm3')).toBe(true)
     expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-VL-2B')).toBe(false)
     expect(isSupportedLfm3TextModelId('some-other-model')).toBe(false)
@@ -48,6 +51,8 @@ describe('LFM3 local runtime catalog', () => {
     expect(isSupportedLfmModelId('llama.cpp-managed', visionConfig.model)).toBe(true)
     expect(isSupportedLfmModelId('llama.cpp', 'LiquidAI/LFM3-VL-2B')).toBe(true)
     expect(isSupportedLfmModelId('ollama', 'LiquidAI/LFM3-VL-2B')).toBe(false)
+    expect(isSupportedLfmModelId('onnx-managed', 'LiquidAI/LFM3-1.7B-ONNX')).toBe(true)
+    expect(isSupportedLfmModelId('onnx-managed', 'LiquidAI/LFM3-VL-2B-ONNX')).toBe(true)
   })
 
   test('allows only loopback HTTP(S) endpoints and normalizes a safe local URL', () => {
@@ -58,6 +63,19 @@ describe('LFM3 local runtime catalog', () => {
     expect(isLoopbackIntelUrl('file:///tmp/model')).toBe(false)
     expect(normalizeIntelBaseUrl('http://localhost:8000/v1///', config.baseUrl)).toBe('http://localhost:8000/v1')
     expect(normalizeIntelBaseUrl('https://example.com/v1', config.baseUrl)).toBe(config.baseUrl)
+  })
+
+  test('validates image dimensions before a decoder can allocate large pixel buffers', () => {
+    expect(sanitizeIntelImages([{ mime: 'image/png', data: tinyPng }])).toHaveLength(1)
+    const oversized = Buffer.alloc(24)
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(oversized)
+    oversized.writeUInt32BE(13, 8)
+    oversized.write('IHDR', 12, 'ascii')
+    oversized.writeUInt32BE(5000, 16)
+    oversized.writeUInt32BE(5000, 20)
+    expect(() => sanitizeIntelImages([{ mime: 'image/png', data: oversized.toString('base64') }])).toThrow(
+      '16-megapixel processing limit'
+    )
   })
 })
 
@@ -70,6 +88,24 @@ describe('local engine status and chat', () => {
     })
     expect(url).toBe('http://127.0.0.1:8080/v1/models')
     expect(status).toMatchObject({ available: true, reason: 'available', runtime: 'llama.cpp' })
+  })
+
+  test('managed ONNX bypasses API probing and reports managed-model readiness directly', async () => {
+    let calls = 0
+    const status = await localIntelStatus(
+      {
+        engine: 'onnx-managed',
+        baseUrl: 'https://not-a-local-endpoint.invalid/v1',
+        model: 'LiquidAI/LFM3-1.7B-ONNX'
+      },
+      async () => {
+        calls++
+        return new Response('{}')
+      }
+    )
+    expect(status.runtime).toBe('ONNX Runtime (managed)')
+    expect(['available', 'modelNotDownloaded', 'platformUnsupported', 'runtimeMissing']).toContain(status.reason)
+    expect(calls).toBe(0)
   })
 
   test('rejects unrelated and cross-runtime VL IDs before making a request', async () => {

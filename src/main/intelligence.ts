@@ -20,9 +20,9 @@ import { helperPath } from './stt'
 import { appDataDir } from './vault'
 
 /**
- * Embedded intelligence: Apple Foundation Models or a user-run local inference
- * server. The local path only connects to loopback OpenAI-compatible servers and
- * sends no API key; callers fall back to the rules engine when unavailable.
+ * Embedded intelligence: Apple Foundation Models, managed local LFM3 engines,
+ * or a user-run local inference server. Server connections stay on loopback and
+ * send no API key; callers fall back to the rules engine when unavailable.
  */
 
 // --- prefs (app data, so the main-process router can read them) -------------------
@@ -161,6 +161,34 @@ export interface IntelRunInput {
   prefs?: Partial<IntelPrefs>
 }
 
+function imageDimensionsFromBytes(mime: IntelImage['mime'], bytes: Buffer): { width: number; height: number } | null {
+  if (mime === 'image/png') {
+    if (bytes.length < 24 || bytes.readUInt32BE(8) !== 13 || bytes.toString('ascii', 12, 16) !== 'IHDR') return null
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+  }
+  const startOfFrame = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf])
+  let offset = 2
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset++
+      continue
+    }
+    while (offset + 1 < bytes.length && bytes[offset + 1] === 0xff) offset++
+    const marker = bytes[offset + 1]!
+    offset += 2
+    if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue
+    if (offset + 2 > bytes.length) return null
+    const length = bytes.readUInt16BE(offset)
+    if (length < 2 || offset + length > bytes.length) return null
+    if (startOfFrame.has(marker)) {
+      if (length < 7) return null
+      return { height: bytes.readUInt16BE(offset + 3), width: bytes.readUInt16BE(offset + 5) }
+    }
+    offset += length
+  }
+  return null
+}
+
 /** Strictly validate renderer-supplied image bytes before an inference request. */
 export function sanitizeIntelImages(value: unknown): IntelImage[] {
   if (value === undefined) return []
@@ -179,6 +207,11 @@ export function sanitizeIntelImages(value: unknown): IntelImage[] {
     const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
     if ((mime === 'image/png' && !png) || (mime === 'image/jpeg' && !jpeg))
       throw new Error('Image MIME type does not match its contents')
+    const dimensions = imageDimensionsFromBytes(mime, bytes)
+    if (!dimensions || dimensions.width < 1 || dimensions.height < 1)
+      throw new Error('Image dimensions could not be verified')
+    if (dimensions.width * dimensions.height > 16_000_000)
+      throw new Error('Image dimensions exceed the 16-megapixel processing limit')
     total += bytes.length
     return { mime, data }
   })
@@ -217,6 +250,22 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
         })
       )
     }
+    if (prefs.engine === 'onnx-managed') {
+      const modelId = images.length ? LFM_CATALOG['lfm3-vl-2b'].onnx!.modelId : prefs.localModel
+      const model = getLfmModelForRuntime(prefs.engine, modelId)
+      if (!model) throw new Error('Select a supported managed ONNX LFM3 model')
+      return runLocalIntel({
+        config: { engine: prefs.engine, baseUrl: prefs.localBaseUrl, model: modelId },
+        task: input.task,
+        text: input.text,
+        projects: input.projects ?? [],
+        style: prefs.style,
+        instructions: prefs.instructions,
+        temperature: prefs.temperature,
+        cleanup: input.task === 'organize' ? prefs.cleanup : false,
+        images
+      })
+    }
     return runLocalIntel({
       config: { engine: prefs.engine, baseUrl: prefs.localBaseUrl, model: prefs.localModel },
       task: input.task,
@@ -230,7 +279,9 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
     })
   }
   if (images.length)
-    throw new Error('Apple Foundation Models does not accept image inputs; choose a local LFM3-VL llama.cpp model.')
+    throw new Error(
+      'Apple Foundation Models does not accept image inputs; choose a managed LFM3-VL ONNX or llama.cpp model.'
+    )
   const req = {
     task: input.task,
     text: input.text,

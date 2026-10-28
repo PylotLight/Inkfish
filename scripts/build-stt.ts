@@ -1,13 +1,12 @@
 // Build Inkfish's bundled transcription helper → stt/bin/inkfish-stt
 // (SwiftPM package in stt/: Apple Speech, SpeechAnalyzer, Parakeet via
 // FluidAudio). arm64 only (Apple silicon).
-// Runs from `bun run dev` and `bun run build`; skips when the binary is newer
-// than its sources. No Xcode tools: warns locally, fails in CI. `--force`
-// rebuilds. No-op off macOS.
+// Runs from `bun run dev` and `bun run build`; skips when the binary and
+// SwiftPM cache match the selected toolchain. No-op off macOS. `--force`
+// rebuilds; a toolchain change clears SwiftPM's incompatible `.build` cache.
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { dirname } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -19,6 +18,9 @@ if (process.platform !== 'darwin') {
 const pkg = join(root, 'stt')
 const outDir = join(pkg, 'bin')
 const out = join(outDir, 'inkfish-stt')
+const buildDir = join(pkg, '.build')
+const toolchainMarker = join(buildDir, 'inkfish-toolchain.txt')
+const force = process.argv.includes('--force')
 
 function newestSource(dir: string): number {
   let t = 0
@@ -30,15 +32,66 @@ function newestSource(dir: string): number {
   return t
 }
 
-if (!process.argv.includes('--force') && existsSync(out) && newestSource(pkg) <= statSync(out).mtimeMs) {
-  console.log('[stt:build] up to date')
-  process.exit(0)
+function versionParts(app: string): number[] {
+  const match = /^Xcode_(\d+(?:\.\d+)*)\.app$/.exec(app)
+  const version = match?.[1]
+  return version ? version.split('.').map(Number) : [0]
 }
 
+function compareXcodeApps(a: string, b: string): number {
+  const left = versionParts(a)
+  const right = versionParts(b)
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const difference = (left[i] ?? 0) - (right[i] ?? 0)
+    if (difference) return difference
+  }
+  return a.localeCompare(b)
+}
+
+function newestStableDeveloperDir(): string | undefined {
+  try {
+    const apps = readdirSync('/Applications', { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^Xcode(?:_\d+(?:\.\d+)*)?\.app$/.test(entry.name))
+      .filter((entry) => !/(?:beta|rc|release[_ -]?candidate)/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort(compareXcodeApps)
+      .reverse()
+    return apps
+      .map((app) => join('/Applications', app, 'Contents', 'Developer'))
+      .find((candidate) => existsSync(candidate))
+  } catch {
+    return undefined
+  }
+}
+
+function selectedDeveloperDir(): string | undefined {
+  if (process.env['DEVELOPER_DIR']) return resolve(process.env['DEVELOPER_DIR'])
+  const stable = newestStableDeveloperDir()
+  if (stable) return stable
+  try {
+    return execFileSync('xcode-select', ['-p'], { encoding: 'utf8' }).trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+const buildEnv: NodeJS.ProcessEnv = { ...process.env }
+const developerDir = selectedDeveloperDir()
+if (developerDir && !buildEnv['DEVELOPER_DIR']) {
+  buildEnv['DEVELOPER_DIR'] = developerDir
+  console.log(`[stt:build] using Xcode developer directory: ${developerDir}`)
+}
+const sourcesCurrent = existsSync(out) && newestSource(pkg) <= statSync(out).mtimeMs
+
+let swiftVersion = ''
 try {
-  execFileSync('xcrun', ['--find', 'swift'], { stdio: 'ignore' })
+  swiftVersion = execFileSync('xcrun', ['swift', '--version'], { encoding: 'utf8', env: buildEnv }).trim()
 } catch {
   const msg = '[stt:build] Swift not found — run `xcode-select --install` to enable transcription'
+  if (!force && sourcesCurrent) {
+    console.warn(`${msg}; reusing the existing helper binary`)
+    process.exit(0)
+  }
   if (process.env['CI']) {
     console.error(msg)
     process.exit(1)
@@ -47,16 +100,48 @@ try {
   process.exit(0)
 }
 
+const sdkVersion = execFileSync('xcrun', ['--sdk', 'macosx', '--show-sdk-version'], {
+  encoding: 'utf8',
+  env: buildEnv
+}).trim()
+const sdkBuildVersion = execFileSync('xcrun', ['--sdk', 'macosx', '--show-sdk-build-version'], {
+  encoding: 'utf8',
+  env: buildEnv
+}).trim()
+const toolchainSignature = `DEVELOPER_DIR=${buildEnv['DEVELOPER_DIR'] ?? '(xcode-select)'}\n${swiftVersion}\nmacOS SDK=${sdkVersion} (${sdkBuildVersion})\n`
+let cachedSignature = ''
+try {
+  cachedSignature = readFileSync(toolchainMarker, 'utf8')
+} catch {
+  // An unmarked cache may have been produced by an older Xcode selection.
+}
+const cacheMatches = cachedSignature === toolchainSignature
+console.log(`[stt:build] ${swiftVersion.split('\n')[0]}`)
+console.log(`[stt:build] macOS SDK ${sdkVersion} (${sdkBuildVersion}) · deployment target macOS 14`)
+
+if (!force && sourcesCurrent && cacheMatches) {
+  console.log('[stt:build] up to date (matching SwiftPM toolchain cache)')
+  process.exit(0)
+}
+
+if (existsSync(buildDir) && !cacheMatches) {
+  console.log('[stt:build] clearing SwiftPM cache because its compiler/SDK marker is missing or different')
+  rmSync(buildDir, { recursive: true, force: true })
+}
+
 const base = ['swift', 'build', '-c', 'release', '--package-path', pkg]
 const swift = (args: string[]): void => {
-  execFileSync('xcrun', [...base, ...args], { stdio: 'inherit' })
+  execFileSync('xcrun', [...base, ...args], { stdio: 'inherit', env: buildEnv })
 }
 // Where SwiftPM put the product. Layout moved between toolchains
 // (.build/apple/Products/Release → .build/out/…), so ask it, then probe.
 const binPath = (args: string[]): string | null => {
   const asked = (() => {
     try {
-      return execFileSync('xcrun', [...base, ...args, '--show-bin-path'], { encoding: 'utf8' }).trim()
+      return execFileSync('xcrun', [...base, ...args, '--show-bin-path'], {
+        encoding: 'utf8',
+        env: buildEnv
+      }).trim()
     } catch {
       return ''
     }
@@ -94,4 +179,5 @@ if (!archs.split(/\s+/).includes('arm64')) {
   console.error(`[stt:build] ${out} has no arm64 slice (${archs})`)
   process.exit(1)
 }
+writeFileSync(toolchainMarker, toolchainSignature)
 console.log(`[stt:build] ${out} (${archs})`)

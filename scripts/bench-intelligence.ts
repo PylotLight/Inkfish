@@ -40,19 +40,27 @@ function intArg(name: string, fallback: number): number {
 const engineValue = arg('engine') ?? 'llama.cpp'
 if (!isIntelRuntimeId(engineValue))
   throw new Error(
-    `Unsupported engine '${engineValue}'. Choose: ${['llama.cpp-managed', 'llama.cpp', 'ollama', 'lm-studio', 'vllm', 'sglang', 'custom'].join(', ')}`
+    `Unsupported engine '${engineValue}'. Choose: ${['llama.cpp-managed', 'onnx-managed', 'llama.cpp', 'ollama', 'lm-studio', 'vllm', 'sglang', 'custom'].join(', ')}`
   )
 const engine: IntelRuntimeId = engineValue
 const runtime = intelRuntime(engine)
 const baseUrl = (arg('url') ?? runtime.defaultBaseUrl).replace(/\/+$/, '')
-if (!isLoopbackIntelUrl(baseUrl)) throw new Error('--url must point to localhost, 127.0.0.1 or ::1')
-const model = arg('model') ?? ''
-const isVisionModel = model === 'LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M'
-if (!isSupportedLfm3TextModelId(model) && !isVisionModel)
-  throw new Error('--model must be the exact server ID for LFM3-1.7B or LFM3-VL-2B')
+if (engine === 'onnx-managed' && arg('url')) throw new Error('--url is not used by the in-process ONNX engine; omit it')
+if (engine !== 'onnx-managed' && !isLoopbackIntelUrl(baseUrl))
+  throw new Error('--url must point to localhost, 127.0.0.1 or ::1')
+const model = arg('model') ?? (engine === 'onnx-managed' ? runtime.modelExample : '')
+const isVisionModel = ['LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M', 'LiquidAI/LFM3-VL-2B-ONNX'].includes(model)
+const validModel =
+  engine === 'onnx-managed'
+    ? ['LiquidAI/LFM3-1.7B-ONNX', 'LiquidAI/LFM3-VL-2B-ONNX'].includes(model)
+    : isSupportedLfm3TextModelId(model) || isVisionModel
+if (!validModel) throw new Error('--model must be an exact supported LFM3-1.7B or LFM3-VL-2B model ID')
 const selectedCases = selectIntelBenchCases(model)
 const runs = Math.min(10, intArg('runs', 3))
-const pid = arg('pid') ? Number(arg('pid')) : undefined
+const pidArg = arg('pid')
+if (engine === 'onnx-managed' && pidArg && Number(pidArg) !== process.pid)
+  throw new Error('--pid must be omitted or equal this benchmark process for the in-process ONNX engine')
+const pid = engine === 'onnx-managed' ? process.pid : pidArg ? Number(pidArg) : undefined
 if (pid !== undefined && (!Number.isInteger(pid) || pid <= 0)) throw new Error('--pid must be a positive process id')
 if (engine === 'llama.cpp-managed' && pid === undefined)
   throw new Error('--pid is required for the managed engine so Inkfish can verify the server process.')
@@ -254,7 +262,10 @@ const memory =
     ? null
     : {
         pid,
-        scope: 'single process RSS; child processes are not included',
+        scope:
+          engine === 'onnx-managed'
+            ? 'benchmark process RSS; tokenizer and ONNX decoder/vision sessions are in-process'
+            : 'single process RSS; child processes are not included',
         sampleIntervalMs: 250,
         peakRssBytes: rssSamples.length ? Math.max(...rssSamples) : null,
         samples: rssSamples.length,
@@ -267,7 +278,7 @@ const result = {
   engine,
   runtime: runtime.name,
   model: model || null,
-  endpoint: baseUrl,
+  endpoint: engine === 'onnx-managed' ? 'in-process' : baseUrl,
   decoding: { temperature: 0, maxTokens: 512, runsPerCase: runs },
   corpus: selectedCases.map(({ id, task, title }) => ({ id, task, title })),
   corpusCaseCount: selectedCases.length,

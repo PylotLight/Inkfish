@@ -235,7 +235,7 @@ export const INTEL_BENCH_CASES: IntelBenchCase[] = [
 
 /** Vision cases are run only with the exact LFM3-VL checkpoint identifier. */
 export function selectIntelBenchCases(modelId: string): IntelBenchCase[] {
-  const visionModel = modelId.trim() === 'LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M'
+  const visionModel = ['LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M', 'LiquidAI/LFM3-VL-2B-ONNX'].includes(modelId.trim())
   return INTEL_BENCH_CASES.filter((item) => item.task !== 'vision-fields' || visionModel)
 }
 

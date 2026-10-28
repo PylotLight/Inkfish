@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   getLfmModelByApiModelId,
   getLfmModelByKey,
+  getLfmModelIdForRuntime,
   isLfmModelKey,
   LFM_CATALOG,
   LFM_NON_INTEGRATED_CANDIDATES,
@@ -10,7 +11,7 @@ import {
 } from './lfm-catalog'
 
 describe('LFM catalog', () => {
-  test('uses stable keys distinct from the exact API model IDs', () => {
+  test('uses stable keys distinct from exact GGUF and ONNX model IDs', () => {
     expect(Object.keys(LFM_CATALOG)).toEqual(['lfm3-1.7b', 'lfm3-vl-2b'])
     expect(LFM_CATALOG['lfm3-1.7b'].apiModelId).toBe('LiquidAI/LFM3-1.7B-GGUF:Q4_K_M')
     expect(LFM_CATALOG['lfm3-vl-2b'].apiModelId).toBe('LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M')
@@ -25,6 +26,7 @@ describe('LFM catalog', () => {
   test('declares exact current per-runtime support', () => {
     expect(LFM_RUNTIME_KEYS).toEqual([
       'llama.cpp-managed',
+      'onnx-managed',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -34,6 +36,7 @@ describe('LFM catalog', () => {
     ])
     expect(LFM_CATALOG['lfm3-1.7b'].supportedRuntimes).toEqual([
       'llama.cpp-managed',
+      'onnx-managed',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -43,6 +46,7 @@ describe('LFM catalog', () => {
     ])
     expect(LFM_SUPPORT_MATRIX['lfm3-1.7b']).toEqual({
       'llama.cpp-managed': true,
+      'onnx-managed': true,
       'llama.cpp': true,
       ollama: true,
       'lm-studio': true,
@@ -50,9 +54,10 @@ describe('LFM catalog', () => {
       sglang: true,
       custom: true
     })
-    expect(LFM_CATALOG['lfm3-vl-2b'].supportedRuntimes).toEqual(['llama.cpp-managed', 'llama.cpp'])
+    expect(LFM_CATALOG['lfm3-vl-2b'].supportedRuntimes).toEqual(['llama.cpp-managed', 'onnx-managed', 'llama.cpp'])
     expect(LFM_SUPPORT_MATRIX['lfm3-vl-2b']).toEqual({
       'llama.cpp-managed': true,
+      'onnx-managed': true,
       'llama.cpp': true,
       ollama: false,
       'lm-studio': false,
@@ -62,7 +67,7 @@ describe('LFM catalog', () => {
     })
   })
 
-  test('records exact model and projector artifact sizes and hashes', () => {
+  test('records exact current GGUF model and projector artifacts', () => {
     expect(LFM_CATALOG['lfm3-1.7b'].artifacts.model).toEqual({
       file: 'LFM3-1.7B-Q4_K_M.gguf',
       repo: 'LiquidAI/LFM3-1.7B-GGUF',
@@ -83,13 +88,39 @@ describe('LFM catalog', () => {
     })
   })
 
-  test('keeps UZU blocked and non-integrated candidates non-runnable', () => {
+  test('pins official ONNX Q4 decoder and Q8 vision artifact hashes', () => {
+    const text = LFM_CATALOG['lfm3-1.7b'].onnx!
+    expect(text.modelId).toBe('LiquidAI/LFM3-1.7B-ONNX')
+    expect(text.artifacts.find(({ file }) => file === 'onnx/model_q4.onnx_data')).toMatchObject({
+      bytes: 1625944064,
+      sha256: 'aad5286be89c40c53106bc1ca29d20a2dda57e1806df5244c09da852f77b43e8'
+    })
+    expect(text.artifacts.find(({ file }) => file === 'tokenizer.json')).toMatchObject({
+      bytes: 17908634,
+      sha256: '41927bd314d17d7d7fadb44e10cd0919f7b71528d7741596d8cbd15c6945ec44'
+    })
+    const vision = LFM_CATALOG['lfm3-vl-2b'].onnx!
+    expect(vision.modelId).toBe('LiquidAI/LFM3-VL-2B-ONNX')
+    expect(vision.artifacts.find(({ file }) => file === 'onnx/decoder_q4.onnx_data')).toMatchObject({
+      bytes: 1488580608,
+      sha256: '8f729007b1bff9368d5801ae165ebcc32801e537e98e53af94ad1d75a31dcd65'
+    })
+    expect(vision.artifacts.find(({ file }) => file === 'onnx/vision_encoder_q8.onnx_data')).toMatchObject({
+      bytes: 196153344,
+      sha256: '0339112e074698c5e895b53114467fbfe17f0f0ee6577c316b02ccbcd44694f4'
+    })
+    expect(getLfmModelIdForRuntime('lfm3-1.7b', 'onnx-managed')).toBe(text.modelId)
+    expect(getLfmModelIdForRuntime('lfm3-vl-2b', 'onnx-managed')).toBe(vision.modelId)
+    expect(getLfmModelIdForRuntime('lfm3-vl-2b', 'ollama')).toBeUndefined()
+  })
+
+  test('keeps UZU blocked and unrelated non-integrated candidates non-runnable', () => {
     expect(LFM_NON_INTEGRATED_CANDIDATES.uzu).toEqual({
       status: 'blocked',
       reason: 'No verified LFM3 model or converter specification.'
     })
     expect(LFM_NON_INTEGRATED_CANDIDATES.mlx.status).toBe('not-enabled')
-    expect(LFM_NON_INTEGRATED_CANDIDATES.onnx.status).toBe('not-enabled')
+    expect('onnx' in LFM_NON_INTEGRATED_CANDIDATES).toBe(false)
     expect(LFM_NON_INTEGRATED_CANDIDATES.sglangVl.status).toBe('not-enabled')
     expect(LFM_NON_INTEGRATED_CANDIDATES.vllmVl.status).toBe('not-enabled')
   })

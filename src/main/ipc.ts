@@ -135,6 +135,7 @@ import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInp
 import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
 import { isLfmModelKey } from '../shared/lfm-catalog'
 import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
+import type { ManagedOnnxDownloadProgress, ManagedOnnxStatus } from '../shared/managed-onnx'
 import {
   downloadManagedLfmModel,
   getManagedLfmStatus,
@@ -143,6 +144,14 @@ import {
   startManagedLfmServer,
   stopManagedLfmServer
 } from './llama-managed'
+import {
+  downloadManagedOnnxModel,
+  getManagedOnnxStatus,
+  loadManagedOnnxModel,
+  pauseManagedOnnxDownload,
+  removeManagedOnnxModel,
+  unloadManagedOnnxModel
+} from './onnx-managed'
 import {
   clearDownload,
   downloadProgress,
@@ -828,8 +837,40 @@ export function registerIpc(): void {
     await removeManagedLfmModel(key)
     return getManagedLfmStatus()
   })
+  ipcMain.handle('intel:onnx-status', (): ManagedOnnxStatus => getManagedOnnxStatus())
+  ipcMain.handle('intel:onnx-download', async (_e: IpcMainInvokeEvent, key: unknown, accepted: unknown) => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    if (accepted !== true) throw new Error('Review and accept the LFM Open License before downloading model weights')
+    const notify = (progress: ManagedOnnxDownloadProgress): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed())
+          window.webContents.send('intel:onnx-progress', progress)
+      }
+    }
+    await downloadManagedOnnxModel(key, true, notify)
+    return getManagedOnnxStatus()
+  })
+  ipcMain.handle('intel:onnx-pause', (_e: IpcMainInvokeEvent, key: unknown): ManagedOnnxStatus => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    pauseManagedOnnxDownload(key)
+    return getManagedOnnxStatus()
+  })
+  ipcMain.handle('intel:onnx-load', async (_e: IpcMainInvokeEvent, key: unknown): Promise<ManagedOnnxStatus> => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    await loadManagedOnnxModel(key)
+    return getManagedOnnxStatus()
+  })
+  ipcMain.handle('intel:onnx-unload', async (): Promise<ManagedOnnxStatus> => {
+    await unloadManagedOnnxModel()
+    return getManagedOnnxStatus()
+  })
+  ipcMain.handle('intel:onnx-remove', async (_e: IpcMainInvokeEvent, key: unknown): Promise<ManagedOnnxStatus> => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    await removeManagedOnnxModel(key)
+    return getManagedOnnxStatus()
+  })
   ipcMain.handle('intel:open-model-license', (): boolean => {
-    void shell.openExternal('https://huggingface.co/LiquidAI/LFM3-1.7B/raw/main/LICENSE')
+    void shell.openExternal('https://huggingface.co/LiquidAI/LFM3-1.7B-ONNX/blob/main/LICENSE')
     return true
   })
   ipcMain.handle('intel:run', (_e: IpcMainInvokeEvent, input: Omit<IntelRunInput, 'projects'>): Promise<IntelResult> =>

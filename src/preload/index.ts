@@ -4,6 +4,7 @@ import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAu
 import type { IntelImage, IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
 import type { LfmModelKey } from '../shared/lfm-catalog'
 import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
+import type { ManagedOnnxDownloadProgress, ManagedOnnxStatus } from '../shared/managed-onnx'
 import type { InboxRoute, RoutePreview, RoutingPrefs } from '../shared/routing'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
 import type { AiErrorDetail } from '../shared/ai-errors'
@@ -386,6 +387,18 @@ const api = {
       const fn = (_e: unknown, progress: ManagedLfmDownloadProgress): void => cb(progress)
       ipcRenderer.on('intel:managed-progress', fn)
       return () => ipcRenderer.removeListener('intel:managed-progress', fn)
+    },
+    onnxStatus: (): Promise<ManagedOnnxStatus> => ipcRenderer.invoke('intel:onnx-status'),
+    downloadOnnxModel: (key: LfmModelKey, acceptedLicense: boolean): Promise<ManagedOnnxStatus> =>
+      ipcRenderer.invoke('intel:onnx-download', key, acceptedLicense),
+    pauseOnnxDownload: (key: LfmModelKey): Promise<ManagedOnnxStatus> => ipcRenderer.invoke('intel:onnx-pause', key),
+    loadOnnxModel: (key: LfmModelKey): Promise<ManagedOnnxStatus> => ipcRenderer.invoke('intel:onnx-load', key),
+    unloadOnnx: (): Promise<ManagedOnnxStatus> => ipcRenderer.invoke('intel:onnx-unload'),
+    removeOnnxModel: (key: LfmModelKey): Promise<ManagedOnnxStatus> => ipcRenderer.invoke('intel:onnx-remove', key),
+    onOnnxProgress: (cb: (progress: ManagedOnnxDownloadProgress) => void): (() => void) => {
+      const fn = (_e: unknown, progress: ManagedOnnxDownloadProgress): void => cb(progress)
+      ipcRenderer.on('intel:onnx-progress', fn)
+      return () => ipcRenderer.removeListener('intel:onnx-progress', fn)
     },
     prefs: (): Promise<IntelPrefs> => ipcRenderer.invoke('intel:prefs'),
     setPrefs: (patch: Partial<IntelPrefs>): Promise<IntelPrefs> => ipcRenderer.invoke('intel:set-prefs', patch),
