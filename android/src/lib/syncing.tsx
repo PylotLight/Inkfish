@@ -33,6 +33,7 @@ import {
 } from './sync'
 import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } from './syncfs'
 import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog'
+import { monotonicNow, SyncStageTimer } from './synctimings'
 import { shortError } from './sync'
 import { recordMoves } from './vault'
 import { afterSync } from './syncafter'
@@ -185,7 +186,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       running.current = true
       abort.current = new AbortController()
       setError(null)
-      const t0 = Date.now()
+      let stageTimer: SyncStageTimer | null = null
       const done = async (e: SyncLogEntry): Promise<void> => {
         await appendSyncLog(e)
         readSyncLog()
@@ -195,12 +196,22 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       try {
         do {
           again.current = false
+          const t0 = Date.now()
+          stageTimer = new SyncStageTimer(monotonicNow)
+          stageTimer.enter('finding')
           setPhase('finding')
           const t1 = Date.now()
           setProgress({ stage: 'finding', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: t1, stageAt: t1 })
           const found = await findMacHello(fetchFn, peer)
           if (!found) {
             setPhase('offline')
+            await done({
+              at: Date.now(),
+              peer: peer.name,
+              kind: 'error',
+              message: 'Mac not found on this Wi-Fi',
+              stageMs: stageTimer.finish()
+            })
             return
           }
           // Handshake: an older/newer Mac we can't talk to → "update Mac" / "update phone", not a silent failure.
@@ -230,6 +241,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
             repair,
             signal: abort.current?.signal,
             onProgress: (p) => {
+              stageTimer?.enter(p.stage)
               const now = Date.now()
               if (progressWorthRender(shownProgress.current, p, shownAt.current, now)) {
                 shownProgress.current = p
@@ -244,6 +256,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
             remoteName: peer.name,
             confirmDelete: (d) => askDelete(d, peer.name)
           })
+          const stageMs = stageTimer.finish()
           setHeld(null)
           await poster?.flush().catch(() => undefined)
           await markDone(fetchFn, host, peer, id, random, runFromReport(report, Date.now(), Date.now() - tRun)).catch(
@@ -271,6 +284,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
             deleted: report.deleted,
             moved: report.moved,
             ms: Date.now() - t0,
+            stageMs,
             ...(repair || after.note
               ? { message: [repair ? 'repair' : '', after.note ?? ''].filter(Boolean).join(' · ') }
               : {})
@@ -278,11 +292,12 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
           setPhase('idle')
         } while (again.current)
       } catch (e) {
+        const stageMs = stageTimer?.finish()
         if (e instanceof SyncIncompatible) {
           setOutdated(e.app)
           setError(e.message)
           setPhase('outdated')
-          await done({ at: Date.now(), peer: peer.name, kind: 'error', message: e.message })
+          await done({ at: Date.now(), peer: peer.name, kind: 'error', message: e.message, stageMs })
           return
         }
         if (e instanceof SyncHeld) {
@@ -292,7 +307,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
             at: Date.now(),
             peer: peer.name,
             kind: 'hold',
-            message: `${e.pending.local.length + e.pending.remote.length} files would be deleted — waiting for choice`
+            message: `${e.pending.local.length + e.pending.remote.length} files would be deleted — waiting for choice`,
+            stageMs
           })
           return
         }
@@ -305,12 +321,18 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         // not an error. What landed stays; the next run picks up from there.
         if (lostConnection(e)) {
           setPhase('offline')
-          await done({ at: Date.now(), peer: peer.name, kind: 'error', message: `connection lost — ${message}` })
+          await done({
+            at: Date.now(),
+            peer: peer.name,
+            kind: 'error',
+            message: `connection lost — ${message}`,
+            stageMs
+          })
           return
         }
         setError(message)
         setPhase('error')
-        await done({ at: Date.now(), peer: peer.name, kind: 'error', message })
+        await done({ at: Date.now(), peer: peer.name, kind: 'error', message, stageMs })
       } finally {
         running.current = false
         shownProgress.current = null

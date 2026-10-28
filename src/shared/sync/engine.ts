@@ -127,6 +127,9 @@ export interface SyncReport {
 /** Where a running sync is. `finding` is the platform's (discovery), the engine starts at `comparing`. */
 export type SyncStage = 'finding' | 'comparing' | 'downloading' | 'applying' | 'uploading' | 'done'
 
+/** Elapsed milliseconds for stages visited in one phone-driven sync attempt. */
+export type SyncStageTimings = Partial<Record<Exclude<SyncStage, 'done'>, number>>
+
 export interface SyncProgress {
   stage: SyncStage
   /** Files done / total in this stage (downloading, uploading). */

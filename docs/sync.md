@@ -45,7 +45,8 @@ tested TypeScript (`src/shared/sync/`):
 - **Repair** (phone Settings › Sync › Repair sync): rehash everything, copy whatever either side is
   missing, never delete (except identical duplicate copies, to trash).
 - **History**: back-to-back rows from the same phone (applies, identical errors, no-op syncs) collapse
-  into one row with a ×N count.
+  into one row with a ×N count. Android Settings › Sync details shows the latest attempt's time in
+  discovery, comparison, download, apply and upload stages when those stages ran.
 - **Speed**: one concurrent stat walk on the phone with a size+mtime hash cache, no second walk
   per run, notes transferred first, 3 `get` batches in flight, written as they land. Bench:
   `bun scripts/bench-sync.ts` (`--legacy` for the old walk); budget test in `perf.test.ts`.

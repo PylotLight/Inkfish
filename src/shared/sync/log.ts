@@ -4,6 +4,8 @@
  * and Android log identical shapes; persistence is per-platform.
  */
 
+import type { SyncStageTimings } from './engine'
+
 export type SyncLogKind = 'sync' | 'apply' | 'heal' | 'hold' | 'error'
 
 export interface SyncLogEntry {
@@ -20,6 +22,8 @@ export interface SyncLogEntry {
   moved?: number
   /** wall time of the session */
   ms?: number
+  /** Per-stage elapsed milliseconds for the most recent session represented by this row. */
+  stageMs?: SyncStageTimings
   /** human detail — error message, hold reason, heal summary */
   message?: string
   /** Mac `apply` rows: files changed (summed when rows collapse). */
@@ -58,7 +62,8 @@ export function appendCollapsed(log: SyncLogEntry[], e: SyncLogEntry, windowMs =
     at: e.at,
     repeat: (last.repeat ?? 1) + 1,
     ...(e.kind === 'apply' ? { files: (last.files ?? 0) + (e.files ?? 0), message: e.message } : {}),
-    ...(e.ms !== undefined ? { ms: e.ms } : {})
+    ...(e.ms !== undefined ? { ms: e.ms } : {}),
+    stageMs: e.stageMs
   }
   return [...log.slice(0, -1), merged]
 }

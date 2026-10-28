@@ -23,7 +23,7 @@ export {
   transferOrder
 } from './engine'
 export type { PartialStore, ApplyWrite } from './engine'
-export type { SyncProgress, SyncStage } from './engine'
+export type { SyncProgress, SyncStage, SyncStageTimings } from './engine'
 export type { BigDelete, GuardChoice } from './engine'
 export type { SyncFs, Remote, SyncState, SyncReport } from './engine'
 export { createHandler, parseHello, memPartials } from './server'

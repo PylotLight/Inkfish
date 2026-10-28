@@ -59,4 +59,15 @@ describe('sync log', () => {
     log = appendCollapsed(log, { ...base, at: 6, pulled: 2 })
     expect(log.map((e) => summarize(e))).toEqual(['offline (×2)', 'nothing to do (×2)', '↓2', '↓2'])
   })
+
+  test('collapsed rows keep the newest attempt timing breakdown', () => {
+    let log: SyncLogEntry[] = []
+    log = appendCollapsed(log, { ...base, at: 1, stageMs: { finding: 80, comparing: 150 } })
+    log = appendCollapsed(log, { ...base, at: 2, stageMs: { finding: 120, downloading: 300 } })
+    expect(log[0]!.repeat).toBe(2)
+    expect(log[0]!.stageMs).toEqual({ finding: 120, downloading: 300 })
+
+    log = appendCollapsed(log, { ...base, at: 3 })
+    expect(log[0]!.stageMs).toBeUndefined()
+  })
 })

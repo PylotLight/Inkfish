@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { useTheme } from '../theme'
 import { useSync } from '../lib/syncing'
 import { progressLine, secs, summarize } from '../lib/sync'
+import { stageTimingLine } from '../lib/synctimings'
 import { agoText } from '../lib/syncstatus'
 
 /**
@@ -79,12 +80,19 @@ export function SyncDetails({ visible, onClose }: { visible: boolean; onClose: (
               key={`${e.at}-${i}`}
               style={[ui.row, { justifyContent: 'space-between', paddingVertical: 5, gap: 8 }]}
             >
-              <Text
-                style={[ui.meta, { marginTop: 0, flex: 1, color: e.kind === 'sync' ? c.muted : c.danger }]}
-                numberOfLines={2}
-              >
-                {summarize(e)}
-              </Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={[ui.meta, { marginTop: 0, color: e.kind === 'sync' ? c.muted : c.danger }]}
+                  numberOfLines={2}
+                >
+                  {summarize(e)}
+                </Text>
+                {!!stageTimingLine(e.stageMs) && (
+                  <Text style={[ui.meta, { marginTop: 2, color: c.muted }]} numberOfLines={2}>
+                    {stageTimingLine(e.stageMs)}
+                  </Text>
+                )}
+              </View>
               <Text style={[ui.meta, { marginTop: 0 }]}>
                 {e.ms !== undefined ? `${secs(e.ms)} · ` : ''}
                 {agoText(e.at, now)}
