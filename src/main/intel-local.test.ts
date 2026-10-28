@@ -3,6 +3,7 @@ import {
   INTEL_RUNTIMES,
   isIntelRuntimeId,
   isLoopbackIntelUrl,
+  isSupportedLfmModelId,
   isSupportedLfm3TextModelId,
   normalizeIntelBaseUrl
 } from '../shared/intel-runtime'
@@ -14,6 +15,9 @@ const config = {
   model: 'LiquidAI/LFM3-1.7B-GGUF:Q4_K_M'
 }
 
+const visionConfig = { ...config, model: 'LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M' }
+const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jclcAAAAASUVORK5CYII='
+
 function response(content: string, usage?: { prompt_tokens: number; completion_tokens: number }): Response {
   return new Response(JSON.stringify({ choices: [{ message: { content } }], ...(usage ? { usage } : {}) }), {
     headers: { 'content-type': 'application/json' }
@@ -23,6 +27,7 @@ function response(content: string, usage?: { prompt_tokens: number; completion_t
 describe('LFM3 local runtime catalog', () => {
   test('includes only runtimes verified for LFM3-1.7B and an OpenAI-compatible endpoint', () => {
     expect(INTEL_RUNTIMES.map((runtime) => runtime.id)).toEqual([
+      'llama.cpp-managed',
       'llama.cpp',
       'ollama',
       'lm-studio',
@@ -40,6 +45,9 @@ describe('LFM3 local runtime catalog', () => {
     expect(isSupportedLfm3TextModelId('LiquidAI/LFM3-VL-2B')).toBe(false)
     expect(isSupportedLfm3TextModelId('some-other-model')).toBe(false)
     expect(isSupportedLfm3TextModelId('random-LFM3-1.7B-label')).toBe(false)
+    expect(isSupportedLfmModelId('llama.cpp-managed', visionConfig.model)).toBe(true)
+    expect(isSupportedLfmModelId('llama.cpp', 'LiquidAI/LFM3-VL-2B')).toBe(true)
+    expect(isSupportedLfmModelId('ollama', 'LiquidAI/LFM3-VL-2B')).toBe(false)
   })
 
   test('allows only loopback HTTP(S) endpoints and normalizes a safe local URL', () => {
@@ -64,15 +72,25 @@ describe('local engine status and chat', () => {
     expect(status).toMatchObject({ available: true, reason: 'available', runtime: 'llama.cpp' })
   })
 
-  test('rejects non-LFM3 model IDs and vision-model IDs before making a request', async () => {
+  test('rejects unrelated and cross-runtime VL IDs before making a request', async () => {
     let calls = 0
     const fetcher = async () => {
       calls++
       return new Response(JSON.stringify({ data: [{ id: config.model }] }), { status: 200 })
     }
     expect((await localIntelStatus({ ...config, model: 'some-other-model' }, fetcher)).reason).toBe('invalidModel')
-    expect((await localIntelStatus({ ...config, model: 'LiquidAI/LFM3-VL-2B' }, fetcher)).reason).toBe('invalidModel')
+    expect(
+      (await localIntelStatus({ ...config, engine: 'ollama', model: 'LiquidAI/LFM3-VL-2B' }, fetcher)).reason
+    ).toBe('invalidModel')
     expect(calls).toBe(0)
+  })
+
+  test('probes the vision model only when the selected llama.cpp server advertises it', async () => {
+    const status = await localIntelStatus(
+      visionConfig,
+      async () => new Response(JSON.stringify({ data: [{ id: visionConfig.model }] }), { status: 200 })
+    )
+    expect(status).toMatchObject({ available: true, reason: 'available', runtime: 'llama.cpp' })
   })
 
   test('rejects a valid LFM3 ID that is not advertised by the local server', async () => {
@@ -90,6 +108,28 @@ describe('local engine status and chat', () => {
       return new Response('{}')
     })
     expect(status.reason).toBe('invalidUrl')
+    expect(calls).toBe(0)
+  })
+
+  test('refuses managed inference when the selected process does not own the endpoint', async () => {
+    const managed = {
+      ...config,
+      engine: 'llama.cpp-managed' as const,
+      model: 'LiquidAI/LFM3-1.7B-GGUF:Q4_K_M',
+      expectedPid: 999999
+    }
+    let calls = 0
+    const status = await localIntelStatus(managed, async () => {
+      calls++
+      return new Response(JSON.stringify({ data: [{ id: managed.model }] }))
+    })
+    expect(status).toMatchObject({ available: false, reason: 'unreachable' })
+    await expect(
+      completeLocalChat(managed, [{ role: 'user', content: 'private document' }], {}, async () => {
+        calls++
+        return response('must not be sent')
+      })
+    ).rejects.toThrow('does not own this loopback port')
     expect(calls).toBe(0)
   })
 
@@ -121,7 +161,43 @@ describe('local engine status and chat', () => {
           return response('should not run')
         }
       )
-    ).rejects.toThrow('Only LFM3-1.7B text model IDs')
+    ).rejects.toThrow('The selected model is not supported by this local runtime')
+    expect(calls).toBe(0)
+  })
+
+  test('sends local PNG data URLs only to the LFM3-VL checkpoint', async () => {
+    let payload: Record<string, unknown> | undefined
+    await completeLocalChat(
+      visionConfig,
+      [{ role: 'user', content: 'Read this invoice', images: [{ mime: 'image/png', data: tinyPng }] }],
+      {},
+      async (_input, init) => {
+        payload = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return response('ok')
+      }
+    )
+    expect(payload?.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Read this invoice' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${tinyPng}` } }
+        ]
+      }
+    ])
+
+    let calls = 0
+    await expect(
+      completeLocalChat(
+        config,
+        [{ role: 'user', content: 'Read this invoice', images: [{ mime: 'image/png', data: tinyPng }] }],
+        {},
+        async () => {
+          calls++
+          return response('must not be sent')
+        }
+      )
+    ).rejects.toThrow('Image inputs require the LFM3-VL-2B vision model')
     expect(calls).toBe(0)
   })
 

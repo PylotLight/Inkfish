@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "dev:bare": "electron-vite dev",
-    "build": "bun scripts/build-stt.ts && electron-vite build",
+    "build": "bun scripts/build-stt.ts && bun scripts/fetch-llama.ts && electron-vite build",
     "start": "electron ./out/main/index.js",
     "preview": "electron-vite preview",
     "clean": "rm -rf out",
@@ -27,6 +27,7 @@
     "release": "bun scripts/release.ts",
     "postinstall": "install-electron",
     "stt:build": "bun scripts/build-stt.ts",
+    "llama:fetch": "bun scripts/fetch-llama.ts",
     "bench:stt": "bun scripts/bench-stt.ts",
     "bench:stt:web": "bun scripts/bench-web-stt.ts",
     "bench:intelligence": "bun scripts/bench-intelligence.ts",
@@ -83,6 +84,17 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "llm/bin",
+          "to": "bin/llama",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "licenses/LFM-OPEN-LICENSE.txt",
+          "to": "licenses/LFM-OPEN-LICENSE.txt"
         }
       ]
     },

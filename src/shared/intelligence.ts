@@ -8,6 +8,16 @@ export type IntelEngineId = 'apple' | IntelRuntimeId
 /** Cleanup strength: light = punctuation + filler only; structured = also bullets/headings. */
 export type IntelStyle = 'light' | 'standard' | 'structured'
 
+/** A validated, local-only image payload for vision-capable LFM endpoints. */
+export interface IntelImage {
+  mime: 'image/png' | 'image/jpeg'
+  /** Base64 bytes without a data-URL prefix. */
+  data: string
+}
+
+export const INTEL_MAX_IMAGES = 2
+export const INTEL_MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
 export interface IntelPrefs {
   /** Apple Foundation Models, a local OpenAI-compatible runtime, or rules-only fallback. */
   provider: 'apple' | 'local' | 'off'
@@ -15,7 +25,7 @@ export interface IntelPrefs {
   engine: IntelEngineId
   /** OpenAI-compatible API root; restricted to loopback for the embedded-model path. */
   localBaseUrl: string
-  /** Exact advertised ID for the LFM3-1.7B text checkpoint; required for local inference. */
+  /** Exact advertised ID for an LFM3 checkpoint verified for the selected runtime. */
   localModel: string
   /** Clean up captured text (filler, self-corrections, punctuation) before filing. */
   cleanup: boolean

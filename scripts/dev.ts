@@ -36,6 +36,10 @@ if (
 // Apple Speech CLI for voice notes (macOS; no-op elsewhere, skips if fresh).
 spawnSync(process.execPath, [join(root, 'scripts', 'build-stt.ts')], { stdio: 'inherit' })
 
+// llama.cpp local LFM3 runtime (pinned macOS ARM64 bundle; no-op on other hosts).
+const llamaBuild = spawnSync(process.execPath, [join(root, 'scripts', 'fetch-llama.ts')], { stdio: 'inherit' })
+if (llamaBuild.status !== 0) process.exit(llamaBuild.status ?? 1)
+
 const child: ChildProcess = spawn(bin, ['dev', ...process.argv.slice(2)], {
   stdio: 'inherit',
   env: process.env,

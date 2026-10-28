@@ -1,7 +1,9 @@
 import type { ProxySettings, ProxyTestResult } from '../shared/proxy-settings'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AudioApp, SystemAudioSource, TapSources } from '../shared/systemAudio'
-import type { IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type { IntelImage, IntelPrefs, IntelResult, IntelStatus, IntelTask } from '../shared/intelligence'
+import type { LfmModelKey } from '../shared/lfm-catalog'
+import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
 import type { InboxRoute, RoutePreview, RoutingPrefs } from '../shared/routing'
 import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai-api'
 import type { AiErrorDetail } from '../shared/ai-errors'
@@ -370,11 +372,30 @@ const api = {
   intel: {
     /** Apple Intelligence availability; `fresh` skips the 1-minute cache. */
     status: (fresh?: boolean): Promise<IntelStatus> => ipcRenderer.invoke('intel:status', fresh),
+    managedStatus: (): Promise<ManagedLfmStatus> => ipcRenderer.invoke('intel:managed-status'),
+    downloadManagedModel: (key: LfmModelKey, acceptedLicense: boolean): Promise<ManagedLfmStatus> =>
+      ipcRenderer.invoke('intel:managed-download', key, acceptedLicense),
+    pauseManagedDownload: (key: LfmModelKey): Promise<ManagedLfmStatus> =>
+      ipcRenderer.invoke('intel:managed-pause', key),
+    startManagedModel: (key: LfmModelKey): Promise<ManagedLfmStatus> => ipcRenderer.invoke('intel:managed-start', key),
+    stopManaged: (): Promise<ManagedLfmStatus> => ipcRenderer.invoke('intel:managed-stop'),
+    removeManagedModel: (key: LfmModelKey): Promise<ManagedLfmStatus> =>
+      ipcRenderer.invoke('intel:managed-remove', key),
+    openModelLicense: (): Promise<boolean> => ipcRenderer.invoke('intel:open-model-license'),
+    onManagedProgress: (cb: (progress: ManagedLfmDownloadProgress) => void): (() => void) => {
+      const fn = (_e: unknown, progress: ManagedLfmDownloadProgress): void => cb(progress)
+      ipcRenderer.on('intel:managed-progress', fn)
+      return () => ipcRenderer.removeListener('intel:managed-progress', fn)
+    },
     prefs: (): Promise<IntelPrefs> => ipcRenderer.invoke('intel:prefs'),
     setPrefs: (patch: Partial<IntelPrefs>): Promise<IntelPrefs> => ipcRenderer.invoke('intel:set-prefs', patch),
     /** Playground run; `prefs` overrides saved settings for this call only. */
-    run: (input: { task: IntelTask; text: string; prefs?: Partial<IntelPrefs> }): Promise<IntelResult> =>
-      ipcRenderer.invoke('intel:run', input),
+    run: (input: {
+      task: IntelTask
+      text: string
+      prefs?: Partial<IntelPrefs>
+      images?: IntelImage[]
+    }): Promise<IntelResult> => ipcRenderer.invoke('intel:run', input),
     openSystemSettings: (): Promise<boolean> => ipcRenderer.invoke('intel:open-system-settings')
   },
   stt: {

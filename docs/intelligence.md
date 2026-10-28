@@ -1,83 +1,55 @@
-# Intelligence: embedded LFM3 for document text
+# Intelligence: embedded models for document tasks
 
-Inkfish can use Apple Foundation Models or a user-run local LFM3 text model for cleanup, organising and summaries. The local adapter is restricted to loopback OpenAI-compatible endpoints; it does not install runtimes or download weights.
+Inkfish can use Apple Foundation Models or a managed local LFM3 model for document cleanup, organising and summaries. Model inference runs locally. Inkfish bundles the pinned `llama.cpp` server at build/development time; model weights are not bundled and are downloaded only when requested, after the user explicitly accepts the LFM Open License v1.0.
 
-## Apple Intelligence (existing path)
+## Apple Intelligence
 
-- **Model:** Apple's on-device Foundation Model, available on supported Apple silicon Macs with macOS 26.
-- **Where it runs:** the bundled `inkfish-stt` helper (`stt/Sources/InkfishSTT/Intelligence.swift`). The helper reports availability and accepts JSON tasks for cleanup, organising or summarising.
-- **Guided generation:** typed Swift output structures provide cleaned notes, projects, tags and summaries without parsing free-form prose.
-- **Context:** cleanup splits long notes into chunks; organising reads a bounded excerpt.
-- **Fallback:** if the selected model is unavailable or a request fails, Inkfish retains the raw capture and continues with the existing rules path.
+- **Model:** Apple's on-device Foundation Model on supported Apple silicon Macs with macOS 26.
+- **Where it runs:** the `inkfish-stt` helper (`stt/Sources/InkfishSTT/Intelligence.swift`). It reports availability and accepts JSON tasks for cleanup, organising or summarising.
+- **Guided generation:** typed Swift output structures provide cleaned notes, projects, tags and summaries.
+- **Fallback:** if the selected model is unavailable or a request fails, Inkfish retains the raw capture and continues with the rules path.
 
-## Local LFM3-1.7B text adapter
+## Managed local LFM3
 
-The local path currently accepts the **LFM3-1.7B text checkpoint only**. The saved model ID must be advertised by the server's `GET /v1/models` response and identify that text checkpoint; other model IDs are rejected before Inkfish sends document text. The local endpoint must use `localhost`, `127.0.0.1` or `::1`, and the adapter sends no API key.
+Inkfish manages two Q4_K_M GGUF models through the bundled `llama.cpp` b11946 `llama-server` on macOS ARM64:
 
-The endpoint presets are manually managed: you install the runtime, download a licensed checkpoint and start its server. Inkfish does not package the model or runtime binaries.
+| Model                       | Repository and quantization                                                          | Files (exact size; SHA-256)                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Text: LFM3-1.7B             | [LiquidAI/LFM3-1.7B-GGUF](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) `Q4_K_M`   | `LFM3-1.7B-Q4_K_M.gguf` — 1,099,627,808 bytes; `3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4`                                                                                                                         |
+| Vision-language: LFM3-VL-2B | [LiquidAI/LFM3-VL-2B-GGUF](https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF) `Q4_K_M` | `LFM3-VL-2B-Q4_K_M.gguf` — 1,099,627,808 bytes; `56dac2e192ff0d9ab8507f4f1aeb4aed0463449bbbefaac79497f041c95f21eb`; `mmproj-LFM3-VL-2B-Q8_0.gguf` — 203,031,872 bytes; `c5c5b58d544a18da919172d2d0368090ea1a4a351b6feb7f8a326a264a5918ab` |
 
-| Enabled local endpoint                                      | Verified LFM3-1.7B path                                                                       | Default API URL             |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------- |
-| [llama.cpp](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) | GGUF; the model card documents `llama-server` and an OpenAI-compatible API                    | `http://127.0.0.1:8080/v1`  |
-| [Ollama](https://ollama.com/library/lfm3)                   | Official `lfm3` text model; local OpenAI-compatible API                                       | `http://127.0.0.1:11434/v1` |
-| [LM Studio](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) | The official GGUF model card lists LM Studio                                                  | `http://127.0.0.1:1234/v1`  |
-| [vLLM](https://huggingface.co/LiquidAI/LFM3-1.7B)           | BF16 model card path with OpenAI-compatible Chat Completions                                  | `http://127.0.0.1:8000/v1`  |
-| [SGLang](https://huggingface.co/LiquidAI/LFM3-1.7B)         | BF16, FP8 or NVFP4 variants as listed on the model card; OpenAI-compatible server             | `http://127.0.0.1:30000/v1` |
-| Custom local server                                         | Any local server that actually runs the LFM3-1.7B text checkpoint and implements the same API | User supplied               |
+The text model is used for text tasks. The VL model supports visual document input; its image content is passed as a local base64 data URL using the OpenAI-compatible `image_url` message field. Video input is not included. The existing loopback endpoint route for LFM3-1.7B text remains; only `llama.cpp` is enabled for VL.
 
-Examples:
+The managed server archive is the official macOS ARM64 asset from [llama.cpp b11946](https://github.com/ggml-org/llama.cpp/releases/tag/b11946), 16,438,371 bytes, SHA-256 `d618da5e7bbb19077f086e6a7e1d77eab55b9bfd481f7531aadada86d13db9ed`. That tag includes the merged [LFM3 support PR #31252](https://github.com/ggml-org/llama.cpp/pull/31252), merge `19cce6919992fdffd92e0ac152caaf1e2b8f254e`; the tag comparison is 8 commits ahead and 0 behind. macOS ARM64 is the only bundled binary. A minimum macOS version and signing/notarization status have not been verified and are not specified here.
 
-```sh
-# llama.cpp: start an LFM3-compatible server; the exact model ID must match /v1/models
-bun run bench:intelligence -- --engine llama.cpp --url http://127.0.0.1:8080/v1 --model LiquidAI/LFM3-1.7B-GGUF:Q4_K_M --runs 3
+Weights are governed by the [LFM Open License v1.0](https://huggingface.co/LiquidAI/LFM3-1.7B/raw/main/LICENSE), also included with the macOS app. Inkfish does not bundle weights. It prompts for explicit license acceptance before downloading a requested model; consult the license for its terms.
 
-# Ollama: use the model ID reported by its local /v1/models endpoint
-bun run bench:intelligence -- --engine ollama --url http://127.0.0.1:11434/v1 --model lfm3 --runs 3
-```
+MLX and ONNX have checkpoint artifacts, but Inkfish has no implemented in-app runtime path for them. vLLM and SGLang are not supported for VL in Inkfish. UZU is blocked because no verified LFM3 checkpoint or conversion specification is available.
 
-The current model card lists BF16 weights for vLLM/SGLang/Transformers, FP8 and NVFP4 for SGLang, GGUF for llama.cpp/Ollama/LM Studio, plus MLX and ONNX artifacts. They are not all current Inkfish presets: the LFM3 MLX card says `mlx-lm` support is still in progress, so MLX is not enabled. ONNX Runtime can run the exported graph directly, but Inkfish has no ONNX execution adapter or OpenAI-compatible ONNX server, so it is not enabled either. The [official LFM3-1.7B model card](https://huggingface.co/LiquidAI/LFM3-1.7B) is the source of truth for model-specific files and runtime status; the general [Liquid model library](https://docs.liquid.ai/lfm/models/complete-library) may lag new releases.
+## Set up the managed runtime
 
-### Why UZU is not enabled
+In **Settings → Intelligence**, choose **llama.cpp (managed)**, select the text or VL model, review and accept the LFM Open License, then choose **Download model**. Downloads are stored in Inkfish app data, not in the notes vault. The text weights are about 1.10 GB; the VL model plus projector are about 1.30 GB. Inkfish checks the expected byte size and SHA-256 before using each file, and requires extra free disk space while downloading. The shown memory estimates assume an 8k context: roughly 4 GB for text and 6 GB for VL; actual memory use depends on the Mac. To avoid starting under severe memory pressure, the managed runtime requires at least 2.5 GB free for text or 4 GB for VL.
 
-UZU is not currently a runnable LFM3 engine. Its documented conversion path is `lalamo`, but the current [lalamo ModelSpec catalogue](https://github.com/trymirai/lalamo/tree/main/lalamo/model_import/model_specs) has no LFM3 model specification, and Mirai's [current model catalogue](https://trymirai.com/models) lists no LFM3 checkpoint. UZU uses its own converted model format, so an LFM3 GGUF, MLX or ONNX file cannot simply be loaded into it. There is no documented LFM3 conversion path to integrate safely; the UZU preset has therefore been removed rather than presented as supported.
+The pinned server is currently bundled only for macOS Apple silicon. It starts on demand or from Settings, binds to `127.0.0.1` on a temporary local port, disables llama.cpp's Web UI, allows one request slot with an 8k context, and stops after 10 minutes idle or when Inkfish quits. A normal quit waits for the server and any model download process to stop; if a child cannot be stopped, Inkfish stays open and shows an error. Before using the managed endpoint, Inkfish verifies that the launched process owns the listening port and that `/v1/models` advertises the selected model; it repeats the ownership check before sending a task. On macOS this uses the system `lsof` process/socket listing. Image processing reads only PNG/JPEG assets already in the vault (up to two images, 4 MB each); remote URLs are not fetched or sent. Other verified local API profiles support text only and require the server to advertise the exact LFM3 model ID.
 
-### Vision model status
+## Deterministic benchmark
 
-[LFM3-VL-2B](https://huggingface.co/LiquidAI/LFM3-VL-2B) is the family member designed for document pages, charts and other visual inputs. Its model card describes image and video input, but it is not enabled in Inkfish yet: the current shared task contract and local adapter send text-only content, not image bytes or page crops. The VL card also marks llama.cpp support as in review and MLX-VLM, vLLM and SGLang support as in progress; ONNX artifacts can run through ONNX Runtime but are not wired into this app. A future vision benchmark should use fixed page images and deterministic gold fields, separate from the current text benchmark.
+The CLI benchmark runs versioned synthetic tasks and reports deterministic task scoring, latency/speed, repeated-run consistency and optional server RSS. Tasks cover text-document work and include a visual-document task. Text scores include exact extracted fields with declared normalization, action-item precision/recall/F1, classification labels and required-fact coverage. It also reports task-stratified bootstrap confidence intervals where applicable. Latency includes warm-up/first-request and p50/p95; throughput is reported when available. RSS is sampled when a process ID is supplied and does not represent all GPU/unified-memory use.
 
-## Document benchmark
-
-Run the same 12 versioned synthetic text-document tasks against a selected LFM3-1.7B server. The runner refuses non-LFM3-1.7B model IDs and checks that the exact ID appears in `/v1/models` before sending prompts.
+Start the model in Settings first; use the local API URL and PID shown there. The managed benchmark requires the PID so it can verify that the endpoint belongs to the expected process. For example, with the text model running:
 
 ```sh
-bun run bench:intelligence -- --engine llama.cpp --url http://127.0.0.1:8080/v1 --model LiquidAI/LFM3-1.7B-GGUF:Q4_K_M --runs 3 --pid 1234
+bun run bench:intelligence -- --engine llama.cpp-managed --url "http://127.0.0.1:$PORT/v1" --model LiquidAI/LFM3-1.7B-GGUF:Q4_K_M --pid "$PID" --runs 3
 ```
 
-The CLI saves prompts, raw outputs and per-run metrics to `bench-intelligence-results.json` and reports:
+For the vision task, start **LFM3-VL-2B** and use `--model LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M`. The runner validates and sends generated synthetic invoice PNGs; it does not use personal documents. The JSON report records each case and run, exact/coverage scores, p50/p95 latency, output tokens per second, model-output repeatability, a document-stratified 95% score interval and optional server-process RSS.
 
-- **Task quality:** exact invoice/receipt fields with declared normalization, precision/recall/F1 for explicit action items, exact classification labels, and required-fact coverage for grounded summaries.
-- **Accuracy uncertainty:** a reproducible, seeded 10,000-resample task-stratified 95% bootstrap interval over document-level mean scores.
-- **Speed:** warm-up/first-request latency, p50/p95 latency and output tokens per second. If the server omits token usage, output length gives a labelled estimate.
-- **Memory:** peak process RSS sampled every 250 ms when `--pid` is provided. It does not include children or GPU/unified-memory allocations and is unavailable on Windows.
-- **Consistency:** exact normalized-output rate and pairwise character-level similarity across repeated runs; JSON key order and whitespace are ignored.
-
-These primary scores are deterministic and judge-free because each task has an answer key. Phrase-based summary coverage can miss valid paraphrases and does not score readability or nuanced faithfulness. If those qualities matter, report human review or a separately identified judge-model score alongside—not instead of—the deterministic measures. The 12 synthetic examples are a reproducible smoke benchmark, not enough to rank models for production; validate on a representative held-out set.
-
-The published GGUF card gives model file sizes of about 1.05 GB for Q4_0 and 1.1 GB for Q4_K_M; those are checkpoint sizes, not Inkfish memory measurements. Inkfish has no real LFM3 benchmark results checked in because no local model server was available in this development environment.
-
-## Settings and implementation boundary
-
-Settings › Intelligence selects Apple Foundation Models or one of the verified LFM3-1.7B endpoint presets, configures the local URL and exact model ID, and provides a playground for cleanup, organising and summarising text. The status check verifies a compatible `/v1/models` response and that the selected model is advertised. A failed local request falls back to the rules path.
-
-This is an endpoint adapter and CLI benchmark, not the planned managed runtime. The [Local LLM implementation plan](local-llm.md) still covers pinned runtime distribution, model downloads and license handling, process lifecycle, and an in-app engine comparison view.
+Synthetic cases are reproducible but small and may not represent real documents or users' workloads. Phrase-based summary coverage can miss valid paraphrases and does not judge readability or nuanced faithfulness. Use a representative held-out set and human review for those qualities; confidence intervals help show uncertainty but cannot fix an unrepresentative sample. No real model scores are published here: they should not be claimed until a user runs the benchmark with actual weights.
 
 ## Sources
 
-- [Liquid AI's LFM3 launch blog](https://www.liquid.ai/blog/lfm3)
-- [LFM3-1.7B model card and runtime matrix](https://huggingface.co/LiquidAI/LFM3-1.7B)
 - [LFM3-1.7B GGUF model card](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF)
-- [LFM3-1.7B MLX model card and status](https://huggingface.co/LiquidAI/LFM3-1.7B-MLX-4bit)
-- [LFM3-1.7B ONNX model card](https://huggingface.co/LiquidAI/LFM3-1.7B-ONNX)
-- [Ollama's LFM3 model page](https://ollama.com/library/lfm3) and [OpenAI-compatible API docs](https://docs.ollama.com/api/openai-compatibility)
-- [LFM3-VL-2B model card](https://huggingface.co/LiquidAI/LFM3-VL-2B), [GGUF card](https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF) and [ONNX card](https://huggingface.co/LiquidAI/LFM3-VL-2B-ONNX)
-- [UZU's documented model format](https://github.com/trymirai/uzu), [lalamo ModelSpec catalogue](https://github.com/trymirai/lalamo/tree/main/lalamo/model_import/model_specs), and [Mirai model catalogue](https://trymirai.com/models)
+- [LFM3-VL-2B model card](https://huggingface.co/LiquidAI/LFM3-VL-2B) and [GGUF model card](https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF)
+- [LFM Open License v1.0](https://huggingface.co/LiquidAI/LFM3-1.7B/raw/main/LICENSE)
+- [llama.cpp b11946 release](https://github.com/ggml-org/llama.cpp/releases/tag/b11946) and [LFM3 support PR #31252](https://github.com/ggml-org/llama.cpp/pull/31252)
+- [LFM3 implementation details](lfm3.md); [local LLM feature architecture](local-llm.md)

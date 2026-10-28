@@ -1,4 +1,4 @@
-export type IntelBenchKind = 'fields' | 'items' | 'label' | 'facts'
+export type IntelBenchKind = 'fields' | 'vision-fields' | 'items' | 'label' | 'facts'
 
 export interface IntelBenchCase {
   id: string
@@ -6,6 +6,7 @@ export interface IntelBenchCase {
   title: string
   document: string
   prompt: string
+  imagePaths?: string[]
   expected?: Record<string, string | string[]>
   expectedItems?: Array<Record<string, string>>
   expectedLabel?: string
@@ -181,8 +182,62 @@ export const INTEL_BENCH_CASES: IntelBenchCase[] = [
       ['Newcastle'],
       ['test batch']
     ]
+  },
+  {
+    id: 'vision-invoice-001',
+    task: 'vision-fields',
+    title: 'Vision invoice fields · Northstar',
+    document: '',
+    imagePaths: ['scripts/fixtures/vision-invoice-001.png'],
+    prompt:
+      'Read the invoice image and extract supplier, invoice_number, issue_date, total, and currency. Return exactly one JSON object with string values. Use ISO dates (YYYY-MM-DD), total as a decimal number without currency symbols or thousands separators, and an ISO 4217 currency code.',
+    expected: {
+      supplier: 'Northstar Office Supply',
+      invoice_number: 'NS-2048',
+      issue_date: '2026-10-14',
+      total: '1426.00',
+      currency: 'NZD'
+    }
+  },
+  {
+    id: 'vision-invoice-002',
+    task: 'vision-fields',
+    title: 'Vision invoice fields · Blue Wren',
+    document: '',
+    imagePaths: ['scripts/fixtures/vision-invoice-002.png'],
+    prompt:
+      'Read the invoice image and extract supplier, invoice_number, issue_date, total, and currency. Return exactly one JSON object with string values. Use ISO dates (YYYY-MM-DD), total as a decimal number without currency symbols or thousands separators, and an ISO 4217 currency code.',
+    expected: {
+      supplier: 'Blue Wren Systems',
+      invoice_number: 'BW-7713',
+      issue_date: '2026-09-03',
+      total: '963.05',
+      currency: 'AUD'
+    }
+  },
+  {
+    id: 'vision-invoice-003',
+    task: 'vision-fields',
+    title: 'Vision invoice fields · Cedar & Co',
+    document: '',
+    imagePaths: ['scripts/fixtures/vision-invoice-003.png'],
+    prompt:
+      'Read the invoice image and extract supplier, invoice_number, issue_date, total, and currency. Return exactly one JSON object with string values. Use ISO dates (YYYY-MM-DD), total as a decimal number without currency symbols or thousands separators, and an ISO 4217 currency code.',
+    expected: {
+      supplier: 'Cedar & Co Printing',
+      invoice_number: 'CC-3906',
+      issue_date: '2026-11-22',
+      total: '2176.20',
+      currency: 'USD'
+    }
   }
 ]
+
+/** Vision cases are run only with the exact LFM3-VL checkpoint identifier. */
+export function selectIntelBenchCases(modelId: string): IntelBenchCase[] {
+  const visionModel = modelId.trim() === 'LiquidAI/LFM3-VL-2B-GGUF:Q4_K_M'
+  return INTEL_BENCH_CASES.filter((item) => item.task !== 'vision-fields' || visionModel)
+}
 
 export interface IntelBenchScore {
   score: number
@@ -257,7 +312,7 @@ export function scoreIntelBenchCase(testCase: IntelBenchCase, output: string): I
   const parsed = parseBenchJson(output)
   if (!parsed) return { score: 0, valid: false, detail: 'invalid JSON' }
 
-  if (testCase.task === 'fields') {
+  if (testCase.task === 'fields' || testCase.task === 'vision-fields') {
     const expected = testCase.expected ?? {}
     const keys = Object.keys(expected)
     let correct = 0

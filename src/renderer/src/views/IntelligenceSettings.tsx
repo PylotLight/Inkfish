@@ -9,6 +9,8 @@ import {
   type IntelStyle,
   type IntelTask
 } from '../../../shared/intelligence'
+import { LFM_CATALOG, LFM_MODEL_KEYS, type LfmModelKey } from '../../../shared/lfm-catalog'
+import type { ManagedLfmStatus } from '../../../shared/managed-llm'
 import { INTEL_RUNTIMES, intelRuntime, isSupportedLfm3TextModelId } from '../../../shared/intel-runtime'
 import { ipcError } from '../audio'
 
@@ -36,13 +38,19 @@ function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSett
     if (s.available) return null
     return {
       hint:
-        s.reason === 'invalidUrl'
-          ? 'Use a localhost, 127.0.0.1 or ::1 URL. Embedded inference will not connect to a remote host.'
-          : s.reason === 'incompatible'
-            ? 'The server answered, but its /models route did not return the expected OpenAI-compatible model list.'
-            : s.reason === 'invalidModel' || s.reason === 'modelUnavailable' || s.reason === 'modelNotFound'
-              ? 'Select the exact /models ID for the LFM3-1.7B text checkpoint. Other model families and the vision checkpoint are not enabled in this text-only path.'
-              : 'Start the selected local engine and expose its OpenAI-compatible /v1/chat/completions API, then check again.',
+        s.reason === 'binaryMissing'
+          ? 'The pinned llama-server bundle is missing. Rebuild the macOS Apple-silicon app so its verified runtime is included.'
+          : s.reason === 'platformUnsupported'
+            ? 'The managed llama.cpp bundle currently supports macOS Apple silicon only. Other runtimes can connect to a local server.'
+            : s.reason === 'modelNotDownloaded'
+              ? 'Choose a model, review and accept the LFM Open License, then download the weights below.'
+              : s.reason === 'invalidUrl'
+                ? 'Use a localhost, 127.0.0.1 or ::1 URL. Embedded inference will not connect to a remote host.'
+                : s.reason === 'incompatible'
+                  ? 'The server answered, but its /models route did not return the expected OpenAI-compatible model list.'
+                  : s.reason === 'invalidModel' || s.reason === 'modelUnavailable' || s.reason === 'modelNotFound'
+                    ? 'Choose an LFM3 model verified for the selected runtime and use its exact /models ID. LFM3-VL image inputs are supported only through llama.cpp.'
+                    : 'Start the selected local engine and expose its OpenAI-compatible /v1/chat/completions API, then check again.',
       openSettings: false
     }
   }
@@ -76,7 +84,11 @@ function fixFor(s: IntelStatus, engine: IntelEngineId): { hint: string; openSett
  */
 export default function IntelligenceSettings(): React.JSX.Element {
   const [status, setStatus] = useState<IntelStatus | null>(null)
+  const [managed, setManaged] = useState<ManagedLfmStatus | null>(null)
   const [checking, setChecking] = useState(false)
+  const [managedBusy, setManagedBusy] = useState(false)
+  const [managedError, setManagedError] = useState('')
+  const [licenseAccepted, setLicenseAccepted] = useState(false)
   const [prefs, setPrefs] = useState<IntelPrefs>(DEFAULT_INTEL_PREFS)
   const [input, setInput] = useState(INTEL_SAMPLE)
   const [run, setRun] = useState<Run | null>(null)
@@ -93,7 +105,12 @@ export default function IntelligenceSettings(): React.JSX.Element {
         pendingPrefs.current = null
         await window.api.intel.setPrefs(pending)
       }
-      setStatus(await window.api.intel.status(fresh))
+      const [nextStatus, nextManaged] = await Promise.all([
+        window.api.intel.status(fresh),
+        window.api.intel.managedStatus()
+      ])
+      setStatus(nextStatus)
+      setManaged(nextManaged)
     } catch (e) {
       setStatus({ available: false, reason: 'helper', detail: ipcError(e) })
     } finally {
@@ -111,6 +128,30 @@ export default function IntelligenceSettings(): React.JSX.Element {
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
     }
   }, [])
+
+  useEffect(
+    () =>
+      window.api.intel.onManagedProgress((progress) => {
+        setManaged((previous) =>
+          previous
+            ? {
+                ...previous,
+                models: previous.models.map((model) =>
+                  model.modelKey === progress.modelKey
+                    ? {
+                        ...model,
+                        progress,
+                        downloadedBytes: progress.bytes,
+                        installed: progress.state === 'done' || model.installed
+                      }
+                    : model
+                )
+              }
+            : previous
+        )
+      }),
+    []
+  )
 
   const update = (patch: Partial<IntelPrefs>, debounce = false): void => {
     setPrefs((p) => ({ ...p, ...patch }))
@@ -144,6 +185,46 @@ export default function IntelligenceSettings(): React.JSX.Element {
   const selectedRuntime = prefs.engine === 'apple' ? null : intelRuntime(prefs.engine)
   const fix = status ? fixFor(status, prefs.engine) : null
   const ready = status?.available ?? false
+  const isManaged = prefs.engine === 'llama.cpp-managed'
+  const managedModelKey = (LFM_MODEL_KEYS.find((key) => LFM_CATALOG[key].apiModelId === prefs.localModel) ??
+    'lfm3-1.7b') as LfmModelKey
+  const managedModel = managed?.models.find((model) => model.modelKey === managedModelKey)
+  const managedProgress = managedModel?.progress
+
+  const runManagedAction = async (action: () => Promise<ManagedLfmStatus>): Promise<void> => {
+    setManagedBusy(true)
+    setManagedError('')
+    try {
+      setManaged(await action())
+      await check(true)
+    } catch (e) {
+      setManagedError(ipcError(e))
+      try {
+        setManaged(await window.api.intel.managedStatus())
+      } catch {
+        // Keep the actionable error from the failed operation.
+      }
+    } finally {
+      setManagedBusy(false)
+    }
+  }
+
+  const downloadManagedModel = (): void => {
+    setManagedError('')
+    void window.api.intel
+      .downloadManagedModel(managedModelKey, licenseAccepted)
+      .then((next) => {
+        setManaged(next)
+        return check(true)
+      })
+      .catch((e) => {
+        setManagedError(ipcError(e))
+        void window.api.intel
+          .managedStatus()
+          .then(setManaged)
+          .catch(() => undefined)
+      })
+  }
 
   const selectEngine = (engine: IntelEngineId): void => {
     const patch: Partial<IntelPrefs> = {
@@ -151,7 +232,12 @@ export default function IntelligenceSettings(): React.JSX.Element {
       provider: prefs.provider === 'off' ? 'off' : engine === 'apple' ? 'apple' : 'local'
     }
     if (engine !== 'apple') {
-      if (!isSupportedLfm3TextModelId(prefs.localModel)) patch.localModel = intelRuntime(engine).modelExample
+      if (engine === 'llama.cpp-managed') {
+        if (!LFM_MODEL_KEYS.some((key) => LFM_CATALOG[key].apiModelId === prefs.localModel))
+          patch.localModel = LFM_CATALOG['lfm3-1.7b'].apiModelId
+      } else if (!isSupportedLfm3TextModelId(prefs.localModel)) {
+        patch.localModel = intelRuntime(engine).modelExample
+      }
       const previousDefault =
         prefs.engine === 'apple' ? DEFAULT_INTEL_PREFS.localBaseUrl : intelRuntime(prefs.engine).defaultBaseUrl
       if (!prefs.localBaseUrl || prefs.localBaseUrl === previousDefault)
@@ -173,9 +259,8 @@ export default function IntelligenceSettings(): React.JSX.Element {
       <section className="settings-group">
         <h4>Embedded model</h4>
         <p className="muted small setting-hint" style={{ marginTop: 0 }}>
-          Choose a verified local endpoint for the LFM3-1.7B text model. Endpoints are loopback-only; Inkfish does not
-          bundle runtime binaries or model weights. LFM3-VL-2B is not enabled here because this path does not send image
-          payloads.
+          Choose Apple Foundation Models, a managed local llama.cpp runtime, or a verified loopback endpoint. Inkfish
+          never sends embedded-model requests to a remote host.
         </p>
 
         <label className="field">
@@ -194,7 +279,7 @@ export default function IntelligenceSettings(): React.JSX.Element {
           </select>
         </label>
 
-        {selectedRuntime && (
+        {selectedRuntime && !isManaged && (
           <>
             <label className="field">
               <span>Local API URL</span>
@@ -221,6 +306,143 @@ export default function IntelligenceSettings(): React.JSX.Element {
               {selectedRuntime.hint} Format: {selectedRuntime.formats}. {selectedRuntime.platform}.
             </p>
           </>
+        )}
+
+        {isManaged && (
+          <div className="setting-row stacked" aria-label="Managed LFM3 model controls">
+            <label className="field">
+              <span>Managed LFM3 model</span>
+              <select
+                value={managedModelKey}
+                onChange={(e) => {
+                  const key = e.target.value as LfmModelKey
+                  update({ localModel: LFM_CATALOG[key].apiModelId })
+                  void check(true)
+                }}
+                aria-label="Managed LFM3 model"
+              >
+                {LFM_MODEL_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {LFM_CATALOG[key].name} · {key === 'lfm3-vl-2b' ? 'document images' : 'text documents'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted small setting-hint">
+              Model weights are downloaded to Inkfish app data only when requested. The selected model uses about{' '}
+              {managedModel
+                ? (managedModel.estimatedRamBytes / 1e9).toFixed(1)
+                : managedModelKey === 'lfm3-vl-2b'
+                  ? '6.0'
+                  : '4.0'}{' '}
+              GB RAM at an 8k context; actual use varies by device. Disk download: approximately{' '}
+              {managedModel
+                ? (managedModel.totalBytes / 1e9).toFixed(2)
+                : managedModelKey === 'lfm3-vl-2b'
+                  ? '1.30'
+                  : '1.10'}{' '}
+              GB. Image captures use LFM3-VL-2B when its weights are installed.
+            </p>
+            <p className="muted small setting-hint">
+              Review the{' '}
+              <button className="btn link sm" onClick={() => void window.api.intel.openModelLicense()}>
+                LFM Open License v1.0
+              </button>{' '}
+              before downloading. Its commercial-use terms include an annual-revenue threshold; read the full license
+              for applicable conditions.
+            </p>
+            <label className="setting-row inline">
+              <input
+                type="checkbox"
+                checked={licenseAccepted}
+                onChange={(e) => setLicenseAccepted(e.target.checked)}
+                aria-label="I have read and accept the LFM Open License"
+              />
+              <span className="setting-label">I have read and accept the LFM Open License for this download.</span>
+            </label>
+            {managedProgress && (
+              <div className="setting-row stacked" aria-live="polite">
+                <progress value={managedProgress.fraction} max={1} aria-label="Model download progress" />
+                <span className="muted small">
+                  {managedProgress.state === 'downloading'
+                    ? `Downloading ${managedProgress.file ?? ''} · ${(managedProgress.bytes / 1e9).toFixed(2)} / ${(managedProgress.totalBytes / 1e9).toFixed(2)} GB`
+                    : managedProgress.state === 'paused'
+                      ? 'Download paused; resume to continue.'
+                      : managedProgress.state === 'error'
+                        ? managedProgress.error
+                        : 'Model download and integrity checks complete.'}
+                </span>
+              </div>
+            )}
+            {managedError && <p className="small setting-hint error-text">{managedError}</p>}
+            <div className="row">
+              <button
+                className="btn ghost sm"
+                disabled={
+                  !licenseAccepted ||
+                  managedProgress?.state === 'downloading' ||
+                  managedModel?.installed ||
+                  !managed?.supportedPlatform ||
+                  !managed?.binaryReady
+                }
+                onClick={downloadManagedModel}
+              >
+                {managedProgress?.state === 'paused'
+                  ? 'Resume download'
+                  : managedProgress?.state === 'error'
+                    ? 'Retry download'
+                    : 'Download model'}
+              </button>
+              {managedProgress?.state === 'downloading' && (
+                <button
+                  className="btn ghost sm"
+                  disabled={managedBusy}
+                  onClick={() => void runManagedAction(() => window.api.intel.pauseManagedDownload(managedModelKey))}
+                >
+                  Pause
+                </button>
+              )}
+              <button
+                className="btn ghost sm"
+                disabled={
+                  managedBusy ||
+                  !managedModel?.installed ||
+                  (managed?.running && managed.runningModelKey === managedModelKey)
+                }
+                onClick={() => void runManagedAction(() => window.api.intel.startManagedModel(managedModelKey))}
+              >
+                {managed?.running ? 'Switch model' : 'Start local server'}
+              </button>
+              <button
+                className="btn ghost sm"
+                disabled={managedBusy || !managed?.running}
+                onClick={() => void runManagedAction(() => window.api.intel.stopManaged())}
+              >
+                Stop server
+              </button>
+              <button
+                className="btn ghost sm"
+                disabled={managedBusy || !managedModel?.installed}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Remove ${managedModel?.name} weights from this device? You can download them again later.`
+                    )
+                  )
+                    void runManagedAction(() => window.api.intel.removeManagedModel(managedModelKey))
+                }}
+              >
+                Remove model
+              </button>
+            </div>
+            {managed && <p className="muted small setting-hint">{managed.detail}</p>}
+            {managed?.running && managed.baseUrl && (
+              <p className="muted small setting-hint">
+                Benchmark endpoint: <code>{managed.baseUrl}</code>
+                {managed.pid ? ` · Server PID ${managed.pid}` : ''}
+              </p>
+            )}
+          </div>
         )}
 
         <div className={`engine-row${ready ? ' active' : ''}`}>

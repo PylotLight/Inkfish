@@ -37,6 +37,7 @@ import { createShutdown } from '../shared/stability'
 import { createQuitFlush } from '../shared/autosave'
 import { startSync, stopSync, appendSyncLog } from './sync'
 import { initializeUpdates, registerUpdateIpc } from './updates'
+import { shutdownManagedLfm } from './llama-managed'
 
 // Custom protocols must be privileged before the app is ready.
 protocol.registerSchemesAsPrivileged([
@@ -271,6 +272,28 @@ const shutdown = createShutdown(
   (message) => console.warn(message)
 )
 
-app.on('will-quit', () => {
-  shutdown()
+let managedShutdownStarted = false
+let managedShutdownComplete = false
+app.on('before-quit', (e) => {
+  // Wait until autosave has completed, then await the only asynchronous child-process cleanup
+  // before allowing Electron to proceed to will-quit.
+  if (!quitFlushed || managedShutdownComplete) return
+  e.preventDefault()
+  if (managedShutdownStarted) return
+  managedShutdownStarted = true
+  void shutdownManagedLfm()
+    .then(() => {
+      shutdown()
+      managedShutdownComplete = true
+      app.quit()
+    })
+    .catch((error) => {
+      managedShutdownStarted = false
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[shutdown] managed llama.cpp failed: ${message}`)
+      dialog.showErrorBox(
+        'Inkfish could not stop the managed LFM runtime',
+        `The local llama-server or model download may still be running, so Inkfish has stayed open.\n\n${message}\n\nStop the model from Intelligence Settings, then try quitting again.`
+      )
+    })
 })

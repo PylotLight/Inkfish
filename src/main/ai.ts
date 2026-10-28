@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import type { IntelImage } from '../shared/intelligence'
 import type { ClassifyResult, NoteKind, Project } from '../shared/types'
 import { intelRun, intelStatus, loadIntelPrefs } from './intelligence'
 import {
@@ -26,8 +27,8 @@ import { listEngines } from './stt'
  * No account, offline default. Each result reports which `provider` produced
  * it so the UI can show it and the router can distrust low-confidence rules.
  *
- * Embedded intelligence can use Apple Foundation Models or a verified local
- * LFM3-1.7B endpoint. It cleans up and files captures when enabled in Settings
+ * Embedded intelligence can use Apple Foundation Models, managed local LFM3
+ * text/VL models, or a verified local text endpoint. It cleans up and files captures when enabled in Settings
  * › Intelligence; anything unavailable falls back to rules.
  * STT = bundled native helper only (see ./stt.ts, stt/README.md) — never python/pip.
  */
@@ -73,6 +74,8 @@ export type RouteLlm = (system: string, user: string) => Promise<string | null>
 export interface ClassifyInput {
   raw: string
   kind: NoteKind
+  /** PNG/JPEG assets already stored in the vault; remote image URLs are never loaded. */
+  images?: IntelImage[]
   projects: Project[]
   /** Explicit picker choice; 'auto' (or omitted) = let the router decide. */
   projectHint?: string
@@ -153,7 +156,9 @@ export function rulesRoute(input: ClassifyInput): { decision: RouteDecision; res
 
 /** Notes the model shouldn't rewrite or file: empty, or already-formatted meeting transcripts. */
 export function intelEligible(input: ClassifyInput): boolean {
-  return input.kind !== 'meeting' && input.kind !== 'image' && input.raw.trim().length >= 12
+  if (input.kind === 'meeting') return false
+  if (input.images?.length) return true
+  return input.kind !== 'image' && input.raw.trim().length >= 12
 }
 
 /**
@@ -172,7 +177,7 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
   let aiDone = false
 
   // 1. The user's own AI provider (Settings › AI provider), when connected.
-  if (!fixed && input.llm && prefs.useAiProvider && intelEligible(input)) {
+  if (!fixed && !input.images?.length && input.llm && prefs.useAiProvider && intelEligible(input)) {
     try {
       const { system, user } = aiRoutePrompt(input.raw, cand, prefs.allowAppend)
       const reply = await input.llm(system, user)
@@ -189,11 +194,22 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
 
   // 2. Embedded intelligence: cleanup, and organise when the provider didn't answer.
   const intel = loadIntelPrefs()
-  if (intel.provider === 'off' || (!intel.cleanup && !intel.organize) || !intelEligible(input)) return out
+  if (
+    intel.provider === 'off' ||
+    (!intel.cleanup && !intel.organize) ||
+    (input.images?.length && !intel.organize) ||
+    !intelEligible(input)
+  )
+    return out
   try {
-    if (!(await intelStatus()).available) return out
-    const organize = intel.organize && !aiDone
-    const r = await intelRun({ task: organize ? 'organize' : 'cleanup', text: input.raw, projects: cand.folders })
+    if (!input.images?.length && !(await intelStatus()).available) return out
+    const organize = input.images?.length ? true : intel.organize && !aiDone
+    const r = await intelRun({
+      task: organize ? 'organize' : 'cleanup',
+      text: input.raw,
+      projects: cand.folders,
+      ...(input.images?.length ? { images: input.images } : {})
+    })
     if (intel.cleanup && r.text.trim()) out.markdown = r.text.trim()
     if (organize) {
       if (r.title.trim()) out.title = r.title.trim().slice(0, 80)

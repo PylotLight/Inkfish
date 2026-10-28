@@ -4,13 +4,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   DEFAULT_INTEL_PREFS,
+  INTEL_MAX_IMAGE_BYTES,
+  INTEL_MAX_IMAGES,
+  type IntelImage,
   type IntelPrefs,
   type IntelResult,
   type IntelStatus,
   type IntelTask
 } from '../shared/intelligence'
-import { isIntelRuntimeId } from '../shared/intel-runtime'
+import { getLfmModelForRuntime, isIntelRuntimeId } from '../shared/intel-runtime'
+import { LFM_CATALOG } from '../shared/lfm-catalog'
 import { localIntelStatus, runLocalIntel } from './intel-local'
+import { getManagedLfmStatus, withManagedLfmServer } from './llama-managed'
 import { helperPath } from './stt'
 import { appDataDir } from './vault'
 
@@ -106,12 +111,27 @@ const STATUS_TTL_MS = 60_000
 export async function intelStatus(fresh = false): Promise<IntelStatus> {
   const prefs = loadIntelPrefs()
   if (prefs.engine !== 'apple') {
-    const local = await localIntelStatus({
-      engine: prefs.engine,
-      baseUrl: prefs.localBaseUrl,
-      model: prefs.localModel
-    })
-    return local
+    if (prefs.engine === 'llama.cpp-managed') {
+      const managed = getManagedLfmStatus()
+      const model = getLfmModelForRuntime(prefs.engine, prefs.localModel)
+      if (!managed.supportedPlatform) return { available: false, reason: 'platformUnsupported', detail: managed.detail }
+      if (!managed.binaryReady) return { available: false, reason: 'binaryMissing', detail: managed.detail }
+      if (!model) return { available: false, reason: 'invalidModel', detail: 'Choose one of the managed LFM3 models.' }
+      const saved = managed.models.find((item) => item.apiModelId === model.apiModelId)
+      if (!saved?.installed)
+        return {
+          available: false,
+          reason: 'modelNotDownloaded',
+          detail: `${model.name} weights are not downloaded yet. Review the LFM Open License and download the model in Settings.`
+        }
+      return {
+        available: true,
+        reason: 'available',
+        detail: `${model.name} is installed. The local llama.cpp server starts when needed and stops after 10 minutes idle.`,
+        runtime: 'llama.cpp (managed)'
+      }
+    }
+    return localIntelStatus({ engine: prefs.engine, baseUrl: prefs.localBaseUrl, model: prefs.localModel })
   }
   if (!fresh && cached && Date.now() - cached.at < STATUS_TTL_MS) return cached.status
   let status: IntelStatus
@@ -136,15 +156,67 @@ export interface IntelRunInput {
   task: IntelTask
   text: string
   projects?: string[]
+  images?: IntelImage[]
   /** Overrides for the settings playground; omitted fields use saved prefs. */
   prefs?: Partial<IntelPrefs>
+}
+
+/** Strictly validate renderer-supplied image bytes before an inference request. */
+export function sanitizeIntelImages(value: unknown): IntelImage[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > INTEL_MAX_IMAGES)
+    throw new Error(`Send at most ${INTEL_MAX_IMAGES} images`)
+  let total = 0
+  const images = value.map((item): IntelImage => {
+    if (!item || typeof item !== 'object') throw new Error('Invalid image payload')
+    const { mime, data } = item as { mime?: unknown; data?: unknown }
+    if (mime !== 'image/png' && mime !== 'image/jpeg') throw new Error('Only PNG and JPEG images are supported')
+    if (typeof data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length % 4 === 1)
+      throw new Error('Image payload is not valid base64')
+    const bytes = Buffer.from(data, 'base64')
+    if (!bytes.length || bytes.length > INTEL_MAX_IMAGE_BYTES) throw new Error('Image exceeds the 4 MB per-image limit')
+    const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    if ((mime === 'image/png' && !png) || (mime === 'image/jpeg' && !jpeg))
+      throw new Error('Image MIME type does not match its contents')
+    total += bytes.length
+    return { mime, data }
+  })
+  if (total > INTEL_MAX_IMAGE_BYTES * INTEL_MAX_IMAGES) throw new Error('Images exceed the 8 MB combined limit')
+  return images
 }
 
 /** Run one task on the on-device model. Throws when unavailable — callers fall back. */
 export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
   // Renderer-supplied playground overrides are untrusted; re-sanitize the endpoint before any request.
   const prefs = sanitize({ ...loadIntelPrefs(), ...(input.prefs ?? {}) })
+  const images = sanitizeIntelImages(input.images)
   if (prefs.engine !== 'apple') {
+    if (images.length && input.task === 'cleanup')
+      throw new Error('Image inputs require organise or summarise; cleanup is text-only')
+    if (prefs.engine === 'llama.cpp-managed') {
+      const modelId = images.length ? LFM_CATALOG['lfm3-vl-2b'].apiModelId : prefs.localModel
+      const model = getLfmModelForRuntime(prefs.engine, modelId)
+      if (!model) throw new Error('Select a supported managed LFM3 model')
+      return withManagedLfmServer(model.key, (endpoint) =>
+        runLocalIntel({
+          config: {
+            engine: 'llama.cpp-managed',
+            baseUrl: endpoint.baseUrl,
+            model: endpoint.model,
+            expectedPid: endpoint.pid
+          },
+          task: input.task,
+          text: input.text,
+          projects: input.projects ?? [],
+          style: prefs.style,
+          instructions: prefs.instructions,
+          temperature: prefs.temperature,
+          cleanup: input.task === 'organize' ? prefs.cleanup : false,
+          images
+        })
+      )
+    }
     return runLocalIntel({
       config: { engine: prefs.engine, baseUrl: prefs.localBaseUrl, model: prefs.localModel },
       task: input.task,
@@ -153,9 +225,12 @@ export async function intelRun(input: IntelRunInput): Promise<IntelResult> {
       style: prefs.style,
       instructions: prefs.instructions,
       temperature: prefs.temperature,
-      cleanup: input.task === 'organize' ? prefs.cleanup : false
+      cleanup: input.task === 'organize' ? prefs.cleanup : false,
+      images
     })
   }
+  if (images.length)
+    throw new Error('Apple Foundation Models does not accept image inputs; choose a local LFM3-VL llama.cpp model.')
   const req = {
     task: input.task,
     text: input.text,

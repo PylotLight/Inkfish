@@ -133,6 +133,16 @@ import type { RoutePreview, RoutingPrefs } from '../shared/routing'
 import { shortcutFor } from './shortcuts'
 import { intelRun, intelStatus, loadIntelPrefs, saveIntelPrefs, type IntelRunInput } from './intelligence'
 import type { IntelPrefs, IntelResult, IntelStatus } from '../shared/intelligence'
+import { isLfmModelKey } from '../shared/lfm-catalog'
+import type { ManagedLfmDownloadProgress, ManagedLfmStatus } from '../shared/managed-llm'
+import {
+  downloadManagedLfmModel,
+  getManagedLfmStatus,
+  pauseManagedLfmDownload,
+  removeManagedLfmModel,
+  startManagedLfmServer,
+  stopManagedLfmServer
+} from './llama-managed'
 import {
   clearDownload,
   downloadProgress,
@@ -786,6 +796,42 @@ export function registerIpc(): void {
   ipcMain.handle('intel:set-prefs', (_e: IpcMainInvokeEvent, patch: Partial<IntelPrefs>): IntelPrefs =>
     saveIntelPrefs(patch)
   )
+  ipcMain.handle('intel:managed-status', (): ManagedLfmStatus => getManagedLfmStatus())
+  ipcMain.handle('intel:managed-download', async (_e: IpcMainInvokeEvent, key: unknown, accepted: unknown) => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    if (accepted !== true) throw new Error('Review and accept the LFM Open License before downloading model weights')
+    const notify = (progress: ManagedLfmDownloadProgress): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed())
+          window.webContents.send('intel:managed-progress', progress)
+      }
+    }
+    await downloadManagedLfmModel(key, true, notify)
+    return getManagedLfmStatus()
+  })
+  ipcMain.handle('intel:managed-pause', (_e: IpcMainInvokeEvent, key: unknown): ManagedLfmStatus => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    pauseManagedLfmDownload(key)
+    return getManagedLfmStatus()
+  })
+  ipcMain.handle('intel:managed-start', async (_e: IpcMainInvokeEvent, key: unknown): Promise<ManagedLfmStatus> => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    await startManagedLfmServer(key)
+    return getManagedLfmStatus()
+  })
+  ipcMain.handle('intel:managed-stop', async (): Promise<ManagedLfmStatus> => {
+    await stopManagedLfmServer()
+    return getManagedLfmStatus()
+  })
+  ipcMain.handle('intel:managed-remove', async (_e: IpcMainInvokeEvent, key: unknown): Promise<ManagedLfmStatus> => {
+    if (!isLfmModelKey(key)) throw new Error('Choose a supported LFM3 model')
+    await removeManagedLfmModel(key)
+    return getManagedLfmStatus()
+  })
+  ipcMain.handle('intel:open-model-license', (): boolean => {
+    void shell.openExternal('https://huggingface.co/LiquidAI/LFM3-1.7B/raw/main/LICENSE')
+    return true
+  })
   ipcMain.handle('intel:run', (_e: IpcMainInvokeEvent, input: Omit<IntelRunInput, 'projects'>): Promise<IntelResult> =>
     intelRun({
       ...input,

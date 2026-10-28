@@ -15,6 +15,7 @@ import {
 } from '../shared/routing'
 import type { ClassifyResult, NoteEntry, NoteKind } from '../shared/types'
 import { classify, formatBody, intelEligible, rulesRoute, type ClassifyInput, type RouteLlm } from './ai'
+import { loadVaultIntelImages } from './intel-images'
 import { indexFile, indexPath, removePath, routeHits, routeMeta } from './db'
 import {
   appDataDir,
@@ -82,10 +83,18 @@ export function routeCorpus(raw: string): {
  * The router's inputs for one capture. Filing and the live preview both build them here, so what the
  * capture popover previews is exactly what the rules router files.
  */
-export function routeInputFor(raw: string, kind: NoteKind, hint: string | undefined, paths: VaultPaths): ClassifyInput {
+export function routeInputFor(
+  raw: string,
+  kind: NoteKind,
+  hint: string | undefined,
+  paths: VaultPaths,
+  assets: string[] = [],
+  includeImages = true
+): ClassifyInput {
   return {
     raw,
     kind,
+    ...(includeImages ? { images: loadVaultIntelImages(raw, assets, paths.root) } : {}),
     projects: listProjects(paths),
     projectHint: hint,
     corpus: routeCorpus(raw),
@@ -104,7 +113,7 @@ export function previewRoute(
   paths: VaultPaths,
   aiReady = false
 ): RoutePreview {
-  const input = routeInputFor(raw, kind, hint, paths)
+  const input = routeInputFor(raw, kind, hint, paths, [], false)
   const { decision } = rulesRoute(input)
   const prefs = input.prefs ?? DEFAULT_ROUTING_PREFS
   const preview = toRoutePreview(decision, { autoFile: prefs.autoFile, aiMayRefine: aiReady && intelEligible(input) })
@@ -187,7 +196,10 @@ export async function routeInboxItem(
     } else {
       let hint = opts.hint ?? item.projectHint
       if (opts.manual && hint === KEEP_IN_INBOX) hint = undefined
-      result = await classify({ ...routeInputFor(item.raw, item.kind, hint, paths), llm: opts.llm ?? null })
+      result = await classify({
+        ...routeInputFor(item.raw, item.kind, hint, paths, item.assets ?? []),
+        llm: opts.llm ?? null
+      })
       const baselineMarkdown = formatBody(item.raw, item.kind)
       route = {
         action: result.action,

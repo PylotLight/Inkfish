@@ -1,14 +1,14 @@
 # Local LLM runtimes (implementation plan)
 
-> **Status: implementation plan** (written 2026-10-28, action in a dedicated
-> session/worktree). When done, convert this file into a feature doc in the
-> style of [docs/stt-options.md](stt-options.md) — or delete it.
+> **Status: first managed runtime implemented; broader plan remains open.** This
+> document is retained as the original implementation specification. The current
+> supported subset is described in [docs/intelligence.md](intelligence.md).
 >
 > Research and rationale: [docs/lfm3.md](lfm3.md). The STT engine system this
 > mirrors: `src/main/stt.ts`, `src/shared/stt.ts`, `scripts/bench-stt.ts`,
 > `src/renderer/src/views/voice/`.
 >
-> **Interim code status:** Settings currently has a text-only loopback OpenAI-compatible endpoint adapter and a synthetic CLI benchmark (documented in [docs/intelligence.md](intelligence.md)). This does **not** complete the managed-runtime plan below: pinned llama.cpp distribution, model downloads/license handling, process lifecycle, Local LLM management UI and in-app comparison benchmark remain future work. These endpoint presets are not bundled runtimes.
+> **Implementation status:** Inkfish now bundles a checksum-pinned llama.cpp b11946 server for macOS ARM64, downloads LFM3-1.7B text and LFM3-VL-2B weights only after license acceptance, verifies model/projector size and SHA-256, manages loopback server lifecycle, uses vault-local images for VL tasks, and includes a deterministic CLI benchmark. Manual endpoint presets remain separate from bundled runtimes. An in-app multi-engine comparison benchmark, Windows/Linux/Intel-Mac bundles, and verified MLX, ONNX or UZU runtime paths are not implemented; UZU has no verified LFM3 checkpoint/conversion specification.
 
 ## Goal
 
@@ -30,7 +30,7 @@ summarise — the `intelligence` path), with:
    dependency, nothing leaves the machine.
 
 First model: **LFM3-1.7B** (Liquid AI, 2026-10-27): 1.73B, ~1.1 GB at Q4_K_M,
-256K context, strong structured output (IFEval 96.7). LFM Open License v1.0 —
+256K context, strong structured output (IFEval 96.7). [LFM Open License v1.0](../licenses/LFM-OPEN-LICENSE.txt) —
 commercial use licensed only for entities under $10M annual revenue;
 redistribution must carry the license text. Weights are **user-downloaded**
 (never in the app binary); the license text ships with the app.
