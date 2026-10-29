@@ -100,7 +100,15 @@ export function renamePath(rel: string, newName: string, paths: VaultPaths = vau
     const caseOnly = basename(dest) !== basename(abs) && basename(dest).toLowerCase() === basename(abs).toLowerCase()
     if (!(caseOnly && d.ino === st.ino && d.dev === st.dev)) throw new Error(`${target} already exists`)
   }
-  renameSync(abs, dest)
+  try {
+    renameSync(abs, dest)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    // Two entries, one file (a case-variant hard link on a case-sensitive
+    // volume): rename() cannot replace the other spelling, so drop it, then rename onto it.
+    rmSync(dest)
+    renameSync(abs, dest)
+  }
   return relative(paths.root, dest)
 }
 

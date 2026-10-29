@@ -74,9 +74,10 @@ test('prepareEngine routes a helper model download through active SOCKS and clea
   const resultFile = join(temp, 'result.json')
   // Stand in for FluidAudio's documented http_proxy hook; exercise the real
   // prepareEngine spawn/env/progress/cleanup path without macOS frameworks.
+  // Interpreted by `bun` — the suite runs on bun-only machines (no node).
   writeFileSync(
     join(temp, 'bin', 'inkfish-stt'),
-    `#!/usr/bin/env node
+    `#!/usr/bin/env bun
 const http = require('node:http');
 const fs = require('node:fs');
 const proxy = process.env.http_proxy;

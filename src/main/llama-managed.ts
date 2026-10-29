@@ -51,6 +51,8 @@ export interface ManagedLfmRuntimeDependencies {
   isProxyTransitioning?: () => boolean
   createDownloadProxy?: DownloadProxyFactory
   portOwnedByPid?: (pid: number, port: number) => boolean
+  /** Free system RAM in bytes (default `os.freemem`) — the launch guard. */
+  freeMemoryBytes?: () => number
 }
 
 interface RunningServer extends ManagedLfmEndpoint {
@@ -212,6 +214,7 @@ export function createManagedLfmRuntime(dependencies: ManagedLfmRuntimeDependenc
   const proxyTransitioning = dependencies.isProxyTransitioning ?? isProxyTransitioning
   const createProxy = dependencies.createDownloadProxy ?? createModelDownloadProxy
   const portOwnedByPid = dependencies.portOwnedByPid ?? loopbackPortOwnedByPid
+  const freeMemoryBytes = dependencies.freeMemoryBytes ?? freemem
 
   let running: RunningServer | null = null
   let starting: Promise<ManagedLfmEndpoint> | null = null
@@ -654,7 +657,7 @@ export function createManagedLfmRuntime(dependencies: ManagedLfmRuntimeDependenc
     if (!installed(modelKey)) throw new Error(`${model.name} weights are not fully downloaded. Download them first.`)
     for (const artifact of artifactList(model)) await verifyArtifact(artifactPath(modelKey, artifact), artifact)
     const minimumFreeRam = modelKey === 'lfm3-vl-2b' ? MIN_VISION_FREE_RAM : MIN_TEXT_FREE_RAM
-    if (freemem() < minimumFreeRam)
+    if (freeMemoryBytes() < minimumFreeRam)
       throw new Error(
         `At least ${(minimumFreeRam / 1e9).toFixed(1)} GB of free memory is recommended for this model. Close other apps and retry.`
       )

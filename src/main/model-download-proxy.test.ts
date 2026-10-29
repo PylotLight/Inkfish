@@ -234,11 +234,23 @@ describe('model download proxy', () => {
     })
     bridge.close()
     const closed = await Promise.all(
-      upstreamSockets.map((socket) =>
-        Promise.race([
-          once(socket, 'close').then(() => true),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 300))
-        ])
+      upstreamSockets.map(
+        (socket) =>
+          new Promise<boolean>((resolve) => {
+            let settled = false
+            const settle = (value: boolean): void => {
+              if (settled) return
+              settled = true
+              clearTimeout(timer)
+              resolve(value)
+            }
+            // The abort can RST a SOCKS socket whose reply is still unread,
+            // which surfaces as 'error' before the 'close' that follows; wait
+            // for the close instead of failing on the error.
+            const timer = setTimeout(() => settle(false), 300)
+            socket.once('error', () => {})
+            socket.once('close', () => settle(true))
+          })
       )
     )
     expect(closed).toEqual([true, true])

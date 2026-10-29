@@ -1,7 +1,23 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+// APFS is case-insensitive by default: case-variant names cannot coexist on a
+// case-insensitive volume, so the case-duplicate fixtures below only build on a
+// case-sensitive one. Branch assertions on the volume's sensitivity.
+const caseSensitiveVolume = (() => {
+  const probe = mkdtempSync(join(tmpdir(), 'inkfish-cs-probe-'))
+  try {
+    mkdirSync(join(probe, 'case-probe'), { recursive: true })
+    mkdirSync(join(probe, 'CASE-PROBE'), { recursive: true })
+    return readdirSync(probe).length === 2
+  } catch {
+    return true
+  } finally {
+    rmSync(probe, { recursive: true, force: true })
+  }
+})()
 
 let dir = ''
 let dataDir = ''
@@ -357,7 +373,10 @@ describe('vault home', () => {
         paths
       )
       expect(routed.vaultRel).toMatch(/^work\/\d{4}-\d{2}-\d{2}-t\.md$/)
-      expect(readdirSync(paths.root).sort()).toEqual(['Work', 'assets', 'work'])
+      // On a case-insensitive volume `work` folds into the existing `Work`, so no twin folder.
+      expect(readdirSync(paths.root).sort()).toEqual(
+        caseSensitiveVolume ? ['Work', 'assets', 'work'] : ['Work', 'assets']
+      )
       expect(v.migrateProjects(paths)).toEqual({ moved: 0, skipped: 0 })
     } finally {
       rmSync(cfg, { recursive: true, force: true })
@@ -441,8 +460,14 @@ describe('vault home', () => {
       writeFileSync(join(dir, 'Personal', 'a.md'), '# A\n')
       writeFileSync(join(dir, 'personal', 'b.md'), '# B\n')
       const rep = v.mergeCaseDuplicates(paths.root)
-      expect(rep.dirs).toBe(1)
-      expect(readdirSync(dir).filter((e) => e === 'Personal' || e === 'personal')).toEqual(['personal'])
+      if (caseSensitiveVolume) {
+        expect(rep.dirs).toBe(1)
+        expect(readdirSync(dir).filter((e) => e === 'Personal' || e === 'personal')).toEqual(['personal'])
+      } else {
+        // On a case-insensitive volume both spellings are one folder; nothing to merge.
+        expect(rep.dirs).toBe(0)
+        expect(readdirSync(dir).filter((e) => e === 'Personal' || e === 'personal')).toEqual(['Personal'])
+      }
       expect(readdirSync(join(dir, 'personal')).sort()).toEqual(['a.md', 'b.md'])
     })
 
@@ -459,7 +484,8 @@ describe('vault home', () => {
       v.mergeCaseDuplicates(paths.root)
       const kids = readdirSync(join(dir, 'notes')).sort()
       expect(kids).toContain('same.md')
-      expect(kids.filter((f) => f.startsWith('clash'))).toHaveLength(2)
+      // On a case-insensitive volume both spellings are one folder, so `clash.md` has no twin to bump.
+      expect(kids.filter((f) => f.startsWith('clash'))).toHaveLength(caseSensitiveVolume ? 2 : 1)
     })
 
     test('second run is a no-op', async () => {

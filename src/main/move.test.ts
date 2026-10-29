@@ -1,5 +1,15 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { moveEntry, renameEntry, renameToTitle, scanLookup, type LookupFn } from './move'
@@ -172,7 +182,11 @@ describe('renamePath (hand rename)', () => {
   test('case-only rename of the same file is allowed (APFS resolves both spellings to it)', () => {
     put('japan.md', 'x')
     // Simulate a case-insensitive disk: the new spelling resolves to the same inode.
-    linkSync(join(root, 'japan.md'), join(root, 'Japan.md'))
+    // On a case-insensitive volume (APFS default) both spellings already are that one
+    // file, so only a case-sensitive volume needs the hard link.
+    if (!statSync(join(root, 'Japan.md'), { throwIfNoEntry: false })) {
+      linkSync(join(root, 'japan.md'), join(root, 'Japan.md'))
+    }
     expect(() => renamePath('japan.md', 'Japan', paths)).not.toThrow()
   })
   test('a different file under another case still blocks the rename', () => {
