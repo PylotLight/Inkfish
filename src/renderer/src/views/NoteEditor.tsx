@@ -323,7 +323,7 @@ function NoteEditor({
               '&': { backgroundColor: 'transparent', height: '100%' },
               '.cm-content': {
                 fontFamily: 'var(--text-font)',
-                fontSize: 'var(--ed-fs, 14px)',
+                fontSize: 'var(--ed-fs, 15px)',
                 caretColor: 'var(--text)'
               },
               '.cm-cursor': { borderLeftColor: 'var(--text)' },

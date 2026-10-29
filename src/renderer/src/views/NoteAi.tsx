@@ -141,7 +141,7 @@ function ProcessedPreview({ text, notePath }: { text: string; notePath: string }
           livePreview({ onToggleTask: () => undefined, resolveImage: (src) => imageCandidates(src, pathRef.current) }),
           EditorView.theme({
             '&': { backgroundColor: 'transparent', height: '100%' },
-            '.cm-content': { fontFamily: 'var(--text-font)', fontSize: 'var(--ed-fs, 14px)' }
+            '.cm-content': { fontFamily: 'var(--text-font)', fontSize: 'var(--ed-fs, 15px)' }
           })
         ]
       }),

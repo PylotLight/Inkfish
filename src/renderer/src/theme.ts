@@ -52,7 +52,7 @@ export const DEFAULT_PREFS: Prefs = {
   density: 'comfortable',
   motion: 'full',
   font: 'default',
-  fontSize: 14,
+  fontSize: 15,
   interfaceFont: '',
   textFont: '',
   monoFont: '',
@@ -121,7 +121,7 @@ function cleanFontStack(v: unknown): string {
 
 export const FONT_SIZE_FROM_PRESET: Record<FontId, number> = {
   compact: 12.5,
-  default: 14,
+  default: 15,
   large: 16
 }
 

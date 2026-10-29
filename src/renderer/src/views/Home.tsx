@@ -110,7 +110,7 @@ export default function Home({
             {latest.map((n) => (
               <li key={n.id}>
                 <button className="hrow" onClick={() => onOpenNote(n.id)}>
-                  <span className="hrow-title">{titleOf(n).slice(0, 90)}</span>
+                  <span className="hrow-title">{titleOf(n)}</span>
                   <span className="hrow-path">{dirOf(n.path) || '/'}</span>
                   <span className="hrow-time">{timeAgo(n.updatedAt)}</span>
                 </button>
@@ -127,7 +127,7 @@ export default function Home({
               {pending.slice(0, 5).map((i) => (
                 <li key={i.id}>
                   <button className="hrow stack" onClick={onOpenInbox}>
-                    <span className="hrow-title">{plain(i.raw).slice(0, 90) || '(empty)'}</span>
+                    <span className="hrow-title">{plain(i.raw) || '(empty)'}</span>
                     <span className="hrow-path">
                       {i.kind} · {i.status === 'processing' ? 'routing…' : 'waiting'} · {timeAgo(i.createdAt)}
                     </span>

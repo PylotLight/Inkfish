@@ -54,7 +54,7 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
   const card = (item: InboxItem): React.JSX.Element => (
     <li key={item.id} className={selectedId === item.id ? 'sel' : ''}>
       <button className="qmain" onClick={() => onSelect(item.id)}>
-        <span className="qtext">{item.raw.split('\n')[0]?.slice(0, 90) || '(empty)'}</span>
+        <span className="qtext">{item.raw.split('\n')[0] || '(empty)'}</span>
         <span className="qsub muted">
           {item.kind} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
           {item.status === 'processing'
