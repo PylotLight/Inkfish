@@ -4091,7 +4091,11 @@ button.frow.on,
   min-height: 0;
 }
 
-/* Section panels: the resting step of the surface ramp carries each column. */
+/* Section panels: the resting step of the surface ramp carries each column.
+   overflow:hidden guards the pathological case where the rail's 50/50 split
+   (short window + tall lists) squeezes a panel below its content — rows then
+   clip at the rounded edge instead of spilling past the panel border. Normal
+   content never clips: .home grows and scrolls, never shrinks its panels. */
 .home .hsec {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -4099,6 +4103,7 @@ button.frow.on,
   padding: 12px 10px 14px;
   box-shadow: var(--elev);
   min-height: 0;
+  overflow: hidden;
 }
 
 .home .hsec .hsec-title {
