@@ -2,11 +2,13 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  SIDE_RAIL_INSET_MAC,
+  SIDE_RAIL_INSET,
   SIDE_RIBBON_WIDTH,
+  SIDE_RIBBON_WIDTH_MAC,
   SIDE_TOGGLE,
   SIDE_TOGGLE_MAC,
   sideTogglePos,
+  sideRibbonWidth,
   isSidebarToggleKey,
   parseSideCollapsed,
   serializeSideCollapsed,
@@ -70,9 +72,17 @@ describe('sidebar toggle + collapsed rail layout', () => {
   test('non-mac toggle is centred over the collapsed ribbon', () => {
     expect(SIDE_TOGGLE.left + SIDE_TOGGLE.width / 2).toBe(SIDE_RIBBON_WIDTH / 2)
   })
-  test('recording chip starts right of the fixed toggle on mac', () => {
-    expect(SIDE_RIBBON_WIDTH + sideRailInset('darwin')).toBeGreaterThan(SIDE_TOGGLE_MAC.left + SIDE_TOGGLE_MAC.width)
-    expect(sideRailInset('linux')).toBeLessThan(sideRailInset('darwin'))
+  test('mac ribbon is wide enough to contain the inset traffic lights', () => {
+    // window.ts: trafficLightPosition { x: 16, y: 16 } — three 12px buttons + gaps end near x≈68.
+    expect(SIDE_RIBBON_WIDTH_MAC).toBeGreaterThanOrEqual(68 + 2)
+    expect(sideRibbonWidth('darwin')).toBe(SIDE_RIBBON_WIDTH_MAC)
+    expect(sideRibbonWidth('linux')).toBe(SIDE_RIBBON_WIDTH)
+  })
+  test('recording chip inset is small on every platform', () => {
+    // The lights live inside the ribbon and the fixed toggle hides while collapsed, so the
+    // chip never has to clear either — one shared inset.
+    expect(sideRailInset('darwin')).toBe(SIDE_RAIL_INSET)
+    expect(sideRailInset('linux')).toBe(SIDE_RAIL_INSET)
   })
 
   // Regression for "collapse sidebar doesn't work": the toggle sat in a -webkit-app-region: drag
@@ -99,11 +109,28 @@ describe('sidebar toggle + collapsed rail layout', () => {
     expect(rule('.side-toggle')).toContain(`width: ${SIDE_TOGGLE.width}px`)
     expect(rule('.side-toggle')).toContain(`height: ${SIDE_TOGGLE.height}px`)
   })
-  test('ribbon width matches the shared constant', () => {
+  test('ribbon width matches the shared constants (base + mac)', () => {
     expect(rule('.side-ribbon')).toContain(`width: ${SIDE_RIBBON_WIDTH}px`)
+    expect(rule(".shell[data-platform='darwin'] .side-ribbon")).toContain(`width: ${SIDE_RIBBON_WIDTH_MAC}px`)
   })
-  test('mac rail clears the traffic lights', () => {
-    expect(rule(".shell[data-platform='darwin'] .side-rail")).toContain(`padding-left: ${SIDE_RAIL_INSET_MAC}px`)
+  test('the fixed toggle hides while collapsed (ribbon icon takes over)', () => {
+    expect(rule('.shell.side-collapsed .titlebar-toggle')).toContain('display: none')
+  })
+  test('the content only moves for the recording chip (.rail-tall)', () => {
+    expect(rule('.side-rail.rail-tall')).toContain('height: 46px')
+    expect(rule('.content.center.rail-tall')).toContain('padding-top: 46px')
+    // Regression: no blanket collapsed-state padding jump.
+    expect(css.indexOf('.shell.side-collapsed .content.center')).toBe(-1)
+  })
+  test('the ribbon opens with its first button as the expand affordance (Obsidian pattern)', () => {
+    const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
+    const ribbonStart = tsx.indexOf('side-ribbon')
+    const firstButton = tsx.slice(ribbonStart, tsx.indexOf('</nav>', ribbonStart))
+    expect(firstButton.indexOf('panel-left')).toBeGreaterThanOrEqual(0)
+    expect(firstButton.indexOf('setSideCollapsed(false)')).toBeGreaterThanOrEqual(0)
+    // Obsidian-sized ribbon icons: 24px, not the old 18px.
+    expect(firstButton).toContain('size={24}')
+    expect(firstButton).not.toContain('size={18}')
   })
   test('collapsed sidebar takes no width at all', () => {
     const collapsed = rule('.shell.side-collapsed .sidebar.core')

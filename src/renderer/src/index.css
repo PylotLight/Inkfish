@@ -2673,10 +2673,10 @@ html[data-motion='reduced'] *::after {
     visibility 0s linear 0.18s;
 }
 
-/* Top drag strip of the center column. Empty (just the window drag handle in the content's top
-   padding) while the sidebar is open; collapsed, it grows into a slim rail holding the expand
-   button + live-recording chip. On macOS it starts right of the inset traffic lights
-   (window.ts trafficLightPosition 16,16) — the old topbar toggle landed under them. */
+/* Top drag strip of the center column: always the 18px window drag handle. Collapsing the
+   sidebar does NOT move the content (the traffic lights sit inside the ribbon, never over the
+   content). Only while the live-recording chip is visible does Center add .rail-tall: the strip
+   grows to 46px and the content's top padding matches, so the chip has vertical room. */
 .side-rail {
   position: absolute;
   top: 0;
@@ -2691,17 +2691,11 @@ html[data-motion='reduced'] *::after {
   z-index: 3;
 }
 
-.shell[data-platform='darwin'] .side-rail {
-  /* Collapsed, the content starts after the 48px ribbon; clear the fixed titlebar toggle
-     (80px + 30px on mac, shared/sidebar.ts) so the recording chip sits beside it. */
-  padding-left: 72px;
-}
-
-.shell.side-collapsed .side-rail {
+.side-rail.rail-tall {
   height: 46px;
 }
 
-.shell.side-collapsed .content.center {
+.content.center.rail-tall {
   padding-top: 46px;
 }
 
@@ -2747,9 +2741,9 @@ html[data-motion='reduced'] *::after {
 }
 
 /* Obsidian-style sidebar toggle: one fixed spot in the titlebar strip, right of the macOS traffic
-   lights (window.ts trafficLightPosition 16,16 → buttons end ≈x68, centred on y≈23). Never moves
-   when the sidebar opens/collapses; must stay no-drag (inherited from .side-toggle) or macOS eats
-   the click as a window drag. Positions mirror shared/sidebar.ts. */
+   lights (window.ts trafficLightPosition 16,16 → buttons end ≈x68, centred on y≈23). Visible
+   only while the sidebar is open (it collapses); must stay no-drag or macOS eats the click as a
+   window drag. Positions mirror shared/sidebar.ts. */
 .titlebar-toggle {
   position: fixed;
   top: 6px;
@@ -2764,6 +2758,12 @@ html[data-motion='reduced'] *::after {
 
 .titlebar-toggle[aria-expanded='true'] {
   color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+/* Collapsed: the fixed toggle hides — the ribbon's first icon is the expand affordance
+   (Obsidian pattern), so nothing floats over the content's top strip. */
+.shell.side-collapsed .titlebar-toggle {
+  display: none;
 }
 
 /* Titlebar strip at the top of the open sidebar: drag handle, small logo at the far end. */
@@ -2792,7 +2792,7 @@ html[data-motion='reduced'] *::after {
 }
 
 /* Collapsed sidebar → slim icon ribbon (Obsidian). Same translucent tint as the sidebar so the
-   native vibrancy shows through — no CSS backdrop blur. */
+   native vibrancy shows through — no CSS backdrop blur. Slides in with the sidebar's collapse. */
 .side-ribbon {
   width: 48px;
   flex-shrink: 0;
@@ -2805,9 +2805,13 @@ html[data-motion='reduced'] *::after {
   border-right: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   -webkit-app-region: drag;
+  animation: rise 0.18s ease both;
 }
 
 .shell[data-platform='darwin'] .side-ribbon {
+  /* Wider than Obsidian's ribbon: the inset traffic lights (x≈16–68) must sit entirely inside
+     it, so the content can keep its position instead of dropping below them. */
+  width: 72px;
   padding-top: 50px;
 }
 
@@ -2837,7 +2841,19 @@ html[data-motion='reduced'] *::after {
 
 .ribbon-btn.on {
   color: var(--text);
-  background: var(--row-active);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Obsidian-style active marker: a slim accent bar along the button's left edge. */
+.ribbon-btn.on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .ribbon-btn.rec-live {

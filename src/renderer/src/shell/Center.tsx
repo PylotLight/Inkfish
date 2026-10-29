@@ -157,12 +157,14 @@ export default function Center({
   allTags,
   setMeetingLive
 }: Props): React.JSX.Element {
+  // The live-recording chip only exists while collapsed; it needs the 46px tall strip, which
+  // also drops the content's top padding to match. Collapsing alone never moves the content.
+  const railTall = sideCollapsed && meetingLive && !showMeeting
   return (
     <>
-      <div className="content inkfish center">
-        {/* Window drag strip along the top; while collapsed it also carries the live-recording
-            chip (the toggle itself is the fixed .titlebar-toggle above). */}
-        <div className="side-rail" aria-hidden={!sideCollapsed || undefined}>
+      <div className={`content inkfish center${railTall ? ' rail-tall' : ''}`}>
+        {/* Window drag strip along the top; carries the live-recording chip while collapsed. */}
+        <div className={`side-rail${railTall ? ' rail-tall' : ''}`} aria-hidden={!sideCollapsed || undefined}>
           {sideCollapsed && meetingLive && !showMeeting && (
             <button
               className="side-toggle rail-chip rec-live"

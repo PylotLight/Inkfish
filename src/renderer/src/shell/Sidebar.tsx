@@ -120,8 +120,9 @@ export default function Sidebar({
 }: Props): React.JSX.Element {
   return (
     <>
-      {/* Sidebar toggle (Obsidian-style): pinned in the titlebar strip right of the traffic lights,
-          same spot whether the sidebar is open or collapsed. Fixed + no-drag (shared/sidebar.ts). */}
+      {/* Sidebar toggle (Obsidian-style): pinned in the titlebar strip right of the traffic lights
+           while the sidebar is open, hidden while collapsed (the ribbon's first icon then takes
+           over as the expand affordance). Fixed + no-drag (shared/sidebar.ts). */}
       <button
         className="side-toggle titlebar-toggle"
         onClick={() => setSideCollapsed((v) => !v)}
@@ -138,6 +139,15 @@ export default function Sidebar({
         <nav className="side-ribbon" aria-label="Navigation">
           <button
             className="ribbon-btn"
+            title={`Show sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+            aria-label="Show sidebar"
+            aria-expanded={false}
+            onClick={() => setSideCollapsed(false)}
+          >
+            <Icon name="panel-left" size={24} />
+          </button>
+          <button
+            className="ribbon-btn"
             title={`Search notes (${isMacUi ? '⌘\\' : 'Ctrl+\\'} shows the sidebar)`}
             aria-label="Search notes"
             onClick={() => {
@@ -146,7 +156,7 @@ export default function Sidebar({
               setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
             }}
           >
-            <Icon name="search" size={18} />
+            <Icon name="search" size={24} />
           </button>
           {(['home', 'notes', 'inbox'] as Scope[]).map((s) => {
             const on = scope === s && !settingsOpen && !showMeeting
@@ -171,7 +181,7 @@ export default function Sidebar({
                   if (s === 'inbox') setSideCollapsed(false)
                 }}
               >
-                <Icon name={s} size={18} />
+                <Icon name={s} size={24} />
                 {s === 'inbox' && pendingCount > 0 && <span className="ribbon-dot" aria-hidden />}
               </button>
             )
@@ -186,7 +196,7 @@ export default function Sidebar({
               void openToday()
             }}
           >
-            <Icon name="sun" size={18} />
+            <Icon name="sun" size={24} />
           </button>
           <button
             className={`ribbon-btn${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
@@ -195,7 +205,7 @@ export default function Sidebar({
             aria-current={scope === 'journal' && !settingsOpen && !showMeeting ? 'page' : undefined}
             onClick={openJournal}
           >
-            <Icon name="journal" size={18} />
+            <Icon name="journal" size={24} />
           </button>
           <button
             className={`ribbon-btn${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
@@ -207,7 +217,7 @@ export default function Sidebar({
               setShowMeeting(true)
             }}
           >
-            <Icon name={meetingLive ? 'record' : 'mic'} size={18} />
+            <Icon name={meetingLive ? 'record' : 'mic'} size={24} />
           </button>
           <span className="flex-sp" />
           <button
@@ -216,7 +226,7 @@ export default function Sidebar({
             aria-label="Settings"
             onClick={openSettings}
           >
-            <Icon name="settings" size={18} />
+            <Icon name="settings" size={24} />
             {updateBadge && <span className="ribbon-dot" aria-label="Update available" />}
           </button>
         </nav>
