@@ -9,7 +9,7 @@ import { isPopKey } from '../../../shared/mini-window'
 import { popOutTitle } from '../../../shared/mini-window-tear'
 import type { Prefs } from '../theme'
 import type { Anchor } from '../views/DeletePopover'
-import { loadTabs, TABS_KEY, type Scope, type Selection, type Tab } from '../shell/types'
+import { loadTabs, TABS_KEY, GROUP_COLORS, type Scope, type Selection, type Tab, type TabGroup } from '../shell/types'
 import { useTitles } from './useTitles'
 import { useFileActions } from './useFileActions'
 
@@ -72,10 +72,13 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
 
   const [sel, setSel] = useState<Selection>(null)
   const [doc, setDoc] = useState<NoteDoc | null>(null)
+  const [initialSession] = useState(() => loadTabs())
   /** Open tabs (notes only) — persisted so files stay open across launches. */
-  const [tabs, setTabs] = useState<Tab[]>(() => loadTabs().tabs)
+  const [tabs, setTabs] = useState<Tab[]>(initialSession.tabs)
   /** Unrestored active tab from storage — opened once notes load. */
-  const [pendingActive] = useState<string | null>(() => loadTabs().activeId)
+  const [pendingActive] = useState<string | null>(initialSession.activeId)
+  /** Named, coloured, collapsible tab groups (persisted with the tabs). */
+  const [groups, setGroups] = useState<TabGroup[]>(initialSession.groups)
   const [restored, setRestored] = useState(false)
   /** Per-note text not yet confirmed on disk (autosave clears each entry once written). */
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -425,26 +428,26 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   }, [])
 
   /**
-   * Drag-reorder in the strip. `insertAt` is a position in the displayed order (pinned first)
-   * with the dragged tab removed; a tab can only land within its own group, so it is clamped.
+   * Drag-reorder within one container: the pinned run, a group, or the free run.
+   * `insertAt` is a position in the container's order with the dragged tab removed.
    */
-  const reorderTab = useCallback((id: string, insertAt: number) => {
+  const reorderTab = useCallback((id: string, insertAt: number, container: string) => {
     setTabs((prev) => {
-      const ordered = [...prev].sort((a, b) => Number(b.pinned) - Number(a.pinned))
-      const from = ordered.findIndex((t) => t.id === id)
+      const inContainer = (t: Tab): boolean =>
+        container === 'pinned' ? t.pinned : container === 'free' ? !t.pinned && !t.group : t.group === container
+      const members = prev.filter(inContainer)
+      const from = members.findIndex((t) => t.id === id)
       if (from === -1) return prev
-      const slots = ordered.length - 1 // the dragged tab removed
-      const pinnedSlots = ordered.filter((t) => t.pinned).length - (ordered[from]!.pinned ? 1 : 0)
-      const to = ordered[from]!.pinned
-        ? Math.min(Math.max(insertAt, 0), pinnedSlots)
-        : Math.min(Math.max(insertAt, pinnedSlots), slots)
+      const to = Math.min(Math.max(insertAt, 0), members.length - 1)
       // Inserting at `from` or `from+1` of the reduced list lands it where it already is.
       if (to === from || to === from + 1) return prev
-      const next = [...ordered]
-      const moved = next.splice(from, 1)[0]
+      const nextMembers = [...members]
+      const moved = nextMembers.splice(from, 1)[0]
       if (!moved) return prev
-      next.splice(to, 0, moved)
-      return next
+      nextMembers.splice(to, 0, moved)
+      // Non-members keep their slots; member slots take the new member order.
+      let mi = 0
+      return prev.map((t) => (inContainer(t) ? nextMembers[mi++]! : t))
     })
   }, [])
 
@@ -484,14 +487,106 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     closeTabsGuarded(victimIds, `Closed ${victimIds.length} tab${victimIds.length === 1 ? '' : 's'}`)
   }, [closeTabsGuarded, notify])
 
-  // Persist tabs so files stay open across launches.
+  // --- tab groups (named, coloured, collapsible) ----------------------------------------------
+
+  /**
+   * A new group around one or more tabs. Named after their shared parent folder when there is
+   * exactly one (Work / Personal / …), else "Group N"; a caller-provided name wins.
+   */
+  const createGroup = useCallback(
+    (tabIds: string[], name?: string): string | null => {
+      const live = tabsRef.current.filter((t) => tabIds.includes(t.id))
+      if (live.length === 0) return null
+      const gid = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+      let gname = name?.trim()
+      if (!gname) {
+        const dirs = [...new Set(live.map((t) => dirOf(t.path)).filter(Boolean))]
+        gname = dirs.length === 1 ? dirs[0]! : `Group ${groups.length + 1}`
+      }
+      setGroups((prev) => [
+        ...prev,
+        { id: gid, name: gname, color: prev.length % GROUP_COLORS.length, collapsed: false }
+      ])
+      setTabs((prev) => prev.map((t) => (tabIds.includes(t.id) ? { ...t, group: gid } : t)))
+      return gid
+    },
+    [groups.length]
+  )
+
+  /** Move a tab into a group; `null` ungroups it. */
+  const moveTabToGroup = useCallback((tabId: string, groupId: string | null) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, ...(groupId ? { group: groupId } : { group: undefined }) } : t))
+    )
+  }, [])
+
+  const renameGroup = useCallback((groupId: string, name: string) => {
+    const n = name.trim()
+    if (!n) return
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name: n } : g)))
+  }, [])
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, collapsed: !g.collapsed } : g)))
+  }, [])
+
+  /**
+   * Click a group header: a collapsed group expands; an expanded one focuses its active tab,
+   * or its first tab when none of the group's is active.
+   */
+  const activateGroup = useCallback(
+    (groupId: string) => {
+      const g = groups.find((x) => x.id === groupId)
+      if (!g) return
+      if (g.collapsed) {
+        toggleGroup(groupId)
+        return
+      }
+      const members = tabsRef.current.filter((t) => t.group === groupId)
+      if (members.length === 0) return
+      const active = selRef.current
+      if (active?.origin === 'note' && members.some((t) => t.id === active.id)) return
+      openEntry(members[0]!.id, 'note')
+    },
+    [groups, openEntry, toggleGroup]
+  )
+
+  /** Remove the group; its tabs stay open, just ungrouped. */
+  const removeGroup = useCallback((groupId: string) => {
+    setGroups((prev) => prev.filter((g) => g.id !== groupId))
+    setTabs((prev) => prev.map((t) => (t.group === groupId ? { ...t, group: undefined } : t)))
+  }, [])
+
+  /** Close every non-pinned tab in a group (their pending text is written first). */
+  const closeGroupTabs = useCallback(
+    (groupId: string) => {
+      const name = groups.find((g) => g.id === groupId)?.name ?? 'group'
+      const victimIds = tabsRef.current.filter((t) => t.group === groupId && !t.pinned).map((t) => t.id)
+      if (victimIds.length === 0) {
+        notify(`Nothing in “${name}” to close`)
+        return
+      }
+      closeTabsGuarded(victimIds, `Closed ${victimIds.length} tabs in “${name}”`)
+    },
+    [closeTabsGuarded, notify, groups]
+  )
+
+  // Groups whose members all closed are gone (same pruning as on load).
+  useEffect(() => {
+    setGroups((prev) => {
+      const next = prev.filter((g) => tabs.some((t) => t.group === g.id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [tabs])
+
+  // Persist tabs + groups so files (and their groups) stay open across launches.
   useEffect(() => {
     try {
-      localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId: sel?.id ?? null }))
+      localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId: sel?.id ?? null, groups }))
     } catch {
       // ignore
     }
-  }, [tabs, sel])
+  }, [tabs, sel, groups])
 
   // Reconcile tabs against the note index: follow renames by path, drop gone.
   useEffect(() => {
@@ -725,6 +820,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     setDoc,
     tabs,
     setTabs,
+    groups,
     pendingActive,
     restored,
     setRestored,
@@ -767,6 +863,13 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     closeTab,
     togglePin,
     reorderTab,
+    createGroup,
+    moveTabToGroup,
+    renameGroup,
+    toggleGroup,
+    activateGroup,
+    removeGroup,
+    closeGroupTabs,
     closeTabsGuarded,
     closeOthers,
     closeUnpinned,

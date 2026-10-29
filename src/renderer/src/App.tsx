@@ -155,6 +155,14 @@ function Main(): React.JSX.Element {
     closeTab,
     togglePin,
     reorderTab,
+    groups,
+    createGroup,
+    moveTabToGroup,
+    renameGroup,
+    toggleGroup,
+    activateGroup,
+    removeGroup,
+    closeGroupTabs,
     closeOthers,
     closeUnpinned,
     activeNoteId,
@@ -224,6 +232,13 @@ function Main(): React.JSX.Element {
     popOut,
     openMovePicker,
     treeSel,
+    groups,
+    createGroup,
+    moveTabToGroup,
+    renameGroup,
+    toggleGroup,
+    removeGroup,
+    closeGroupTabs,
     setPrompt,
     setRevealDir
   })
@@ -455,6 +470,7 @@ function Main(): React.JSX.Element {
         setRevealDir={setRevealDir}
         focusEndOn={focusEndOn}
         tabs={tabs}
+        groups={groups}
         allNotes={allNotes}
         titles={titles}
         sel={sel}
@@ -462,6 +478,9 @@ function Main(): React.JSX.Element {
         closeTab={closeTab}
         togglePin={togglePin}
         onReorder={reorderTab}
+        onMoveToGroup={moveTabToGroup}
+        onGroupClick={activateGroup}
+        onToggleGroup={toggleGroup}
         setMenu={setMenu}
         doCreateFile={doCreateFile}
         targetDir={targetDir}

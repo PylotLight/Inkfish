@@ -59,7 +59,9 @@ const FENCE_RE = /^(`{3,}|~{3,})/
 const HEADING_RE = /^(#{1,4})\s+/
 const HR_RE = /^\s{0,3}(---|\*\*\*|___)\s*$/
 const QUOTE_PREFIX_RE = /^(?:\s{0,3}>\s?)+/
-const TASK_RE = /^(\s{0,8}[-*])\s+\[([ xX])\](?=\s|$)/
+// `+` too (Obsidian renders it as a bullet), and any depth of indent — a deeply nested
+// task must keep its checkbox, matching how plain bullets render at any indent.
+const TASK_RE = /^(\s*[-*+])\s+\[([ xX])\](?=\s|$)/
 const BULLET_RE = /^(\s*)([-*+])(\s+)/
 const ORDERED_RE = /^(\s*)(\d+[.)])(\s+)/
 const CODE_SPAN_RE = /`([^`\n]+?)`/g
@@ -88,8 +90,8 @@ class BulletWidget extends WidgetType {
   }
 }
 
-/** Task row: rendered bullet + interactive checkbox for `- [ ]`. */
-class TaskBulletWidget extends WidgetType {
+/** Task row: rendered bullet + interactive checkbox for `- [ ]` (also `*` / `+`, any depth). */
+export class TaskBulletWidget extends WidgetType {
   constructor(
     readonly checked: boolean,
     readonly pos: number,

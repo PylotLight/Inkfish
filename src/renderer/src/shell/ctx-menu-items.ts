@@ -1,10 +1,9 @@
 import { sendAiCommand } from '../nativeAi'
 import type { NoteDoc, NoteEntry } from '../../../shared/types'
-import type { MoveItem } from '../../../shared/note-move'
+import { dirOf, type MoveItem } from '../../../shared/note-move'
 import type { Anchor } from '../views/DeletePopover'
 import type { MenuItem } from '../views/Dialogs'
-import type { TreeTarget } from '../views/FolderTree'
-import type { Selection, Tab } from './types'
+import type { Selection, Tab, TabGroup, MenuTarget } from './types'
 
 export interface CtxMenuContext {
   tabsRef: React.MutableRefObject<Tab[]>
@@ -24,6 +23,14 @@ export interface CtxMenuContext {
   closeTab: (id: string) => void
   closeOthers: (id: string) => void
   closeUnpinned: () => void
+  /** Tab groups: the current groups plus the operations the tab / group-header menus run. */
+  groups: TabGroup[]
+  createGroup: (tabIds: string[], name?: string) => string | null
+  moveTabToGroup: (tabId: string, groupId: string | null) => void
+  renameGroup: (groupId: string, name: string) => void
+  removeGroup: (groupId: string) => void
+  toggleGroup: (groupId: string) => void
+  closeGroupTabs: (groupId: string) => void
   popOut: (id: string | null, opts?: { tear?: boolean }) => void
   openMovePicker: (items: MoveItem[], name: string, x?: number, y?: number) => void
   /** The current tree row selection — a menu on a selected row acts on all of it. */
@@ -39,10 +46,8 @@ export interface CtxMenuContext {
   setRevealDir: (dir: string | null) => void
 }
 
-/** Right-click menu items for a tree row, the open note, or a tab. */
-export function buildMenuItems(
-  ctx: CtxMenuContext
-): (target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }) => MenuItem[] {
+/** Right-click menu items for a tree row, the open note, a tab, or a tab group. */
+export function buildMenuItems(ctx: CtxMenuContext): (target: MenuTarget) => MenuItem[] {
   const {
     tabsRef,
     allNotesRef,
@@ -61,6 +66,13 @@ export function buildMenuItems(
     closeTab,
     closeOthers,
     closeUnpinned,
+    groups,
+    createGroup,
+    moveTabToGroup,
+    renameGroup,
+    removeGroup,
+    toggleGroup,
+    closeGroupTabs,
     popOut,
     openMovePicker,
     treeSel,
@@ -70,16 +82,57 @@ export function buildMenuItems(
   /** A right-click on a row that is part of a multi-selection moves the whole selection. */
   const selItems = (rel: string): MoveItem[] | null =>
     treeSel.length > 1 && treeSel.some((i) => i.rel === rel) ? treeSel : null
-  return (target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }): MenuItem[] => {
+  return (target: MenuTarget): MenuItem[] => {
     if (target.kind === 'tab') {
       const tab = tabsRef.current.find((t) => t.id === target.id)
       if (!tab) return []
+      const group = tab.group ? groups.find((g) => g.id === tab.group) : undefined
+      const suggested = dirOf(tab.path) || `Group ${groups.length + 1}`
+      const groupItems: MenuItem[] = [
+        {
+          label: group ? 'Move to a new group…' : 'New group from this tab…',
+          action: () =>
+            setPrompt({
+              title: group ? `New group (from “${group.name}”)` : 'New group',
+              initial: suggested,
+              confirm: 'Create',
+              onSubmit: (v) => createGroup([tab.id], v || undefined)
+            })
+        },
+        ...groups
+          .filter((g) => g.id !== tab.group)
+          .map((g): MenuItem => ({ label: `Move to “${g.name}”`, action: () => moveTabToGroup(tab.id, g.id) })),
+        ...(group ? [{ label: 'Remove from group', action: () => moveTabToGroup(tab.id, null) }] : [])
+      ]
       return [
         { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(tab.id) },
         { label: tab.pinned ? 'Unpin tab' : 'Pin tab', action: () => togglePin(tab.id) },
         { label: 'Close tab', action: () => closeTab(tab.id) },
         { label: 'Close other tabs', action: () => closeOthers(tab.id) },
-        { label: 'Close unpinned tabs', action: () => closeUnpinned() }
+        { label: 'Close unpinned tabs', action: () => closeUnpinned() },
+        ...groupItems
+      ]
+    }
+    if (target.kind === 'group') {
+      const group = groups.find((g) => g.id === target.id)
+      if (!group) return []
+      const memberCount = tabsRef.current.filter((t) => t.group === group.id).length
+      return [
+        {
+          label: `Rename “${group.name}”…`,
+          action: () =>
+            setPrompt({
+              title: 'Rename group',
+              initial: group.name,
+              confirm: 'Rename',
+              onSubmit: (v) => renameGroup(group.id, v)
+            })
+        },
+        { label: group.collapsed ? 'Expand group' : 'Collapse group', action: () => toggleGroup(group.id) },
+        ...(memberCount > 0
+          ? [{ label: `Close ${memberCount} tabs in group`, action: () => closeGroupTabs(group.id) }]
+          : []),
+        { label: `Remove group (tabs stay open)`, danger: true, action: () => removeGroup(group.id) }
       ]
     }
     if (target.kind === 'open-note') {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
-import { buildDecorations, ImageWidget, listEnterUpdate } from './livePreview'
+import { buildDecorations, ImageWidget, listEnterUpdate, TaskBulletWidget } from './livePreview'
 
 const opts = { onToggleTask: () => {}, resolveImage: (src: string) => [`asset://vault/${src}`] }
 
@@ -53,6 +53,43 @@ describe('list keys: Enter continues lists (incl. nested)', () => {
     expect(pressEnter('hello', 5).doc).toBeNull()
     // Caret mid-line: not ours.
     expect(pressEnter('- apple', 3).doc).toBeNull()
+  })
+})
+
+describe('live preview task checkboxes', () => {
+  /** Task widgets found in the doc (one per rendered checkbox). */
+  function taskWidgets(doc: string): Array<{ from: number; checked: boolean }> {
+    const state = EditorState.create({ doc })
+    const out: Array<{ from: number; checked: boolean }> = []
+    const set = buildDecorations(state, opts)
+    set.between(0, doc.length, (from, _to, deco) => {
+      if (deco.spec.widget instanceof TaskBulletWidget) out.push({ from, checked: deco.spec.widget.checked })
+    })
+    return out
+  }
+
+  test('dashes, asterisks and plusses all render a checkbox', () => {
+    for (const line of ['- [ ] todo', '* [ ] todo', '+ [ ] todo']) {
+      const w = taskWidgets(line)
+      expect(w).toHaveLength(1)
+      expect(w[0]!.checked).toBe(false)
+    }
+  })
+
+  test('a checked task renders a checked box', () => {
+    const w = taskWidgets('- [x] done')
+    expect(w).toHaveLength(1)
+    expect(w[0]!.checked).toBe(true)
+  })
+
+  test('deeply nested tasks keep their checkbox (no indent cap)', () => {
+    const w = taskWidgets('        - [ ] twelve spaces') // 3 levels of 4-space nesting
+    expect(w).toHaveLength(1)
+  })
+
+  test('bracket text that is not a task stays literal', () => {
+    expect(taskWidgets('- [open] issue')).toHaveLength(0)
+    expect(taskWidgets('- []')).toHaveLength(0)
   })
 })
 

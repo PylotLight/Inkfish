@@ -4,7 +4,7 @@ import type { DayRef } from '../../../shared/journal'
 import { draftForEditor } from '../../../shared/autosave'
 import { isTitleSyncPath } from '../../../shared/title-sync'
 import type { Prefs } from '../theme'
-import type { MenuState, Scope, Selection, Tab } from './types'
+import type { MenuState, Scope, Selection, Tab, TabGroup } from './types'
 import TabBar from './TabBar'
 import InboxBar from './InboxBar'
 import Home from '../views/Home'
@@ -50,13 +50,19 @@ interface Props {
   setRevealDir: (dir: string | null) => void
   focusEndOn: (id: string) => void
   tabs: Tab[]
+  groups: TabGroup[]
   allNotes: NoteEntry[]
   titles: Record<string, string>
   sel: Selection
   openEntry: (id: string, origin: 'inbox' | 'note') => void
   closeTab: (id: string) => void
   togglePin: (id: string) => void
-  onReorder: (id: string, insertAt: number) => void
+  /** Reorder within one container: 'pinned' run, a group id, or the 'free' run. */
+  onReorder: (id: string, insertAt: number, container: string) => void
+  /** A dragged tab lands in another group (dropped on its container). */
+  onMoveToGroup: (tabId: string, groupId: string) => void
+  onGroupClick: (groupId: string) => void
+  onToggleGroup: (groupId: string) => void
   setMenu: (menu: MenuState) => void
   doCreateFile: (dir: string) => void
   targetDir: string
@@ -117,6 +123,7 @@ export default function Center({
   setRevealDir,
   focusEndOn,
   tabs,
+  groups,
   allNotes,
   titles,
   sel,
@@ -124,6 +131,9 @@ export default function Center({
   closeTab,
   togglePin,
   onReorder,
+  onMoveToGroup,
+  onGroupClick,
+  onToggleGroup,
   setMenu,
   doCreateFile,
   targetDir,
@@ -239,6 +249,7 @@ export default function Center({
               <main className="note-stage" aria-label="Note">
                 <TabBar
                   tabs={tabs}
+                  groups={groups}
                   activeId={sel?.origin === 'note' ? sel.id : null}
                   allNotes={allNotes}
                   titles={titles}
@@ -247,7 +258,11 @@ export default function Center({
                   onClose={closeTab}
                   onTogglePin={togglePin}
                   onReorder={onReorder}
+                  onMoveToGroup={onMoveToGroup}
+                  onGroupClick={onGroupClick}
+                  onToggleGroup={onToggleGroup}
                   onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
+                  onGroupMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'group', id } })}
                   onNew={() => doCreateFile(targetDir)}
                   onPopOut={(id) => popOut(id)}
                   onTearOut={(id) => popOut(id, { tear: true })}
