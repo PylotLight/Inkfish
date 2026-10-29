@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { X } from 'lucide-react-native'
 import { useTheme } from '../theme'
@@ -53,12 +53,12 @@ export function PairScanner({
           : update.type === 'sweep-progress'
             ? `Fallback scan checked ${update.checked} of ${update.total} addresses.`
             : update.probe.phase === 'qr-addresses'
-              ? `${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms${update.probe.error ? ` · ${update.probe.error}` : ''}`
+              ? `QR ${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms${update.probe.error ? ` · ${update.probe.error}` : ''}`
               : update.probe.outcome === 'found' ||
                   update.probe.outcome === 'other-device' ||
                   update.probe.outcome === 'http-error' ||
                   update.probe.outcome === 'invalid-response'
-                ? `${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms`
+                ? `Fallback ${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms${update.probe.error ? ` · ${update.probe.error}` : ''}`
                 : null
       if (!message) return
       if (update.type === 'phase') {
@@ -75,12 +75,15 @@ export function PairScanner({
           update.type === 'sweep-progress'
             ? current.filter((line) => !line.startsWith('Fallback scan checked '))
             : current
-        return [...lines, message].slice(-8)
+        return [...lines, message]
       })
     })
       .catch((e: unknown) => {
+        const error = e instanceof Error ? e.message : String(e)
         setStage(null)
-        setMsg(e instanceof Error ? e.message : String(e))
+        setMsg(error)
+        setScanDetails((current) => [...current, `Pairing failed: ${error}`])
+        setShowScanDetails(true)
       })
       .finally(() => {
         setBusy(false)
@@ -180,28 +183,50 @@ export function PairScanner({
                       : 'Starting camera…')}
                 </Text>
                 {msg && (
-                  <>
-                    <Text
-                      style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, textAlign: 'center', lineHeight: 17 }}
-                    >
-                      A VPN, Android proxy, guest Wi-Fi isolation, or Mac firewall can block local pairing.
+                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, textAlign: 'center', lineHeight: 17 }}>
+                    A VPN, Android proxy, guest Wi-Fi isolation, or Mac firewall can block local pairing.
+                  </Text>
+                )}
+              </View>
+            )}
+            {scanDetails.length > 0 && (
+              <>
+                <Pressable
+                  onPress={() => setShowScanDetails((value) => !value)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={showScanDetails ? 'Hide pairing scan details' : 'Show pairing scan details'}
+                  style={{ paddingVertical: 10, paddingHorizontal: 14 }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, textDecorationLine: 'underline' }}>
+                    {showScanDetails ? 'Hide scan details' : `Show scan details (${scanDetails.length})`}
+                  </Text>
+                </Pressable>
+                {showScanDetails && (
+                  <View
+                    accessibilityLabel="Pairing scan details"
+                    style={{
+                      width: '100%',
+                      maxHeight: 220,
+                      borderRadius: 12,
+                      padding: 12,
+                      backgroundColor: 'rgba(0,0,0,0.82)'
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+                      Pairing scan details
                     </Text>
-                    <Pressable onPress={() => setShowScanDetails((value) => !value)} hitSlop={8}>
-                      <Text style={{ color: '#fff', fontSize: 13, textDecorationLine: 'underline' }}>
-                        {showScanDetails ? 'Hide scan details' : 'Show scan details'}
-                      </Text>
-                    </Pressable>
-                    {showScanDetails && (
+                    <ScrollView style={{ maxHeight: 178 }}>
                       <Text
                         selectable
-                        style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, textAlign: 'left', lineHeight: 16 }}
+                        style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11, textAlign: 'left', lineHeight: 16 }}
                       >
                         {scanDetails.join('\n')}
                       </Text>
-                    )}
-                  </>
+                    </ScrollView>
+                  </View>
                 )}
-              </View>
+              </>
             )}
           </View>
         )}
