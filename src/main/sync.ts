@@ -22,6 +22,7 @@ import { createServer, type Server } from 'node:http'
 import { hostname, networkInterfaces } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import QRCode from 'qrcode'
+import { listenWithPortFallback } from './sync-listener'
 import {
   createHandler,
   encodePairUri,
@@ -101,6 +102,7 @@ interface Stored {
 
 let server: Server | null = null
 let listenError: string | null = null
+let starting: Promise<void> | null = null
 let pending: PendingPair | null = null
 let pendingQr: { svg: string; uri: string; exp: number } | null = null
 let store: Stored | null = null
@@ -653,9 +655,12 @@ const handler = createHandler({
   }
 })
 
-export function startSync(): void {
-  if (server || !vaultConfigured()) return
+export function startSync(): Promise<void> {
+  if (server) return Promise.resolve()
+  if (!vaultConfigured()) return Promise.resolve()
+  if (starting) return starting
   const s = load()
+  listenError = null
   sweepPartials()
   migratePeerKeys()
   const srv = createServer((req, res) => {
@@ -686,20 +691,10 @@ export function startSync(): void {
         })
     })
   })
-  const listen = (port: number, retry: boolean): void => {
-    srv.once('error', (err: NodeJS.ErrnoException) => {
-      if (retry && err.code === 'EADDRINUSE') {
-        listen(0, false)
-        return
-      }
-      listenError = err.message
-      server = null
-      broadcastStatus()
-    })
-    srv.listen(port, '0.0.0.0', () => {
-      const addr = srv.address()
-      if (addr && typeof addr === 'object' && addr.port !== s.port) {
-        s.port = addr.port
+  const promise = listenWithPortFallback(srv, s.port, '0.0.0.0')
+    .then((port) => {
+      if (port !== s.port) {
+        s.port = port
         save()
       }
       listenError = null
@@ -707,8 +702,22 @@ export function startSync(): void {
       console.log(`[inkfish] sync listening on ${hosts().join(', ')}:${s.port}`)
       broadcastStatus()
     })
-  }
-  listen(s.port, true)
+    .catch((err: unknown) => {
+      listenError = err instanceof Error ? err.message : String(err)
+      server = null
+      broadcastStatus()
+      throw err
+    })
+  starting = promise
+  void promise.then(
+    () => {
+      if (starting === promise) starting = null
+    },
+    () => {
+      if (starting === promise) starting = null
+    }
+  )
+  return promise
 }
 
 export function stopSync(): void {
@@ -743,7 +752,12 @@ export function syncStatus(): SyncStatus {
 
 /** Show a fresh pairing QR (replaces any previous one). */
 export async function startPairing(): Promise<SyncStatus> {
-  startSync()
+  if (!vaultConfigured()) throw new Error('Choose a vault before pairing a phone.')
+  await startSync()
+  if (!server) throw new Error(listenError ?? 'The Mac sync listener did not start.')
+  const availableHosts = hosts()
+  if (!availableHosts.length)
+    throw new Error('The Mac has no local IPv4 network address. Connect to Wi-Fi and try again.')
   const s = load()
   const key = new Uint8Array(randomBytes(32))
   const exp = Date.now() + PAIR_TTL_MS
@@ -752,7 +766,7 @@ export async function startPairing(): Promise<SyncStatus> {
     id: s.deviceId,
     name: s.deviceName,
     key: toBase64(key, true),
-    hosts: hosts(),
+    hosts: availableHosts,
     port: s.port,
     exp
   })

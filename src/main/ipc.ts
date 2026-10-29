@@ -361,7 +361,7 @@ export function registerIpc(): void {
         const backend = openDb(paths.dbPath)
         const indexed = reindexVault(paths.root) + reindexStaging(paths)
         console.log(`[inkfish] vault home → ${paths.root} (${backend}, ${indexed} notes)`)
-        startSync()
+        void startSync().catch((err: unknown) => console.error('[sync] listener failed', err))
         startVaultWatch([paths.root, paths.inboxDir, paths.dailyDir], rescanVaultFromDisk)
         return { info: info(), backend, indexed }
       } catch (err) {

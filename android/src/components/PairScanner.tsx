@@ -17,12 +17,13 @@ export function PairScanner({
 }: {
   visible: boolean
   onClose: () => void
-  onCode: (data: string) => Promise<void>
+  onCode: (data: string, onStage: (stage: string) => void) => Promise<void>
 }): React.JSX.Element {
   const { ui } = useTheme()
   const [perm, requestPerm] = useCameraPermissions()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [stage, setStage] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraKey, setCameraKey] = useState(0)
@@ -33,8 +34,12 @@ export function PairScanner({
     lock.current = true
     setBusy(true)
     setMsg(null)
-    onCode(data)
-      .catch((e: unknown) => setMsg(e instanceof Error ? e.message : String(e)))
+    setStage('QR read. Checking pairing code…')
+    onCode(data, setStage)
+      .catch((e: unknown) => {
+        setStage(null)
+        setMsg(e instanceof Error ? e.message : String(e))
+      })
       .finally(() => {
         setBusy(false)
         // brief pause so one bad code doesn't spin
@@ -95,7 +100,12 @@ export function PairScanner({
         {visible && perm?.granted && (
           <View style={{ position: 'absolute', bottom: 56, left: 24, right: 24, alignItems: 'center' }}>
             {busy ? (
-              <ActivityIndicator color="#fff" />
+              <View style={{ alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center' }}>
+                  {stage ?? 'Pairing…'}
+                </Text>
+              </View>
             ) : cameraError ? (
               <>
                 <Text style={{ color: '#ffb4a8', fontSize: 14, textAlign: 'center', lineHeight: 20 }}>

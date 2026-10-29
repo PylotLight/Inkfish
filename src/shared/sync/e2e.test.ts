@@ -136,7 +136,11 @@ describe('pair + sync over the wire', () => {
 
     const qr = decodePairUri(showQr())!
     expect(qr).not.toBeNull()
-    const peer = await pairWithMac(fetchFn, qr, { id: 'phone-abcdef12', name: 'Pixel' }, random)
+    const pairingStages: string[] = []
+    const peer = await pairWithMac(fetchFn, qr, { id: 'phone-abcdef12', name: 'Pixel' }, random, Date.now(), (stage) =>
+      pairingStages.push(stage)
+    )
+    expect(pairingStages).toEqual(['Looking for the Mac on this Wi-Fi…', 'Mac found. Completing secure pairing…'])
     expect(peer.lastHost).toBe('192.168.1.20')
     expect(peers.get('phone-abcdef12')?.name).toBe('Pixel')
 

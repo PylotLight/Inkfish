@@ -153,7 +153,7 @@ app
     registerUpdateIpc()
     registerMiniWindow()
     // LAN sync listener for paired phones (no-op until a vault exists).
-    startSync()
+    void startSync().catch((err: unknown) => console.error('[sync] listener failed', err))
     registerSysTap()
     registerAssetProtocol()
     createWindow()

@@ -263,14 +263,23 @@ export async function pairWithMac(
   qr: PairPayload,
   me: { id: string; name: string },
   random: Random,
-  now = Date.now()
+  now = Date.now(),
+  onStage?: (stage: string) => void
 ): Promise<MacPeer> {
   if (qr.exp < now) throw new Error('That code expired. Show a new one on the Mac.')
+  let key: Uint8Array
+  try {
+    key = fromBase64(qr.key)
+  } catch {
+    throw new Error('This pairing code has an invalid key. Show a new code on the Mac.')
+  }
+  if (key.length !== 32) throw new Error('This pairing code has an invalid key. Show a new code on the Mac.')
+  onStage?.('Looking for the Mac on this Wi-Fi…')
   const found = await findMacHello(fetchFn, { id: qr.id, hosts: qr.hosts, port: qr.port })
   if (!found) throw new Error("Can't reach the Mac. Make sure both are on the same Wi-Fi.")
   assertCompatible(found.hello)
+  onStage?.('Mac found. Completing secure pairing…')
   const host = found.host
-  const key = fromBase64(qr.key)
   const res = await call<{ name: string }, PairRes>(
     fetchFn,
     `http://${host}:${qr.port}`,

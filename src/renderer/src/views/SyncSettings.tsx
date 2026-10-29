@@ -51,6 +51,15 @@ export default function SyncSettings(): React.JSX.Element {
     }
   }, [load])
 
+  const showPairingCode = (): void => {
+    void window.api.sync
+      .pair()
+      .then(setSt)
+      .catch((err: unknown) =>
+        window.alert(`Could not start pairing: ${err instanceof Error ? err.message : String(err)}`)
+      )
+  }
+
   const pairing = st?.pairing && st.pairing.exp > Date.now() ? st.pairing : null
   const left = pairing ? Math.max(0, Math.round((pairing.exp - Date.now()) / 1000)) : 0
 
@@ -99,7 +108,7 @@ export default function SyncSettings(): React.JSX.Element {
                 in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}.
               </p>
               <div className="row" style={{ marginTop: 0 }}>
-                <button className="btn ghost sm" onClick={() => window.api.sync.pair().then(setSt)}>
+                <button className="btn ghost sm" onClick={showPairingCode}>
                   New code
                 </button>
                 <button className="btn ghost sm" onClick={() => window.api.sync.cancelPair().then(setSt)}>
@@ -114,7 +123,7 @@ export default function SyncSettings(): React.JSX.Element {
                 server or account. macOS may ask to allow incoming connections the first time.
               </p>
               <div className="row" style={{ marginTop: 0 }}>
-                <button className="btn ghost sm" onClick={() => window.api.sync.pair().then(setSt)}>
+                <button className="btn ghost sm" onClick={showPairingCode}>
                   Show pairing code
                 </button>
               </div>
