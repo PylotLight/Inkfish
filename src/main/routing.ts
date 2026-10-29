@@ -132,7 +132,7 @@ export interface RouteOutcome {
 export interface RouteOptions {
   /** File it now (false = record a suggestion only); root-level proposals always wait for approval. */
   apply: boolean
-  /** Explicit folder (Move → / picker) — overrides the capture's own hint. */
+  /** Explicit choice — a folder (Move → / picker) or `@append:<rel>` (candidate chip) — overrides the capture's own hint. */
   hint?: string
   /** "Route" clicked: a capture the user kept in the inbox gets routed normally this time. */
   manual?: boolean
@@ -210,7 +210,8 @@ export async function routeInboxItem(
         provider: result.provider,
         suggested: false,
         ...(result.action === 'new' ? { title: result.title, tags: result.tags } : {}),
-        ...(result.markdown !== baselineMarkdown ? { markdown: result.markdown } : {})
+        ...(result.markdown !== baselineMarkdown ? { markdown: result.markdown } : {}),
+        ...(result.candidates?.length ? { candidates: result.candidates } : {})
       }
       if (result.action === 'append') route.rel = result.targetRel ?? ''
       else if (result.action === 'new') {

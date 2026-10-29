@@ -59,9 +59,11 @@ const FENCE_RE = /^(`{3,}|~{3,})/
 const HEADING_RE = /^(#{1,4})\s+/
 const HR_RE = /^\s{0,3}(---|\*\*\*|___)\s*$/
 const QUOTE_PREFIX_RE = /^(?:\s{0,3}>\s?)+/
-// `+` too (Obsidian renders it as a bullet), and any depth of indent — a deeply nested
-// task must keep its checkbox, matching how plain bullets render at any indent.
-const TASK_RE = /^(\s*[-*+])\s+\[([ xX])\](?=\s|$)/
+// Tasks: the marker (`-` / `*` / `+`, any depth of indent — Obsidian renders `+` as a
+// bullet) is optional. Obsidian renders markerless `[ ]` / `[x]` lines as tasks too, so
+// bare brackets get a checkbox as well. The indent and marker are captured separately so
+// the replaced range (marker, or just the brackets) is re-derived from the match.
+const TASK_RE = /^(\s*)([-*+]\s+)?\[([ xX])\](?=\s|$)/
 const BULLET_RE = /^(\s*)([-*+])(\s+)/
 const ORDERED_RE = /^(\s*)(\d+[.)])(\s+)/
 const CODE_SPAN_RE = /`([^`\n]+?)`/g
@@ -90,24 +92,31 @@ class BulletWidget extends WidgetType {
   }
 }
 
-/** Task row: rendered bullet + interactive checkbox for `- [ ]` (also `*` / `+`, any depth). */
+/** Task row: rendered bullet + interactive checkbox for `- [ ]` (also `*` / `+`, any depth,
+ * or markerless `[ ]` — `bullet: false` drops the `•` and right-aligns the box). */
 export class TaskBulletWidget extends WidgetType {
   constructor(
     readonly checked: boolean,
     readonly pos: number,
-    readonly onToggle: (pos: number) => void
+    readonly onToggle: (pos: number) => void,
+    readonly bullet = true
   ) {
     super()
   }
   override eq(other: TaskBulletWidget): boolean {
-    return other instanceof TaskBulletWidget && other.checked === this.checked && other.pos === this.pos
+    return (
+      other instanceof TaskBulletWidget &&
+      other.checked === this.checked &&
+      other.pos === this.pos &&
+      other.bullet === this.bullet
+    )
   }
   override ignoreEvent(): boolean {
     return false
   }
   override toDOM(): HTMLElement {
     const s = document.createElement('span')
-    s.className = 'lp-taskbullet'
+    s.className = this.bullet ? 'lp-taskbullet' : 'lp-taskbullet lp-task-nobullet'
     const input = document.createElement('input')
     input.type = 'checkbox'
     input.checked = this.checked
@@ -701,24 +710,30 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       continue
     }
 
-    // Tasks render as bullet + checkbox; plain bullets as `•`; ordered
-    // numbers stay visible, subtly styled. Indent spaces are untouched so
-    // nesting keeps its alignment.
+    // Tasks render as bullet + checkbox (checkbox alone when markerless);
+    // plain bullets as `•`; ordered numbers stay visible, subtly styled.
+    // Indent spaces are untouched so nesting keeps its alignment.
     const claimed: Array<[number, number]> = []
     const tm = TASK_RE.exec(rest)
     if (tm) {
-      const bulletLen = tm[1]?.length ?? 0
-      if (!quoted) listLine(restBase, /^\s*/.exec(rest)?.[0] ?? '', 'lp-li-task')
-      const openBracket = restBase + bulletLen + 1
+      const indentLen = tm[1]?.length ?? 0
+      const markerLen = tm[2]?.length ?? 0
+      const bulleted = markerLen > 0
+      if (!quoted) listLine(restBase, tm[1] ?? '', 'lp-li-task')
+      const openBracket = restBase + indentLen + markerLen
       const checkPos = openBracket + 1
+      // With a marker the widget takes over the marker too (rendered as `•`);
+      // markerless it replaces only the brackets.
+      const wFrom = restBase + (bulleted ? indentLen : openBracket)
+      const wTo = openBracket + 3
       ops.push({
-        from: restBase + bulletLen - 1,
-        to: openBracket + 3,
+        from: wFrom,
+        to: wTo,
         deco: Decoration.replace({
-          widget: new TaskBulletWidget(tm[2]?.toLowerCase() === 'x', checkPos, opts.onToggleTask)
+          widget: new TaskBulletWidget(tm[3]?.toLowerCase() === 'x', checkPos, opts.onToggleTask, bulleted)
         })
       })
-      claimed.push([restBase + bulletLen - 1, openBracket + 3])
+      claimed.push([wFrom, wTo])
     } else {
       const bm = BULLET_RE.exec(rest)
       if (bm) {
@@ -911,9 +926,10 @@ const copySelectedImage = EditorView.domEventHandlers({
 
 /**
  * Obsidian-style list continuation for Enter: a new item at the same depth,
- * same marker (numbered items increment), tasks re-open as `[ ]`, and Enter on
- * an empty item clears it (exiting the list). Pure over the state so it is
- * unit-testable; the keymap only dispatches its result.
+ * same marker (numbered items increment), tasks re-open as `[ ]`, markerless
+ * `[ ]` tasks continue without a marker, and Enter on an empty item clears it
+ * (exiting the list). Pure over the state so it is unit-testable; the keymap
+ * only dispatches its result.
  */
 export function listEnterUpdate(state: EditorState): TransactionSpec | null {
   const sel = state.selection.main
@@ -921,17 +937,24 @@ export function listEnterUpdate(state: EditorState): TransactionSpec | null {
   const line = state.doc.lineAt(sel.head)
   if (sel.head !== line.to) return null
   const m = /^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line.text)
-  if (!m) return null
-  const indent = m[1] ?? ''
-  const bullet = m[2] ?? '-'
-  const rest = m[4] ?? ''
+  // Markerless task; the lookahead mirrors TASK_RE so `[x]!`-style text is left alone.
+  const t = m ? null : /^(\s*)\[[ xX]\](?=\s|$)(.*)$/.exec(line.text)
+  if (!m && !t) return null
+  const indent = (m ?? t)![1] ?? ''
+  const rest = m ? (m[4] ?? '') : (t![2] ?? '')
   if (!rest.trim()) {
     // Empty item: clear the whole line (marker + indent) and stay on it.
     return { changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } }
   }
-  const nextBullet = /^\d/.test(bullet) ? `${parseInt(bullet, 10) + 1}.` : bullet
-  const task = /^\[[ xX]\]\s*/.exec(rest)
-  const cont = `${indent}${nextBullet} ${task ? '[ ] ' : ''}`
+  let cont: string
+  if (m) {
+    const bullet = m[2] ?? '-'
+    const nextBullet = /^\d/.test(bullet) ? `${parseInt(bullet, 10) + 1}.` : bullet
+    const task = /^\[[ xX]\]\s*/.exec(rest)
+    cont = `${indent}${nextBullet} ${task ? '[ ] ' : ''}`
+  } else {
+    cont = `${indent}[ ] `
+  }
   return {
     changes: { from: sel.head, insert: `\n${cont}` },
     selection: { anchor: sel.head + 1 + cont.length }
@@ -939,15 +962,43 @@ export function listEnterUpdate(state: EditorState): TransactionSpec | null {
 }
 
 /**
+ * `[]` shorthand for a task: a line of just brackets with the caret after them,
+ * plus a space, becomes `[ ] ` — the same expansion Obsidian performs. Pure over
+ * the state so it is unit-testable; the keymap only dispatches its result.
+ */
+export function taskShorthandUpdate(state: EditorState): TransactionSpec | null {
+  const sel = state.selection.main
+  if (!sel.empty) return null
+  const line = state.doc.lineAt(sel.head)
+  if (sel.head !== line.to) return null
+  const m = /^(\s*)\[\]$/.exec(line.text)
+  if (!m) return null
+  const at = line.from + (m[1]?.length ?? 0)
+  return {
+    changes: { from: at, to: line.to, insert: '[ ] ' },
+    selection: { anchor: at + '[ ] '.length }
+  }
+}
+
+/**
  * Obsidian-style list keys: Enter continues bullets/numbered items/tasks
- * (Enter on an empty item exits the list), Tab/Shift-Tab indent. Bind before
- * the default keymap so they win.
+ * (Enter on an empty item exits the list), space expands a bare `[]` into a
+ * task, Tab/Shift-Tab indent. Bind before the default keymap so they win.
  */
 export const listKeys: KeyBinding[] = [
   {
     key: 'Enter',
     run: (view) => {
       const update = listEnterUpdate(view.state)
+      if (!update) return false
+      view.dispatch(update)
+      return true
+    }
+  },
+  {
+    key: ' ',
+    run: (view) => {
+      const update = taskShorthandUpdate(view.state)
       if (!update) return false
       view.dispatch(update)
       return true

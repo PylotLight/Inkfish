@@ -149,6 +149,8 @@ export interface ClassifyResult {
   targetTitle?: string | null
   /** One line: why it went there (or didn't). */
   reason: string
+  /** Top related notes, offered for one-click re-routing. */
+  candidates?: import('./routing').RouteCandidate[]
 }
 
 export interface MeetingImportInput {

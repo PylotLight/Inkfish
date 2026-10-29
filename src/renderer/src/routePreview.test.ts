@@ -13,6 +13,7 @@ const P = (over: Partial<RoutePreview> = {}): RoutePreview => ({
   suggested: false,
   aiMayRefine: false,
   alt: { folder: null, append: { rel: 'Garden/Tomato log.md', title: 'Tomato log' } },
+  candidates: [],
   ...over
 })
 
@@ -55,6 +56,26 @@ describe('route preview helpers', () => {
     expect(a[0]?.hint).toBe('garden')
     const keptP = P({ action: 'inbox', override: true, alt: { folder: 'Garden', append: null } })
     expect(ids(previewOptions(keptP, KEEP_IN_INBOX, projects))).toEqual(['auto', 'new', 'folder'])
+  })
+
+  test('menu: related-note candidates join as add-to options, deduped against the line', () => {
+    const projects = [{ id: 'garden', dir: 'Garden' }]
+    const cands = [
+      { rel: 'Garden/Tomato log.md', title: 'Tomato log', score: 0.8 },
+      { rel: 'Garden/Basil.md', title: 'Basil', score: 0.5 },
+      { rel: 'Garden/Mint.md', title: 'Mint', score: 0.3 }
+    ]
+    const n = previewOptions(P({ candidates: cands }), 'auto', projects)
+    expect(n.map((x) => x.id)).toEqual(['append', 'cand:Garden/Basil.md', 'cand:Garden/Mint.md', 'folder', 'inbox'])
+    expect(n[1]?.hint).toBe(appendHint('Garden/Basil.md'))
+    const appended = P({
+      action: 'append',
+      target: { rel: 'Garden/Tomato log.md', title: 'Tomato log' },
+      alt: { folder: 'Garden', append: null },
+      candidates: cands
+    })
+    const a = previewOptions(appended, 'auto', projects)
+    expect(a.map((x) => x.id)).toEqual(['cand:Garden/Basil.md', 'cand:Garden/Mint.md', 'new', 'folder', 'inbox'])
   })
 })
 

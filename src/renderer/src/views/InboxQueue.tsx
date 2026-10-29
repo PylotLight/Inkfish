@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type { InboxItem, Project } from '../../../shared/types'
-import { routeSummary } from '../../../shared/routing'
+import { appendHint, routeSummary, type RouteCandidate } from '../../../shared/routing'
 
 interface Props {
   items: InboxItem[]
@@ -82,6 +82,15 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
           </span>
         )}
       </button>
+      {candChips(
+        item,
+        (c) =>
+          void act(async () => {
+            const r = await window.api.inbox.process(item.id, { hint: appendHint(c.rel) })
+            if ('error' in r) throw new Error(r.error)
+            notify(r.note ? `Routed ✓ ${routeSummary(r.route, 'ready')}` : `Left in inbox: ${r.route.reason}`)
+          }, '')
+      )}
       <div className="row qactions">
         {item.status === 'inbox' && (
           <button
@@ -173,6 +182,27 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/** One-click re-route chips for the top related notes — only while the capture awaits a decision. */
+function candChips(item: InboxItem, onPick: (c: RouteCandidate) => void): React.JSX.Element | null {
+  if (item.status !== 'inbox') return null
+  const cands = item.route?.candidates ?? []
+  if (cands.length === 0) return null
+  return (
+    <div className="row qcand" role="group" aria-label="Related notes">
+      {cands.map((c) => (
+        <button
+          key={c.rel}
+          className="qchip"
+          title={`Add this capture to “${c.title}” (${Math.round(c.score * 100)}% match)`}
+          onClick={() => onPick(c)}
+        >
+          + {c.title}
+        </button>
+      ))}
     </div>
   )
 }

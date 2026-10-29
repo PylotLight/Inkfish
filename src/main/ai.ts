@@ -9,6 +9,7 @@ import {
   applyAiRoute,
   decideRoute,
   parseAiRoute,
+  routeCandidates,
   tagVocab,
   type RouteDecision,
   type RouteDoc,
@@ -135,7 +136,8 @@ function toResult(d: RouteDecision, input: ClassifyInput): ClassifyResult {
     action: d.action,
     targetRel: d.target,
     targetTitle: d.targetTitle,
-    reason: d.reason
+    reason: d.reason,
+    candidates: routeCandidates(d)
   }
 }
 

@@ -14,9 +14,11 @@ import {
   normalizeToVocab,
   parseAiRoute,
   pickMeetingsFolder,
+  routeCandidates,
   routeSummary,
   sanitizeRoutingPrefs,
   tagVocab,
+  toRoutePreview,
   type RouteDoc,
   type RouteFolder,
   type RouteInput
@@ -297,7 +299,8 @@ describe('route hints + preview label', () => {
       override: false,
       suggested: false,
       aiMayRefine: false,
-      alt: { folder: null, append: null }
+      alt: { folder: null, append: null },
+      candidates: []
     }
     const tomato = { rel: 'Garden/Tomato log.md', title: 'Tomato log' }
     expect(previewLabel({ ...base, action: 'new' })).toBe('→ Garden · new note · 72%')
@@ -308,5 +311,28 @@ describe('route hints + preview label', () => {
     expect(previewLabel({ ...base, action: 'inbox', override: true })).toBe('→ keep in inbox')
     expect(previewLabel({ ...base, action: 'new', suggested: true })).toBe('suggested → Garden · new note · 72%')
     expect(previewLabel({ ...base, action: 'new', override: true })).toBe('→ Garden · new note')
+  })
+})
+
+describe('route candidates', () => {
+  test('top related appendable notes, capped at three, meetings excluded', () => {
+    const c = routeCandidates(decideRoute(input('how to stake roma tomatoes before the staking season')))
+    expect(c.length).toBeGreaterThanOrEqual(1)
+    expect(c.length).toBeLessThanOrEqual(3)
+    expect(c.map((x) => x.rel)).toContain('Garden/Tomato log.md')
+    for (const x of c) {
+      expect(x.score).toBeGreaterThan(0)
+      expect(x.rel.startsWith('Meetings/')).toBe(false)
+    }
+  })
+
+  test('nothing related → empty', () => {
+    const c = routeCandidates(decideRoute(input('call the dentist about the crown on thursday')))
+    expect(c).toEqual([])
+  })
+
+  test('toRoutePreview carries the candidates for the popover menu', () => {
+    const p = toRoutePreview(decideRoute(input('tomato staking')), { autoFile: true, aiMayRefine: false })
+    expect(p.candidates.map((x) => x.rel)).toContain('Garden/Tomato log.md')
   })
 })

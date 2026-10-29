@@ -1763,6 +1763,36 @@ button.cap-route-line[aria-expanded='true'] {
   max-width: 130px;
 }
 
+/* Related-note candidates: one click re-routes the capture into that note. */
+.qcand {
+  margin-top: 2px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.qchip:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
 .btn.sm.danger-quiet {
   color: var(--muted);
 }
@@ -2035,6 +2065,14 @@ html[data-linenos='off'] .ed-src .cm-gutters {
   content: '•';
   display: inline-block;
   width: 1.1em;
+}
+/* Markerless task (`[ ]` without a bullet): no `•`, and the box right-aligns in
+ * the task slot so it lines up with bulleted tasks' checkbox. */
+.ed-src .lp-task-nobullet {
+  text-align: right;
+}
+.ed-src .lp-task-nobullet::before {
+  content: none;
 }
 
 /* Note width. Full (default) runs the note across the whole pane with responsive

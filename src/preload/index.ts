@@ -254,10 +254,11 @@ const api = {
     add: (input: InboxAddInput): Promise<InboxItem> => ipcRenderer.invoke('inbox:add', input),
     list: (): Promise<InboxItem[]> => ipcRenderer.invoke('inbox:list'),
     count: (): Promise<number> => ipcRenderer.invoke('inbox:count'),
-    /** File it now. `note` is null when the router left it in the inbox (see `route.reason`). */
+    /** File it now. `note` is null when the router left it in the inbox (see `route.reason`).
+     * `hint` re-routes with an explicit choice (a folder, or `@append:<rel>` for a candidate). */
     process: (
       id: string,
-      options?: { approveSuggestion?: boolean }
+      options?: { approveSuggestion?: boolean; hint?: string }
     ): Promise<{ note: NoteEntry | null; route: InboxRoute } | { error: string }> =>
       ipcRenderer.invoke('inbox:process', id, options),
     reassign: (

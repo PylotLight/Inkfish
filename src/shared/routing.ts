@@ -616,6 +616,23 @@ export function aiCandidates(
   }
 }
 
+/** A related note offered to the user as a one-click routing choice. */
+export interface RouteCandidate {
+  /** Vault rel of the note. */
+  rel: string
+  title: string
+  /** Rules score, 0..1. */
+  score: number
+}
+
+/** Top related notes worth offering (appendable, non-trivial score) — the same bar the AI gets. */
+export function routeCandidates(d: RouteDecision, n = 3): RouteCandidate[] {
+  return d.notes
+    .filter((x) => x.appendable && x.score > 0)
+    .slice(0, n)
+    .map((x) => ({ rel: x.path, title: x.title, score: x.score }))
+}
+
 /** System + user prompt asking for one JSON object, constrained to the candidates. */
 export function aiRoutePrompt(
   raw: string,
@@ -747,6 +764,8 @@ export interface InboxRoute {
   title?: string
   tags?: string[]
   markdown?: string
+  /** Top related notes the user can re-route the capture into with one click. */
+  candidates?: RouteCandidate[]
 }
 
 /** Short inbox label for a route result: where it went (or would go) and how. */
@@ -815,6 +834,8 @@ export interface RoutePreview {
     /** "Add to … instead": the best appendable note (when the call isn't an append). */
     append: { rel: string; title: string } | null
   }
+  /** Top related notes, for the menu's "Add to … instead" choices. */
+  candidates: RouteCandidate[]
 }
 
 /** Fold a rules decision into the preview the capture shows. */
@@ -836,7 +857,8 @@ export function toRoutePreview(d: RouteDecision, opts: { autoFile: boolean; aiMa
     alt: {
       folder: action === 'new' ? null : (d.folder ?? topFolder),
       append: action === 'append' || !best ? null : { rel: best.path, title: best.title }
-    }
+    },
+    candidates: routeCandidates(d)
   }
 }
 

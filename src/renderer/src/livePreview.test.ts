@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
-import { buildDecorations, ImageWidget, listEnterUpdate, TaskBulletWidget } from './livePreview'
+import { buildDecorations, ImageWidget, listEnterUpdate, taskShorthandUpdate, TaskBulletWidget } from './livePreview'
 
 const opts = { onToggleTask: () => {}, resolveImage: (src: string) => [`asset://vault/${src}`] }
 
@@ -49,6 +49,21 @@ describe('list keys: Enter continues lists (incl. nested)', () => {
     expect(r.head).toBe(9)
   })
 
+  test('markerless tasks continue without a marker, keeping their indent', () => {
+    expect(pressEnter('[ ] todo', 8)).toEqual({ doc: '[ ] todo\n[ ] ', head: 13 })
+    expect(pressEnter('[x] done', 8).doc).toBe('[x] done\n[ ] ')
+    expect(pressEnter('  [ ] todo', '  [ ] todo'.length).doc).toBe('  [ ] todo\n  [ ] ')
+  })
+
+  test('Enter on an empty markerless task clears it (exits the list)', () => {
+    expect(pressEnter('[ ]', 3)).toEqual({ doc: '', head: 0 })
+  })
+
+  test('bracket text that is not a task is left to the default keymap', () => {
+    expect(pressEnter('[open] issue', 12).doc).toBeNull()
+    expect(pressEnter('[x]!', 4).doc).toBeNull()
+  })
+
   test('plain text lines are left to the default keymap', () => {
     expect(pressEnter('hello', 5).doc).toBeNull()
     // Caret mid-line: not ours.
@@ -56,14 +71,49 @@ describe('list keys: Enter continues lists (incl. nested)', () => {
   })
 })
 
+/** Dispatch a space press at `cursor`; returns the new doc (null = key not handled) and caret. */
+function pressSpace(doc: string, cursor: number): { doc: string | null; head: number } {
+  const s = EditorState.create({ doc, selection: EditorSelection.cursor(cursor) })
+  const u = taskShorthandUpdate(s)
+  if (!u) return { doc: null, head: -1 }
+  const s2 = s.update(u).state
+  return { doc: s2.doc.toString(), head: s2.selection.main.head }
+}
+
+describe('list keys: [] expands to a task on space', () => {
+  test('bare [] with the caret after it becomes [ ] ', () => {
+    expect(pressSpace('[]', 2)).toEqual({ doc: '[ ] ', head: 4 })
+  })
+
+  test('indented [] keeps its indent', () => {
+    expect(pressSpace('  []', 4)).toEqual({ doc: '  [ ] ', head: 6 })
+  })
+
+  test('a caret not at the end of the brackets is left alone', () => {
+    expect(pressSpace('[]', 1).doc).toBeNull()
+  })
+
+  test('brackets with text before or after are left alone', () => {
+    expect(pressSpace('a []', 4).doc).toBeNull()
+    expect(pressSpace('[]x', 3).doc).toBeNull()
+    expect(pressSpace('[ ]', 3).doc).toBeNull()
+  })
+
+  test('expands only the line the caret is on', () => {
+    expect(pressSpace('foo\n[]', 6)).toEqual({ doc: 'foo\n[ ] ', head: 8 })
+  })
+})
+
 describe('live preview task checkboxes', () => {
   /** Task widgets found in the doc (one per rendered checkbox). */
-  function taskWidgets(doc: string): Array<{ from: number; checked: boolean }> {
+  function taskWidgets(doc: string): Array<{ from: number; checked: boolean; bullet: boolean }> {
     const state = EditorState.create({ doc })
-    const out: Array<{ from: number; checked: boolean }> = []
+    const out: Array<{ from: number; checked: boolean; bullet: boolean }> = []
     const set = buildDecorations(state, opts)
     set.between(0, doc.length, (from, _to, deco) => {
-      if (deco.spec.widget instanceof TaskBulletWidget) out.push({ from, checked: deco.spec.widget.checked })
+      if (deco.spec.widget instanceof TaskBulletWidget) {
+        out.push({ from, checked: deco.spec.widget.checked, bullet: deco.spec.widget.bullet })
+      }
     })
     return out
   }
@@ -73,6 +123,7 @@ describe('live preview task checkboxes', () => {
       const w = taskWidgets(line)
       expect(w).toHaveLength(1)
       expect(w[0]!.checked).toBe(false)
+      expect(w[0]!.bullet).toBe(true)
     }
   })
 
@@ -80,6 +131,12 @@ describe('live preview task checkboxes', () => {
     const w = taskWidgets('- [x] done')
     expect(w).toHaveLength(1)
     expect(w[0]!.checked).toBe(true)
+  })
+
+  test('markerless [ ] and [x] lines render a checkbox without the bullet', () => {
+    expect(taskWidgets('[ ] todo')).toEqual([{ from: 0, checked: false, bullet: false }])
+    expect(taskWidgets('[x] done')).toEqual([{ from: 0, checked: true, bullet: false }])
+    expect(taskWidgets('  [ ] indented')).toHaveLength(1)
   })
 
   test('deeply nested tasks keep their checkbox (no indent cap)', () => {
@@ -90,6 +147,7 @@ describe('live preview task checkboxes', () => {
   test('bracket text that is not a task stays literal', () => {
     expect(taskWidgets('- [open] issue')).toHaveLength(0)
     expect(taskWidgets('- []')).toHaveLength(0)
+    expect(taskWidgets('[]')).toHaveLength(0) // incomplete: no state char yet
   })
 })
 

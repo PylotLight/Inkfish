@@ -91,6 +91,12 @@ export function previewOptions(
   if (hint !== 'auto') out.push({ id: 'auto', label: 'Let Inkfish decide', hint: 'auto' })
   if (p.action !== 'append' && p.alt.append)
     out.push({ id: 'append', label: `Add to “${p.alt.append.title}” instead`, hint: appendHint(p.alt.append.rel) })
+  // Other related notes worth adding to — skip whatever the line already names (best pick / target).
+  const listed = new Set([p.alt.append?.rel, p.action === 'append' ? p.target?.rel : undefined])
+  for (const c of p.candidates) {
+    if (listed.has(c.rel)) continue
+    out.push({ id: `cand:${c.rel}`, label: `Add to “${c.title}” instead`, hint: appendHint(c.rel) })
+  }
   if (p.action !== 'new' && p.alt.folder !== null) {
     const id = projects.find((x) => x.dir === p.alt.folder)?.id ?? p.alt.folder
     out.push({ id: 'new', label: `New note in ${p.alt.folder || 'vault root'}`, hint: id })

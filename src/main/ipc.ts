@@ -420,14 +420,20 @@ export function registerIpc(): void {
   ipcMain.handle('inbox:count', (): number => countInbox())
 
   // "Route" clicked: file it now (applies a suggestion; low confidence still stays for review).
+  // `hint` re-routes with an explicit choice (a folder, or `@append:<rel>` from a candidate chip).
   ipcMain.handle(
     'inbox:process',
     (
       _e: IpcMainInvokeEvent,
       id: string,
-      options?: { approveSuggestion?: boolean }
+      options?: { approveSuggestion?: boolean; hint?: string }
     ): ReturnType<typeof processInboxItem> =>
-      processInboxItem(id, { apply: true, manual: true, approveSuggestion: options?.approveSuggestion === true })
+      processInboxItem(id, {
+        apply: true,
+        manual: true,
+        approveSuggestion: options?.approveSuggestion === true,
+        hint: typeof options?.hint === 'string' && options.hint.trim() ? options.hint : undefined
+      })
   )
 
   // Capture popover's live preview: the rules router on the same inputs filing uses (no model call).
