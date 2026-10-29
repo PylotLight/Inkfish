@@ -33,9 +33,7 @@ function readHistory(noteId: string): HistoryFile | null {
   try {
     const data = JSON.parse(readFileSync(p, 'utf8')) as HistoryFile
     if (data.noteId !== noteId || !Array.isArray(data.snapshots)) return null
-    data.snapshots = data.snapshots.filter(
-      (s) => s && typeof s.id === 'string' && typeof s.markdown === 'string'
-    )
+    data.snapshots = data.snapshots.filter((s) => s && typeof s.id === 'string' && typeof s.markdown === 'string')
     return data
   } catch {
     return null
@@ -50,7 +48,10 @@ function writeHistory(file: HistoryFile): void {
 }
 
 export function previewOf(markdown: string): string {
-  const line = markdown.split('\n').map((l) => l.trim()).find((l) => l.length > 0)
+  const line = markdown
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0)
   return (line ?? '(empty)').slice(0, 80)
 }
 
@@ -95,11 +96,7 @@ export function getSnapshot(noteId: string, id: string): HistorySnapshot | null 
  * caller to write. Returns null when the id is unknown or the snapshot equals the current
  * text (nothing to restore).
  */
-export function prepareRestore(
-  noteId: string,
-  id: string,
-  currentMarkdown: string
-): HistoryRestoreResult | null {
+export function prepareRestore(noteId: string, id: string, currentMarkdown: string): HistoryRestoreResult | null {
   const file = readHistory(noteId)
   const snap = file?.snapshots.find((s) => s.id === id)
   if (!file || !snap) return null

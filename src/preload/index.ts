@@ -373,15 +373,19 @@ const api = {
     processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
     processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId),
     /** Note history: snapshots of the note's text, kept so an AI rewrite is recoverable. */
-    historySave: (noteId: string, markdown: string, meta?: { via?: string; label?: string }): Promise<HistorySnapshot | null> =>
-      ipcRenderer.invoke('ai-api:history-save', noteId, markdown, meta),
+    historySave: (
+      noteId: string,
+      markdown: string,
+      meta?: { via?: string; label?: string }
+    ): Promise<HistorySnapshot | null> => ipcRenderer.invoke('ai-api:history-save', noteId, markdown, meta),
     historyList: (noteId: string): Promise<HistorySummary[]> => ipcRenderer.invoke('ai-api:history-list', noteId),
     historyGet: (noteId: string, id: string): Promise<HistorySnapshot | null> =>
       ipcRenderer.invoke('ai-api:history-get', noteId, id),
     /** Saves the current text as a snapshot first, then returns the snapshot to write back. */
     historyRestore: (noteId: string, id: string, current: string): Promise<HistoryRestoreResult | null> =>
       ipcRenderer.invoke('ai-api:history-restore', noteId, id, current),
-    historyDelete: (noteId: string, id: string): Promise<boolean> => ipcRenderer.invoke('ai-api:history-delete', noteId, id),
+    historyDelete: (noteId: string, id: string): Promise<boolean> =>
+      ipcRenderer.invoke('ai-api:history-delete', noteId, id),
     historyClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:history-clear', noteId)
   },
   routing: {

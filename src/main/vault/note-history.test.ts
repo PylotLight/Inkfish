@@ -3,14 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  clearHistory,
-  deleteSnapshot,
-  getSnapshot,
-  listSnapshots,
-  prepareRestore,
-  saveSnapshot
-} from './note-history'
+import { clearHistory, deleteSnapshot, getSnapshot, listSnapshots, prepareRestore, saveSnapshot } from './note-history'
 
 let dataDir = ''
 

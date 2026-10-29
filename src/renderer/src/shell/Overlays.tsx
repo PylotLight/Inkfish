@@ -173,8 +173,8 @@ export default function Overlays({
           folders={
             movePick.items.length > 1
               ? // Never offer a destination inside one of the selected folders.
-                folderList.filter((f) =>
-                  !movePick.items.some((it) => it.kind === 'dir' && (f === it.rel || f.startsWith(`${it.rel}/`)))
+                folderList.filter(
+                  (f) => !movePick.items.some((it) => it.kind === 'dir' && (f === it.rel || f.startsWith(`${it.rel}/`)))
                 )
               : movePick.items[0]!.kind === 'dir'
                 ? folderList.filter((f) => f !== movePick.items[0]!.rel && !f.startsWith(`${movePick.items[0]!.rel}/`))

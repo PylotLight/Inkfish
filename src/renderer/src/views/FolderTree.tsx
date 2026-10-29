@@ -465,10 +465,7 @@ function FolderTree({
   )
 
   // Report the selection upward (menus / ⌘K act on it) and prune rows that left the vault.
-  const selItems = useCallback(
-    () => [...sel.entries()].map(([rel, kind]) => ({ rel, kind })),
-    [sel]
-  )
+  const selItems = useCallback(() => [...sel.entries()].map(([rel, kind]) => ({ rel, kind })), [sel])
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
   useEffect(() => {

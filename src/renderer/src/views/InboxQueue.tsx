@@ -159,14 +159,12 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
       </div>
       {pending.length === 0 && (
         <div className="empty">
-          <p className="muted">{filed.length === 0 ? 'Inbox zero. Hit ⌥Space and capture something.' : 'Inbox zero — everything is filed.'}</p>
+          <p className="muted">
+            {filed.length === 0 ? 'Inbox zero. Hit ⌥Space and capture something.' : 'Inbox zero — everything is filed.'}
+          </p>
         </div>
       )}
-      {pending.length > 0 && (
-        <ul className="qlist">
-          {pending.map(card)}
-        </ul>
-      )}
+      {pending.length > 0 && <ul className="qlist">{pending.map(card)}</ul>}
       {filed.length > 0 && (
         <>
           <button className="qfiled-toggle" aria-expanded={filedOpen} onClick={() => setFiledOpen((v) => !v)}>
@@ -175,11 +173,7 @@ function InboxQueue({ items, projects, selectedId, onSelect, onDelete, onRefresh
             </span>
             Filed · {filed.length}
           </button>
-          {filedOpen && (
-            <ul className="qlist qfiled">
-              {filed.map(card)}
-            </ul>
-          )}
+          {filedOpen && <ul className="qlist qfiled">{filed.map(card)}</ul>}
         </>
       )}
     </div>

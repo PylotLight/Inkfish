@@ -20,7 +20,14 @@ const W = 360
  * Note history: the content snapshots taken before AI rewrites land (and before each
  * restore, so a restore is itself undoable). Open from the ↺ in the note header.
  */
-export default function NoteHistory({ docId, currentText, onRestore, anchor, onClose, notify }: Props): React.JSX.Element {
+export default function NoteHistory({
+  docId,
+  currentText,
+  onRestore,
+  anchor,
+  onClose,
+  notify
+}: Props): React.JSX.Element {
   const [items, setItems] = useState<HistorySummary[] | null>(null)
   const [viewing, setViewing] = useState<{ id: string; markdown: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -110,13 +117,7 @@ export default function NoteHistory({ docId, currentText, onRestore, anchor, onC
   return (
     <>
       <div className="del-scrim" onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
-      <div
-        ref={ref}
-        className="nh-pop"
-        style={{ left, top, width: W }}
-        role="dialog"
-        aria-label="Note history"
-      >
+      <div ref={ref} className="nh-pop" style={{ left, top, width: W }} role="dialog" aria-label="Note history">
         <div className="nh-head">
           <h4>History</h4>
           {items && items.length > 0 && (
@@ -129,8 +130,8 @@ export default function NoteHistory({ docId, currentText, onRestore, anchor, onC
           <p className="muted small nh-empty">Loading…</p>
         ) : items.length === 0 ? (
           <p className="muted small nh-empty">
-            No history yet. A snapshot of the note is saved before every AI rewrite, so the source is always
-            recoverable here.
+            No history yet. A snapshot of the note is saved before every AI rewrite, so the source is always recoverable
+            here.
           </p>
         ) : (
           <div className="nh-list">
@@ -154,9 +155,7 @@ export default function NoteHistory({ docId, currentText, onRestore, anchor, onC
                   <pre className="nh-preview">{viewing.markdown}</pre>
                 )}
                 {viewing?.id === s.id && viewing.markdown === '' && (
-                  <p className="muted small nh-preview">
-                    (empty — the note was blank when this was saved)
-                  </p>
+                  <p className="muted small nh-preview">(empty — the note was blank when this was saved)</p>
                 )}
               </div>
             ))}
