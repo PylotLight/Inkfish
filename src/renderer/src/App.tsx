@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useVaultData } from './hooks/useVaultData'
 import { useShellUi } from './hooks/useShellUi'
 import { useCtxMenu } from './hooks/useCtxMenu'
@@ -14,7 +14,7 @@ import Sidebar from './shell/Sidebar'
 import Center from './shell/Center'
 import Overlays from './shell/Overlays'
 import { useBrandTripleClick } from './views/easter-egg/BrandEasterEgg'
-import { foldersOf } from '../../shared/note-move'
+import { foldersOf, type MoveItem } from '../../shared/note-move'
 
 /**
  * The shell: picks the window (capture popover, mini window, main) and
@@ -61,6 +61,7 @@ function Main(): React.JSX.Element {
     allNotes,
     allNotesRef,
     inbox,
+    dirs,
     vaultInfo,
     backend,
     setBackend,
@@ -74,6 +75,7 @@ function Main(): React.JSX.Element {
     refreshInbox,
     refreshProjects,
     refreshNotes,
+    refreshDirs,
     refreshAll,
     showOnboarding,
     setShowOnboarding,
@@ -112,6 +114,15 @@ function Main(): React.JSX.Element {
     leaveSettings
   } = useShellUi({ allNotesRef })
   const brandEgg = useBrandTripleClick()
+  /** Rows selected in the folder tree (⌘/ctrl + ⇧) — right-click / Move-to act on the whole set. */
+  const [treeSel, setTreeSel] = useState<MoveItem[]>([])
+  const onTreeSelChange = useCallback((items: MoveItem[]) => {
+    setTreeSel((prev) =>
+      prev.length === items.length && prev.every((p, i) => p.rel === items[i]!.rel && p.kind === items[i]!.kind)
+        ? prev
+        : items
+    )
+  }, [])
   const {
     sel,
     setSel,
@@ -143,6 +154,7 @@ function Main(): React.JSX.Element {
     deleteInbox,
     closeTab,
     togglePin,
+    reorderTab,
     closeOthers,
     closeUnpinned,
     activeNoteId,
@@ -153,6 +165,7 @@ function Main(): React.JSX.Element {
     doCreateFile,
     doCreateFolder,
     doMove,
+    doMoveMany,
     openMovePicker,
     setNoteTags,
     doRename,
@@ -176,6 +189,7 @@ function Main(): React.JSX.Element {
     refreshNotes,
     refreshInbox,
     refreshProjects,
+    refreshDirs,
     refreshAll,
     notify,
     scope,
@@ -209,6 +223,7 @@ function Main(): React.JSX.Element {
     closeUnpinned,
     popOut,
     openMovePicker,
+    treeSel,
     setPrompt,
     setRevealDir
   })
@@ -220,8 +235,12 @@ function Main(): React.JSX.Element {
     () => allNotes.filter((n) => !n.path.startsWith('inbox/') && !n.path.startsWith('daily/')),
     [allNotes]
   )
-  /** Folder picker choices: every folder holding a note. */
-  const folderList = useMemo(() => foldersOf(finalNotes.map((n) => n.path)), [finalNotes])
+  /** Folder picker choices: every folder on disk (empty ones included), so a fresh folder is a valid move target. */
+  const folderList = useMemo(() => {
+    const set = new Set<string>(foldersOf(finalNotes.map((n) => n.path)))
+    for (const d of dirs) set.add(d)
+    return [...set].sort()
+  }, [finalNotes, dirs])
   /** Tag chip autocomplete: every tag in the vault, A→Z. */
   const allTags = useMemo(() => {
     const m = new Map<string, string>()
@@ -376,6 +395,7 @@ function Main(): React.JSX.Element {
         notify={notify}
         captureKey={captureKey}
         finalNotes={finalNotes}
+        dirs={dirs}
         kind={kind}
         setKind={setKind}
         titleOf={titleOf}
@@ -388,6 +408,8 @@ function Main(): React.JSX.Element {
         doCreateFolder={doCreateFolder}
         targetDir={targetDir}
         doMove={(rel, k, dest) => void doMove(rel, k, dest)}
+        doMoveMany={(items, dest) => void doMoveMany(items, dest)}
+        onTreeSelChange={onTreeSelChange}
         rowActions={rowActions}
         kindsPresent={kindsPresent}
         kindCounts={kindCounts}
@@ -439,6 +461,7 @@ function Main(): React.JSX.Element {
         openEntry={openEntry}
         closeTab={closeTab}
         togglePin={togglePin}
+        onReorder={reorderTab}
         setMenu={setMenu}
         doCreateFile={doCreateFile}
         targetDir={targetDir}
@@ -491,6 +514,7 @@ function Main(): React.JSX.Element {
         folderList={folderList}
         setMovePick={setMovePick}
         doMove={doMove}
+        doMoveMany={doMoveMany}
         delAsk={delAsk}
         setDelAsk={setDelAsk}
         trashWithUndo={trashWithUndo}

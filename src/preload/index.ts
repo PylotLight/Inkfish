@@ -17,6 +17,7 @@ import type { AiApiStatus, AiProviderSettings, AiTestResult } from '../shared/ai
 import type { AiErrorDetail } from '../shared/ai-errors'
 import type { AiApi, DiscoveryResult } from '../shared/ai-models'
 import type { ProcessedEntry } from '../shared/ai-process'
+import type { HistoryRestoreResult, HistorySnapshot, HistorySummary } from '../shared/note-history'
 import type { MenuBarSettings } from '../shared/menubar'
 import type { AppProfileInfo } from '../shared/profile'
 import type { ShortcutId, ShortcutSetResult, ShortcutState } from '../shared/shortcuts'
@@ -282,6 +283,8 @@ const api = {
   files: {
     create: (dirRel: string): Promise<string> => ipcRenderer.invoke('files:create', dirRel),
     mkdir: (parentRel: string, name: string): Promise<string> => ipcRenderer.invoke('files:mkdir', parentRel, name),
+    /** Every folder on disk (vault-relative), empty ones included — the tree needs these to show fresh folders. */
+    dirs: (): Promise<string[]> => ipcRenderer.invoke('files:dirs'),
     /** Hand rename in place; fixes relative links and [[wikilinks]] into it (like a title rename). */
     rename: (rel: string, newName: string): Promise<{ rel: string; rewritten: string[] }> =>
       ipcRenderer.invoke('files:rename', rel, newName),
@@ -367,7 +370,18 @@ const api = {
     processedGet: (noteId: string): Promise<ProcessedEntry | null> =>
       ipcRenderer.invoke('ai-api:processed-get', noteId),
     processedSet: (entry: ProcessedEntry): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-set', entry),
-    processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId)
+    processedClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:processed-clear', noteId),
+    /** Note history: snapshots of the note's text, kept so an AI rewrite is recoverable. */
+    historySave: (noteId: string, markdown: string, meta?: { via?: string; label?: string }): Promise<HistorySnapshot | null> =>
+      ipcRenderer.invoke('ai-api:history-save', noteId, markdown, meta),
+    historyList: (noteId: string): Promise<HistorySummary[]> => ipcRenderer.invoke('ai-api:history-list', noteId),
+    historyGet: (noteId: string, id: string): Promise<HistorySnapshot | null> =>
+      ipcRenderer.invoke('ai-api:history-get', noteId, id),
+    /** Saves the current text as a snapshot first, then returns the snapshot to write back. */
+    historyRestore: (noteId: string, id: string, current: string): Promise<HistoryRestoreResult | null> =>
+      ipcRenderer.invoke('ai-api:history-restore', noteId, id, current),
+    historyDelete: (noteId: string, id: string): Promise<boolean> => ipcRenderer.invoke('ai-api:history-delete', noteId, id),
+    historyClear: (noteId: string): Promise<boolean> => ipcRenderer.invoke('ai-api:history-clear', noteId)
   },
   routing: {
     /** Settings › Routing (auto-file, default folder, append, meetings folder). */

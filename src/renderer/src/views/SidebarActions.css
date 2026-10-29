@@ -170,6 +170,122 @@ html[data-theme='paper'] .del-pop {
   color: var(--muted);
 }
 
+/* Note history popover (views/NoteHistory.tsx): same glass recipe as the delete glance. */
+.nh-pop {
+  position: fixed;
+  z-index: 91;
+  border-radius: 13px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: scaleIn 0.14s ease both;
+}
+
+html[data-theme='paper'] .nh-pop {
+  background: rgba(250, 248, 243, 0.94);
+  box-shadow: 0 18px 48px rgba(30, 25, 15, 0.24);
+}
+
+.nh-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nh-head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nh-empty {
+  margin: 2px 0;
+  line-height: 1.5;
+}
+
+.nh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.nh-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--inset-soft, var(--panel));
+}
+
+.nh-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+
+.nh-main:hover .nh-label {
+  color: var(--text);
+}
+
+.nh-label {
+  font-weight: 600;
+  color: var(--text-soft, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nh-meta {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nh-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.nh-preview {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--inset, var(--panel));
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft, var(--text));
+  font-family: var(--text-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 /* Undo toast: the normal toast with an action button. */
 .toast.undo-toast {
   display: flex;

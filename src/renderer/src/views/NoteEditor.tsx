@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { minimalEdit } from '../../../shared/mini-window'
 import PopOutIcon from './PopOutIcon'
@@ -20,6 +20,8 @@ import { listKeys, livePreview } from '../livePreview'
 import { codeHighlight } from '../codeHighlight'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
 import NoteAi from './NoteAi'
+import NoteHistory from './NoteHistory'
+import type { Anchor } from './DeletePopover'
 import TagChips from './TagChips'
 import { breadcrumb } from '../../../shared/note-move'
 import { sendAiCommand } from '../nativeAi'
@@ -70,6 +72,8 @@ interface Props {
   renameHint?: string
   /** The editor lost focus (title → filename sync commits right away). */
   onEditorBlur?: () => void
+  /** History restore/delete feedback (toasts). */
+  notify?: (msg: string) => void
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
   compact?: boolean
@@ -109,6 +113,7 @@ function NoteEditor({
   onRename,
   renameHint,
   onEditorBlur,
+  notify,
   onMore,
   compact,
   onPopOut,
@@ -171,6 +176,8 @@ function NoteEditor({
   const [findOpts, setFindOpts] = useState<FindOpts>({})
   const [replaceOpen, setReplaceOpen] = useState(false)
   const [replaceText, setReplaceText] = useState('')
+  /** Note-history popover: open anchored to the header button. */
+  const [historyOpen, setHistoryOpen] = useState<Anchor | null>(null)
   const findInputRef = useRef<HTMLInputElement>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
   /** Bumped on every explicit navigation so the "move to hit" effect fires even on a same index. */
@@ -181,6 +188,20 @@ function NoteEditor({
   findQueryRef.current = findQuery
 
   const editorText = (): string => viewRef.current?.state.doc.toString() ?? textRef.current
+  /**
+   * Write a restored history snapshot into the note: one isolated undo step (⌘Z puts the
+   * pre-restore text back), flagged as an AI edit so drafts / autosave / mini sync pick it up.
+   */
+  const applyHistoryText = useCallback((markdown: string): void => {
+    const v = viewRef.current
+    if (!v) {
+      setText(markdown)
+      return
+    }
+    const edit = minimalEdit(v.state.doc.toString(), markdown)
+    if (!edit) return
+    v.dispatch({ changes: edit, annotations: isolateHistory.of('full'), userEvent: 'input.ai', scrollIntoView: true })
+  }, [])
   const caretPos = (): number => {
     const v = viewRef.current
     if (v) return v.state.selection.main.from
@@ -218,13 +239,14 @@ function NoteEditor({
     }
   }, [])
 
-  // Reset find when switching documents.
+  // Reset find (and the history popover) when switching documents.
   const docId = doc?.id ?? null
   useEffect(() => {
     setFindOpen(false)
     setReplaceOpen(false)
     setFindQuery('')
     setFindIndex(0)
+    setHistoryOpen(null)
   }, [docId])
 
   // Editor mounts when the mount div exists. On app launch the tabs restore
@@ -618,6 +640,19 @@ function NoteEditor({
                 <PopOutIcon size={13} />
               </button>
             )}
+            <button
+              className={`btn ghost sm icon${historyOpen ? ' active-opt' : ''}`}
+              title="History — the note's text before each AI rewrite (restorable)"
+              aria-label="Note history"
+              aria-expanded={historyOpen !== null}
+              onClick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                const a: Anchor = { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
+                setHistoryOpen((cur) => (cur ? null : a))
+              }}
+            >
+              ↺
+            </button>
             <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
               Reveal
             </button>
@@ -800,6 +835,16 @@ function NoteEditor({
           )}
         </div>
       </NoteAi>
+      {historyOpen && doc && (
+        <NoteHistory
+          docId={doc.id}
+          currentText={editorText}
+          onRestore={applyHistoryText}
+          anchor={historyOpen}
+          onClose={() => setHistoryOpen(null)}
+          notify={notify ?? (() => undefined)}
+        />
+      )}
     </div>
   )
 }

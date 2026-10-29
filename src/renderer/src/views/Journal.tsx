@@ -421,7 +421,9 @@ const DayRow = memo(function DayRow({
           <ul className="jentries">
             {sum.entries.map((e, i) => (
               <li key={`${e.time}-${i}`}>
-                {e.time && <span className="jtime">{e.time}</span>}
+                {/* Always rendered (even when empty): the row is a 2-col grid, and a missing
+                     time span would push the text into the 42px time column, wrapping mid-word. */}
+                <span className="jtime">{e.time}</span>
                 <span className="jtext">
                   {e.kind && <span className="jkind">{e.kind}</span>}
                   {highlight(e.text || '…', query)}

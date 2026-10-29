@@ -1,5 +1,6 @@
 import { sendAiCommand } from '../nativeAi'
 import type { NoteDoc } from '../../../shared/types'
+import type { MoveItem } from '../../../shared/note-move'
 import type { RunnableCommand } from '../views/CommandPalette'
 import type { Scope, Tab } from './types'
 
@@ -15,7 +16,7 @@ export interface PaletteCommandContext {
   openPath: string | null
   doRename: (rel: string, isDir: boolean) => void
   doc: NoteDoc | null
-  openMovePicker: (rel: string, kind: 'file' | 'dir', name: string, x?: number, y?: number) => void
+  openMovePicker: (items: MoveItem[], name: string, x?: number, y?: number) => void
   titleOf: (e: { id: string; path: string; title: string }) => string
   setQuery: (q: string) => void
   setBackend: (b: string) => void
@@ -157,7 +158,7 @@ export function buildPaletteCommands(ctx: PaletteCommandContext): RunnableComman
       enabled: !!openPath && !openPath.startsWith('inbox/') && !openPath.startsWith('daily/'),
       run: () => {
         leaveSettings()
-        if (openPath && doc) openMovePicker(openPath, 'file', titleOf(doc))
+        if (openPath && doc) openMovePicker([{ rel: openPath, kind: 'file' }], titleOf(doc))
       }
     },
     {

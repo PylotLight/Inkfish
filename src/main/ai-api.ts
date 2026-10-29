@@ -18,7 +18,16 @@ import { discoverModels } from './ai-discovery'
 import { applySettingsPatch, parseStoredAi, settingsOnly, type StoredAi } from './ai-store'
 import { parseProcessedEntry, type ProcessedEntry } from '../shared/ai-process'
 import { complete, createProvider, type ProviderConfig } from './ai-providers'
-import { appDataDir } from './vault'
+import {
+  appDataDir,
+  clearHistory,
+  deleteSnapshot,
+  getSnapshot,
+  listSnapshots,
+  prepareRestore,
+  saveSnapshot
+} from './vault'
+import type { HistorySummary } from '../shared/note-history'
 
 /**
  * Settings › AI + Electron 45's native AI integration.
@@ -401,6 +410,27 @@ export function initAiApi(): void {
   ipcMain.handle('ai-api:processed-get', (_e: IpcMainInvokeEvent, noteId: string) => getProcessed(String(noteId)))
   ipcMain.handle('ai-api:processed-set', (_e: IpcMainInvokeEvent, entry: unknown) => setProcessed(entry))
   ipcMain.handle('ai-api:processed-clear', (_e: IpcMainInvokeEvent, noteId: string) => clearProcessed(String(noteId)))
+  // Note history: snapshots of a note's text, taken before AI rewrites land.
+  ipcMain.handle('ai-api:history-save', (e: IpcMainInvokeEvent, noteId: string, markdown: string, meta?: { via?: string; label?: string }) =>
+    saveSnapshot(String(noteId), String(markdown), String(meta?.via ?? 'ai-apply'), String(meta?.label ?? 'AI apply'))
+  )
+  ipcMain.handle('ai-api:history-list', (_e: IpcMainInvokeEvent, noteId: string): HistorySummary[] => listSnapshots(String(noteId)))
+  ipcMain.handle('ai-api:history-get', (_e: IpcMainInvokeEvent, noteId: string, id: string) =>
+    getSnapshot(String(noteId), String(id))
+  )
+  ipcMain.handle(
+    'ai-api:history-restore',
+    (_e: IpcMainInvokeEvent, noteId: string, id: string, current: string) =>
+      prepareRestore(String(noteId), String(id), String(current))
+  )
+  ipcMain.handle('ai-api:history-delete', (_e: IpcMainInvokeEvent, noteId: string, id: string) => {
+    deleteSnapshot(String(noteId), String(id))
+    return true
+  })
+  ipcMain.handle('ai-api:history-clear', (_e: IpcMainInvokeEvent, noteId: string) => {
+    clearHistory(String(noteId))
+    return true
+  })
   // Off by default: only forks when a provider is already connected from a previous run.
   void applyAi()
 }

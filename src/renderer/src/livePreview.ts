@@ -908,6 +908,35 @@ const copySelectedImage = EditorView.domEventHandlers({
 })
 
 /**
+ * Obsidian-style list continuation for Enter: a new item at the same depth,
+ * same marker (numbered items increment), tasks re-open as `[ ]`, and Enter on
+ * an empty item clears it (exiting the list). Pure over the state so it is
+ * unit-testable; the keymap only dispatches its result.
+ */
+export function listEnterUpdate(state: EditorState): TransactionSpec | null {
+  const sel = state.selection.main
+  if (!sel.empty) return null
+  const line = state.doc.lineAt(sel.head)
+  if (sel.head !== line.to) return null
+  const m = /^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line.text)
+  if (!m) return null
+  const indent = m[1] ?? ''
+  const bullet = m[2] ?? '-'
+  const rest = m[4] ?? ''
+  if (!rest.trim()) {
+    // Empty item: clear the whole line (marker + indent) and stay on it.
+    return { changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } }
+  }
+  const nextBullet = /^\d/.test(bullet) ? `${parseInt(bullet, 10) + 1}.` : bullet
+  const task = /^\[[ xX]\]\s*/.exec(rest)
+  const cont = `${indent}${nextBullet} ${task ? '[ ] ' : ''}`
+  return {
+    changes: { from: sel.head, insert: `\n${cont}` },
+    selection: { anchor: sel.head + 1 + cont.length }
+  }
+}
+
+/**
  * Obsidian-style list keys: Enter continues bullets/numbered items/tasks
  * (Enter on an empty item exits the list), Tab/Shift-Tab indent. Bind before
  * the default keymap so they win.
@@ -916,26 +945,9 @@ export const listKeys: KeyBinding[] = [
   {
     key: 'Enter',
     run: (view) => {
-      const sel = view.state.selection.main
-      if (!sel.empty) return false
-      const line = view.state.doc.lineAt(sel.head)
-      if (sel.head !== line.to) return false
-      const m = /^(\s*)([-*]|\d+[.)])(\s+)(.*)$/.exec(line.text)
-      if (!m) return false
-      const indent = m[1] ?? ''
-      const bullet = m[2] ?? '-'
-      const rest = m[4] ?? ''
-      if (!rest.trim()) {
-        view.dispatch({ changes: { from: line.from, to: line.to, insert: '' } })
-        return true
-      }
-      const nextBullet = /^\d/.test(bullet) ? `${parseInt(bullet, 10) + 1}.` : bullet
-      const task = /^\[[ xX]\]\s*/.exec(rest)
-      const cont = `${indent}${nextBullet} ${task ? '[ ] ' : ''}`
-      view.dispatch({
-        changes: { from: sel.head, insert: `\n${cont}` },
-        selection: { anchor: sel.head + 1 + cont.length }
-      })
+      const update = listEnterUpdate(view.state)
+      if (!update) return false
+      view.dispatch(update)
       return true
     }
   },

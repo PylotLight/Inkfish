@@ -67,6 +67,7 @@ import {
   ensureVault,
   defaultVaultRoot,
   envManaged,
+  listDirs,
   listInbox,
   listProfiles,
   listProjects,
@@ -654,6 +655,9 @@ export function registerIpc(): void {
   ipcMain.handle('files:mkdir', (_e: IpcMainInvokeEvent, parentRel: string, name: string): string =>
     createDir(parentRel, name, requireNotes())
   )
+  // Every folder on disk, empty included: the tree derives folders from notes,
+  // so this is what makes a just-created (still empty) folder visible + droppable.
+  ipcMain.handle('files:dirs', (): string[] => listDirs(requireNotes().root))
   // Hand rename (sidebar inline rename / Rename… prompt): same link fix-up as a title rename.
   ipcMain.handle(
     'files:rename',
@@ -746,6 +750,9 @@ export function registerIpc(): void {
     const entry = trashPath(rel, paths)
     // Just that path (a note, or a folder's worth) leaves the index — no full rescan per delete.
     removePath(rel)
+    // Tell every window (main + minis) the note is gone: tabs reconcile,
+    // other windows re-read it as missing.
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('inkfish:vault-changed')
     return entry
   })
   ipcMain.handle('files:purge-trash', (): number => purgeTrash())

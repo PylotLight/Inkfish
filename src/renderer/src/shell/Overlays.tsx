@@ -4,7 +4,7 @@ import { ConfirmModal, CtxMenu, PromptModal, type MenuItem } from '../views/Dial
 import FolderPicker from '../views/FolderPicker'
 import Onboarding from '../views/Onboarding'
 import { BrandEasterEgg } from '../views/easter-egg/BrandEasterEgg'
-import { dirOf } from '../../../shared/note-move'
+import { dirOf, type MoveItem } from '../../../shared/note-move'
 import type { PaletteMode, PaletteNote } from '../../../shared/command-palette'
 import type { AppProfileInfo } from '../../../shared/profile'
 import type { NoteEntry, SysInfo, VaultInfo } from '../../../shared/types'
@@ -59,10 +59,11 @@ interface Props {
   onVaultReady: (v: VaultInfo) => void
   setShowOnboarding: (v: boolean) => void
   notify: (msg: string) => void
-  movePick: { rel: string; kind: 'file' | 'dir'; name: string; x: number; y: number } | null
+  movePick: { items: MoveItem[]; name: string; x: number; y: number } | null
   folderList: string[]
-  setMovePick: (m: { rel: string; kind: 'file' | 'dir'; name: string; x: number; y: number } | null) => void
+  setMovePick: (m: { items: MoveItem[]; name: string; x: number; y: number } | null) => void
   doMove: (rel: string, kind: 'file' | 'dir', dest: string) => Promise<void>
+  doMoveMany: (items: MoveItem[], dest: string) => Promise<void>
   delAsk: { entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null
   setDelAsk: (d: { entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null) => void
   trashWithUndo: (rel: string, title: string) => Promise<void>
@@ -102,6 +103,7 @@ export default function Overlays({
   folderList,
   setMovePick,
   doMove,
+  doMoveMany,
   delAsk,
   setDelAsk,
   trashWithUndo,
@@ -163,19 +165,31 @@ export default function Overlays({
       )}
       {movePick && (
         <FolderPicker
-          title={`Move “${movePick.name.slice(0, 40)}” to…`}
-          folders={
-            movePick.kind === 'dir'
-              ? folderList.filter((f) => f !== movePick.rel && !f.startsWith(`${movePick.rel}/`))
-              : folderList
+          title={
+            movePick.items.length > 1
+              ? `Move ${movePick.items.length} items to…`
+              : `Move “${movePick.name.slice(0, 40)}” to…`
           }
-          current={dirOf(movePick.rel)}
+          folders={
+            movePick.items.length > 1
+              ? // Never offer a destination inside one of the selected folders.
+                folderList.filter((f) =>
+                  !movePick.items.some((it) => it.kind === 'dir' && (f === it.rel || f.startsWith(`${it.rel}/`)))
+                )
+              : movePick.items[0]!.kind === 'dir'
+                ? folderList.filter((f) => f !== movePick.items[0]!.rel && !f.startsWith(`${movePick.items[0]!.rel}/`))
+                : folderList
+          }
+          current={movePick.items.length === 1 ? dirOf(movePick.items[0]!.rel) : undefined}
           x={movePick.x}
           y={movePick.y}
           onPick={(dir) => {
             const m = movePick
             setMovePick(null)
-            void doMove(m.rel, m.kind, dir)
+            const first = m.items[0]
+            if (!first) return
+            if (m.items.length === 1) void doMove(first.rel, first.kind, dir)
+            else void doMoveMany(m.items, dir)
           }}
           onClose={() => setMovePick(null)}
         />

@@ -1306,6 +1306,13 @@ html.mini-window body {
   background: rgba(127, 127, 127, 0.18);
   color: var(--text);
 }
+.mini-btn.danger {
+  color: var(--danger);
+}
+.mini-btn.danger:hover {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
+}
 .mini-body {
   flex: 1;
   min-height: 0;
@@ -1769,6 +1776,44 @@ button.cap-route-line[aria-expanded='true'] {
   gap: 10px;
 }
 
+/* Filed section: routed captures clear out of the queue, kept collapsible below it. */
+.qfiled-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.qfiled-toggle:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.qfiled-caret {
+  font-size: 10px;
+}
+
+.qfiled {
+  margin-top: 6px;
+}
+
+.qfiled li {
+  opacity: 0.82;
+}
+
 .btn.sm,
 select.sm {
   padding: 6px 12px;
@@ -2035,9 +2080,16 @@ html.mini-window .editor {
   color: var(--muted);
 }
 
+/* `---` — a 2px rule centred in the line, not a hairline hugging the baseline. */
 .cm-line.lp-hr {
-  border-bottom: 1px solid var(--border);
-  min-height: 1.2em;
+  min-height: 1.8em;
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 1px),
+    color-mix(in srgb, var(--text) 24%, transparent) calc(50% - 1px),
+    color-mix(in srgb, var(--text) 24%, transparent) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
 }
 
 .cm-line.lp-code,
@@ -3694,6 +3746,24 @@ input.side-search:focus {
   text-align: left;
 }
 
+/* Placeholder in an expanded-but-empty folder (created, nothing filed yet). */
+.frow.fempty {
+  cursor: default;
+  height: 26px;
+}
+.fempty:hover {
+  background: transparent !important;
+}
+.fempty .caret {
+  visibility: hidden;
+}
+.fempty-text {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-style: italic;
+}
+
 .frow:hover {
   color: var(--text);
   background: var(--row-hover);
@@ -3703,6 +3773,17 @@ button.frow.on,
 .frow.on {
   color: var(--text);
   background: var(--row-active);
+}
+
+/* Multi-selected rows (⌘/ctrl-click, ⇧-range): a mint tint, distinct from the open note's .on. */
+.frow.sel,
+.filerow.sel {
+  background: var(--mint-dim);
+}
+.frow.sel .fname,
+.filerow.sel .fname,
+.filerow.bare.sel .fname {
+  color: var(--text);
 }
 
 .frow .caret {
@@ -4412,6 +4493,16 @@ html[data-density='compact'] .note-stage {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Worked-on-this-session marker (kept across restarts; unpinned tabs without it drop out). */
+.tab .tab-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mint);
+  opacity: 0.85;
 }
 
 .tab .tab-x {
@@ -5683,6 +5774,10 @@ input[type='password'].text-input {
 }
 .tab.tearing {
   opacity: 0.45;
+}
+.tab.reordering {
+  opacity: 0.55;
+  cursor: grabbing;
 }
 .tab-tear-ghost {
   position: fixed;

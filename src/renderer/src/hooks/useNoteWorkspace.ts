@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { InboxItem, NoteDoc, NoteEntry } from '../../../shared/types'
 import { plain } from '../text'
-import { dirOf, type MoveKind } from '../../../shared/note-move'
+import { dirOf, type MoveItem } from '../../../shared/note-move'
 import { createAutosave, type Autosave } from '../../../shared/autosave'
 import { titleFromMarkdown } from '../../../shared/title-sync'
 import { isPopKey } from '../../../shared/mini-window'
@@ -25,6 +25,7 @@ export interface NoteWorkspaceInput {
   refreshNotes: () => void
   refreshInbox: () => void
   refreshProjects: () => void
+  refreshDirs: () => void
   refreshAll: () => void
   notify: (msg: string) => void
   scope: Scope
@@ -56,6 +57,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     refreshNotes,
     refreshInbox,
     refreshProjects,
+    refreshDirs,
     refreshAll,
     notify,
     setScope,
@@ -80,10 +82,8 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   /** Saved docs by id — tab switches are instant, no IPC per click. */
   const [docsCache, setDocsCache] = useState<Record<string, NoteDoc>>({})
   /** Custom display titles (app config) — filename otherwise. */
-  /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click). */
-  const [movePick, setMovePick] = useState<{ rel: string; kind: MoveKind; name: string; x: number; y: number } | null>(
-    null
-  )
+  /** "Move to…" folder picker (header breadcrumb, ⌘K, right-click; one or more items). */
+  const [movePick, setMovePick] = useState<{ items: MoveItem[]; name: string; x: number; y: number } | null>(null)
   const [prompt, setPrompt] = useState<{
     title: string
     initial: string
@@ -180,6 +180,9 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
             if (!fresh) return
             // A read that raced an autosave of this note is stale — the save result wins.
             if (autosave.pending(id) !== undefined) return
+            // Changed out from under us (a mini window or a phone sync): a worked-on tab.
+            const before = docsCacheRef.current[id]
+            if (before && fresh.markdown !== before.markdown) markEdited(id)
             autosave.noteSaved(id, fresh.markdown)
             setDocsCache((prev) => ({ ...prev, [id]: fresh }))
             if (selRef.current?.id === id) setDoc(fresh)
@@ -189,7 +192,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
         setTabs((prev) => {
           if (prev.some((t) => t.id === id)) return prev
           const path = prev.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path ?? id
-          return [...prev, { id, path, pinned: false }]
+          return [...prev, { id, path, pinned: false, edited: false }]
         })
       } else {
         const item = inbox.find((i) => i.id === id)
@@ -218,8 +221,18 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     [inbox]
   )
 
+  /** Mark a tab's note as worked-on this session (persists it across restarts). */
+  const markEdited = useCallback((id: string) => {
+    setTabs((prev) =>
+      prev.some((t) => t.id === id && !t.edited) ? prev.map((t) => (t.id === id ? { ...t, edited: true } : t)) : prev
+    )
+  }, [])
+
   /** An autosave landed: cache it, follow a moved id, and clear the draft it covered. */
   savedHandlerRef.current = (id: string, markdown: string, saved: NoteDoc): void => {
+    // A draft pending for this id means its text changed since the last save. (Keyed by the
+    // id the tab still carries — a rename-in-flight maps it to `saved.id` below.)
+    if (draftsRef.current[id] !== undefined) markEdited(id)
     setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
     const dropCovered = (prev: Record<string, string>): Record<string, string> => {
       const cur = prev[id]
@@ -248,19 +261,24 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   }
 
   /** Lift `markdown` as `id`'s live text (shared across tabs and mini windows). */
-  const liftDraft = useCallback((id: string, markdown: string) => {
-    const saved =
-      docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
-    setDrafts((prev) => {
-      if (markdown === saved) {
-        if (prev[id] === undefined) return prev
-        const next = { ...prev }
-        delete next[id]
-        return next
-      }
-      return prev[id] === markdown ? prev : { ...prev, [id]: markdown }
-    })
-  }, [])
+  const liftDraft = useCallback(
+    (id: string, markdown: string) => {
+      const saved =
+        docsCacheRef.current[id]?.markdown ?? (docRef.current?.id === id ? docRef.current.markdown : undefined)
+      // Anything other than the saved text is a change: the tab becomes a "worked-on" tab.
+      if (markdown !== saved) markEdited(id)
+      setDrafts((prev) => {
+        if (markdown === saved) {
+          if (prev[id] === undefined) return prev
+          const next = { ...prev }
+          delete next[id]
+          return next
+        }
+        return prev[id] === markdown ? prev : { ...prev, [id]: markdown }
+      })
+    },
+    [markEdited]
+  )
 
   /** A local edit in this window's editor: lift it and autosave it. */
   const handleDraft = useCallback(
@@ -404,6 +422,30 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
 
   const togglePin = useCallback((id: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
+  }, [])
+
+  /**
+   * Drag-reorder in the strip. `insertAt` is a position in the displayed order (pinned first)
+   * with the dragged tab removed; a tab can only land within its own group, so it is clamped.
+   */
+  const reorderTab = useCallback((id: string, insertAt: number) => {
+    setTabs((prev) => {
+      const ordered = [...prev].sort((a, b) => Number(b.pinned) - Number(a.pinned))
+      const from = ordered.findIndex((t) => t.id === id)
+      if (from === -1) return prev
+      const slots = ordered.length - 1 // the dragged tab removed
+      const pinnedSlots = ordered.filter((t) => t.pinned).length - (ordered[from]!.pinned ? 1 : 0)
+      const to = ordered[from]!.pinned
+        ? Math.min(Math.max(insertAt, 0), pinnedSlots)
+        : Math.min(Math.max(insertAt, pinnedSlots), slots)
+      // Inserting at `from` or `from+1` of the reduced list lands it where it already is.
+      if (to === from || to === from + 1) return prev
+      const next = [...ordered]
+      const moved = next.splice(from, 1)[0]
+      if (!moved) return prev
+      next.splice(to, 0, moved)
+      return next
+    })
   }, [])
 
   /** Close a set of tabs (their pending text is written first). */
@@ -611,6 +653,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     followPathChange,
     renameNoteFile,
     doMove,
+    doMoveMany,
     openMovePicker,
     setNoteTags,
     openNotePath,
@@ -650,6 +693,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     refreshNotes,
     refreshInbox,
     refreshProjects,
+    refreshDirs,
     refreshTitleNamed,
     titleNamedRef,
     setTitles,
@@ -722,6 +766,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     removeTab,
     closeTab,
     togglePin,
+    reorderTab,
     closeTabsGuarded,
     closeOthers,
     closeUnpinned,
@@ -736,6 +781,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     followPathChange,
     renameNoteFile,
     doMove,
+    doMoveMany,
     openMovePicker,
     setNoteTags,
     openNotePath,

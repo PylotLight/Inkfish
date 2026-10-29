@@ -1,4 +1,5 @@
 import type { InboxItem, NoteDoc, NoteEntry, Project, SysInfo, VaultInfo } from '../../../shared/types'
+import type { MoveItem } from '../../../shared/note-move'
 import type { DayRef } from '../../../shared/journal'
 import { draftForEditor } from '../../../shared/autosave'
 import { isTitleSyncPath } from '../../../shared/title-sync'
@@ -55,6 +56,7 @@ interface Props {
   openEntry: (id: string, origin: 'inbox' | 'note') => void
   closeTab: (id: string) => void
   togglePin: (id: string) => void
+  onReorder: (id: string, insertAt: number) => void
   setMenu: (menu: MenuState) => void
   doCreateFile: (dir: string) => void
   targetDir: string
@@ -71,7 +73,7 @@ interface Props {
   onEditorBlur: () => void
   dayNav: { onPrev: (() => void) | null; onNext: (() => void) | null; prevLabel?: string; nextLabel?: string } | null
   focusEnd: { id: string; token: number } | null
-  openMovePicker: (rel: string, kind: 'file' | 'dir', name: string, x: number, y: number) => void
+  openMovePicker: (items: MoveItem[], name: string, x: number, y: number) => void
   setNoteTags: (tags: string[]) => void
   setSideCollapsed: (update: boolean | ((v: boolean) => boolean)) => void
   setQuery: (q: string) => void
@@ -121,6 +123,7 @@ export default function Center({
   openEntry,
   closeTab,
   togglePin,
+  onReorder,
   setMenu,
   doCreateFile,
   targetDir,
@@ -243,6 +246,7 @@ export default function Center({
                   onActivate={(id) => openEntry(id, 'note')}
                   onClose={closeTab}
                   onTogglePin={togglePin}
+                  onReorder={onReorder}
                   onMenu={(id, x, y) => setMenu({ x, y, target: { kind: 'tab', id } })}
                   onNew={() => doCreateFile(targetDir)}
                   onPopOut={(id) => popOut(id)}
@@ -276,6 +280,7 @@ export default function Center({
                       : 'Click to rename (display title only, file untouched)'
                   }
                   onEditorBlur={onEditorBlur}
+                  notify={notify}
                   {...(dayNav
                     ? {
                         dayNav: {
@@ -292,7 +297,8 @@ export default function Center({
                   popOutTitle={popTitle}
                   {...(sel?.origin === 'note' && doc && !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
                     ? {
-                        onMoveClick: (x: number, y: number) => openMovePicker(doc.path, 'file', titleOf(doc), x, y),
+                        onMoveClick: (x: number, y: number) =>
+                          openMovePicker([{ rel: doc.path, kind: 'file' }], titleOf(doc), x, y),
                         onSetTags: (t: string[]) => void setNoteTags(t),
                         onTagClick: (t: string) => {
                           setSideCollapsed(false)

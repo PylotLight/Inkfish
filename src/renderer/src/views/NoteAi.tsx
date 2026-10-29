@@ -262,11 +262,20 @@ export default function NoteAi({ viewRef, doc, text, children }: Props): React.J
   const applyToNote = (): void => {
     const v = viewRef.current
     if (!v || !entry) return
-    const edit = minimalEdit(v.state.doc.toString(), entry.text)
+    const raw = v.state.doc.toString()
+    const edit = minimalEdit(raw, entry.text)
     if (!edit) {
       setFlash('Already the same')
       return
     }
+    // Keep the source: snapshot the pre-apply text (deduped if it didn't change) so the
+    // rewrite is recoverable from History any time — ⌘Z only lasts until the next step.
+    void window.api.aiApi
+      .historySave(doc.id, raw, {
+        via: 'ai-apply',
+        label: action === 'custom' ? 'Custom' : AI_ACTION_INFO[action].label
+      })
+      .catch(() => undefined)
     v.dispatch({ changes: edit, annotations: isolateHistory.of('full'), userEvent: 'input.ai', scrollIntoView: true })
     // The raw now matches: keep the cache fresh against it.
     const fresh = { ...entry, rawHash: contentHash(v.state.doc.toString()) }

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { NoteEntry, NoteKind } from '../../../shared/types'
-import { canDropInto, dirOf, type MoveKind } from '../../../shared/note-move'
+import { canDropInto, dirOf, type MoveItem, type MoveKind } from '../../../shared/note-move'
 import { fmtBytes, timeAgo } from '../text'
 import { Icon } from './icons'
 import { renameCommit, renameStem, rowKeyAction } from '../../../shared/note-delete'
@@ -65,8 +65,15 @@ function loadCollapsed(): Set<string> {
 const byTitle = (titleOf: (n: NoteEntry) => string) => (a: NoteEntry, b: NoteEntry) =>
   titleOf(a).localeCompare(titleOf(b))
 
-/** Build a nested dir tree with files attached — Obsidian-style. */
-export function buildTree(notes: NoteEntry[], titleOf: (n: NoteEntry) => string, sort: TreeSort = 'name'): TreeData {
+/** Build a nested dir tree with files attached — Obsidian-style. `dirs` adds on-disk folders
+ *  that no indexed note sits under (empty folders would otherwise be invisible and
+ *  undroppable — a "broken" folder you created but can never reach). */
+export function buildTree(
+  notes: NoteEntry[],
+  titleOf: (n: NoteEntry) => string,
+  sort: TreeSort = 'name',
+  dirs: readonly string[] = []
+): TreeData {
   interface Mutable {
     name: string
     rel: string
@@ -95,6 +102,20 @@ export function buildTree(notes: NoteEntry[], titleOf: (n: NoteEntry) => string,
       level = node.kids
     }
     node?.files.push(n)
+  }
+
+  // Folders on disk with no indexed note under them: create the node chain anyway.
+  for (const rel of dirs) {
+    let level = top
+    let cur = ''
+    for (const d of rel.split('/')) {
+      cur = cur ? `${cur}/${d}` : d
+      const node = level.get(d)
+      if (!node) {
+        level.set(d, { name: d, rel: cur, files: [], kids: new Map() })
+      }
+      level = level.get(d)!.kids
+    }
   }
 
   const fileCmp =
@@ -138,6 +159,8 @@ interface Props {
   /** The quick capture shortcut as shown ("⌥Space"), '' when off. */
   captureKey?: string
   notes: NoteEntry[]
+  /** Every folder on disk (vault-relative), empty included — keeps fresh folders visible + droppable. */
+  dirs?: string[]
   kind: KindFilter
   titleOf: (n: NoteEntry) => string
   /** Open note id (highlight). */
@@ -160,6 +183,10 @@ interface Props {
   filters?: ReactNode
   /** Drag & drop: move a note/folder into `destDir` ('' = vault root). */
   onMove?: (rel: string, kind: MoveKind, destDir: string) => void
+  /** Dropping a whole multi-selection: move every item into `destDir`. */
+  onMoveMany?: (items: MoveItem[], destDir: string) => void
+  /** The current row selection (⌘/ctrl-click, ⇧-range) — right-click / ⌘K menus act on it. */
+  onSelectionChange?: (items: MoveItem[]) => void
   /** Note row actions (hover buttons, F2 rename, ⌘⌫, ⌥-click; Enter opens). Absent = plain rows. */
   rowActions?: RowActions
 }
@@ -194,6 +221,7 @@ export function dragScrollStep(y: number, top: number, bottom: number, edge = DR
 interface Dnd {
   /** Folder currently highlighted as the drop target (null = none, '' = vault root). */
   dropDir: string | null
+  /** `rel` is the row grabbed; the handler decides how much of the selection it carries. */
   start: (e: DragEvent, rel: string, kind: MoveKind) => void
   /** dragover on something whose drop target is `destDir`; `expand` opens a collapsed folder. */
   over: (e: DragEvent, destDir: string, expand?: string) => void
@@ -258,6 +286,7 @@ function KindGlyph({ kind }: { kind: NoteKind }): React.JSX.Element {
 /** Directory tree with files — navigation mirrors the actual vault. */
 function FolderTree({
   notes,
+  dirs = [],
   kind,
   titleOf,
   selectedId,
@@ -272,6 +301,8 @@ function FolderTree({
   targetDir,
   filters,
   onMove,
+  onMoveMany,
+  onSelectionChange,
   rowActions,
   captureKey = '⌥Space'
 }: Props): React.JSX.Element {
@@ -279,11 +310,18 @@ function FolderTree({
   const [sort, setSort] = useState<TreeSort>(loadSort)
   // --- drag & drop (notes + folders onto folders / the vault root) ---------------------------
   const treeRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ rel: string; kind: MoveKind } | null>(null)
+  /** The items a drag carries: one row, or the whole selection when the row is selected. */
+  const dragRef = useRef<MoveItem[] | null>(null)
   const scrollRef = useRef<HTMLElement | null>(null)
   const expandTimer = useRef<{ rel: string; t: number } | null>(null)
   const [dropDir, setDropDir] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  /** Number of items in the in-flight drag (the root drop hint says so). */
+  const [dragN, setDragN] = useState(0)
+  // --- multi-select (⌘/ctrl-click toggles, ⇧-click ranges, Esc / blank click clears) --------
+  const [sel, setSel] = useState<Map<string, MoveKind>>(new Map())
+  /** The row a ⇧-range extends from (the last plainly- or ⌘-clicked row). */
+  const anchorRef = useRef<string | null>(null)
 
   const persist = (next: Set<string>): void => {
     try {
@@ -325,7 +363,18 @@ function FolderTree({
   }, [revealDir])
 
   const visible = useMemo(() => (kind === 'all' ? notes : notes.filter((n) => n.kind === kind)), [notes, kind])
-  const tree = useMemo(() => buildTree(visible, titleOf, sort), [visible, titleOf, sort])
+  // On-disk folders added beyond what notes imply. Under a kind filter only
+  // folders that still hold a matching note stay — an empty folder has no content to match.
+  const extraDirs = useMemo(() => {
+    if (kind === 'all' || dirs.length === 0) return dirs
+    const hasNote = new Set<string>()
+    for (const n of visible) {
+      const parts = n.path.split('/')
+      for (let i = 1; i < parts.length; i++) hasNote.add(parts.slice(0, i).join('/'))
+    }
+    return dirs.filter((d) => hasNote.has(d))
+  }, [visible, kind, dirs])
+  const tree = useMemo(() => buildTree(visible, titleOf, sort, extraDirs), [visible, titleOf, sort, extraDirs])
   const dirRels = useMemo(() => allDirRels(tree), [tree])
   const anyOpen = dirRels.some((r) => !collapsed.has(r))
 
@@ -344,6 +393,102 @@ function FolderTree({
     }
     setSort(next)
   }
+
+  // --- multi-select ----------------------------------------------------------------------------
+  /** Rows in DOM order (folders, then expanded children, then files) — ⇧-ranges walk this. */
+  const visibleRows = useMemo(() => {
+    if (results !== null) return []
+    const out: MoveItem[] = []
+    const walk = (n: TreeNode): void => {
+      out.push({ rel: n.rel, kind: 'dir' })
+      if (collapsed.has(n.rel)) return
+      n.children.forEach(walk)
+      for (const f of n.files) out.push({ rel: f.path, kind: 'file' })
+    }
+    tree.roots.forEach(walk)
+    for (const f of tree.rootFiles) out.push({ rel: f.path, kind: 'file' })
+    return out
+  }, [tree, collapsed, results])
+
+  const toggleSelect = useCallback((rel: string, kind: MoveKind): void => {
+    anchorRef.current = rel
+    setSel((prev) => {
+      const next = new Map(prev)
+      if (next.has(rel)) next.delete(rel)
+      else next.set(rel, kind)
+      return next
+    })
+  }, [])
+
+  /** ⇧-click: the anchor…clicked span. The anchor stays where it was. */
+  const rangeSelect = useCallback(
+    (rel: string, kind: MoveKind, additive: boolean): void => {
+      const anchor = anchorRef.current
+      const a = anchor ? visibleRows.findIndex((r) => r.rel === anchor) : -1
+      const b = visibleRows.findIndex((r) => r.rel === rel)
+      if (a === -1 || b === -1) {
+        toggleSelect(rel, kind)
+        return
+      }
+      const [lo, hi] = a < b ? [a, b] : [b, a]
+      setSel((prev) => {
+        const next = additive ? new Map(prev) : new Map<string, MoveKind>()
+        for (let i = lo; i <= hi; i++) {
+          const r = visibleRows[i]!
+          next.set(r.rel, r.kind)
+        }
+        return next
+      })
+    },
+    [visibleRows, toggleSelect]
+  )
+
+  /** Plain click: this row becomes the whole selection (and it opens, as before). */
+  const selectOnly = useCallback((rel: string, kind: MoveKind): void => {
+    anchorRef.current = rel
+    setSel(new Map([[rel, kind]]))
+  }, [])
+
+  const clearSel = useCallback((): void => {
+    anchorRef.current = null
+    setSel((prev) => (prev.size === 0 ? prev : new Map()))
+  }, [])
+
+  // One handler for all three gestures; rows pass the click event through.
+  const onRowSel = useCallback(
+    (rel: string, kind: MoveKind, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }): void => {
+      if (e.metaKey || e.ctrlKey) toggleSelect(rel, kind)
+      else if (e.shiftKey) rangeSelect(rel, kind, e.metaKey || e.ctrlKey)
+      else selectOnly(rel, kind)
+    },
+    [toggleSelect, rangeSelect, selectOnly]
+  )
+
+  // Report the selection upward (menus / ⌘K act on it) and prune rows that left the vault.
+  const selItems = useCallback(
+    () => [...sel.entries()].map(([rel, kind]) => ({ rel, kind })),
+    [sel]
+  )
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  useEffect(() => {
+    onSelectionChangeRef.current?.(selItems())
+  }, [selItems])
+  useEffect(() => {
+    setSel((prev) => {
+      if (prev.size === 0) return prev
+      const live = new Set<string>(dirs)
+      for (const n of notes) live.add(n.path)
+      let changed = false
+      const next = new Map<string, MoveKind>()
+      for (const [rel, kind] of prev) {
+        if (live.has(rel)) next.set(rel, kind)
+        else changed = true
+      }
+      if (changed && next.size === 0) anchorRef.current = null
+      return changed ? next : prev
+    })
+  }, [notes, dirs])
 
   const where = targetDir || 'vault root'
   const toolbar = (
@@ -389,6 +534,7 @@ function FolderTree({
     clearExpand()
     setDropDir(null)
     setDragging(false)
+    setDragN(0)
   }, [])
   // Esc mid-drag: Chromium cancels the native drag and fires dragend (→ endDrag). Belt and braces
   // for a cancelled drag that never reports back.
@@ -405,20 +551,25 @@ function FolderTree({
     ? {
         dropDir,
         start: (e, rel, kind) => {
-          e.dataTransfer.setData(TREE_DRAG_TYPE, JSON.stringify({ rel, kind }))
+          // A selected row drags the whole selection; an unselected one drags itself only.
+          const items = sel.size > 0 && sel.has(rel) ? selItems() : [{ rel, kind }]
+          e.dataTransfer.setData(TREE_DRAG_TYPE, JSON.stringify(items))
           e.dataTransfer.effectAllowed = 'move'
-          dragRef.current = { rel, kind }
+          dragRef.current = items
           scrollRef.current = scrollParent(treeRef.current)
           // Defer the re-render: touching the DOM inside dragstart can abort the native drag.
           window.setTimeout(() => {
-            if (dragRef.current) setDragging(true)
+            if (dragRef.current) {
+              setDragging(true)
+              setDragN(items.length)
+            }
           }, 0)
         },
         over: (e, destDir, expand) => {
           const d = dragRef.current
           if (!d) return // not ours (e.g. files from Finder)
           e.stopPropagation()
-          if (!canDropInto(d.rel, d.kind, destDir)) {
+          if (!d.some((it) => canDropInto(it.rel, it.kind, destDir))) {
             e.dataTransfer.dropEffect = 'none'
             clearExpand()
             setDropDir((cur) => (cur === null ? cur : null))
@@ -450,7 +601,13 @@ function FolderTree({
           e.preventDefault()
           e.stopPropagation()
           endDrag()
-          if (canDropInto(d.rel, d.kind, destDir)) onMove?.(d.rel, d.kind, destDir)
+          clearSel()
+          const valid = d.filter((it) => canDropInto(it.rel, it.kind, destDir))
+          const first = valid[0]
+          if (!first) return
+          // Without a multi-move handler, a multi-selection still moves its first item.
+          if (valid.length === 1 || !onMoveMany) onMove?.(first.rel, first.kind, destDir)
+          else onMoveMany(valid, destDir)
         },
         end: endDrag
       }
@@ -516,6 +673,24 @@ function FolderTree({
               }
             : undefined
         }
+        onClick={
+          // A click on blank tree space (not a row) clears the selection.
+          sel.size > 0
+            ? (e) => {
+                if (!(e.target as HTMLElement).closest('.filerow, .frow')) clearSel()
+              }
+            : undefined
+        }
+        onKeyDown={
+          sel.size > 0
+            ? (e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  clearSel()
+                }
+              }
+            : undefined
+        }
       >
         {tree.roots.map((n) => (
           <Node
@@ -529,6 +704,9 @@ function FolderTree({
             onOpenFile={onOpenFile}
             onMenu={onMenu}
             dnd={dnd}
+            sel={sel}
+            onRowSel={onRowSel}
+            onSelectOnly={selectOnly}
             rowActions={rowActions}
           />
         ))}
@@ -542,12 +720,15 @@ function FolderTree({
             onOpen={() => onOpenFile(n.id)}
             onMenu={(x, y) => onMenu({ kind: 'file', rel: n.path, id: n.id, name: titleOf(n) }, x, y)}
             dnd={dnd}
+            sel={sel}
+            onRowSel={onRowSel}
+            onSelectOnly={selectOnly}
             actions={rowActions}
           />
         ))}
         {dragging && (
           <div className="ftree-root-drop" aria-hidden>
-            Drop here to move to the vault root
+            {dragN > 1 ? `Drop ${dragN} here to move to the vault root` : 'Drop here to move to the vault root'}
           </div>
         )}
         {tree.roots.length === 0 && tree.rootFiles.length === 0 && (
@@ -570,6 +751,9 @@ function Node({
   onOpenFile,
   onMenu,
   dnd,
+  sel,
+  onRowSel,
+  onSelectOnly,
   rowActions
 }: {
   node: TreeNode
@@ -581,6 +765,9 @@ function Node({
   onOpenFile: (id: string) => void
   onMenu: (target: TreeTarget, x: number, y: number) => void
   dnd: Dnd | null
+  sel?: Map<string, MoveKind>
+  onRowSel?: (rel: string, kind: MoveKind, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void
+  onSelectOnly?: (rel: string, kind: MoveKind) => void
   rowActions?: RowActions
 }): React.JSX.Element {
   const open = !collapsed.has(node.rel)
@@ -592,7 +779,7 @@ function Node({
       onDrop={dnd ? (e) => dnd.drop(e, node.rel) : undefined}
     >
       <div
-        className={`frow${open ? ' open' : ''}`}
+        className={`frow${open ? ' open' : ''}${sel?.has(node.rel) ? ' sel' : ''}`}
         draggable={!!dnd}
         onDragStart={dnd ? (e) => dnd.start(e, node.rel, 'dir') : undefined}
         onDragEnd={dnd ? () => dnd.end() : undefined}
@@ -608,7 +795,14 @@ function Node({
         </button>
         <button
           className="fmain"
-          onClick={() => {
+          onClick={(e) => {
+            // ⌘/⇧-click selects (with the range anchor), plain click selects + toggles + targets.
+            if (onRowSel && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+              e.preventDefault()
+              onRowSel(node.rel, 'dir', e)
+              return
+            }
+            onSelectOnly?.(node.rel, 'dir')
             onToggle(node.rel)
             onPickDir(node.rel)
           }}
@@ -626,6 +820,12 @@ function Node({
       </div>
       {open && (
         <div className="fkids">
+          {node.children.length === 0 && node.files.length === 0 && (
+            <div className="frow fempty">
+              <span className="caret" aria-hidden />
+              <span className="fname fempty-text">empty — drop notes here</span>
+            </div>
+          )}
           {node.children.map((c) => (
             <Node
               key={c.rel}
@@ -638,6 +838,9 @@ function Node({
               onOpenFile={onOpenFile}
               onMenu={onMenu}
               dnd={dnd}
+              sel={sel}
+              onRowSel={onRowSel}
+              onSelectOnly={onSelectOnly}
               rowActions={rowActions}
             />
           ))}
@@ -653,6 +856,9 @@ function Node({
                 onOpen={() => onOpenFile(f.id)}
                 onMenu={(x, y) => onMenu({ kind: 'file', rel: f.path, id: f.id, name: t }, x, y)}
                 dnd={dnd}
+                sel={sel}
+                onRowSel={onRowSel}
+                onSelectOnly={onSelectOnly}
                 actions={rowActions}
               />
             )
@@ -671,6 +877,9 @@ export function FileRow({
   onOpen,
   onMenu,
   dnd,
+  sel,
+  onRowSel,
+  onSelectOnly,
   actions
 }: {
   entry: NoteEntry
@@ -682,6 +891,11 @@ export function FileRow({
   onMenu: (x: number, y: number) => void
   /** Tree rows only: drag to move; hovering a note targets its folder. */
   dnd?: Dnd | null
+  /** Multi-select: is this row selected. */
+  sel?: Map<string, MoveKind>
+  /** ⌘/ctrl-click toggles, ⇧-click ranges, plain-click selects-only (see FolderTree). */
+  onRowSel?: (rel: string, kind: MoveKind, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => void
+  onSelectOnly?: (rel: string, kind: MoveKind) => void
   /** Hover buttons + keys (rename / delete / ⋯). */
   actions?: RowActions
 }): React.JSX.Element {
@@ -715,7 +929,7 @@ export function FileRow({
       data-note-id={entry.id}
     >
       <button
-        className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}`}
+        className={`filerow${selected ? ' on' : ''}${bare ? ' bare' : ''}${sel?.has(entry.path) ? ' sel' : ''}`}
         onClick={(e) => {
           // ⌥-click deletes (⌥⇧ skips the confirm), as before.
           if (e.altKey && actions) {
@@ -723,6 +937,13 @@ export function FileRow({
             actions.remove(entry, rowRect(), e.shiftKey)
             return
           }
+          // ⌘/ctrl-click toggles the selection, ⇧-click ranges from the anchor — neither opens.
+          if (onRowSel && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+            e.preventDefault()
+            onRowSel(entry.path, 'file', e)
+            return
+          }
+          onSelectOnly?.(entry.path, 'file')
           onOpen()
         }}
         onKeyDown={(e) => {
@@ -733,6 +954,13 @@ export function FileRow({
           e.stopPropagation()
           if (act === 'rename') actions.startRename(entry)
           else actions.remove(entry, rowRect(), e.shiftKey)
+        }}
+        onDoubleClick={(e) => {
+          // The quick path to rename: the first click opens, the double starts the inline field.
+          if (!actions) return
+          e.preventDefault()
+          e.stopPropagation()
+          actions.startRename(entry)
         }}
         draggable={!!dnd}
         onDragStart={dnd ? (e) => dnd.start(e, entry.path, 'file') : undefined}
@@ -760,7 +988,7 @@ export function FileRow({
           <button
             className="row-act"
             tabIndex={-1}
-            title="Rename (F2)"
+            title="Rename (double-click / F2)"
             aria-label={`Rename ${title}`}
             onClick={(e) => {
               e.stopPropagation()

@@ -5,6 +5,7 @@ import { MINI_WINDOW_REVEAL_ZONE, isPopKey, miniHash, noteIdFromMiniHash } from 
 import { applyPrefs, loadPrefs } from '../theme'
 import { baseName } from '../text'
 import { dailyTitleForPath } from '../../../shared/daily'
+import { UndoToast } from './DeletePopover'
 import NoteEditor from './NoteEditor'
 import { MINI_HINT_KEY, MINI_HINT_MS, miniHintText, shouldShowMiniHint } from '../../../shared/mini-window-tear'
 
@@ -210,6 +211,60 @@ export default function MiniNote(): React.JSX.Element {
     await window.api.mini.close()
   }
 
+  // Delete from the mini: two-step confirm in the header (no room for the
+  // main window's popover), then an undo toast — the note is in the app trash
+  // and the main window drops its tab via the vault-changed broadcast.
+  const [delAsk, setDelAsk] = useState(false)
+  const [delToast, setDelToast] = useState<{ id: string; name: string } | null>(null)
+  const [delErr, setDelErr] = useState<string | null>(null)
+  const delArm = useRef<number | undefined>(undefined)
+  useEffect(
+    () => () => {
+      window.clearTimeout(delArm.current)
+    },
+    []
+  )
+  useEffect(() => {
+    if (delErr === null) return
+    const t = window.setTimeout(() => setDelErr(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [delErr])
+  const armDelete = (): void => {
+    if (delAsk) {
+      window.clearTimeout(delArm.current)
+      void doDelete()
+      return
+    }
+    setDelAsk(true)
+    window.clearTimeout(delArm.current)
+    delArm.current = window.setTimeout(() => setDelAsk(false), 2500)
+  }
+  const doDelete = async (): Promise<void> => {
+    const d = docRef.current
+    if (!d) return
+    window.clearTimeout(delArm.current)
+    setDelAsk(false)
+    try {
+      await autosave.flushAll()
+      const entry = await window.api.files.trash(d.path)
+      setMissing(true)
+      setDelToast({ id: entry.id, name: entry.name })
+    } catch (err) {
+      setDelErr(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  const undoDelete = async (): Promise<void> => {
+    const t = delToast
+    if (!t) return
+    setDelToast(null)
+    try {
+      await window.api.files.restoreTrash([t.id])
+      await load()
+    } catch (err) {
+      setDelErr(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   const reveal = (show: boolean): void => {
     window.clearTimeout(hideTimer.current)
     if (show) setRevealed(true)
@@ -237,6 +292,16 @@ export default function MiniNote(): React.JSX.Element {
               onClick={() => void window.api.mini.tuck()}
             >
               {ARROWS[state.arrow] ?? '▸'}
+            </button>
+          )}
+          {!missing && (
+            <button
+              className={`mini-btn${delAsk ? ' danger' : ''}`}
+              title={delAsk ? 'Click again to delete' : 'Delete note'}
+              aria-label={delAsk ? 'Confirm delete' : 'Delete note'}
+              onClick={armDelete}
+            >
+              🗑
             </button>
           )}
           <button
@@ -283,6 +348,21 @@ export default function MiniNote(): React.JSX.Element {
           />
         )}
       </div>
+      {delToast && (
+        <UndoToast
+          message={`Deleted “${delToast.name}”`}
+          onUndo={() => void undoDelete()}
+          onClose={() => setDelToast(null)}
+        />
+      )}
+      {delErr && (
+        <div className="toast glass" role="alert">
+          <span>{delErr}</span>
+          <button className="mini-btn" aria-label="Dismiss" onClick={() => setDelErr(null)}>
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }

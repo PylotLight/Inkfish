@@ -18,6 +18,8 @@ export function useVaultData(): {
   allNotes: NoteEntry[]
   allNotesRef: React.MutableRefObject<NoteEntry[]>
   inbox: InboxItem[]
+  /** Every folder on disk (vault-relative), empty included — the tree shows them so fresh folders are reachable. */
+  dirs: string[]
   vaultInfo: VaultInfo | null
   backend: string
   setBackend: Dispatch<SetStateAction<string>>
@@ -31,6 +33,7 @@ export function useVaultData(): {
   refreshInbox: () => void
   refreshProjects: () => void
   refreshNotes: () => void
+  refreshDirs: () => void
   refreshAll: () => void
   showOnboarding: boolean
   setShowOnboarding: Dispatch<SetStateAction<boolean>>
@@ -42,6 +45,7 @@ export function useVaultData(): {
   const [projects, setProjects] = useState<Project[]>([])
   const [allNotes, setAllNotes] = useState<NoteEntry[]>([])
   const [inbox, setInbox] = useState<InboxItem[]>([])
+  const [dirs, setDirs] = useState<string[]>([])
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [ostep, setOstep] = useState(0)
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null)
@@ -89,13 +93,19 @@ export function useVaultData(): {
     window.api.notes.list(null).then(setAllNotes).catch(console.error)
   }, [])
 
+  // Folders are not indexed (only notes are), so pull the dir list separately.
+  const refreshDirs = useCallback(() => {
+    window.api.files.dirs().then(setDirs).catch(console.error)
+  }, [])
+
   const refreshAll = useCallback(() => {
     refreshInbox()
     refreshNotes()
     refreshProjects()
+    refreshDirs()
     window.api.notes.titles().then(setTitles).catch(console.error)
     refreshTitleNamed()
-  }, [refreshInbox, refreshNotes, refreshProjects, refreshTitleNamed])
+  }, [refreshInbox, refreshNotes, refreshProjects, refreshDirs, refreshTitleNamed])
 
   // Release vs dev profile ("Inkfish Dev"): brand pill, window title, shortcut hints.
   const [profile, setProfile] = useState<AppProfileInfo | null>(null)
@@ -139,6 +149,7 @@ export function useVaultData(): {
         refreshInbox()
         refreshProjects()
         refreshNotes()
+        refreshDirs()
         window.api.notes.titles().then(setTitles).catch(console.error)
         refreshTitleNamed()
         // 7-day trash sweep on launch (hook point for the future scheduler).
@@ -156,7 +167,7 @@ export function useVaultData(): {
         }
       })
       .catch(console.error)
-  }, [refreshInbox, refreshNotes, refreshProjects, notify, refreshTitleNamed])
+  }, [refreshInbox, refreshNotes, refreshProjects, refreshDirs, notify, refreshTitleNamed])
 
   const onVaultReady = useCallback(
     (v: VaultInfo) => {
@@ -178,6 +189,7 @@ export function useVaultData(): {
     allNotes,
     allNotesRef,
     inbox,
+    dirs,
     vaultInfo,
     backend,
     setBackend,
@@ -191,6 +203,7 @@ export function useVaultData(): {
     refreshInbox,
     refreshProjects,
     refreshNotes,
+    refreshDirs,
     refreshAll,
     showOnboarding,
     setShowOnboarding,

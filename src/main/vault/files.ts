@@ -29,6 +29,38 @@ export function createNoteFile(dirRel: string, paths: VaultPaths = vaultPaths())
   return relative(paths.root, abs)
 }
 
+/**
+ * Every directory under the vault (vault-relative), empty ones included. The
+ * tree is derived from indexed notes, so without this a freshly created
+ * folder is invisible — and invisible folders can't be dropped into, leaving
+ * a "broken" dir you can never reach. Dot dirs and the reserved top-level
+ * support dirs (inbox/daily/assets) stay out of the tree.
+ */
+const LIST_DIRS_CAP = 5000
+
+export function listDirs(root: string, cap = LIST_DIRS_CAP): string[] {
+  const out: string[] = []
+  const walk = (dir: string, rel: string): void => {
+    if (out.length >= cap) return
+    let entries: Dirent<string>[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (out.length >= cap) return
+      if (!e.isDirectory() || e.name.startsWith('.')) continue
+      const relHere = rel ? `${rel}/${e.name}` : e.name
+      if (!rel && RESERVED_DIRS.has(e.name)) continue
+      out.push(relHere)
+      walk(join(dir, e.name), relHere)
+    }
+  }
+  walk(root, '')
+  return out.sort()
+}
+
 /** New subfolder. Returns vaultRel. Never forks a case-variant sibling
  * (`Personal` when `personal` exists) — it reuses the existing dir. */
 export function createDir(parentRel: string, name: string, paths: VaultPaths = vaultPaths()): string {

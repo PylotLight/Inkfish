@@ -1,7 +1,15 @@
 import { useCallback, useMemo } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { NoteDoc, NoteEntry } from '../../../shared/types'
-import { baseOf, dirOf, remapPath, type MoveKind } from '../../../shared/note-move'
+import {
+  baseOf,
+  canDropInto,
+  dirOf,
+  isWithin,
+  remapPath,
+  type MoveItem,
+  type MoveKind
+} from '../../../shared/note-move'
 import { deleteNeedsConfirm, previewLines, renameCommit } from '../../../shared/note-delete'
 import type { Autosave } from '../../../shared/autosave'
 import type { TitleSyncScheduler } from '../../../shared/title-sync'
@@ -33,6 +41,8 @@ export interface FileActionsInput {
   refreshNotes: () => void
   refreshInbox: () => void
   refreshProjects: () => void
+  /** Re-pull the on-disk folder list (mkdir / folder move / folder rename / folder trash change it). */
+  refreshDirs: () => void
   refreshTitleNamed: () => void
   titleNamedRef: MutableRefObject<Set<string>>
   setTitles: Dispatch<SetStateAction<Record<string, string>>>
@@ -57,7 +67,7 @@ export interface FileActionsInput {
       onConfirm: () => void
     } | null
   ) => void
-  setMovePick: (m: { rel: string; kind: MoveKind; name: string; x: number; y: number } | null) => void
+  setMovePick: (m: { items: MoveItem[]; name: string; x: number; y: number } | null) => void
   treeRename: string | null
   setTreeRename: Dispatch<SetStateAction<string | null>>
   setDelAsk: (d: { entry: NoteEntry; title: string; lines: string[]; anchor: Anchor } | null) => void
@@ -102,6 +112,7 @@ export function useFileActions(input: FileActionsInput) {
     refreshNotes,
     refreshInbox,
     refreshProjects,
+    refreshDirs,
     refreshTitleNamed,
     titleNamedRef,
     setTitles,
@@ -169,11 +180,12 @@ export function useFileActions(input: FileActionsInput) {
             setRevealDir(rel)
             notify(`Folder ${name} ✓`)
             refreshNotes()
+            refreshDirs()
           })
           .catch((err: unknown) => notify(`Failed: ${err instanceof Error ? err.message : String(err)}`))
       }
     })
-  }, [targetDir, notify, refreshNotes, setPrompt, setRevealDir])
+  }, [targetDir, notify, refreshNotes, refreshDirs, setPrompt, setRevealDir])
 
   /**
    * A file/folder moved `rel` → `newRel` on disk (rename, drag & drop, Move to…): ids are paths by
@@ -345,6 +357,7 @@ export function useFileActions(input: FileActionsInput) {
         setRevealDir(kind === 'dir' ? res.rel : destDir || null)
         refreshInbox()
         refreshProjects()
+        if (kind === 'dir') refreshDirs()
       } catch (err) {
         notify(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
       }
@@ -355,6 +368,7 @@ export function useFileActions(input: FileActionsInput) {
       followPathChange,
       refreshInbox,
       refreshProjects,
+      refreshDirs,
       selRef,
       docRef,
       allNotesRef,
@@ -364,10 +378,77 @@ export function useFileActions(input: FileActionsInput) {
     ]
   )
 
-  /** Open the "Move to…" picker for a tree target / the open note (centred under the top bar by default). */
+  /**
+   * Move a multi-selection (tree drag / right-click on a selected row) into `destDir` ('' = root).
+   * Items move one by one; each completed move re-bases the others, so a file nested in a moved
+   * folder simply rides along (skipped) instead of being moved twice. One refresh round at the end.
+   */
+  const doMoveMany = useCallback(
+    async (items: MoveItem[], destDir: string) => {
+      // Pending text first, so a move never strands an edit at the old path.
+      await autosave.flushAll()
+      const openPath =
+        selRef.current?.origin === 'note'
+          ? (docRef.current?.path ?? allNotesRef.current.find((n) => n.id === selRef.current?.id)?.path ?? null)
+          : null
+      // Parents before children (shallower path first) so the nested re-basing is well-defined.
+      const ordered = [...items].sort(
+        (a, b) => a.rel.split('/').length - b.rel.split('/').length || a.rel.localeCompare(b.rel)
+      )
+      interface Done {
+        from: string
+        to: string
+        kind: MoveKind
+      }
+      const done: Done[] = []
+      const currentOf = (rel: string): string => done.reduce((p, m) => remapPath(p, m.from, m.to) ?? p, rel)
+      let failed = 0
+      for (const it of ordered) {
+        const rel = currentOf(it.rel)
+        // Already inside a folder that just moved here: it rode along.
+        if (done.some((m) => m.kind === 'dir' && isWithin(rel, m.to))) continue
+        if (!canDropInto(rel, it.kind, destDir)) continue
+        try {
+          const res = await window.api.files.moveTo(rel, destDir)
+          if (res.rel === rel) continue
+          done.push({ from: rel, to: res.rel, kind: it.kind })
+        } catch (err) {
+          failed++
+          notify(`Couldn't move ${baseOf(rel)}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      if (done.length === 0) return
+      const all = await window.api.notes.list(null)
+      setAllNotes(all)
+      window.api.notes.titles().then(setTitles).catch(console.error)
+      for (const c of done) followPathChange(c.from, c.to, all, openPath)
+      const lastDir = [...done].reverse().find((c) => c.kind === 'dir')
+      setRevealDir(lastDir ? lastDir.to : destDir || null)
+      refreshInbox()
+      refreshProjects()
+      if (done.some((c) => c.kind === 'dir')) refreshDirs()
+      notify(`Moved ${done.length}${failed ? ` (${failed} failed)` : ''} → ${destDir || 'vault root'}`)
+    },
+    [
+      autosave,
+      notify,
+      followPathChange,
+      refreshInbox,
+      refreshProjects,
+      refreshDirs,
+      selRef,
+      docRef,
+      allNotesRef,
+      setAllNotes,
+      setTitles,
+      setRevealDir
+    ]
+  )
+
+  /** Open the "Move to…" picker for one or more items (header breadcrumb, ⌘K, right-click). */
   const openMovePicker = useCallback(
-    (rel: string, kind: MoveKind, name: string, x?: number, y?: number) => {
-      setMovePick({ rel, kind, name, x: x ?? Math.round(window.innerWidth / 2 - 160), y: y ?? 96 })
+    (items: MoveItem[], name: string, x?: number, y?: number) => {
+      setMovePick({ items, name, x: x ?? Math.round(window.innerWidth / 2 - 160), y: y ?? 96 })
     },
     [setMovePick]
   )
@@ -433,10 +514,11 @@ export function useFileActions(input: FileActionsInput) {
             .catch(console.error)
           refreshInbox()
           refreshProjects()
+          refreshDirs()
         })
         .catch((err: unknown) => notify(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
     },
-    [notify, refreshInbox, refreshProjects, followPathChange, cancelTitleSyncUnder, setAllNotes, setTitles]
+    [notify, refreshInbox, refreshProjects, refreshDirs, followPathChange, cancelTitleSyncUnder, setAllNotes, setTitles]
   )
 
   const doRename = useCallback(
@@ -511,6 +593,7 @@ export function useFileActions(input: FileActionsInput) {
         }
         refreshInbox()
         refreshProjects()
+        refreshDirs()
         window.api.notes.titles().then(setTitles).catch(console.error)
         return { id: entry.id, wasOpen }
       } catch (err) {
@@ -519,7 +602,7 @@ export function useFileActions(input: FileActionsInput) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [autosave, notify, refreshInbox, refreshProjects, openEntry, cancelTitleSyncUnder]
+    [autosave, notify, refreshInbox, refreshProjects, refreshDirs, openEntry, cancelTitleSyncUnder]
   )
 
   /** Trash + Undo toast (every delete path ends here). */
@@ -542,6 +625,7 @@ export function useFileActions(input: FileActionsInput) {
         window.api.notes.titles().then(setTitles).catch(console.error)
         refreshInbox()
         refreshProjects()
+        refreshDirs()
         const back = restored ?? u.rel
         notify(`Restored ${back.split('/').pop()?.replace(/\.md$/, '')}`)
         if (u.wasOpen) {
@@ -552,7 +636,7 @@ export function useFileActions(input: FileActionsInput) {
         notify(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [notify, refreshInbox, refreshProjects, selectNote, setAllNotes, setTitles]
+    [notify, refreshInbox, refreshProjects, refreshDirs, selectNote, setAllNotes, setTitles]
   )
 
   const closeUndo = useCallback(() => setUndoDel(null), [setUndoDel])
@@ -656,6 +740,7 @@ export function useFileActions(input: FileActionsInput) {
     followPathChange,
     renameNoteFile,
     doMove,
+    doMoveMany,
     openMovePicker,
     setNoteTags,
     openNotePath,

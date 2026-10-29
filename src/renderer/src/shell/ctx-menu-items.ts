@@ -1,6 +1,6 @@
 import { sendAiCommand } from '../nativeAi'
 import type { NoteDoc, NoteEntry } from '../../../shared/types'
-import type { MoveKind } from '../../../shared/note-move'
+import type { MoveItem } from '../../../shared/note-move'
 import type { Anchor } from '../views/DeletePopover'
 import type { MenuItem } from '../views/Dialogs'
 import type { TreeTarget } from '../views/FolderTree'
@@ -25,7 +25,9 @@ export interface CtxMenuContext {
   closeOthers: (id: string) => void
   closeUnpinned: () => void
   popOut: (id: string | null, opts?: { tear?: boolean }) => void
-  openMovePicker: (rel: string, kind: MoveKind, name: string, x?: number, y?: number) => void
+  openMovePicker: (items: MoveItem[], name: string, x?: number, y?: number) => void
+  /** The current tree row selection — a menu on a selected row acts on all of it. */
+  treeSel: MoveItem[]
   setPrompt: (
     prompt: {
       title: string
@@ -61,9 +63,13 @@ export function buildMenuItems(
     closeUnpinned,
     popOut,
     openMovePicker,
+    treeSel,
     setPrompt,
     setRevealDir
   } = ctx
+  /** A right-click on a row that is part of a multi-selection moves the whole selection. */
+  const selItems = (rel: string): MoveItem[] | null =>
+    treeSel.length > 1 && treeSel.some((i) => i.rel === rel) ? treeSel : null
   return (target: TreeTarget | { kind: 'open-note' } | { kind: 'tab'; id: string }): MenuItem[] => {
     if (target.kind === 'tab') {
       const tab = tabsRef.current.find((t) => t.id === target.id)
@@ -85,13 +91,14 @@ export function buildMenuItems(
         { label: 'Raw / Processed view  ⇧⌥P', action: () => sendAiCommand('toggle-view') },
         { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
-        { label: 'Move to…', action: () => openMovePicker(rel, 'file', name, menu?.x, menu?.y) },
+        { label: 'Move to…', action: () => openMovePicker([{ rel, kind: 'file' }], name, menu?.x, menu?.y) },
         { label: 'Rename…', action: () => startNoteRename(doc) },
         { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
       ]
     }
     if (target.kind === 'dir') {
       const name = target.name
+      const many = selItems(target.rel)
       return [
         { label: 'New file here', action: () => doCreateFile(target.rel) },
         {
@@ -114,19 +121,26 @@ export function buildMenuItems(
             })
         },
         { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
-        { label: 'Move to…', action: () => openMovePicker(target.rel, 'dir', name, menu?.x, menu?.y) },
+        {
+          label: many ? `Move (${many.length}) to…` : 'Move to…',
+          action: () => openMovePicker(many ?? [{ rel: target.rel, kind: 'dir' }], name, menu?.x, menu?.y)
+        },
         { label: 'Rename…', action: () => doRename(target.rel, true) },
         { label: `Delete “${name}”…`, danger: true, action: () => doTrash(target.rel, name) }
       ]
     }
     const name = target.name
+    const many = selItems(target.rel)
     const entry =
       allNotesRef.current.find((n) => n.id === target.id) ?? allNotesRef.current.find((n) => n.path === target.rel)
     return [
       { label: 'Rename  F2', action: () => (entry ? startNoteRename(entry) : doRename(target.rel, false)) },
       { label: 'Reveal in Finder', action: () => void window.api.files.reveal(target.rel) },
       ...(entry ? [{ label: 'Open in Mini Window', action: () => popOut(entry.id) }] : []),
-      { label: 'Move to…', action: () => openMovePicker(target.rel, 'file', name, menu?.x, menu?.y) },
+      {
+        label: many ? `Move (${many.length}) to…` : 'Move to…',
+        action: () => openMovePicker(many ?? [{ rel: target.rel, kind: 'file' }], name, menu?.x, menu?.y)
+      },
       {
         label: `Delete “${name.slice(0, 32)}”  ⌘⌫`,
         danger: true,

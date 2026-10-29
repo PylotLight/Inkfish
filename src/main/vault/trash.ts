@@ -34,8 +34,15 @@ function writeManifest(dir: string, entries: TrashEntry[]): void {
 export function trashPath(rel: string, paths: VaultPaths = vaultPaths(), scope: TrashScope = 'vault'): TrashEntry {
   const dir = trashDir()
   if (!dir) throw new Error('app data dir unavailable')
-  const abs = join(paths.root, rel)
-  assertInside(paths.root, abs, rel)
+  // A vault-scope rel may still name a staging file (`inbox/…`, `daily/…`); those live in app
+  // data, not the notes home. Explicit non-vault scopes arrive with `paths.root` already set to
+  // the staging dir (sync's remove), so only the default is resolved here.
+  const effective: TrashScope =
+    scope === 'vault' ? (rel.startsWith('inbox/') ? 'inbox' : rel.startsWith('daily/') ? 'daily' : 'vault') : scope
+  const root = effective === 'inbox' ? paths.inboxDir : effective === 'daily' ? paths.dailyDir : paths.root
+  const relToRoot = effective === 'vault' ? rel : rel.replace(/^(inbox|daily)\//, '')
+  const abs = join(root, relToRoot)
+  assertInside(root, abs, rel)
   const st = statSync(abs)
   mkdirSync(dir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -49,11 +56,11 @@ export function trashPath(rel: string, paths: VaultPaths = vaultPaths(), scope: 
   }
   const entry: TrashEntry = {
     id: basename(dest),
-    originalRel: rel,
+    originalRel: relToRoot,
     name: basename(abs),
     isDir: st.isDirectory(),
     deletedAt: Date.now(),
-    scope
+    scope: effective
   }
   writeManifest(dir, [...trashManifest(dir), entry])
   return entry

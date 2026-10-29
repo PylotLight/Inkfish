@@ -30,7 +30,7 @@ export type TabDragPhase = 'press' | 'drag' | 'tear'
 /**
  * Where a tab drag stands. `start`/`current` are client coords, `bar` is the tab strip's client
  * rect and `viewport` the window's inner size. Out of the window, or TAB_TEAR_DISTANCE clear of
- * the strip vertically, is a tear; sideways along the strip is just a drag (no reordering yet).
+ * the strip vertically, is a tear; sideways along the strip is a drag (reordering).
  */
 export function tabDragPhase(
   start: TearPoint,

@@ -8,6 +8,7 @@ import InboxQueue from '../views/InboxQueue'
 import SyncBadge from '../views/SyncBadge'
 import { Icon } from '../views/icons'
 import { vaultLabel, vaultTooltip } from '../../../shared/sidebar'
+import type { MoveItem } from '../../../shared/note-move'
 import { KINDS, type MenuState, type Scope, type Selection } from './types'
 
 interface Props {
@@ -41,6 +42,7 @@ interface Props {
   notify: (msg: string) => void
   captureKey: string
   finalNotes: NoteEntry[]
+  dirs: string[]
   kind: KindFilter
   setKind: (k: KindFilter) => void
   titleOf: (n: NoteEntry) => string
@@ -53,6 +55,8 @@ interface Props {
   doCreateFolder: () => void
   targetDir: string
   doMove: (rel: string, kind: 'file' | 'dir', dest: string) => void
+  doMoveMany: (items: MoveItem[], dest: string) => void
+  onTreeSelChange: (items: MoveItem[]) => void
   rowActions: RowActions
   kindsPresent: number
   kindCounts: Map<NoteKind, number>
@@ -92,6 +96,7 @@ export default function Sidebar({
   notify,
   captureKey,
   finalNotes,
+  dirs,
   kind,
   setKind,
   titleOf,
@@ -104,6 +109,8 @@ export default function Sidebar({
   doCreateFolder,
   targetDir,
   doMove,
+  doMoveMany,
+  onTreeSelChange,
   rowActions,
   kindsPresent,
   kindCounts,
@@ -320,6 +327,7 @@ export default function Sidebar({
             <FolderTree
               captureKey={captureKey}
               notes={finalNotes}
+              dirs={dirs}
               kind={kind}
               titleOf={titleOf}
               selectedId={sel?.origin === 'note' ? sel.id : null}
@@ -333,6 +341,8 @@ export default function Sidebar({
               onNewFolder={doCreateFolder}
               targetDir={targetDir}
               onMove={(rel, k, dest) => void doMove(rel, k, dest)}
+              onMoveMany={(items, dest) => void doMoveMany(items, dest)}
+              onSelectionChange={onTreeSelChange}
               rowActions={rowActions}
               filters={
                 // Only worth a row when there is something to filter between (or a filter is on).

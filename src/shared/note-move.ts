@@ -8,6 +8,12 @@ import { fuzzyScore } from './command-palette'
 
 export type MoveKind = 'file' | 'dir'
 
+/** One thing being moved: a vault-relative path plus whether it is a file or a dir. */
+export interface MoveItem {
+  rel: string
+  kind: MoveKind
+}
+
 /** Parent dir of a vault rel (`''` for root-level entries). */
 export function dirOf(rel: string): string {
   const i = rel.lastIndexOf('/')

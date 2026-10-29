@@ -21,8 +21,8 @@ export default function FolderPicker({
   /** What's moving, for the header (`Move “Groceries” to…`). */
   title: string
   folders: readonly string[]
-  /** Folder it's in now ('' = root) — shown, not pickable. */
-  current: string
+  /** Folder it's in now ('' = root) — shown, not pickable. Omit for multiple items (no single current). */
+  current?: string
   /** Anchor (viewport px) — the popover clamps itself on screen. */
   x: number
   y: number

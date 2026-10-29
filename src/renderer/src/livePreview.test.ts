@@ -1,8 +1,60 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
-import { buildDecorations, ImageWidget } from './livePreview'
+import { buildDecorations, ImageWidget, listEnterUpdate } from './livePreview'
 
 const opts = { onToggleTask: () => {}, resolveImage: (src: string) => [`asset://vault/${src}`] }
+
+/** Dispatch Enter at `cursor`; returns the new doc (null = key not handled) and caret. */
+function pressEnter(doc: string, cursor: number): { doc: string | null; head: number } {
+  const s = EditorState.create({ doc, selection: EditorSelection.cursor(cursor) })
+  const u = listEnterUpdate(s)
+  if (!u) return { doc: null, head: -1 }
+  const s2 = s.update(u).state
+  return { doc: s2.doc.toString(), head: s2.selection.main.head }
+}
+
+describe('list keys: Enter continues lists (incl. nested)', () => {
+  test('top-level bullet gets a sibling', () => {
+    expect(pressEnter('- apple', '- apple'.length)).toEqual({ doc: '- apple\n- ', head: 10 })
+  })
+
+  test('nested bullet keeps its indent (2 and 4 spaces)', () => {
+    expect(pressEnter('  - apple', '  - apple'.length).doc).toBe('  - apple\n  - ')
+    expect(pressEnter('    - apple', '    - apple'.length).doc).toBe('    - apple\n    - ')
+  })
+
+  test('nested item under a parent keeps the nesting depth', () => {
+    const doc = '- parent\n  - child'
+    expect(pressEnter(doc, doc.length)).toEqual({ doc: '- parent\n  - child\n  - ', head: doc.length + 5 })
+  })
+
+  test('`*` and `+` markers continue with themselves', () => {
+    expect(pressEnter('* star', 6).doc).toBe('* star\n* ')
+    expect(pressEnter('  + plus', 8).doc).toBe('  + plus\n  + ')
+  })
+
+  test('nested task re-opens unchecked', () => {
+    const doc = '  - [x] done'
+    expect(pressEnter(doc, doc.length).doc).toBe('  - [x] done\n  - [ ] ')
+  })
+
+  test('numbered items increment', () => {
+    expect(pressEnter('  3. apple', '  3. apple'.length).doc).toBe('  3. apple\n  4. ')
+  })
+
+  test('Enter on an empty nested item clears it (exits the list)', () => {
+    const doc = '- parent\n  - '
+    const r = pressEnter(doc, doc.length)
+    expect(r.doc).toBe('- parent\n')
+    expect(r.head).toBe(9)
+  })
+
+  test('plain text lines are left to the default keymap', () => {
+    expect(pressEnter('hello', 5).doc).toBeNull()
+    // Caret mid-line: not ours.
+    expect(pressEnter('- apple', 3).doc).toBeNull()
+  })
+})
 
 /** Visible text after hiding every replace decoration that has no widget. */
 function decorated(doc: string, cursor = doc.length) {
