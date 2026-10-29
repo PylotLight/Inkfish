@@ -241,8 +241,7 @@ export async function findMacHello(
       checked++
       if (r?.id !== peer.id) {
         if (r) probe.outcome = 'other-device'
-        if (r || probe.outcome === 'http-error' || probe.outcome === 'invalid-response')
-          onProgress?.({ type: 'probe', probe })
+        onProgress?.({ type: 'probe', probe })
       } else {
         probe.outcome = 'found'
         onProgress?.({ type: 'probe', probe })

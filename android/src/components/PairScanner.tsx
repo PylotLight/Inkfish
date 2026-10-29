@@ -1,15 +1,24 @@
-import React, { useRef, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions
+} from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { X } from 'lucide-react-native'
 import { useTheme } from '../theme'
 import { Icon } from './Icon'
-import type { DiscoveryUpdate } from '../lib/sync'
+import { decodePairUri, type DiscoveryUpdate } from '../lib/sync'
 
 /**
  * Full-screen QR scanner for pairing with the Mac (Mac › Settings › Sync ›
  * Show pairing code). Calls `onCode` once per scan; stays open on failure so
- * the user can try again.
+ * the user can try again. Pairing diagnostics stay visible in the scanner.
  */
 export function PairScanner({
   visible,
@@ -25,6 +34,7 @@ export function PairScanner({
   ) => Promise<void>
 }): React.JSX.Element {
   const { ui } = useTheme()
+  const { height: windowHeight } = useWindowDimensions()
   const [perm, requestPerm] = useCameraPermissions()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -32,44 +42,67 @@ export function PairScanner({
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraKey, setCameraKey] = useState(0)
+  const [qrSummary, setQrSummary] = useState<string | null>(null)
   const [scanDetails, setScanDetails] = useState<string[]>([])
-  const [showScanDetails, setShowScanDetails] = useState(false)
   const lock = useRef(false)
+  const logRef = useRef<React.ComponentRef<typeof ScrollView>>(null)
+
+  useEffect(() => {
+    if (!visible) return
+    lock.current = false
+    setBusy(false)
+    setMsg(null)
+    setStage(null)
+    setQrSummary(null)
+    setScanDetails([])
+    setCameraReady(false)
+    setCameraError(null)
+  }, [visible])
 
   const handle = (data: string): void => {
     if (lock.current) return
     lock.current = true
     setBusy(true)
     setMsg(null)
-    setScanDetails(['QR code read; checking its addresses on the local network.'])
-    setShowScanDetails(false)
-    setStage('QR read. Checking pairing code…')
+
+    // Show useful QR metadata, but never show the pairing key or raw QR string.
+    const payload = decodePairUri(data)
+    if (payload) {
+      const name = typeof payload.name === 'string' ? payload.name.replace(/\s+/g, ' ').trim() : ''
+      const hosts = Array.isArray(payload.hosts) ? payload.hosts.map((host) => String(host)) : []
+      const endpoints = hosts.length ? hosts.map((host) => `${host}:${payload.port}`).join(', ') : 'none'
+      const expires = Number.isFinite(payload.exp) ? new Date(payload.exp).toLocaleTimeString() : 'unknown'
+      setQrSummary(`Decoded ${name || 'Mac pairing code'} · port ${payload.port} · expires ${expires}`)
+      setScanDetails([`QR decoded: ${name || 'Mac pairing code'}`, `QR addresses: ${endpoints}`])
+      setStage(`QR decoded. Checking ${hosts.length} address${hosts.length === 1 ? '' : 'es'}…`)
+    } else {
+      setQrSummary('QR detected, but it is not a valid Inkfish pairing code.')
+      setScanDetails(['QR detected, but it does not match the Inkfish pairing format.'])
+      setStage('QR decoded. Validating pairing code…')
+    }
+
     onCode(data, setStage, (update) => {
-      const message =
-        update.type === 'phase'
-          ? update.phase === 'qr-addresses'
+      let message: string
+      if (update.type === 'phase') {
+        message =
+          update.phase === 'qr-addresses'
             ? `Checking ${update.total} address${update.total === 1 ? '' : 'es'} from the QR code.`
             : `QR addresses did not find this Mac; scanning ${update.total} addresses across ${update.subnets.join(', ')}.`
-          : update.type === 'sweep-progress'
-            ? `Fallback scan checked ${update.checked} of ${update.total} addresses.`
-            : update.probe.phase === 'qr-addresses'
-              ? `QR ${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms${update.probe.error ? ` · ${update.probe.error}` : ''}`
-              : update.probe.outcome === 'found' ||
-                  update.probe.outcome === 'other-device' ||
-                  update.probe.outcome === 'http-error' ||
-                  update.probe.outcome === 'invalid-response'
-                ? `Fallback ${update.probe.host}: ${update.probe.outcome}${update.probe.status ? ` (HTTP ${update.probe.status})` : ''} · ${update.probe.ms} ms${update.probe.error ? ` · ${update.probe.error}` : ''}`
-                : null
-      if (!message) return
-      if (update.type === 'phase') {
         setStage(
           update.phase === 'qr-addresses'
             ? `Checking ${update.total} QR address${update.total === 1 ? '' : 'es'}…`
             : `Scanning ${update.total} same-subnet addresses…`
         )
       } else if (update.type === 'sweep-progress') {
+        message = `Fallback scan checked ${update.checked} of ${update.total} addresses.`
         setStage(`Local scan checked ${update.checked} of ${update.total} addresses…`)
+      } else {
+        const prefix = update.probe.phase === 'qr-addresses' ? 'QR' : 'Fallback'
+        const status = update.probe.status ? ` (HTTP ${update.probe.status})` : ''
+        const error = update.probe.error ? ` · ${update.probe.error.replace(/\s+/g, ' ')}` : ''
+        message = `${prefix} ${update.probe.host}: ${update.probe.outcome}${status} · ${update.probe.ms} ms${error}`
       }
+
       setScanDetails((current) => {
         const lines =
           update.type === 'sweep-progress'
@@ -83,7 +116,6 @@ export function PairScanner({
         setStage(null)
         setMsg(error)
         setScanDetails((current) => [...current, `Pairing failed: ${error}`])
-        setShowScanDetails(true)
       })
       .finally(() => {
         setBusy(false)
@@ -91,6 +123,25 @@ export function PairScanner({
         setTimeout(() => (lock.current = false), 1200)
       })
   }
+
+  const status = cameraError
+    ? 'Camera problem'
+    : msg
+      ? 'Pairing failed'
+      : busy
+        ? 'Pairing in progress'
+        : qrSummary
+          ? 'QR code read'
+          : cameraReady
+            ? 'Ready to scan'
+            : 'Starting camera…'
+  const statusMessage = cameraError
+    ? `Camera couldn’t start: ${cameraError}`
+    : (msg ??
+      stage ??
+      (cameraReady ? 'Point at the QR code shown on your Mac in Settings › Sync.' : 'Starting camera…'))
+  const logHeight = Math.max(96, Math.min(170, windowHeight * 0.22))
+  const panelMaxHeight = Math.max(230, Math.min(390, windowHeight * 0.5))
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -143,91 +194,85 @@ export function PairScanner({
         )}
 
         {visible && perm?.granted && (
-          <View style={{ position: 'absolute', bottom: 56, left: 24, right: 24, alignItems: 'center' }}>
-            {busy ? (
-              <View style={{ alignItems: 'center', gap: 10 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center' }}>
-                  {stage ?? 'Pairing…'}
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 28,
+              left: 16,
+              right: 16,
+              maxHeight: panelMaxHeight,
+              alignItems: 'center'
+            }}
+          >
+            <View
+              accessibilityLabel="Pairing scanner status and diagnostics"
+              style={{
+                width: '100%',
+                maxHeight: panelMaxHeight,
+                borderRadius: 16,
+                padding: 14,
+                backgroundColor: 'rgba(0,0,0,0.86)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.2)'
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                {busy && <ActivityIndicator color="#fff" size="small" />}
+                <Text style={{ color: msg || cameraError ? '#ffb4a8' : '#fff', fontSize: 14, fontWeight: '700' }}>
+                  {status}
                 </Text>
               </View>
-            ) : cameraError ? (
-              <>
-                <Text style={{ color: '#ffb4a8', fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-                  Camera couldn’t start: {cameraError}
+              <Text
+                style={{
+                  color: msg || cameraError ? '#ffb4a8' : 'rgba(255,255,255,0.86)',
+                  fontSize: 13,
+                  lineHeight: 19
+                }}
+              >
+                {statusMessage}
+              </Text>
+              {qrSummary && (
+                <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17, marginTop: 6 }}>
+                  {qrSummary}
                 </Text>
+              )}
+
+              {cameraError && (
                 <Pressable
                   onPress={() => {
                     setCameraReady(false)
                     setCameraError(null)
                     setCameraKey((key) => key + 1)
                   }}
-                  style={[ui.quiet, { marginTop: 12 }]}
+                  style={[ui.quiet, { alignSelf: 'flex-start', marginTop: 10 }]}
                 >
                   <Text style={[ui.quietText, { color: '#fff' }]}>Retry camera</Text>
                 </Pressable>
-              </>
-            ) : (
-              <View style={{ alignItems: 'center', gap: 8 }}>
-                <Text
-                  style={{
-                    color: msg ? '#ffb4a8' : 'rgba(255,255,255,0.85)',
-                    fontSize: 14,
-                    textAlign: 'center',
-                    lineHeight: 20
-                  }}
+              )}
+
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 10, marginBottom: 5 }}>
+                {scanDetails.length ? `Scan log · ${scanDetails.length} entries` : 'Scan log · waiting for QR code'}
+              </Text>
+              {scanDetails.length ? (
+                <ScrollView
+                  ref={logRef}
+                  style={{ height: logHeight, flexGrow: 0 }}
+                  onContentSizeChange={() => logRef.current?.scrollToEnd({ animated: true })}
+                  accessibilityLabel="Pairing scan log"
                 >
-                  {msg ??
-                    (cameraReady
-                      ? 'Point your camera at the QR code on your Mac. Both devices need a network path that allows local connections.'
-                      : 'Starting camera…')}
-                </Text>
-                {msg && (
-                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, textAlign: 'center', lineHeight: 17 }}>
-                    A VPN, Android proxy, guest Wi-Fi isolation, or Mac firewall can block local pairing.
-                  </Text>
-                )}
-              </View>
-            )}
-            {scanDetails.length > 0 && (
-              <>
-                <Pressable
-                  onPress={() => setShowScanDetails((value) => !value)}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={showScanDetails ? 'Hide pairing scan details' : 'Show pairing scan details'}
-                  style={{ paddingVertical: 10, paddingHorizontal: 14 }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 13, textDecorationLine: 'underline' }}>
-                    {showScanDetails ? 'Hide scan details' : `Show scan details (${scanDetails.length})`}
-                  </Text>
-                </Pressable>
-                {showScanDetails && (
-                  <View
-                    accessibilityLabel="Pairing scan details"
-                    style={{
-                      width: '100%',
-                      maxHeight: 220,
-                      borderRadius: 12,
-                      padding: 12,
-                      backgroundColor: 'rgba(0,0,0,0.82)'
-                    }}
+                  <Text
+                    selectable
+                    style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11, textAlign: 'left', lineHeight: 16 }}
                   >
-                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
-                      Pairing scan details
-                    </Text>
-                    <ScrollView style={{ maxHeight: 178 }}>
-                      <Text
-                        selectable
-                        style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11, textAlign: 'left', lineHeight: 16 }}
-                      >
-                        {scanDetails.join('\n')}
-                      </Text>
-                    </ScrollView>
-                  </View>
-                )}
-              </>
-            )}
+                    {scanDetails.join('\n')}
+                  </Text>
+                </ScrollView>
+              ) : (
+                <Text style={{ color: 'rgba(255,255,255,0.68)', fontSize: 11, lineHeight: 16 }}>
+                  QR detection, each address attempt, its result, and any final error will appear here.
+                </Text>
+              )}
+            </View>
           </View>
         )}
       </View>

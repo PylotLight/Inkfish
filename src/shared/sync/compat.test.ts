@@ -194,6 +194,25 @@ describe('handshake over the wire', () => {
     })
   })
 
+  test('subnet scan reports network-error results for every attempted address', async () => {
+    const updates: Parameters<NonNullable<Parameters<typeof findMacHello>[2]>>[0][] = []
+    const fetchFn: Fetch = async () => {
+      throw new Error('Network request failed')
+    }
+    const found = await findMacHello(
+      fetchFn,
+      { id: 'mac-1234567890', hosts: ['192.168.1.10'], port: 47821 },
+      (update) => updates.push(update)
+    )
+    const probes = updates.flatMap((update) =>
+      update.type === 'probe' && update.probe.phase === 'subnet-scan' ? [update.probe] : []
+    )
+    expect(found).toBeNull()
+    expect(probes).toHaveLength(253)
+    expect(new Set(probes.map((probe) => probe.host)).size).toBe(253)
+    expect(probes.every((probe) => probe.outcome === 'network-error')).toBe(true)
+  })
+
   test('a VPN overlay address is probed directly without guessing a subnet sweep', async () => {
     const requested: string[] = []
     const fetchFn: Fetch = async (url) => {
