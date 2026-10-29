@@ -160,9 +160,12 @@ export default function Center({
   // The live-recording chip only exists while collapsed; it needs the 46px tall strip, which
   // also drops the content's top padding to match. Collapsing alone never moves the content.
   const railTall = sideCollapsed && meetingLive && !showMeeting
+  // Note scope: the stage is a full-bleed Obsidian flat pane — the content column loses its
+  // card margin (`.content.center.flat`). Home/Journal/Settings/Meetings keep it.
+  const stageActive = !settingsOpen && !showMeeting && scope !== 'home' && scope !== 'journal'
   return (
     <>
-      <div className={`content inkfish center${railTall ? ' rail-tall' : ''}`}>
+      <div className={`content inkfish center${stageActive ? ' flat' : ''}${railTall ? ' rail-tall' : ''}`}>
         {/* Window drag strip along the top; carries the live-recording chip while collapsed. */}
         <div className={`side-rail${railTall ? ' rail-tall' : ''}`} aria-hidden={!sideCollapsed || undefined}>
           {sideCollapsed && meetingLive && !showMeeting && (

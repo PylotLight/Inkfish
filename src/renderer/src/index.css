@@ -1971,6 +1971,15 @@ select.sm {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* Obsidian-style chrome: no boxes at rest, a quiet tint on hover. */
+.ed-head .btn.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+.ed-head .btn.ghost:hover:not(:disabled) {
+  background: var(--row-hover);
+  border-color: var(--border);
+}
 .ed-head p.ed-meta {
   flex: 1 0 100%;
   margin: -4px 0 0;
@@ -2691,6 +2700,12 @@ html[data-motion='reduced'] *::after {
   z-index: 3;
 }
 
+/* Note scope: the stage is a full-bleed pane, so the content column loses its
+   card margin. (Kept above .rail-tall so the chip's 46px padding-top still wins.) */
+.content.center.flat {
+  padding: 0;
+}
+
 .side-rail.rail-tall {
   height: 46px;
 }
@@ -2890,15 +2905,15 @@ html[data-motion='reduced'] *::after {
 .side-action {
   flex: 1;
   min-width: 0;
-  height: 32px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   border: none;
-  background: var(--row-hover);
+  background: transparent;
   color: var(--text-soft);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 0 10px;
   font: inherit;
   font-size: 13px;
@@ -2919,12 +2934,13 @@ html[data-motion='reduced'] *::after {
 
 .side-action:hover {
   color: var(--text);
-  background: var(--row-active);
+  background: var(--row-hover);
 }
 
+/* Active (Journal / Meetings open): a quiet accent tint instead of a grey box. */
 .side-action.on {
   color: var(--text);
-  background: var(--row-active);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 .side-action.rec-live svg,
@@ -2982,9 +2998,11 @@ input.side-search {
   flex: none;
   flex-shrink: 0;
   padding: 0 10px 0 32px;
-  border-radius: 8px;
-  border-color: transparent;
-  background: var(--row-hover);
+  border-radius: 7px;
+  /* Obsidian-style input well: darker than the sidebar, hairline edge — reads
+     as a field, not another pill button. */
+  border-color: color-mix(in srgb, var(--border) 65%, transparent);
+  background: var(--inset-soft);
   font: inherit;
   font-size: 13.5px;
   outline: none;
@@ -3017,11 +3035,11 @@ input.side-search:focus {
 .scope-tabs {
   display: flex;
   gap: 2px;
-  margin-top: 8px;
-  background: var(--row-hover);
+  margin-top: 10px;
+  background: transparent;
   border: none;
-  border-radius: 9px;
-  padding: 2px;
+  border-radius: 0;
+  padding: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -3041,6 +3059,7 @@ input.side-search:focus {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  position: relative;
   transition:
     background 0.14s ease,
     color 0.14s ease;
@@ -3048,12 +3067,24 @@ input.side-search:focus {
 
 .scope-tabs button:hover {
   color: var(--text);
+  background: var(--row-hover);
 }
 
+/* Active scope: accent underline, Obsidian pane-tab style — no grey pill. */
 .scope-tabs button.on {
-  background: var(--row-active);
+  background: transparent;
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
+}
+.scope-tabs button.on::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .scope-tabs .badge {
@@ -3155,22 +3186,21 @@ input.side-search:focus {
   font-size: 12px;
 }
 
-/* The note owns the center: roomy stage, editor fills it.
-   Tabs + title stay pinned at the top; only the doc body scrolls. */
+/* The note owns the center: a full-bleed flat pane (Obsidian), editor fills it.
+   No card — the translucent tint reads as a pane and the native vibrancy blurs
+   behind it, so nothing CSS-blurs here. Tabs + title stay pinned; body scrolls. */
 .note-stage {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  margin-top: 0;
-  border-radius: var(--radius);
+  margin: 0;
   background: var(--panel);
-  border: 1px solid var(--border);
-  box-shadow: var(--elev);
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  padding: 14px 20px 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 6px 16px 0 20px;
   animation: rise 0.22s ease both;
 }
 
