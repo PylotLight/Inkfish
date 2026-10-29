@@ -59,6 +59,7 @@ export {
 } from './client'
 export type { RemoteOpts, RetryOpts } from './client'
 export type { Fetch, MacPeer } from './client'
+export type { DiscoveryPhase, DiscoveryProbe, DiscoveryUpdate, DiscoveryObserver } from './client'
 export { appendCapped, appendCollapsed, summarize, shortError, SYNC_LOG_CAP, COLLAPSE_MS } from './log'
 export {
   foldPath,

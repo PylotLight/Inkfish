@@ -262,8 +262,8 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
       <PairScanner
         visible={scanning}
         onClose={() => setScanning(false)}
-        onCode={async (data, onStage) => {
-          const name = await sync.pair(data, onStage)
+        onCode={async (data, onStage, onDiscovery) => {
+          const name = await sync.pair(data, onStage, onDiscovery)
           setScanning(false)
           Alert.alert('Paired', `Syncing with ${name}.`)
         }}

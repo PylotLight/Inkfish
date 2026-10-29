@@ -26,6 +26,7 @@ import {
   SyncIncompatible,
   HttpError,
   type BigDelete,
+  type DiscoveryObserver,
   type GuardChoice,
   type MacPeer,
   type SyncProgress,
@@ -66,7 +67,7 @@ interface SyncCtx {
   /** Newest-last session history (Settings › Sync › Recent). */
   log: SyncLogEntry[]
   /** Pair from a scanned QR string. Resolves with the Mac's name. */
-  pair: (qr: string, onStage?: (stage: string) => void) => Promise<string>
+  pair: (qr: string, onStage?: (stage: string) => void, onDiscovery?: DiscoveryObserver) => Promise<string>
   unpair: () => Promise<void>
   syncNow: () => Promise<void>
   /**
@@ -392,11 +393,19 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   }, [id, mac?.id, indexed])
 
   const pair = useCallback(
-    async (qr: string, onStage?: (stage: string) => void) => {
+    async (qr: string, onStage?: (stage: string) => void, onDiscovery?: DiscoveryObserver) => {
       if (!id) throw new Error('Still starting up, try again in a moment.')
       const payload = decodePairUri(qr)
       if (!payload) throw new Error("That isn't an Inkfish pairing code.")
-      const peer = await pairWithMac(fetchFn, payload, { id, name: deviceName() }, random, Date.now(), onStage)
+      const peer = await pairWithMac(
+        fetchFn,
+        payload,
+        { id, name: deviceName() },
+        random,
+        Date.now(),
+        onStage,
+        onDiscovery
+      )
       await persistMac(peer)
       setPhase('idle')
       setTimeout(() => void syncNow(), 300)

@@ -19,6 +19,13 @@ function when(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
+function probeStatus(status: number): string {
+  if (status === 200) return '200 · route and Inkfish listener responded'
+  if (status === 403) return '403 · pairing code is missing or expired'
+  if (status === 401) return '401 · pairing key was rejected'
+  return `${status} · listener responded with an error`
+}
+
 /**
  * Settings › Sync: pair phones by QR and see who's paired. LAN only — the
  * phone finds this Mac on the same Wi-Fi and syncs directly, end-to-end
@@ -82,6 +89,52 @@ export default function SyncSettings(): React.JSX.Element {
             {st?.running ? '● On' : '○ Off'}
           </span>
         </div>
+
+        <details style={{ margin: '4px 0 12px 8px' }}>
+          <summary className="muted small" style={{ cursor: 'pointer' }}>
+            Network diagnostics
+          </summary>
+          <div className="muted small setting-hint" style={{ marginTop: 8 }}>
+            Listener: {st?.running ? `0.0.0.0:${st.port} (all IPv4 interfaces)` : (st?.error ?? 'starting')}. The Mac's
+            HTTP proxy does not control this inbound listener; a VPN, firewall, or Wi-Fi client isolation can still
+            block it.
+          </div>
+          <div className="muted small setting-hint" style={{ marginTop: 8 }}>
+            {st?.interfaces.length
+              ? st.interfaces.map((iface) => (
+                  <div key={iface.name}>
+                    <strong>{iface.name}</strong>:{' '}
+                    {iface.addresses
+                      .map(
+                        (address) =>
+                          `${address.address} (${address.scope === 'vpn-overlay' ? 'VPN/overlay' : address.scope === 'link-local' ? 'link-local' : 'LAN'}${address.includedInQr ? ', in QR' : ', not in QR'})`
+                      )
+                      .join(' · ') || 'no local IPv4 address'}
+                    {iface.omittedIpv4Count ? ` · ${iface.omittedIpv4Count} other IPv4 address(es) omitted` : ''}
+                  </div>
+                ))
+              : 'No eligible local IPv4 interfaces found.'}
+          </div>
+          <div className="muted small setting-hint" style={{ marginTop: 8 }}>
+            {st?.probes.length ? (
+              <>
+                Recent inbound probes (newest last):
+                {st.probes.map((probe, i) => (
+                  <div key={`${probe.at}-${i}`}>
+                    {new Date(probe.at).toLocaleTimeString()} · {probe.remoteAddress} · {probe.method} {probe.path} ·{' '}
+                    {probeStatus(probe.status)}
+                  </div>
+                ))}
+                <div>
+                  A probe means Android reached this listener. If pairing still fails, check the QR expiry/key and
+                  compare the Android scan details.
+                </div>
+              </>
+            ) : (
+              'No /hello or pairing request has reached this Mac since the app started. If Android reports attempts, check that its VPN/proxy allows local addresses, both devices are on a non-guest network, and the Mac firewall allows Inkfish.'
+            )}
+          </div>
+        </details>
 
         <div className="setting-row inline">
           <div className="setting-label">

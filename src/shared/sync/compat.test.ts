@@ -180,6 +180,31 @@ describe('handshake over the wire', () => {
     expect(Date.now() - startedAt).toBeLessThan(150)
   })
 
+  test('discovery reports an HTTP response that is not a valid Inkfish hello', async () => {
+    const updates: Parameters<NonNullable<Parameters<typeof findMacHello>[2]>>[0][] = []
+    const fetchFn: Fetch = async () => ({ ok: false, status: 502, text: async () => 'proxy error' })
+    const found = await findMacHello(fetchFn, { id: 'mac-1234567890', hosts: ['mac.local'], port: 47821 }, (update) =>
+      updates.push(update)
+    )
+    expect(found).toBeNull()
+    expect(updates).toContainEqual({ type: 'phase', phase: 'qr-addresses', total: 1, subnets: [] })
+    expect(updates).toContainEqual({
+      type: 'probe',
+      probe: { phase: 'qr-addresses', host: 'mac.local', outcome: 'http-error', status: 502, ms: expect.any(Number) }
+    })
+  })
+
+  test('a VPN overlay address is probed directly without guessing a subnet sweep', async () => {
+    const requested: string[] = []
+    const fetchFn: Fetch = async (url) => {
+      requested.push(new URL(url).hostname)
+      throw new Error('Network request failed')
+    }
+    const found = await findMacHello(fetchFn, { id: 'mac-1234567890', hosts: ['100.88.1.2'], port: 47821 })
+    expect(found).toBeNull()
+    expect(requested).toEqual(['100.88.1.2'])
+  })
+
   test('subnet scan cancels in-flight probes when the paired Mac answers', async () => {
     const fetchFn: Fetch = async (url, init) => {
       const host = new URL(url).hostname

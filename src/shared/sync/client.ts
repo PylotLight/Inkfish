@@ -59,6 +59,34 @@ export interface MacPeer {
   lastSync?: number
 }
 
+export type DiscoveryPhase = 'qr-addresses' | 'subnet-scan'
+
+export interface DiscoveryProbe {
+  phase: DiscoveryPhase
+  host: string
+  outcome: 'found' | 'other-device' | 'http-error' | 'invalid-response' | 'network-error' | 'aborted'
+  status?: number
+  ms: number
+  error?: string
+}
+
+export type DiscoveryUpdate =
+  | { type: 'phase'; phase: DiscoveryPhase; total: number; subnets: string[] }
+  | { type: 'probe'; probe: DiscoveryProbe }
+  | { type: 'sweep-progress'; checked: number; total: number }
+
+export type DiscoveryObserver = (update: DiscoveryUpdate) => void
+
+function lanSubnetPrefix(host: string): string | null {
+  const parts = host.split('.')
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return null
+  const a = Number(parts[0]!)
+  const b = Number(parts[1]!)
+  const c = Number(parts[2]!)
+  const privateLan = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  return privateLan ? `${a}.${b}.${c}` : null
+}
+
 async function withTimeout<T>(ms: number, f: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
   const ac = new AbortController()
   const cancel = (): void => ac.abort()
@@ -94,11 +122,47 @@ export async function hello(
   }
 }
 
+async function probeHello(
+  fetchFn: Fetch,
+  host: string,
+  port: number,
+  timeoutMs: number,
+  signal: AbortSignal,
+  phase: DiscoveryPhase
+): Promise<{ hello: Hello | null; probe: DiscoveryProbe }> {
+  const started = Date.now()
+  try {
+    const r = await withTimeout(
+      timeoutMs,
+      async (requestSignal) => {
+        const response = await fetchFn(`http://${host}:${port}/v1/hello`, { signal: requestSignal })
+        if (!response.ok) return { ok: false, status: response.status, hello: null }
+        return { ok: true, status: response.status, hello: parseHello(await response.text()) }
+      },
+      signal
+    )
+    const outcome = !r.ok ? 'http-error' : r.hello ? 'found' : 'invalid-response'
+    return {
+      hello: r.hello,
+      probe: { phase, host, outcome, ...(!r.ok ? { status: r.status } : {}), ms: Date.now() - started }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    const outcome = /abort/i.test(message) ? 'aborted' : 'network-error'
+    return {
+      hello: null,
+      probe: { phase, host, outcome, ms: Date.now() - started, error: message.slice(0, 120) }
+    }
+  }
+}
+
 /** Probe known addresses together so one stale IP cannot delay a live one. */
 async function findAmong(
   fetchFn: Fetch,
   hosts: string[],
-  peer: Pick<MacPeer, 'id' | 'port'>
+  peer: Pick<MacPeer, 'id' | 'port'>,
+  phase: DiscoveryPhase,
+  onProgress?: DiscoveryObserver
 ): Promise<{ host: string; hello: Hello } | null> {
   if (!hosts.length) return null
   return new Promise((resolve) => {
@@ -106,7 +170,11 @@ async function findAmong(
     let remaining = hosts.length
     let settled = false
     for (const host of hosts) {
-      void hello(fetchFn, host, peer.port, 1500, ac.signal).then((result) => {
+      void probeHello(fetchFn, host, peer.port, 1500, ac.signal, phase).then(({ hello: result, probe }) => {
+        onProgress?.({
+          type: 'probe',
+          probe: { ...probe, ...(result && result.id !== peer.id ? { outcome: 'other-device' } : {}) }
+        })
         if (settled) return
         if (result?.id === peer.id) {
           settled = true
@@ -137,32 +205,50 @@ export function assertCompatible(h: Hello, self: PeerVersion = SELF_VERSION): vo
  */
 export async function findMac(
   fetchFn: Fetch,
-  peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>
+  peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>,
+  onProgress?: DiscoveryObserver
 ): Promise<string | null> {
-  return (await findMacHello(fetchFn, peer))?.host ?? null
+  return (await findMacHello(fetchFn, peer, onProgress))?.host ?? null
 }
 
 /** findMac plus the Mac's hello (protocol / minPeer for the handshake). */
 export async function findMacHello(
   fetchFn: Fetch,
-  peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>
+  peer: Pick<MacPeer, 'id' | 'hosts' | 'port' | 'lastHost'>,
+  onProgress?: DiscoveryObserver
 ): Promise<{ host: string; hello: Hello } | null> {
   const first = [...new Set([peer.lastHost, ...peer.hosts].filter((h): h is string => !!h))]
-  const known = await findAmong(fetchFn, first, peer)
+  onProgress?.({ type: 'phase', phase: 'qr-addresses', total: first.length, subnets: [] })
+  const known = await findAmong(fetchFn, first, peer, 'qr-addresses', onProgress)
   if (known) return known
-  const prefixes = [
-    ...new Set(first.map((h) => h.split('.').slice(0, 3).join('.')).filter((p) => /^\d+\.\d+\.\d+$/.test(p)))
-  ]
+  // VPN-overlay addresses are probed directly. A guessed /24 sweep there is
+  // unreliable (and can fan out across a routed VPN range), so only sweep
+  // conventional private LAN subnets for DHCP address changes.
+  const prefixes = [...new Set(first.map(lanSubnetPrefix).filter((p): p is string => p !== null))]
   const candidates = prefixes
     .flatMap((p) => Array.from({ length: 254 }, (_, i) => `${p}.${i + 1}`))
     .filter((h) => !first.includes(h))
+  if (candidates.length)
+    onProgress?.({ type: 'phase', phase: 'subnet-scan', total: candidates.length, subnets: prefixes })
   const ac = new AbortController()
   let found: { host: string; hello: Hello } | null = null
   let i = 0
+  let checked = 0
   const worker = async (): Promise<void> => {
     while (!found && i < candidates.length) {
       const h = candidates[i++]!
-      const r = await hello(fetchFn, h, peer.port, 900, ac.signal)
+      const { hello: r, probe } = await probeHello(fetchFn, h, peer.port, 900, ac.signal, 'subnet-scan')
+      checked++
+      if (r?.id !== peer.id) {
+        if (r) probe.outcome = 'other-device'
+        if (r || probe.outcome === 'http-error' || probe.outcome === 'invalid-response')
+          onProgress?.({ type: 'probe', probe })
+      } else {
+        probe.outcome = 'found'
+        onProgress?.({ type: 'probe', probe })
+      }
+      if (checked % 32 === 0 || r?.id === peer.id || checked === candidates.length)
+        onProgress?.({ type: 'sweep-progress', checked, total: candidates.length })
       if (r?.id === peer.id) {
         found = { host: h, hello: r }
         ac.abort()
@@ -264,7 +350,8 @@ export async function pairWithMac(
   me: { id: string; name: string },
   random: Random,
   now = Date.now(),
-  onStage?: (stage: string) => void
+  onStage?: (stage: string) => void,
+  onDiscovery?: DiscoveryObserver
 ): Promise<MacPeer> {
   if (qr.exp < now) throw new Error('That code expired. Show a new one on the Mac.')
   let key: Uint8Array
@@ -275,8 +362,27 @@ export async function pairWithMac(
   }
   if (key.length !== 32) throw new Error('This pairing code has an invalid key. Show a new code on the Mac.')
   onStage?.('Looking for the Mac on this Wi-Fi…')
-  const found = await findMacHello(fetchFn, { id: qr.id, hosts: qr.hosts, port: qr.port })
-  if (!found) throw new Error("Can't reach the Mac. Make sure both are on the same Wi-Fi.")
+  const probes: DiscoveryProbe[] = []
+  const found = await findMacHello(fetchFn, { id: qr.id, hosts: qr.hosts, port: qr.port }, (update) => {
+    if (update.type === 'probe') probes.push(update.probe)
+    onDiscovery?.(update)
+  })
+  if (!found) {
+    const responder = probes.find(
+      (p) => p.outcome === 'other-device' || p.outcome === 'http-error' || p.outcome === 'invalid-response'
+    )
+    if (responder) {
+      throw new Error(
+        `A device responded at ${responder.host}:${qr.port}, but it did not identify as this Mac (${responder.outcome}${responder.status ? `, HTTP ${responder.status}` : ''}). Show a fresh QR code and check for a VPN or proxy intercepting local HTTP.`
+      )
+    }
+    const attempted = [...new Set(probes.filter((p) => p.phase === 'qr-addresses').map((p) => p.host))]
+    const addressList = attempted.length ? attempted.slice(0, 4).join(', ') : 'no usable QR addresses'
+    const more = attempted.length > 4 ? ` and ${attempted.length - 4} more` : ''
+    throw new Error(
+      `No reply from this Mac at ${addressList}${more} on port ${qr.port}. Check the same non-guest network, then try with VPN/proxy off and allow Inkfish through the Mac firewall. See scan details for the addresses tried.`
+    )
+  }
   assertCompatible(found.hello)
   onStage?.('Mac found. Completing secure pairing…')
   const host = found.host

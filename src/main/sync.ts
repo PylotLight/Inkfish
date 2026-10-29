@@ -23,6 +23,7 @@ import { hostname, networkInterfaces } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import QRCode from 'qrcode'
 import { listenWithPortFallback } from './sync-listener'
+import { interfaceDiagnostics, pairingHosts, type SyncInterfaceDiagnostic } from './sync-network'
 import {
   createHandler,
   encodePairUri,
@@ -85,11 +86,21 @@ export interface SyncStatus {
   error: string | null
   deviceName: string
   hosts: string[]
+  interfaces: SyncInterfaceDiagnostic[]
+  probes: SyncProbeEvent[]
   port: number
   peers: SyncPeerInfo[]
   pairing: { svg: string; uri: string; exp: number } | null
   /** Live badge (sidebar footer + tray tooltip). */
   badge: SyncBadge
+}
+
+export interface SyncProbeEvent {
+  at: number
+  method: string
+  path: '/v1/hello' | '/v1/pair'
+  remoteAddress: string
+  status: number
 }
 
 interface Stored {
@@ -106,6 +117,7 @@ let starting: Promise<void> | null = null
 let pending: PendingPair | null = null
 let pendingQr: { svg: string; uri: string; exp: number } | null = null
 let store: Stored | null = null
+const pairingProbes: SyncProbeEvent[] = []
 
 function storePath(): string | null {
   const d = appDataDir()
@@ -157,16 +169,20 @@ function migratePeerKeys(): void {
 }
 
 function hosts(): string[] {
-  const out: string[] = []
-  const ifs = networkInterfaces()
-  // en0 (Wi-Fi) first on macOS.
-  for (const name of Object.keys(ifs).sort((a, b) => (a === 'en0' ? -1 : b === 'en0' ? 1 : a.localeCompare(b)))) {
-    for (const a of ifs[name] ?? []) {
-      if (a.family !== 'IPv4' || a.internal) continue
-      if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) out.push(a.address)
-    }
-  }
-  return out
+  return pairingHosts(networkInterfaces())
+}
+
+function recordPairingProbe(path: string, method: string, remoteAddress: string, status: number): void {
+  if (path !== '/v1/hello' && path !== '/v1/pair') return
+  pairingProbes.push({
+    at: Date.now(),
+    method,
+    path,
+    remoteAddress: remoteAddress.replace(/^::ffff:/, ''),
+    status
+  })
+  if (pairingProbes.length > 12) pairingProbes.splice(0, pairingProbes.length - 12)
+  broadcastStatus()
 }
 
 function broadcastChanged(): void {
@@ -663,6 +679,7 @@ export function startSync(): Promise<void> {
   listenError = null
   sweepPartials()
   migratePeerKeys()
+  const preferredPort = s.port
   const srv = createServer((req, res) => {
     const chunks: Buffer[] = []
     let size = 0
@@ -680,12 +697,14 @@ export function startSync(): Promise<void> {
       handler(req.method ?? 'GET', url, peerId, Buffer.concat(chunks).toString('utf8'), meta)
         .then((r) => {
           after(r.status, r.type === 'text/plain' && r.status !== 200 ? r.body : '')
+          recordPairingProbe(url, req.method ?? 'GET', req.socket.remoteAddress ?? '', r.status)
           res.writeHead(r.status, { 'content-type': r.type, 'cache-control': 'no-store' })
           res.end(r.body)
         })
         .catch((err: unknown) => {
           console.error('[sync] request failed', err)
           after(500, err instanceof Error ? err.message : 'error')
+          recordPairingProbe(url, req.method ?? 'GET', req.socket.remoteAddress ?? '', 500)
           res.writeHead(500, { 'content-type': 'text/plain' })
           res.end('error')
         })
@@ -696,10 +715,11 @@ export function startSync(): Promise<void> {
       if (port !== s.port) {
         s.port = port
         save()
+        console.warn(`[sync] preferred port ${preferredPort} was busy; listener moved to ${port}`)
       }
       listenError = null
       server = srv
-      console.log(`[inkfish] sync listening on ${hosts().join(', ')}:${s.port}`)
+      console.log(`[inkfish] sync listening on 0.0.0.0:${s.port}; QR hosts ${hosts().join(', ') || '(none)'}`)
       broadcastStatus()
     })
     .catch((err: unknown) => {
@@ -743,6 +763,8 @@ export function syncStatus(): SyncStatus {
     error: listenError,
     deviceName: s.deviceName,
     hosts: hosts(),
+    interfaces: interfaceDiagnostics(networkInterfaces()),
+    probes: [...pairingProbes],
     port: s.port,
     peers: s.peers.map((p) => ({ id: p.id, name: p.name, pairedAt: p.pairedAt, lastSync: p.lastSync ?? null })),
     pairing: pendingQr,
@@ -757,7 +779,9 @@ export async function startPairing(): Promise<SyncStatus> {
   if (!server) throw new Error(listenError ?? 'The Mac sync listener did not start.')
   const availableHosts = hosts()
   if (!availableHosts.length)
-    throw new Error('The Mac has no local IPv4 network address. Connect to Wi-Fi and try again.')
+    throw new Error(
+      'The Mac has no local LAN or VPN IPv4 address to include in the pairing code. Connect to Wi-Fi or a supported VPN and try again.'
+    )
   const s = load()
   const key = new Uint8Array(randomBytes(32))
   const exp = Date.now() + PAIR_TTL_MS
