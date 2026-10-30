@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import { X } from 'lucide-react-native'
 import { useTheme } from '../theme'
 import { Icon } from './Icon'
 import { decodePairUri, type DiscoveryUpdate } from '../lib/sync'
+import { launchQrScanner } from '../lib/qrScanner'
 
 /**
  * Full-screen QR scanner for pairing with the Mac (Mac › Settings › Sync ›
@@ -47,10 +49,15 @@ export function PairScanner({
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraKey, setCameraKey] = useState(0)
   const [externalPairing, setExternalPairing] = useState(false)
+  const [useLiveCamera, setUseLiveCamera] = useState(false)
+  const [nativeScannerActive, setNativeScannerActive] = useState(false)
+  const [nativeScannerUsed, setNativeScannerUsed] = useState(false)
+  const [scannerNotice, setScannerNotice] = useState<string | null>(null)
   const [scanHint, setScanHint] = useState(false)
   const [qrSummary, setQrSummary] = useState<string | null>(null)
   const [scanDetails, setScanDetails] = useState<string[]>([])
   const lock = useRef(false)
+  const nativeScannerAttempted = useRef(false)
   const logRef = useRef<React.ComponentRef<typeof ScrollView>>(null)
   const handleRef = useRef<(data: string) => void>(() => undefined)
 
@@ -65,6 +72,10 @@ export function PairScanner({
     setCameraReady(false)
     setCameraError(null)
     setExternalPairing(false)
+    setUseLiveCamera(false)
+    setNativeScannerActive(false)
+    setNativeScannerUsed(false)
+    setScannerNotice(null)
     setScanHint(false)
   }, [visible])
 
@@ -136,6 +147,40 @@ export function PairScanner({
 
   handleRef.current = handle
 
+  const preferNativeScanner = Platform.OS === 'android' && CameraView.isModernBarcodeScannerAvailable
+
+  const launchNativeScanner = useCallback((): void => {
+    if (!preferNativeScanner || nativeScannerActive) return
+    nativeScannerAttempted.current = true
+    setNativeScannerActive(true)
+    setNativeScannerUsed(true)
+    setScannerNotice(null)
+    void launchQrScanner(
+      {
+        subscribe: (onData) => CameraView.onModernBarcodeScanned(({ data }) => onData(data)),
+        launch: () => CameraView.launchScanner({ barcodeTypes: ['qr'] })
+      },
+      (data) => handleRef.current(data)
+    )
+      .catch(() => {
+        setUseLiveCamera(true)
+        setScannerNotice(
+          'The system QR scanner closed or could not open. The live camera is ready, or you can try again below.'
+        )
+      })
+      .finally(() => setNativeScannerActive(false))
+  }, [preferNativeScanner, nativeScannerActive])
+
+  useEffect(() => {
+    if (!visible) {
+      nativeScannerAttempted.current = false
+      return
+    }
+    if (!perm?.granted || !preferNativeScanner || nativeScannerAttempted.current || initialCode || externalPairing)
+      return
+    launchNativeScanner()
+  }, [visible, perm?.granted, preferNativeScanner, initialCode, externalPairing, launchNativeScanner])
+
   useEffect(() => {
     if (!visible || !initialCode) return
     setExternalPairing(true)
@@ -149,7 +194,8 @@ export function PairScanner({
     return () => clearTimeout(timer)
   }, [visible, perm?.granted, cameraReady, busy, qrSummary, initialCode, externalPairing])
 
-  const showCamera = visible && !!perm?.granted && !initialCode && !externalPairing
+  const showCamera =
+    visible && !!perm?.granted && !initialCode && !externalPairing && (!preferNativeScanner || useLiveCamera)
 
   const status = cameraError
     ? 'Camera problem'
@@ -157,16 +203,25 @@ export function PairScanner({
       ? 'Pairing failed'
       : busy
         ? 'Pairing in progress'
-        : qrSummary
-          ? 'QR code read'
-          : cameraReady
-            ? 'Ready to scan'
-            : 'Starting camera…'
+        : nativeScannerActive
+          ? 'QR scanner open'
+          : qrSummary
+            ? 'QR code read'
+            : cameraReady
+              ? 'Ready to scan'
+              : 'Starting camera…'
   const statusMessage = cameraError
     ? `Camera couldn’t start: ${cameraError}`
     : (msg ??
       stage ??
-      (cameraReady ? 'Point at the QR code shown on your Mac in Settings › Sync.' : 'Starting camera…'))
+      scannerNotice ??
+      (nativeScannerActive
+        ? 'Point at the QR code shown on your Mac in Settings › Sync.'
+        : preferNativeScanner && !useLiveCamera
+          ? 'Opening the QR scanner…'
+          : cameraReady
+            ? 'Point at the QR code shown on your Mac in Settings › Sync.'
+            : 'Starting camera…'))
   const logHeight = Math.max(96, Math.min(170, windowHeight * 0.22))
   const panelMaxHeight = Math.max(230, Math.min(390, windowHeight * 0.5))
 
@@ -189,7 +244,7 @@ export function PairScanner({
               setCameraError(message)
             }}
           />
-        ) : visible && !initialCode && !externalPairing ? (
+        ) : visible && !perm?.granted && !initialCode && !externalPairing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Text style={[ui.title, { color: '#fff', textAlign: 'center' }]}>Camera access to scan the code</Text>
             <Pressable onPress={() => void requestPerm()} style={[ui.quiet, { marginTop: 12 }]}>
@@ -258,6 +313,11 @@ export function PairScanner({
               >
                 {statusMessage}
               </Text>
+              {preferNativeScanner && nativeScannerUsed && !nativeScannerActive && !busy && (
+                <Pressable onPress={launchNativeScanner} style={[ui.quiet, { alignSelf: 'flex-start', marginTop: 8 }]}>
+                  <Text style={[ui.quietText, { color: '#fff' }]}>Scan again with QR scanner</Text>
+                </Pressable>
+              )}
               {scanHint && !externalPairing && (
                 <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17, marginTop: 6 }}>
                   No QR detected yet? Move closer and hold steady, or use your phone’s Camera app and tap its Inkfish
