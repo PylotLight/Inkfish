@@ -23,7 +23,7 @@ function androidProject() {
 }
 
 describe('ML Kit scanner R8 rules', () => {
-  test('keeps reflective Code Scanner, bundled barcode analyzer and component registration classes', () => {
+  test('keeps reflective bundled barcode analyzer and component registration classes', () => {
     const root = androidProject()
 
     expect(patchScannerProguardRules(root)).toBe(true)
@@ -31,6 +31,10 @@ describe('ML Kit scanner R8 rules', () => {
     const rules = readFileSync(path.join(root, 'app/proguard-rules.pro'), 'utf8')
     expect(rules).toContain(SCANNER_PROGUARD_MARKER)
     for (const rule of SCANNER_PROGUARD_RULES) expect(rules).toContain(rule)
+    expect(rules).toContain('com.google.android.gms.internal.mlkit_vision_barcode')
+    expect(rules).toContain('com.google.android.gms.internal.mlkit_vision_barcode_bundled')
+    expect(rules).toContain('com.google.firebase.components.ComponentRegistrar')
+    expect(rules).not.toContain('mlkit_code_scanner')
   })
 
   test('is idempotent and restores any missing required rule without duplicating the marker', () => {

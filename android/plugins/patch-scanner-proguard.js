@@ -5,7 +5,6 @@ const SCANNER_PROGUARD_MARKER = '# Inkfish ML Kit scanner R8 rules; see googlesa
 
 const SCANNER_PROGUARD_RULES = [
   '-keep class com.google.mlkit.** { *; }',
-  '-keep class com.google.android.gms.internal.mlkit_code_scanner.** { *; }',
   '-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }',
   '-keep class com.google.android.gms.internal.mlkit_vision_barcode_bundled.** { *; }',
   '-keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }',

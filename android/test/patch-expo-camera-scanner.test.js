@@ -18,10 +18,21 @@ test('builds patched Expo Camera from local source instead of a prebuilt AAR', (
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'inkfish-expo-camera-'))
   roots.push(root)
-  const camera = path.join(root, 'android/src/main/java/expo/modules/camera')
+  const cameraRoot = path.join(root, 'node_modules/expo-camera')
+  const camera = path.join(cameraRoot, 'android/src/main/java/expo/modules/camera')
   const analyzer = path.join(camera, 'analyzers')
   mkdirSync(path.join(camera, 'utils'), { recursive: true })
   mkdirSync(analyzer, { recursive: true })
+  mkdirSync(path.join(cameraRoot, 'android'), { recursive: true })
+  writeFileSync(
+    path.join(cameraRoot, 'android/build.gradle'),
+    [
+      'def barcodeDependencyConfiguration = isBarcodeScannerEnabled ? "implementation" : "compileOnly"',
+      '  add(barcodeDependencyConfiguration, "com.google.android.gms:play-services-code-scanner:16.1.0")',
+      '  add(barcodeDependencyConfiguration, "com.google.mlkit:barcode-scanning:17.3.0")',
+      '  add(barcodeDependencyConfiguration, "androidx.camera:camera-mlkit-vision:${camerax_version}")'
+    ].join('\n')
+  )
   writeFileSync(
     path.join(camera, 'utils/CameraUtils.kt'),
     [
@@ -32,43 +43,24 @@ function fixture() {
   writeFileSync(
     path.join(camera, 'CameraViewModule.kt'),
     [
-      'import android.util.Log',
-      'import java.io.File',
+      'import com.google.android.gms.common.moduleinstall.ModuleInstall',
+      'import com.google.mlkit.vision.codescanner.GmsBarcodeScanning',
+      'import java.util.concurrent.atomic.AtomicBoolean',
       'val cameraEvents = arrayOf(',
       '  "onBarcodeScanned",',
       '  "onFacesDetected"',
       ')',
-      '      if (!CameraUtils.hasGooglePlayServices(appContext.reactContext)) {',
-      '        promise.reject(CameraExceptions.GooglePlayServicesUnavailableException())',
-      '        return@AsyncFunction',
-      '      }',
-      '        val scanner = GmsBarcodeScanning.getClient(reactContext, options)',
-      '        scanner.startScan()',
-      '          .addOnSuccessListener { barcode ->',
-      '            val result = BarCodeScannerResultSerializer.parseBarcodeScanningResult(barcode)',
-      '            sendEvent("onModernBarcodeScanned", BarCodeScannerResultSerializer.toBundle(result, 1.0f))',
-      '            promise.resolve()',
-      '          }',
-      '          .addOnCanceledListener {',
-      '            promise.reject(CameraExceptions.BarcodeScanningCancelledException())',
-      '          }',
-      '          .addOnFailureListener {',
-      '            promise.reject(CameraExceptions.BarcodeScanningFailedException())',
-      '          }',
-      '      } catch (_: Exception) {',
-      '        promise.reject(CameraExceptions.GooglePlayServicesUnavailableException())',
-      '      }',
-      '    // False on Horizon OS (Quest devices) and devices without Google Play Services.',
+      '    Events("onModernBarcodeScanned")',
       '    Property("isModernBarcodeScannerAvailable") {',
-      '      !VRUtilities.isQuest() && CameraUtils.isMLKitAvailable(appContext.reactContext)',
+      '      CameraUtils.isMLKitAvailable(appContext.reactContext)',
       '    }',
-      '    if (!CameraUtils.isMLKitAvailable(appContext.reactContext)) { // unrelated image-scan path }',
-      '    Property("isDocumentScannerAvailable") { CameraUtils.hasGooglePlayServices(appContext.reactContext) }'
+      '    AsyncFunction("launchScanner") { settings: BarcodeSettings, promise: Promise ->',
+      '      val scanner = GmsBarcodeScanning.getClient(context, options)',
+      '      ModuleInstall.getClient(context)',
+      '    }',
+      '    Property("isDocumentScannerAvailable") { CameraUtils.hasGooglePlayServices(appContext.reactContext) }',
+      '    if (!CameraUtils.isMLKitAvailable(appContext.reactContext)) { // unrelated image-scan path }'
     ].join('\n')
-  )
-  writeFileSync(
-    path.join(camera, 'CameraExceptions.kt'),
-    ['  class BarcodeScanningFailedException :', '    CodedException("Barcode scanning failed")'].join('\n')
   )
   writeFileSync(
     path.join(camera, 'ExpoCameraView.kt'),
@@ -104,88 +96,56 @@ function fixture() {
       '        }'
     ].join('\n')
   )
-  return root
+  return { root, cameraRoot, camera }
 }
 
-describe('Expo Camera scanner build patch', () => {
-  test('checks the right Play Services package and surfaces precise native scanner diagnostics', () => {
-    const root = fixture()
-    const changed = patchExpoCameraScanner(root)
-    const cameraUtils = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/utils/CameraUtils.kt'),
-      'utf8'
-    )
-    const module = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/CameraViewModule.kt'),
-      'utf8'
-    )
-    const exceptions = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/CameraExceptions.kt'),
-      'utf8'
-    )
-    const cameraView = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/ExpoCameraView.kt'),
-      'utf8'
-    )
-    const analyzer = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt'),
-      'utf8'
-    )
+describe('Expo Camera bundled QR analyzer build patch', () => {
+  test('removes Google Code Scanner and preserves the bundled ML Kit live analyzer', () => {
+    const { root, cameraRoot, camera } = fixture()
+    const changed = patchExpoCameraScanner(cameraRoot)
+    const gradle = readFileSync(path.join(cameraRoot, 'android/build.gradle'), 'utf8')
+    const cameraUtils = readFileSync(path.join(camera, 'utils/CameraUtils.kt'), 'utf8')
+    const module = readFileSync(path.join(camera, 'CameraViewModule.kt'), 'utf8')
+    const cameraView = readFileSync(path.join(camera, 'ExpoCameraView.kt'), 'utf8')
+    const analyzer = readFileSync(path.join(camera, 'analyzers/BarcodeAnalyzer.kt'), 'utf8')
 
+    expect(root).toBeTruthy()
     expect(changed).toHaveLength(5)
+    expect(gradle).not.toContain('play-services-code-scanner')
+    expect(gradle).toContain('com.google.mlkit:barcode-scanning:17.3.0')
+    expect(gradle).toContain('androidx.camera:camera-mlkit-vision')
     expect(cameraUtils).toContain('GOOGLE_PLAY_SERVICES_PACKAGE = "com.google.android.gms"')
     expect(cameraUtils).toContain('.getPackageInfo(GOOGLE_PLAY_SERVICES_PACKAGE, 0)')
-    expect(module).toContain('.addOnFailureListener { error ->')
-    expect(module).toContain('BarcodeScanningFailedException(error)')
+    expect(module).not.toContain('GmsBarcodeScanning')
+    expect(module).not.toContain('ModuleInstall')
+    expect(module).not.toContain('launchScanner')
+    expect(module).not.toContain('onModernBarcodeScanned')
+    expect(module).toContain('Property("isModernBarcodeScannerAvailable") { false }')
     expect(module).toContain('"onBarcodeScannerError"')
-    expect(module).toContain('catch (error: Exception)')
-    expect(module).toContain('ModuleInstall.getClient(reactContext)')
-    expect(module).toContain('ModuleInstallRequest.newBuilder()')
-    expect(module).toContain('.addApi(scanner)')
-    expect(module).toContain('.setListener(installStatusListener)')
-    expect(module).toContain('ModuleInstallStatusUpdate.InstallState.STATE_COMPLETED')
-    expect(module).toContain('Google Code Scanner module installation failed')
-    expect(module).toContain('response.areModulesAlreadyInstalled()')
-    expect(module).not.toContain('if (!CameraUtils.hasGooglePlayServices(appContext.reactContext))')
-    const modernScannerAvailability = module.split('Property("isModernBarcodeScannerAvailable") {')[1].split('    }')[0]
-    expect(modernScannerAvailability).toContain('CameraUtils.isMLKitBarcodeScannerAvailable()')
-    expect(modernScannerAvailability).not.toContain('CameraUtils.isMLKitAvailable(')
-    expect(module).toContain(
-      'if (!CameraUtils.isMLKitAvailable(appContext.reactContext)) { // unrelated image-scan path }'
-    )
-    expect(module).toContain('False on Horizon OS (Quest devices) and when the bundled barcode client is absent.')
-    expect(module).toContain(
-      'Property("isDocumentScannerAvailable") { CameraUtils.hasGooglePlayServices(appContext.reactContext) }'
-    )
-    expect(module).not.toContain('GooglePlayServicesUnavailableException()')
-    expect(module).toContain('Let ModuleInstallClient check the actual scanner service/module')
-    expect(exceptions).toContain('Barcode scanning failed: $it')
-    expect(exceptions).toContain('cause = cause')
+    expect(module).toContain('CameraUtils.isMLKitAvailable(appContext.reactContext)')
+    expect(module).toContain('Property("isDocumentScannerAvailable")')
+    expect(module).toContain('CameraUtils.hasGooglePlayServices(appContext.reactContext)')
     expect(cameraView).toContain('onBarcodeScannerError by EventDispatcher<CameraMountErrorEvent>()')
+    expect(cameraView).toContain('BarcodeAnalyzer(')
     expect(cameraView).toContain('onError = { error ->')
     expect(cameraView).toContain('Barcode analyzer failed to initialize:')
+    expect(analyzer).toContain('BarcodeScanning.getClient(')
     expect(analyzer).toContain('val onError: (Throwable) -> Unit')
     expect(analyzer).toContain('Log.e("SCANNER", "Barcode scanning failed", error)')
     expect(analyzer).toContain('onError(error)')
   })
 
   test('is idempotent on repeated prebuilds', () => {
-    const root = fixture()
-    expect(patchExpoCameraScanner(root)).toHaveLength(5)
-    expect(patchExpoCameraScanner(root)).toEqual([])
+    const { cameraRoot } = fixture()
+    expect(patchExpoCameraScanner(cameraRoot)).toHaveLength(5)
+    expect(patchExpoCameraScanner(cameraRoot)).toEqual([])
   })
 
   test('fails safely when Expo changes its native implementation', () => {
-    const root = fixture()
-    writeFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/CameraViewModule.kt'),
-      'native implementation changed'
-    )
-    expect(() => patchExpoCameraScanner(root)).toThrow('review the native source before building')
-    const cameraUtils = readFileSync(
-      path.join(root, 'android/src/main/java/expo/modules/camera/utils/CameraUtils.kt'),
-      'utf8'
-    )
-    expect(cameraUtils).toContain('GOOGLE_PLAY_STORE_PACKAGE')
+    const { cameraRoot, camera } = fixture()
+    writeFileSync(path.join(camera, 'CameraViewModule.kt'), 'native implementation changed')
+    expect(() => patchExpoCameraScanner(cameraRoot)).toThrow('review the native source before building')
+    expect(readFileSync(path.join(camera, 'utils/CameraUtils.kt'), 'utf8')).toContain('GOOGLE_PLAY_STORE_PACKAGE')
+    expect(readFileSync(path.join(cameraRoot, 'android/build.gradle'), 'utf8')).toContain('play-services-code-scanner')
   })
 })
