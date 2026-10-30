@@ -15,7 +15,7 @@ import { X } from 'lucide-react-native'
 import { useTheme } from '../theme'
 import { Icon } from './Icon'
 import { decodePairUri, type DiscoveryUpdate } from '../lib/sync'
-import { launchQrScanner } from '../lib/qrScanner'
+import { describeNativeQrScannerError, launchQrScanner } from '../lib/qrScanner'
 
 /**
  * Full-screen QR scanner for pairing with the Mac (Mac › Settings › Sync ›
@@ -155,6 +155,8 @@ export function PairScanner({
     setNativeScannerActive(true)
     setNativeScannerUsed(true)
     setScannerNotice(null)
+    setStage('Opening Google Play services QR scanner…')
+    setScanDetails((current) => [...current, 'Requested Google Code Scanner via Expo Camera.'])
     void launchQrScanner(
       {
         subscribe: (onData) => CameraView.onModernBarcodeScanned(({ data }) => onData(data)),
@@ -162,11 +164,12 @@ export function PairScanner({
       },
       (data) => handleRef.current(data)
     )
-      .catch(() => {
+      .catch((error: unknown) => {
+        const diagnostic = describeNativeQrScannerError(error)
+        setStage(null)
         setUseLiveCamera(true)
-        setScannerNotice(
-          'The system QR scanner closed or could not open. The live camera is ready, or you can try again below.'
-        )
+        setScannerNotice(diagnostic.userMessage)
+        setScanDetails((current) => [...current, diagnostic.logMessage])
       })
       .finally(() => setNativeScannerActive(false))
   }, [preferNativeScanner, nativeScannerActive])
@@ -176,10 +179,22 @@ export function PairScanner({
       nativeScannerAttempted.current = false
       return
     }
-    if (!perm?.granted || !preferNativeScanner || nativeScannerAttempted.current || initialCode || externalPairing)
+    if (!preferNativeScanner || nativeScannerAttempted.current || initialCode || externalPairing)
       return
     launchNativeScanner()
-  }, [visible, perm?.granted, preferNativeScanner, initialCode, externalPairing, launchNativeScanner])
+  }, [visible, preferNativeScanner, initialCode, externalPairing, launchNativeScanner])
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'android' || CameraView.isModernBarcodeScannerAvailable) return
+    setScannerNotice(
+      'Google’s system QR scanner is unavailable because Google Play services or its barcode module was not detected. The live camera is available; enable or update Google Play services and retry if needed.'
+    )
+    setScanDetails((current) =>
+      current.some((line) => line.startsWith('System scanner unavailable'))
+        ? current
+        : [...current, 'System scanner unavailable: Expo Camera reported isModernBarcodeScannerAvailable=false.']
+    )
+  }, [visible])
 
   useEffect(() => {
     if (!visible || !initialCode) return
@@ -190,7 +205,14 @@ export function PairScanner({
 
   useEffect(() => {
     if (!visible || !perm?.granted || !cameraReady || busy || qrSummary || initialCode || externalPairing) return
-    const timer = setTimeout(() => setScanHint(true), 8000)
+    const timer = setTimeout(() => {
+      setScanHint(true)
+      setScanDetails((current) =>
+        current.includes('Live camera: no QR result after 8 seconds.')
+          ? current
+          : [...current, 'Live camera: no QR result after 8 seconds.']
+      )
+    }, 8000)
     return () => clearTimeout(timer)
   }, [visible, perm?.granted, cameraReady, busy, qrSummary, initialCode, externalPairing])
 
@@ -238,13 +260,23 @@ export function PairScanner({
             onCameraReady={() => {
               setCameraReady(true)
               setCameraError(null)
+              setScanDetails((current) =>
+                current.includes('Live camera ready; waiting for a QR analyzer result.')
+                  ? current
+                  : [...current, 'Live camera ready; waiting for a QR analyzer result.']
+              )
             }}
             onMountError={({ message }) => {
               setCameraReady(false)
               setCameraError(message)
             }}
           />
-        ) : visible && !perm?.granted && !initialCode && !externalPairing ? (
+        ) :
+          visible &&
+          !perm?.granted &&
+          (!preferNativeScanner || useLiveCamera) &&
+          !initialCode &&
+          !externalPairing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Text style={[ui.title, { color: '#fff', textAlign: 'center' }]}>Camera access to scan the code</Text>
             <Pressable onPress={() => void requestPerm()} style={[ui.quiet, { marginTop: 12 }]}>
@@ -275,7 +307,7 @@ export function PairScanner({
           />
         )}
 
-        {visible && (perm?.granted || initialCode || externalPairing) && (
+        {visible && (perm?.granted || preferNativeScanner || initialCode || externalPairing) && (
           <View
             style={{
               position: 'absolute',
