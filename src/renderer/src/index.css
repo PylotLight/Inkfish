@@ -2581,6 +2581,17 @@ html[data-theme='abyss'] {
   --inset-soft: rgba(0, 0, 0, 0.28);
 }
 
+/* AMOLED — the one deliberate exception to the VIBRANCY RULE below: its shell is
+ * fully OPAQUE true black. On OLED panels that switches pixels off (real power
+ * savings), and a wallpaper behind translucent black would glow through and defeat
+ * the point, so the native vibrancy is intentionally covered here. Surfaces ride
+ * the usual white-alpha ramp, which lands as neutral greys on true black. */
+html[data-theme='amoled'] {
+  color-scheme: dark;
+  --bg: #000;
+  --shell-bg: #000;
+}
+
 html[data-theme='forest'] {
   color-scheme: dark;
   --panel: rgba(190, 255, 210, 0.05);

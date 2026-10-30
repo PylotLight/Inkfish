@@ -499,6 +499,9 @@ export default function SettingsView({
                   <div className="setting-label">
                     Native vibrancy blur {vibrancySupported ? '(macOS)' : ''}
                     {!vibrancySupported && <span className="muted small setting-hint">Only available on macOS.</span>}
+                    {vibrancySupported && prefs.theme === 'amoled' && (
+                      <span className="muted small setting-hint">Covered by AMOLED’s true black.</span>
+                    )}
                   </div>
                   <button
                     role="switch"

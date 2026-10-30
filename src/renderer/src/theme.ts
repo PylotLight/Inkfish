@@ -4,7 +4,7 @@
  * editor / vault-ui prefs. Applied to <html> dataset + inline accent vars.
  */
 
-export type ThemeId = 'deep' | 'abyss' | 'forest' | 'plum' | 'paper'
+export type ThemeId = 'deep' | 'abyss' | 'amoled' | 'forest' | 'plum' | 'paper'
 export type AccentId = 'mint' | 'sky' | 'violet' | 'amber' | 'coral' | 'custom'
 export type DensityId = 'comfortable' | 'compact'
 export type MotionId = 'full' | 'reduced'
@@ -74,6 +74,7 @@ export interface ThemeDef {
 export const THEMES: ThemeDef[] = [
   { id: 'deep', name: 'Deep', blurb: 'Default dark slate.', swatch: '#1c222b' },
   { id: 'abyss', name: 'Abyss', blurb: 'Deeper black, low-glare.', swatch: '#06090f' },
+  { id: 'amoled', name: 'AMOLED', blurb: 'True black — for OLED displays.', swatch: '#000000' },
   { id: 'forest', name: 'Forest', blurb: 'Dark green tint.', swatch: '#0e1a14' },
   { id: 'plum', name: 'Plum', blurb: 'Dark purple tint.', swatch: '#171222' },
   { id: 'paper', name: 'Paper', blurb: 'Light reading theme.', swatch: '#f2efe8' }
