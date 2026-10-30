@@ -181,7 +181,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: persistent cache dir (self-hosted only, if one is mounted)
@@ -213,6 +213,31 @@ jobs:
         working-directory: android
       - run: bun test android/test
       - run: bun run typecheck:android
+
+      - name: has android sdk?
+        id: sdk
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+      - name: android sdk (only if the runner lacks one)
+        if: steps.sdk.outputs.present != 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: prebuild + debug APK
+        working-directory: android
+        run: |
+          npx expo prebuild --platform android --clean --no-install
+          cd android
+          ./gradlew :app:assembleDebug -Dorg.gradle.jvmargs=-Xmx4g --console=plain
+          test -s app/build/outputs/apk/debug/app-debug.apk
 
   # Builds the Swift transcription helper (the slow part of a release) only when stt/ changes,
   # so a broken helper shows up on the PR instead of at release time. On main it also seeds the
