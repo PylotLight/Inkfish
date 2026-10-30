@@ -1,6 +1,112 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
+const scannerLaunchBefore = [
+  `        val scanner = GmsBarcodeScanning.getClient(reactContext, options)
+        scanner.startScan()
+          .addOnSuccessListener { barcode ->
+            val result = BarCodeScannerResultSerializer.parseBarcodeScanningResult(barcode)
+            sendEvent("onModernBarcodeScanned", BarCodeScannerResultSerializer.toBundle(result, 1.0f))
+            promise.resolve()
+          }
+          .addOnCanceledListener {
+            promise.reject(CameraExceptions.BarcodeScanningCancelledException())
+          }
+          .addOnFailureListener {
+            promise.reject(CameraExceptions.BarcodeScanningFailedException())
+          }`,
+  `        val scanner = GmsBarcodeScanning.getClient(reactContext, options)
+        scanner.startScan()
+          .addOnSuccessListener { barcode ->
+            val result = BarCodeScannerResultSerializer.parseBarcodeScanningResult(barcode)
+            sendEvent("onModernBarcodeScanned", BarCodeScannerResultSerializer.toBundle(result, 1.0f))
+            promise.resolve()
+          }
+          .addOnCanceledListener {
+            promise.reject(CameraExceptions.BarcodeScanningCancelledException())
+          }
+          .addOnFailureListener { error ->
+            promise.reject(CameraExceptions.BarcodeScanningFailedException(error))
+          }`
+]
+
+const scannerLaunchAfter = `        val scanner = GmsBarcodeScanning.getClient(reactContext, options)
+        val moduleInstallClient = ModuleInstall.getClient(reactContext)
+        val scannerLaunchStarted = AtomicBoolean(false)
+        val promiseSettled = AtomicBoolean(false)
+
+        val launchInstalledScanner: () -> Unit = {
+          if (scannerLaunchStarted.compareAndSet(false, true)) {
+            try {
+              scanner.startScan()
+                .addOnSuccessListener { barcode ->
+                  if (promiseSettled.compareAndSet(false, true)) {
+                    val result = BarCodeScannerResultSerializer.parseBarcodeScanningResult(barcode)
+                    sendEvent("onModernBarcodeScanned", BarCodeScannerResultSerializer.toBundle(result, 1.0f))
+                    promise.resolve()
+                  }
+                }
+                .addOnCanceledListener {
+                  if (promiseSettled.compareAndSet(false, true)) {
+                    promise.reject(CameraExceptions.BarcodeScanningCancelledException())
+                  }
+                }
+                .addOnFailureListener { error ->
+                  if (promiseSettled.compareAndSet(false, true)) {
+                    promise.reject(CameraExceptions.BarcodeScanningFailedException(error))
+                  }
+                }
+            } catch (error: Exception) {
+              if (promiseSettled.compareAndSet(false, true)) {
+                promise.reject(CameraExceptions.BarcodeScanningFailedException(error))
+              }
+            }
+          }
+        }
+
+        lateinit var installStatusListener: InstallStatusListener
+        installStatusListener = object : InstallStatusListener {
+          override fun onInstallStatusUpdated(update: ModuleInstallStatusUpdate) {
+            when (update.installState) {
+              ModuleInstallStatusUpdate.InstallState.STATE_COMPLETED -> {
+                moduleInstallClient.unregisterListener(this)
+                launchInstalledScanner()
+              }
+              ModuleInstallStatusUpdate.InstallState.STATE_FAILED,
+              ModuleInstallStatusUpdate.InstallState.STATE_CANCELED -> {
+                moduleInstallClient.unregisterListener(this)
+                if (promiseSettled.compareAndSet(false, true)) {
+                  promise.reject(
+                    CameraExceptions.BarcodeScanningFailedException(
+                      IllegalStateException(
+                        "Google Code Scanner module installation failed (state=\${update.installState}, error=\${update.errorCode})"
+                      )
+                    )
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        val installRequest = ModuleInstallRequest.newBuilder()
+          .addApi(scanner)
+          .setListener(installStatusListener)
+          .build()
+        moduleInstallClient.installModules(installRequest)
+          .addOnSuccessListener { response ->
+            if (response.areModulesAlreadyInstalled()) {
+              moduleInstallClient.unregisterListener(installStatusListener)
+              launchInstalledScanner()
+            }
+          }
+          .addOnFailureListener { error ->
+            moduleInstallClient.unregisterListener(installStatusListener)
+            if (promiseSettled.compareAndSet(false, true)) {
+              promise.reject(CameraExceptions.BarcodeScanningFailedException(error))
+            }
+          }`
+
 const replacements = [
   {
     file: 'android/src/main/java/expo/modules/camera/utils/CameraUtils.kt',
@@ -11,10 +117,14 @@ const replacements = [
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
-    before:
-      '          .addOnFailureListener {\n            promise.reject(CameraExceptions.BarcodeScanningFailedException())\n          }',
+    before: 'import android.util.Log',
     after:
-      '          .addOnFailureListener { error ->\n            promise.reject(CameraExceptions.BarcodeScanningFailedException(error))\n          }'
+      'import android.util.Log\nimport com.google.android.gms.common.moduleinstall.InstallStatusListener\nimport com.google.android.gms.common.moduleinstall.ModuleInstall\nimport com.google.android.gms.common.moduleinstall.ModuleInstallRequest\nimport com.google.android.gms.common.moduleinstall.ModuleInstallStatusUpdate'
+  },
+  {
+    file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
+    before: 'import java.io.File',
+    after: 'import java.io.File\nimport java.util.concurrent.atomic.AtomicBoolean'
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
@@ -23,10 +133,32 @@ const replacements = [
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
+    before: '    // False on Horizon OS (Quest devices) and devices without Google Play Services.',
+    after: '    // False on Horizon OS (Quest devices) and when the bundled barcode client is absent.'
+  },
+  {
+    file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
+    before: '      !VRUtilities.isQuest() && CameraUtils.isMLKitAvailable(appContext.reactContext)',
+    after: '      !VRUtilities.isQuest() && CameraUtils.isMLKitBarcodeScannerAvailable()'
+  },
+  {
+    file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
     before:
       '      } catch (_: Exception) {\n        promise.reject(CameraExceptions.GooglePlayServicesUnavailableException())\n      }',
     after:
       '      } catch (error: Exception) {\n        promise.reject(CameraExceptions.BarcodeScanningFailedException(error))\n      }'
+  },
+  {
+    file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
+    before:
+      '      if (!CameraUtils.hasGooglePlayServices(appContext.reactContext)) {\n        promise.reject(CameraExceptions.GooglePlayServicesUnavailableException())\n        return@AsyncFunction\n      }',
+    after:
+      '      // Let ModuleInstallClient check the actual scanner service/module;\n      // a package lookup can still be a false negative on restricted profiles.'
+  },
+  {
+    file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
+    before: scannerLaunchBefore,
+    after: scannerLaunchAfter
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraExceptions.kt',
@@ -65,12 +197,14 @@ const replacements = [
 
 function replaceRequired(source, before, after, file) {
   if (source.includes(after)) return source
-  if (!source.includes(before)) {
+  const beforeVariants = Array.isArray(before) ? before : [before]
+  const matchedBefore = beforeVariants.find((variant) => source.includes(variant))
+  if (!matchedBefore) {
     throw new Error(
-      `Expo Camera scanner diagnostic patch no longer matches ${file}; review the native source before building.`
+      `Expo Camera scanner diagnostic patch no longer matches ${file} near ${JSON.stringify(beforeVariants[0].slice(0, 100))}; review the native source before building.`
     )
   }
-  return source.replace(before, after)
+  return source.replace(matchedBefore, after)
 }
 
 /** Apply the reviewed Expo Camera 58 Android source corrections in-place. */

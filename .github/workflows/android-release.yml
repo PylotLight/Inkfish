@@ -135,6 +135,9 @@ jobs:
           "$BT"apksigner verify --print-certs "$OUT" | head -4
           ls -la "$OUT"
 
+      - name: verify packaged native scanner implementation
+        run: node plugins/verify-scanner-apk.js "$GITHUB_WORKSPACE/Inkfish-android-${{ steps.v.outputs.version }}.apk"
+
       - name: notes
         working-directory: .
         env:

@@ -10,6 +10,13 @@
     "android": "expo prebuild --platform android --clean && expo run:android",
     "typecheck": "bun check"
   },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": ["expo-camera"]
+      }
+    }
+  },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "expo": "^58.0.0",
