@@ -2,14 +2,16 @@
  * Core sidebar collapse: persisted flag + the ⌘\ / Ctrl+\ shortcut. Pure, so it is unit tested.
  *
  * Layout (index.css): Obsidian-style collapse.
- *  - The 48px icon ribbon (`.side-ribbon`) is ALWAYS visible. Its FIRST button is the sidebar
- *    toggle (like Obsidian's file-explorer ribbon icon) — expand while collapsed, collapse while
- *    open. On macOS the ribbon is 72px wide so the inset traffic lights (window.ts
+ *  - The 48px icon ribbon (`.side-ribbon`) is ALWAYS visible and carries all pane navigation
+ *    (Home/Notes/Inbox, Today, Journal, Meetings, Settings). There is no dedicated toggle on it:
+ *    clicking ANY ribbon icon re-opens a collapsed pane (Obsidian behaviour) — that is the
+ *    mouse path back, since the pane's own toggle hides with the pane.
+ *  - The collapse toggle lives in the pane's footer (`.side-foot`), left of the vault chip, so
+ *    it sits with the other footer options and never moves with the tree above.
+ *  - On macOS the ribbon is 72px wide so the inset traffic lights (window.ts
  *    `trafficLightPosition { x: 16, y: 16 }` → ending ≈x68) sit entirely inside it and the
  *    content never has to move (no top-strip jump, like Obsidian).
- *  - Expanded: the pane (search + tree) opens to the RIGHT of the ribbon — no duplicate toggle.
- *    All pane navigation (Home/Notes/Inbox, Today, Journal, Meetings, Settings) rides the ribbon,
- *    so the pane stays just search + tree, Obsidian's Files-explorer shape.
+ *  - Expanded: the pane (search + tree + footer) opens to the RIGHT of the ribbon.
  *  - `.side-rail` (the content's top drag strip) grows to 46px only while the live-recording
  *    chip is visible (`.rail-tall`, added by Center.tsx) — the chip needs vertical room.
  *  - The buttons are `no-drag` so macOS doesn't eat the clicks as window drags.

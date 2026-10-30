@@ -106,15 +106,25 @@ describe('sidebar toggle + collapsed rail layout', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
     expect(tsx.indexOf('{sideCollapsed && (')).toBe(-1)
   })
-  test('the ribbon leads with its toggle button as the pane affordance (Obsidian pattern)', () => {
+  test('the ribbon has no dedicated toggle — its icons re-open a collapsed pane (Obsidian)', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
     const ribbonStart = tsx.indexOf('side-ribbon')
-    const firstButton = tsx.slice(ribbonStart, tsx.indexOf('</nav>', ribbonStart))
-    expect(firstButton.indexOf('panel-left')).toBeGreaterThanOrEqual(0)
-    expect(firstButton).toContain('setSideCollapsed')
+    const ribbon = tsx.slice(ribbonStart, tsx.indexOf('</nav>', ribbonStart))
+    // The old boxed first button is gone; unboxing the affordance, not losing it.
+    expect(ribbon).not.toContain('panel-left')
+    expect(ribbon).toContain('uncollapse()')
     // Obsidian-sized ribbon icons: 24px, not the old 18px.
-    expect(firstButton).toContain('size={24}')
-    expect(firstButton).not.toContain('size={18}')
+    expect(ribbon).toContain('size={24}')
+    expect(ribbon).not.toContain('size={18}')
+  })
+  test('the pane footer carries the collapse toggle, left of the vault chip', () => {
+    const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
+    const footStart = tsx.indexOf('side-foot')
+    const foot = tsx.slice(footStart, tsx.indexOf('</aside>', footStart))
+    expect(foot).toContain('panel-left')
+    expect(foot).toContain('setSideCollapsed(true)')
+    // Stable spot: the toggle leads the row, the vault chip follows.
+    expect(foot.indexOf('panel-left')).toBeLessThan(foot.indexOf('vault-chip'))
   })
   test('the pane carries no scope/quick-action rows (navigation rides the ribbon)', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')

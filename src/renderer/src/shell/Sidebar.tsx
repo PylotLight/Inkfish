@@ -118,29 +118,22 @@ export default function Sidebar({
   vaultInfo,
   sys
 }: Props): React.JSX.Element {
+  // Obsidian behaviour: any ribbon click re-opens a collapsed pane. The pane's own toggle lives
+  // in its footer (hidden with it when collapsed), so the ribbon is the mouse path back.
+  const uncollapse = (): void => setSideCollapsed(false)
   return (
     <>
-      {/* Obsidian-style ribbon: always visible, on every platform. Its first button is the pane
-           toggle (expand while collapsed, collapse while open); all pane navigation (Home/Notes/
-           Inbox, Today, Journal, Meetings, Settings) rides here, so the expanded pane stays just
-           search + tree, Obsidian's Files-explorer shape. */}
+      {/* Obsidian-style ribbon: always visible, on every platform. All pane navigation
+           (Home/Notes/Inbox, Today, Journal, Meetings, Settings) rides here, so the expanded
+           pane stays just search + tree + footer, Obsidian's Files-explorer shape. Clicking
+           any icon while collapsed re-opens the pane; the collapse itself is the footer's. */}
       <nav className="side-ribbon" aria-label="Navigation">
-        <button
-          className={`ribbon-btn${!sideCollapsed ? ' on' : ''}`}
-          title={`${sideCollapsed ? 'Show' : 'Hide'} sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
-          aria-label={`${sideCollapsed ? 'Show' : 'Hide'} sidebar`}
-          aria-expanded={!sideCollapsed}
-          aria-pressed={!sideCollapsed}
-          onClick={() => setSideCollapsed((v) => !v)}
-        >
-          <Icon name="panel-left" size={24} />
-        </button>
         <button
           className="ribbon-btn"
           title={`Search notes (${isMacUi ? '⌘\\' : 'Ctrl+\\'} shows the sidebar)`}
           aria-label="Search notes"
           onClick={() => {
-            setSideCollapsed(false)
+            uncollapse()
             if (scope !== 'notes') setScope('notes')
             setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
           }}
@@ -159,11 +152,12 @@ export default function Sidebar({
               aria-label={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
               aria-current={on ? 'page' : undefined}
               onClick={() => {
+                uncollapse()
                 leaveSettings()
                 setShowMeeting(false)
                 pickScope(s)
                 // The inbox queue lives in the sidebar — bring it back to show it.
-                if (s === 'inbox') setSideCollapsed(false)
+                if (s === 'inbox') uncollapse()
               }}
             >
               <Icon name={s} size={24} />
@@ -177,6 +171,7 @@ export default function Sidebar({
           title={`Today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'})`}
           aria-label="Today's note"
           onClick={() => {
+            uncollapse()
             leaveSettings()
             void openToday()
           }}
@@ -188,7 +183,10 @@ export default function Sidebar({
           title={`Journal (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
           aria-label="Journal"
           aria-current={scope === 'journal' && !settingsOpen && !showMeeting ? 'page' : undefined}
-          onClick={openJournal}
+          onClick={() => {
+            uncollapse()
+            openJournal()
+          }}
         >
           <Icon name="journal" size={24} />
         </button>
@@ -198,6 +196,7 @@ export default function Sidebar({
           aria-label={meetingLive ? 'Recording' : 'Meetings'}
           aria-pressed={showMeeting && !settingsOpen}
           onClick={() => {
+            uncollapse()
             leaveSettings()
             setShowMeeting(true)
           }}
@@ -209,7 +208,10 @@ export default function Sidebar({
           className={`ribbon-btn${settingsOpen ? ' on' : ''}`}
           title="Settings"
           aria-label="Settings"
-          onClick={openSettings}
+          onClick={() => {
+            uncollapse()
+            openSettings()
+          }}
         >
           <Icon name="settings" size={24} />
           {updateBadge && <span className="ribbon-dot" aria-label="Update available" />}
@@ -325,9 +327,19 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Obsidian-style bottom vault bar: vault chip left, equal icon buttons right. Version
-            rides in the chip tooltip (and Settings › About) to keep the row quiet. */}
+        {/* Obsidian-style bottom vault bar: the pane's collapse toggle left, then the vault
+            chip, equal icon buttons on the right. It hides with the pane; any ribbon icon
+            (or ⌘\ / Ctrl+\) re-opens it. Version rides in the chip tooltip (and Settings ›
+            About) to keep the row quiet. */}
         <div className="side-foot">
+          <button
+            className="foot-btn"
+            onClick={() => setSideCollapsed(true)}
+            title={`Hide sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+            aria-label="Hide sidebar"
+          >
+            <Icon name="panel-left" size={16} />
+          </button>
           <button
             className="vault-chip"
             onClick={() => void window.api.vault.reveal()}
