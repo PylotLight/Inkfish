@@ -32,6 +32,8 @@ export type Op =
       local: string
       remote: string
       base?: string
+      /** Read the local side from this path (a rename this same run moves to `path` locally). */
+      localFrom?: string
       /** Read the remote side from this path (a rename this same run moves to `path` on the remote). */
       remoteFrom?: string
     }
@@ -108,22 +110,27 @@ export interface Write {
 
 /**
  * Resolve one `merge` op. Clean merges write one text to both sides; a real
- * conflict keeps local at the path and saves remote beside it as a conflict
- * copy, so nothing is ever lost.
+ * conflict keeps the preferred side at the path and saves the other beside it,
+ * so timestamp hints never discard the losing content.
  */
 export function resolveMerge(
   op: Extract<Op, { op: 'merge' }>,
   text: { base?: string; local: string; remote: string },
   remoteDevice: string,
-  at: Date = new Date()
+  at: Date = new Date(),
+  preferred: 'local' | 'remote' = 'local'
 ): Write[] {
   if (op.kind === 'daily') return [{ path: op.path, text: mergeDaily(text.local, text.remote) }]
   if (op.kind === 'note') {
-    const r = mergeNote(text.base ?? '', text.local, text.remote)
+    const r =
+      preferred === 'local'
+        ? mergeNote(text.base ?? '', text.local, text.remote)
+        : mergeNote(text.base ?? '', text.remote, text.local)
     if (r.clean) return [{ path: op.path, text: r.text }]
   }
+  const loser = preferred === 'local' ? 'remote' : 'local'
   return [
-    { path: op.path, from: 'local' },
-    { path: conflictPath(op.path, remoteDevice, at), from: 'remote' }
+    { path: op.path, from: preferred },
+    { path: conflictPath(op.path, remoteDevice, at), from: loser }
   ]
 }

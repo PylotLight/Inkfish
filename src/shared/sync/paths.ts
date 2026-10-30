@@ -84,7 +84,7 @@ export function rebaseCase(base: Base, remote: Manifest): Base {
 
 // --- conflict copies + heal bumps ----------------------------------------------
 
-const CONFLICT_RE = /^(.*) \(conflict · [^/]* · \d{4}-\d{2}-\d{2} \d{4}\)(\.[^./]+)?$/
+const CONFLICT_RE = /^(.*) \(conflict · [^/]* · \d{4}-\d{2}-\d{2} \d{4}(?: #\d+)?\)(\.[^./]+)?$/
 const BUMP_RE = /^(.*) ([2-9]|[1-9]\d)(\.md)$/
 
 /** `a/b (conflict · Mac · 2026-10-19 1802).md` → `a/b.md`; null if not a conflict copy. */

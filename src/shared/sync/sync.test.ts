@@ -113,4 +113,17 @@ describe('plan', () => {
       { path: 'assets/x (conflict · Mac · 2026-10-08 0102).png', from: 'remote' }
     ])
   })
+  test('preferred newer side stays primary while the other edit is preserved', () => {
+    const w = resolveMerge(
+      { op: 'merge', path: 'a.md', kind: 'note', local: 'phone', remote: 'mac', base: 'base' },
+      { base: '# T\n\nbefore\n', local: '# T\n\nphone edit\n', remote: '# T\n\nMac edit\n' },
+      'Mac',
+      new Date(2026, 9, 8, 1, 2),
+      'remote'
+    )
+    expect(w).toEqual([
+      { path: 'a.md', from: 'remote' },
+      { path: 'a (conflict · Mac · 2026-10-08 0102).md', from: 'local' }
+    ])
+  })
 })

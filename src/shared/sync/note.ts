@@ -135,11 +135,17 @@ export function mergeDaily(ours: string, theirs: string): string {
 
 /** `work/Idea.md` → `work/Idea (conflict · Pixel 8 · 2026-10-08 0914).md` */
 export function conflictPath(path: string, device: string, at: Date = new Date()): string {
+  return numberedConflictPath(path, device, at, 1)
+}
+
+/** A stable collision-safe variant for distinct conflict versions created in the same minute. */
+export function numberedConflictPath(path: string, device: string, at: Date, instance: number): string {
   const dot = path.lastIndexOf('.')
   const stem = dot > path.lastIndexOf('/') ? path.slice(0, dot) : path
   const ext = dot > path.lastIndexOf('/') ? path.slice(dot) : ''
   const p = (n: number): string => String(n).padStart(2, '0')
   const stamp = `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())} ${p(at.getHours())}${p(at.getMinutes())}`
   const safe = device.replace(/[\\/:*?"<>|]/g, '').trim() || 'other device'
-  return `${stem} (conflict · ${safe} · ${stamp})${ext}`
+  const suffix = instance > 1 ? ` #${instance}` : ''
+  return `${stem} (conflict · ${safe} · ${stamp}${suffix})${ext}`
 }

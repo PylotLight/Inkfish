@@ -151,6 +151,7 @@ describe('conflict copies', () => {
 
   test('name helpers', () => {
     expect(conflictOriginal(C1)).toBe('Work/a.md')
+    expect(conflictOriginal('Work/a (conflict · Mac · 2026-10-19 1801 #2).md')).toBe('Work/a.md')
     expect(conflictOriginal('Work/a.md')).toBeNull()
     expect(bumpOriginal('Work/a 2.md')).toBe('Work/a.md')
     expect(bumpOriginal('Work/2026 10.md')).toBe('Work/2026.md')
@@ -205,6 +206,57 @@ describe('conflict copies', () => {
     expect(r2.conflicts.length).toBe(0)
     expect(mac.paths().filter((p) => p.includes('conflict')).length).toBe(1)
     expect(mac.text('Work/a.md')).toBe('phone again\n')
+    await expectConverged(phone, mac)
+  })
+
+  test('newer remote mtime becomes primary and the local edit remains recoverable', async () => {
+    const path = 'Work/a.md'
+    const mac = new CiFs({ [path]: 'before\n' })
+    const phone = new MemFs()
+    const state = new MemState()
+    const { remote } = wired(mac)
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    const macList = mac.list.bind(mac)
+    mac.list = async () => {
+      const manifest = await macList()
+      if (manifest[path]) manifest[path]!.mtime = 200
+      return manifest
+    }
+    const phoneList = phone.list.bind(phone)
+    phone.list = async () => {
+      const manifest = await phoneList()
+      if (manifest[path]) manifest[path]!.mtime = 100
+      return manifest
+    }
+    await mac.write(path, utf8Encode('Mac edit\n'))
+    await phone.write(path, utf8Encode('Phone edit\n'))
+    const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 1) })
+    expect(r.conflicts).toHaveLength(1)
+    expect(mac.text(path)).toBe('Mac edit\n')
+    expect(phone.text(path)).toBe('Mac edit\n')
+    expect(mac.text(r.conflicts[0]!)).toBe('Phone edit\n')
+    await expectConverged(phone, mac)
+  })
+
+  test('a distinct conflict in the same minute never overwrites the earlier copy', async () => {
+    const path = 'Work/a.md'
+    const mac = new CiFs({ [path]: 'before\n' })
+    const phone = new MemFs()
+    const state = new MemState()
+    const { remote } = wired(mac)
+    const at = new Date(2026, 9, 19, 18, 1)
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    await mac.write(path, utf8Encode('Mac edit one\n'))
+    await phone.write(path, utf8Encode('Phone edit one\n'))
+    const first = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
+    expect(first.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801).md'])
+    await mac.write(path, utf8Encode('Mac edit two\n'))
+    await phone.write(path, utf8Encode('Phone edit two\n'))
+    const second = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
+    expect(second.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801 #2).md'])
+    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801).md')).toBe('Mac edit one\n')
+    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801 #2).md')).toBe('Mac edit two\n')
+    expect(mac.text(path)).toBe('Phone edit two\n')
     await expectConverged(phone, mac)
   })
 })

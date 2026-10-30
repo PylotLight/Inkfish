@@ -2,6 +2,7 @@ import { utf8Decode, utf8Encode, fromBase64, toBase64 } from './bytes'
 import { plan, resolveMerge, type Base, type Manifest, type Op } from './plan'
 import { applyRenames, matchRenames, renameCandidates } from './renames'
 import { caseAdoptions, copyExists, rebaseCase, redundantCopies, renameEntries } from './paths'
+import { numberedConflictPath } from './note'
 import { sha256 } from './hash'
 import { mapLimit } from './walk'
 import type { ApplyReq } from './protocol'
@@ -602,6 +603,20 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
         const theirs = fetched[o.remoteFrom ?? o.path]
         if (!theirs) break
         const ours = await fs.read(o.path)
+        const localTime = local[o.localFrom ?? o.path]?.mtime
+        const remoteTime = remoteMan[o.remoteFrom ?? o.path]?.mtime
+        // Filesystem mtimes are the best shared edit-time hint available, not proof of causality.
+        // On ties or unavailable timestamps keep the stable historical local-wins behavior.
+        const preferred =
+          typeof localTime === 'number' &&
+          Number.isFinite(localTime) &&
+          localTime > 0 &&
+          typeof remoteTime === 'number' &&
+          Number.isFinite(remoteTime) &&
+          remoteTime > 0 &&
+          remoteTime > localTime
+            ? 'remote'
+            : 'local'
         const text =
           o.kind === 'binary' || !isText(o.path)
             ? { local: '', remote: '' }
@@ -610,12 +625,31 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
                 remote: utf8Decode(theirs),
                 base: (o.base && (await state.getText(o.base))) ?? undefined
               }
-        let result = resolveMerge(o, text, opts.remoteName, opts.now)
-        // Never mint a conflict copy the vault already holds (same bytes): keep ours at the path.
-        if (result.length > 1 && copyExists(o.path, o.remote, local, remoteMan)) result = [result[0]!]
+        const conflictAt = opts.now ?? new Date()
+        let result = resolveMerge(o, text, opts.remoteName, conflictAt, preferred)
+        if (result.length > 1) {
+          const losingHash = result[1]!.from === 'local' ? o.local : o.remote
+          // Never mint a conflict copy the vault already holds (same bytes).
+          if (copyExists(o.path, losingHash, local, remoteMan)) result = [result[0]!]
+          else {
+            // Different conflicts can happen in the same minute; never overwrite an earlier copy.
+            for (let n = 1; ; n++) {
+              const candidate = numberedConflictPath(o.path, opts.remoteName, conflictAt, n)
+              const entries = [local[candidate], remoteMan[candidate]].filter(Boolean)
+              if (!entries.length) {
+                result[1] = { ...result[1]!, path: candidate }
+                break
+              }
+              if (entries.every((entry) => entry!.hash === losingHash)) {
+                result = [result[0]!]
+                break
+              }
+            }
+          }
+        }
         for (const w of result) {
           const data = w.text !== undefined ? utf8Encode(w.text) : w.from === 'local' ? ours : theirs
-          if (w.path !== o.path || w.text !== undefined) {
+          if (w.path !== o.path || w.text !== undefined || w.from === 'remote') {
             const h = sha256(data)
             await fs.write(w.path, data, h)
             touched.add(w.path)

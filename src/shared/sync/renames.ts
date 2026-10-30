@@ -241,7 +241,16 @@ export function applyRenames(ops: Op[], pairs: RenamePair[], local: Manifest, re
       // The Mac renamed it.
       moves.push({ op: 'moveLocal', from: g.path, to: a.path })
       if (!g.edited) after.push({ op: 'pull', path: a.path, hash: a.hash })
-      else after.push({ op: 'merge', path: a.path, kind: 'note', local: local[g.path]!.hash, remote: a.hash, base: b })
+      else
+        after.push({
+          op: 'merge',
+          path: a.path,
+          kind: 'note',
+          local: local[g.path]!.hash,
+          remote: a.hash,
+          base: b,
+          localFrom: g.path
+        })
     } else {
       // The phone renamed it.
       moves.push({ op: 'moveRemote', from: g.path, to: a.path })
