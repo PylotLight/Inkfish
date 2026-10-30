@@ -328,9 +328,10 @@ export default function Sidebar({
         )}
 
         {/* Obsidian-style bottom vault bar: the pane's collapse toggle left, then the vault
-            chip, equal icon buttons on the right. It hides with the pane; any ribbon icon
-            (or ⌘\ / Ctrl+\) re-opens it. Version rides in the chip tooltip (and Settings ›
-            About) to keep the row quiet. */}
+            chip, sync + quit right. Settings lives on the ribbon ONLY (it stays visible when
+            the pane is collapsed, so a footer copy would just duplicate it). The toggle hides
+            with the pane; any ribbon icon (or ⌘\ / Ctrl+\) re-opens it. Version rides in the
+            chip tooltip (and Settings › About) to keep the row quiet. */}
         <div className="side-foot">
           <button
             className="foot-btn"
@@ -351,15 +352,6 @@ export default function Sidebar({
           </button>
           <div className="foot-actions">
             <SyncBadge onOpen={() => openSettingsAt('sync')} />
-            <button
-              className="foot-btn"
-              onClick={openSettings}
-              title={updateBadge ? 'Settings — update available' : 'Settings'}
-              aria-label="Settings"
-            >
-              <Icon name="settings" size={16} />
-              {updateBadge && <span className="update-dot" aria-label="Update available" />}
-            </button>
             <button
               className="foot-btn quit"
               onClick={() => void window.api.app.quit()}

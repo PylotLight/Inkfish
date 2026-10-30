@@ -169,7 +169,7 @@ describe('sidebar footer (vault bar)', () => {
     expect(rule('.vault-chip')).toContain('min-width: 0')
     expect(rule('.vault-chip .vault-name')).toContain('text-overflow: ellipsis')
   })
-  test('settings + quit are equal-size icon buttons', () => {
+  test('the footer icon buttons are equal-size (settings stays on the ribbon)', () => {
     const btn = rule('.foot-btn')
     expect(btn).toContain('width: 28px')
     expect(btn).toContain('height: 28px')

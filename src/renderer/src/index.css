@@ -3382,10 +3382,11 @@ input.side-search:focus {
 
 /* ---------- Inkfish: sidebar footer — Obsidian-style bottom vault bar ----------
    One 38px row (shared/sidebar.ts SIDE_FOOT_HEIGHT): the pane's collapse toggle left, then the
-   vault chip, equal 28px icon buttons on the right. Weights stay regular; tints come from
-   --text/--muted so dark + paper themes both read. Hidden with the sidebar when collapsed —
-   any ribbon icon click (or ⌘\ / Ctrl+\) re-opens the pane (Obsidian behaviour), so the
-   toggle hiding with the pane never strands it (Quit stays in the palette / ⌘Q). */
+   vault chip, sync + quit on the right. Settings is the ribbon's alone (see the JSX note).
+   Weights stay regular; tints come from --text/--muted so dark + paper themes both read.
+   Hidden with the sidebar when collapsed — any ribbon icon click (or ⌘\ / Ctrl+\) re-opens
+   the pane (Obsidian behaviour), so the toggle hiding with the pane never strands it
+   (Quit stays in the palette / ⌘Q). */
 .sidebar.core .side-foot {
   flex: none;
   display: flex;
@@ -3478,17 +3479,6 @@ input.side-search:focus {
 }
 
 /* Update badge: small dot tucked on the gear's corner instead of widening the row. */
-.foot-btn .update-dot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 6px;
-  height: 6px;
-  margin: 0;
-  border-radius: 50%;
-  background: var(--accent, #4fd1a5);
-}
-
 /* Sync badge (sidebar footer): sync glyph + state dot, hidden until a phone is paired.
    Solid popover, no backdrop-filter — the window's native vibrancy does the glass. */
 .sync-badge-wrap {
