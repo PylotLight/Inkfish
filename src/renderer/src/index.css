@@ -1986,10 +1986,10 @@ select.sm {
   margin-bottom: 10px;
 }
 
-/* Title row shares the top line with the buttons (pinned to the pane's right
- * edge) and wraps inside itself; the buttons only drop under the title when the
- * pane is too narrow for both. The meta line gets its own full-width row so it
- * doesn't wrap just because the buttons sit beside it. */
+/* Title row shares the top line with the ⋯ (pinned to the pane's right
+ * edge) and wraps inside itself; the button only drops under the title when the
+ * pane is too narrow for both. Tag rows get their own full-width row so they
+ * don't wrap just because the buttons sit beside it. */
 .ed-head .ed-title {
   flex: 1 1 220px;
   min-width: 0;
@@ -2025,11 +2025,6 @@ select.sm {
   background: var(--row-hover);
   border-color: var(--border);
 }
-.ed-head p.ed-meta {
-  flex: 1 0 100%;
-  margin: -4px 0 0;
-}
-
 .ed-head h2 {
   margin: 0;
   font-size: max(19px, calc(var(--ed-fs, 15px) * 1.75));
@@ -4718,9 +4713,9 @@ html[data-density='compact'] .note-stage {
 }
 
 .tab-new {
-  border: 1px dashed var(--border);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--faint);
   border-radius: 10px;
   padding: 4px 12px;
   font-size: 15px;
@@ -4730,7 +4725,7 @@ html[data-density='compact'] .note-stage {
 
 .tab-new:hover {
   color: var(--text);
-  background: var(--panel-raised);
+  background: var(--row-hover);
 }
 
 .cap-caption {
@@ -6160,19 +6155,18 @@ input[type='password'].text-input {
 }
 .tag-add {
   height: 22px;
-  border: 1px dashed var(--guide);
+  border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
-  color: var(--muted);
+  color: var(--faint);
   font: inherit;
   font-size: 12px;
   padding: 0 9px;
   cursor: pointer;
-  opacity: 0.7;
 }
 .tag-add:hover {
   color: var(--text);
-  opacity: 1;
+  background: var(--row-hover);
   border-color: var(--border);
 }
 .tag-input {

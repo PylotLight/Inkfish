@@ -552,6 +552,16 @@ function NoteEditor({
     )
   }
 
+  // Header metadata (size · dates): shown in the breadcrumb tooltip, not as a visible row —
+  // Obsidian's header is just path + title, and the row made the top area busy.
+  const metaSize =
+    draft !== undefined
+      ? `${fmtChars(text.length)} chars`
+      : doc.size > 0
+        ? fmtBytes(doc.size)
+        : `${fmtChars(doc.markdown.length)} chars`
+  const metaDates = `edited ${timeAgo(doc.updatedAt)} · created ${new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
+
   return (
     <div
       ref={rootRef}
@@ -576,7 +586,7 @@ function NoteEditor({
             <div className="ed-crumbs-row">
               <button
                 className="ed-crumbs"
-                title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} — click to move`}
+                title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} · ${metaSize} · ${metaDates} — click to move`}
                 aria-label="Note folder — move to another folder"
                 onClick={(e) => {
                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -647,24 +657,6 @@ function NoteEditor({
               ⋯
             </button>
           </div>
-          <p
-            className="muted small ed-meta"
-            title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
-          >
-            {draft !== undefined
-              ? `${fmtChars(text.length)} · `
-              : doc.size > 0
-                ? `${fmtBytes(doc.size)} · `
-                : `${fmtChars(doc.markdown.length)} · `}
-            edited {timeAgo(doc.updatedAt)} · created{' '}
-            {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-            {!onSetTags && doc.tags.length > 0 && (
-              <>
-                {' · '}
-                {doc.tags.map((t) => `#${t}`).join(' ')}
-              </>
-            )}
-          </p>
           {onSetTags && <TagChips tags={doc.tags} allTags={allTags} onChange={onSetTags} onTagClick={onTagClick} />}
         </div>
       )}
