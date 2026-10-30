@@ -25,9 +25,11 @@ function verifyScannerApk(apkPath) {
     .filter((entry) => /^classes(?:\d+)?\.dex$/.test(entry))
   if (entries.length === 0) throw new Error('APK contains no DEX bytecode files')
 
-  const dexFiles = entries.map((entry) => execFileSync('unzip', ['-p', apkPath, entry], {
-    maxBuffer: 64 * 1024 * 1024
-  }))
+  const dexFiles = entries.map((entry) =>
+    execFileSync('unzip', ['-p', apkPath, entry], {
+      maxBuffer: 64 * 1024 * 1024
+    })
+  )
   return verifyScannerDex(dexFiles)
 }
 

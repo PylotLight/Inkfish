@@ -147,12 +147,12 @@ describe('Expo Camera scanner build patch', () => {
     expect(module).toContain('Google Code Scanner module installation failed')
     expect(module).toContain('response.areModulesAlreadyInstalled()')
     expect(module).not.toContain('if (!CameraUtils.hasGooglePlayServices(appContext.reactContext))')
-    const modernScannerAvailability = module
-      .split('Property("isModernBarcodeScannerAvailable") {')[1]
-      .split('    }')[0]
+    const modernScannerAvailability = module.split('Property("isModernBarcodeScannerAvailable") {')[1].split('    }')[0]
     expect(modernScannerAvailability).toContain('CameraUtils.isMLKitBarcodeScannerAvailable()')
     expect(modernScannerAvailability).not.toContain('CameraUtils.isMLKitAvailable(')
-    expect(module).toContain('if (!CameraUtils.isMLKitAvailable(appContext.reactContext)) { // unrelated image-scan path }')
+    expect(module).toContain(
+      'if (!CameraUtils.isMLKitAvailable(appContext.reactContext)) { // unrelated image-scan path }'
+    )
     expect(module).toContain('False on Horizon OS (Quest devices) and when the bundled barcode client is absent.')
     expect(module).toContain(
       'Property("isDocumentScannerAvailable") { CameraUtils.hasGooglePlayServices(appContext.reactContext) }'
