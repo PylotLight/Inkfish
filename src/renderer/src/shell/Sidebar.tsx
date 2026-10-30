@@ -120,121 +120,107 @@ export default function Sidebar({
 }: Props): React.JSX.Element {
   return (
     <>
-      {/* Sidebar toggle (Obsidian-style): pinned in the titlebar strip right of the traffic lights
-           while the sidebar is open, hidden while collapsed (the ribbon's first icon then takes
-           over as the expand affordance). Fixed + no-drag (shared/sidebar.ts). */}
-      <button
-        className="side-toggle titlebar-toggle"
-        onClick={() => setSideCollapsed((v) => !v)}
-        title={`${sideCollapsed ? 'Show' : 'Hide'} sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
-        aria-label={sideCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-        aria-expanded={!sideCollapsed}
-        aria-pressed={!sideCollapsed}
-      >
-        <Icon name="panel-left" size={18} />
-      </button>
+      {/* Obsidian-style ribbon: always visible, on every platform. Its first button is the pane
+           toggle (expand while collapsed, collapse while open); all pane navigation (Home/Notes/
+           Inbox, Today, Journal, Meetings, Settings) rides here, so the expanded pane stays just
+           search + tree, Obsidian's Files-explorer shape. */}
+      <nav className="side-ribbon" aria-label="Navigation">
+        <button
+          className={`ribbon-btn${!sideCollapsed ? ' on' : ''}`}
+          title={`${sideCollapsed ? 'Show' : 'Hide'} sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
+          aria-label={`${sideCollapsed ? 'Show' : 'Hide'} sidebar`}
+          aria-expanded={!sideCollapsed}
+          aria-pressed={!sideCollapsed}
+          onClick={() => setSideCollapsed((v) => !v)}
+        >
+          <Icon name="panel-left" size={24} />
+        </button>
+        <button
+          className="ribbon-btn"
+          title={`Search notes (${isMacUi ? '⌘\\' : 'Ctrl+\\'} shows the sidebar)`}
+          aria-label="Search notes"
+          onClick={() => {
+            setSideCollapsed(false)
+            if (scope !== 'notes') setScope('notes')
+            setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
+          }}
+        >
+          <Icon name="search" size={24} />
+        </button>
+        {(['home', 'notes', 'inbox'] as Scope[]).map((s) => {
+          const on = scope === s && !settingsOpen && !showMeeting
+          return (
+            <button
+              key={s}
+              className={`ribbon-btn${on ? ' on' : ''}`}
+              title={
+                s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : `Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}`
+              }
+              aria-label={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
+              aria-current={on ? 'page' : undefined}
+              onClick={() => {
+                leaveSettings()
+                setShowMeeting(false)
+                pickScope(s)
+                // The inbox queue lives in the sidebar — bring it back to show it.
+                if (s === 'inbox') setSideCollapsed(false)
+              }}
+            >
+              <Icon name={s} size={24} />
+              {s === 'inbox' && pendingCount > 0 && <span className="ribbon-dot" aria-hidden />}
+            </button>
+          )
+        })}
+        <span className="ribbon-sep" aria-hidden />
+        <button
+          className="ribbon-btn"
+          title={`Today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'})`}
+          aria-label="Today's note"
+          onClick={() => {
+            leaveSettings()
+            void openToday()
+          }}
+        >
+          <Icon name="sun" size={24} />
+        </button>
+        <button
+          className={`ribbon-btn${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
+          title={`Journal (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
+          aria-label="Journal"
+          aria-current={scope === 'journal' && !settingsOpen && !showMeeting ? 'page' : undefined}
+          onClick={openJournal}
+        >
+          <Icon name="journal" size={24} />
+        </button>
+        <button
+          className={`ribbon-btn${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
+          title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
+          aria-label={meetingLive ? 'Recording' : 'Meetings'}
+          aria-pressed={showMeeting && !settingsOpen}
+          onClick={() => {
+            leaveSettings()
+            setShowMeeting(true)
+          }}
+        >
+          <Icon name={meetingLive ? 'record' : 'mic'} size={24} />
+        </button>
+        <span className="flex-sp" />
+        <button
+          className={`ribbon-btn${settingsOpen ? ' on' : ''}`}
+          title="Settings"
+          aria-label="Settings"
+          onClick={openSettings}
+        >
+          <Icon name="settings" size={24} />
+          {updateBadge && <span className="ribbon-dot" aria-label="Update available" />}
+        </button>
+      </nav>
 
-      {/* Collapsed: slim icon ribbon so the app stays navigable without the full sidebar. */}
-      {sideCollapsed && (
-        <nav className="side-ribbon" aria-label="Navigation">
-          <button
-            className="ribbon-btn"
-            title={`Show sidebar (${isMacUi ? '⌘\\' : 'Ctrl+\\'})`}
-            aria-label="Show sidebar"
-            aria-expanded={false}
-            onClick={() => setSideCollapsed(false)}
-          >
-            <Icon name="panel-left" size={24} />
-          </button>
-          <button
-            className="ribbon-btn"
-            title={`Search notes (${isMacUi ? '⌘\\' : 'Ctrl+\\'} shows the sidebar)`}
-            aria-label="Search notes"
-            onClick={() => {
-              setSideCollapsed(false)
-              if (scope !== 'notes') setScope('notes')
-              setTimeout(() => document.querySelector<HTMLInputElement>('.side-search')?.focus(), 0)
-            }}
-          >
-            <Icon name="search" size={24} />
-          </button>
-          {(['home', 'notes', 'inbox'] as Scope[]).map((s) => {
-            const on = scope === s && !settingsOpen && !showMeeting
-            return (
-              <button
-                key={s}
-                className={`ribbon-btn${on ? ' on' : ''}`}
-                title={
-                  s === 'home'
-                    ? 'Home'
-                    : s === 'notes'
-                      ? 'Notes'
-                      : `Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}`
-                }
-                aria-label={s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
-                aria-current={on ? 'page' : undefined}
-                onClick={() => {
-                  leaveSettings()
-                  setShowMeeting(false)
-                  pickScope(s)
-                  // The inbox queue lives in the sidebar — bring it back to show it.
-                  if (s === 'inbox') setSideCollapsed(false)
-                }}
-              >
-                <Icon name={s} size={24} />
-                {s === 'inbox' && pendingCount > 0 && <span className="ribbon-dot" aria-hidden />}
-              </button>
-            )
-          })}
-          <span className="ribbon-sep" aria-hidden />
-          <button
-            className="ribbon-btn"
-            title={`Today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'})`}
-            aria-label="Today's note"
-            onClick={() => {
-              leaveSettings()
-              void openToday()
-            }}
-          >
-            <Icon name="sun" size={24} />
-          </button>
-          <button
-            className={`ribbon-btn${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
-            title={`Journal (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
-            aria-label="Journal"
-            aria-current={scope === 'journal' && !settingsOpen && !showMeeting ? 'page' : undefined}
-            onClick={openJournal}
-          >
-            <Icon name="journal" size={24} />
-          </button>
-          <button
-            className={`ribbon-btn${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
-            title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
-            aria-label={meetingLive ? 'Recording' : 'Meetings'}
-            aria-pressed={showMeeting && !settingsOpen}
-            onClick={() => {
-              leaveSettings()
-              setShowMeeting(true)
-            }}
-          >
-            <Icon name={meetingLive ? 'record' : 'mic'} size={24} />
-          </button>
-          <span className="flex-sp" />
-          <button
-            className={`ribbon-btn${settingsOpen ? ' on' : ''}`}
-            title="Settings"
-            aria-label="Settings"
-            onClick={openSettings}
-          >
-            <Icon name="settings" size={24} />
-            {updateBadge && <span className="ribbon-dot" aria-label="Update available" />}
-          </button>
-        </nav>
-      )}
-
-      {/* Core sidebar: search, scopes, dir tree with files, kind filters. */}
+      {/* Core sidebar: search + tree + footer — the pane part of the Obsidian pattern; all
+           navigation rides the ribbon beside it. */}
       <aside className="sidebar core" inert={sideCollapsed} aria-hidden={sideCollapsed || undefined}>
-        {/* Titlebar strip: window drag handle; the toggle floats over its left end. */}
+        {/* Titlebar strip: window drag handle (the pane opens to the right of the ribbon, so the
+            traffic lights always sit over the ribbon, never the pane). */}
         <div className="side-head">
           <span className="flex-sp" />
           {profile?.badge && (
@@ -270,54 +256,6 @@ export default function Sidebar({
             aria-label="Search notes"
             spellCheck={false}
           />
-        </div>
-
-        <div className="scope-tabs" role="tablist" aria-label="Sidebar scope">
-          {(['home', 'notes', 'inbox'] as Scope[]).map((s) => (
-            <button
-              key={s}
-              role="tab"
-              aria-selected={scope === s}
-              className={scope === s ? 'on' : ''}
-              onClick={() => pickScope(s)}
-            >
-              {s === 'home' ? 'Home' : s === 'notes' ? 'Notes' : 'Inbox'}
-              {s === 'inbox' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
-            </button>
-          ))}
-        </div>
-
-        {/* Day-log + meetings live here (not above the note) so the doc gets the full pane. */}
-        <div className="side-actions" role="toolbar" aria-label="Quick actions">
-          <button
-            className="side-action"
-            title={`Open today's note (${isMacUi ? '⌘⇧D' : 'Ctrl+Shift+D'}) · ${captureKey || 'quick capture'} → Today adds a timestamped line here`}
-            onClick={() => {
-              leaveSettings()
-              void openToday()
-            }}
-          >
-            <Icon name="sun" size={16} /> Today
-          </button>
-          <button
-            className={`side-action${scope === 'journal' && !settingsOpen && !showMeeting ? ' on' : ''}`}
-            title={`Journal: every daily note in one timeline (${isMacUi ? '⌘⇧J' : 'Ctrl+Shift+J'})`}
-            aria-pressed={scope === 'journal' && !settingsOpen && !showMeeting}
-            onClick={openJournal}
-          >
-            <Icon name="journal" size={16} /> Journal
-          </button>
-          <button
-            className={`side-action${showMeeting && !settingsOpen ? ' on' : ''}${meetingLive ? ' rec-live' : ''}`}
-            title={meetingLive ? 'Meeting recording — open it' : 'Meetings: record & transcribe a call'}
-            aria-pressed={showMeeting && !settingsOpen}
-            onClick={() => {
-              leaveSettings()
-              setShowMeeting(true)
-            }}
-          >
-            <Icon name={meetingLive ? 'record' : 'mic'} size={16} /> {meetingLive ? 'Recording' : 'Meetings'}
-          </button>
         </div>
 
         {scope === 'inbox' ? (

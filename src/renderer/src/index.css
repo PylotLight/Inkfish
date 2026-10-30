@@ -42,7 +42,7 @@
   --syn-special: #f07178;
   --syn-tag: #f07178;
   --syn-punct: rgba(200, 210, 225, 0.6);
-  --bg: #0c0e11;
+  --bg: #131417;
   /* Three-step surface ramp: resting / raised (hover) / active (selected).
      Kept translucent so the native vibrancy shows through (see architecture.md). */
   --panel: rgba(255, 255, 255, 0.05);
@@ -50,9 +50,9 @@
   --panel-strong: rgba(255, 255, 255, 0.13);
   --border: rgba(255, 255, 255, 0.16);
   --text: #f2f4f6;
-  --muted: rgba(242, 244, 246, 0.64);
+  --muted: rgba(242, 244, 246, 0.68);
   /* Tertiary text: timestamps, counts, hints — clearly below muted. */
-  --faint: rgba(242, 244, 246, 0.38);
+  --faint: rgba(242, 244, 246, 0.42);
   --accent: #6ea8fe;
   --accent-ink: #0b1526;
   --mint: #7ee2a8;
@@ -65,9 +65,9 @@
   --inset: rgba(0, 0, 0, 0.28);
   --inset-soft: rgba(0, 0, 0, 0.18);
   --codeblock: rgba(0, 0, 0, 0.45);
-  --shell-bg: linear-gradient(165deg, rgba(30, 34, 42, 0.42), rgba(10, 12, 15, 0.55));
+  --shell-bg: linear-gradient(165deg, rgba(34, 36, 39, 0.92), rgba(24, 25, 27, 0.95));
   --mint-dim: color-mix(in srgb, var(--mint) 14%, transparent);
-  --ed-fs: 15px;
+  --ed-fs: 16px;
   /* Semantic type scale for UI chrome (note content follows --ed-fs instead). */
   --fs-2xs: 10px;
   --fs-xs: 11.5px;
@@ -2146,19 +2146,19 @@ html.mini-window .editor {
 }
 
 .cm-line.lp-quote {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--text) 28%, transparent);
   color: color-mix(in srgb, var(--text) 86%, transparent);
   padding-left: 12px;
 }
 
-/* `---` — a 2px rule centred in the line, not a hairline hugging the baseline. */
+/* `---` — a faint rule centred in the line, with generous breathing room above and below. */
 .cm-line.lp-hr {
-  min-height: 1.8em;
+  min-height: 2.3em;
   background: linear-gradient(
     to bottom,
     transparent calc(50% - 1px),
-    color-mix(in srgb, var(--text) 24%, transparent) calc(50% - 1px),
-    color-mix(in srgb, var(--text) 24%, transparent) calc(50% + 1px),
+    color-mix(in srgb, var(--text) 18%, transparent) calc(50% - 1px),
+    color-mix(in srgb, var(--text) 18%, transparent) calc(50% + 1px),
     transparent calc(50% + 1px)
   );
 }
@@ -2534,7 +2534,7 @@ html[data-theme='abyss'] {
   --text: #eef2f7;
   --muted: rgba(238, 242, 247, 0.64);
   --faint: rgba(238, 242, 247, 0.38);
-  --shell-bg: linear-gradient(165deg, rgba(8, 12, 20, 0.6), rgba(2, 4, 8, 0.72));
+  --shell-bg: linear-gradient(165deg, rgba(15, 16, 18, 0.92), rgba(8, 9, 10, 0.95));
   --inset: rgba(0, 0, 0, 0.4);
   --inset-soft: rgba(0, 0, 0, 0.28);
 }
@@ -2548,7 +2548,7 @@ html[data-theme='forest'] {
   --text: #eef5ef;
   --muted: rgba(238, 245, 239, 0.64);
   --faint: rgba(238, 245, 239, 0.38);
-  --shell-bg: linear-gradient(165deg, rgba(14, 30, 20, 0.55), rgba(5, 12, 8, 0.68));
+  --shell-bg: linear-gradient(165deg, rgba(16, 31, 23, 0.92), rgba(7, 14, 10, 0.95));
 }
 
 html[data-theme='plum'] {
@@ -2560,7 +2560,7 @@ html[data-theme='plum'] {
   --text: #f1ecf7;
   --muted: rgba(241, 236, 247, 0.64);
   --faint: rgba(241, 236, 247, 0.38);
-  --shell-bg: linear-gradient(165deg, rgba(26, 18, 40, 0.55), rgba(10, 7, 16, 0.68));
+  --shell-bg: linear-gradient(165deg, rgba(28, 21, 41, 0.92), rgba(13, 9, 19, 0.95));
 }
 
 html[data-theme='paper'] {
@@ -2732,8 +2732,7 @@ html[data-motion='reduced'] *::after {
   font-weight: 600;
 }
 
-.side-toggle.rec-live,
-.side-action.rec-live {
+.side-toggle.rec-live {
   color: var(--danger);
 }
 
@@ -2758,32 +2757,6 @@ html[data-motion='reduced'] *::after {
 .side-toggle:hover {
   color: var(--text);
   background: var(--row-hover);
-}
-
-/* Obsidian-style sidebar toggle: one fixed spot in the titlebar strip, right of the macOS traffic
-   lights (window.ts trafficLightPosition 16,16 → buttons end ≈x68, centred on y≈23). Visible
-   only while the sidebar is open (it collapses); must stay no-drag or macOS eats the click as a
-   window drag. Positions mirror shared/sidebar.ts. */
-.titlebar-toggle {
-  position: fixed;
-  top: 6px;
-  left: 9px;
-  z-index: 60;
-}
-
-.shell[data-platform='darwin'] .titlebar-toggle {
-  top: 9px;
-  left: 80px;
-}
-
-.titlebar-toggle[aria-expanded='true'] {
-  color: color-mix(in srgb, var(--text) 72%, transparent);
-}
-
-/* Collapsed: the fixed toggle hides — the ribbon's first icon is the expand affordance
-   (Obsidian pattern), so nothing floats over the content's top strip. */
-.shell.side-collapsed .titlebar-toggle {
-  display: none;
 }
 
 /* Titlebar strip at the top of the open sidebar: drag handle, small logo at the far end. */
@@ -2811,8 +2784,10 @@ html[data-motion='reduced'] *::after {
   -webkit-app-region: no-drag;
 }
 
-/* Collapsed sidebar → slim icon ribbon (Obsidian). Same translucent tint as the sidebar so the
-   native vibrancy shows through — no CSS backdrop blur. Slides in with the sidebar's collapse. */
+/* Obsidian ribbon: always visible, in every state. Its first button is the pane toggle.
+   Same translucent tint as the sidebar so the native vibrancy shows through — no CSS
+   backdrop blur. On macOS it's wide enough that the inset traffic lights sit inside it,
+   so the content never moves when the pane collapses. */
 .side-ribbon {
   width: 48px;
   flex-shrink: 0;
@@ -2899,60 +2874,6 @@ html[data-motion='reduced'] *::after {
   flex-shrink: 0;
 }
 
-/* Sidebar quick actions: Today + Meetings (moved out of the old topbar). */
-.side-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  -webkit-app-region: no-drag;
-}
-
-.side-action {
-  flex: 1;
-  min-width: 0;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: none;
-  background: transparent;
-  color: var(--text-soft);
-  border-radius: 7px;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-
-.side-action svg {
-  flex-shrink: 0;
-  color: var(--muted);
-}
-
-.side-action:hover {
-  color: var(--text);
-  background: var(--row-hover);
-}
-
-/* Active (Journal / Meetings open): a quiet accent tint instead of a grey box. */
-.side-action.on {
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-}
-
-.side-action.rec-live svg,
-.side-action.on svg {
-  color: inherit;
-}
-
 /* Dev / custom profile marker beside the brand ("dev"), so the two apps never get mixed up. */
 .profile-pill {
   font-size: 10px;
@@ -3035,68 +2956,6 @@ input.side-search:focus {
   transform: translateY(-50%);
   color: var(--muted);
   pointer-events: none;
-}
-
-.scope-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  -webkit-app-region: no-drag;
-}
-
-.scope-tabs button {
-  flex: 1;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 7px;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  position: relative;
-  transition:
-    background 0.14s ease,
-    color 0.14s ease;
-}
-
-.scope-tabs button:hover {
-  color: var(--text);
-  background: var(--row-hover);
-}
-
-/* Active scope: accent underline, Obsidian pane-tab style — no grey pill. */
-.scope-tabs button.on {
-  background: transparent;
-  color: var(--text);
-  box-shadow: none;
-}
-.scope-tabs button.on::after {
-  content: '';
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: 4px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-
-.scope-tabs .badge {
-  min-width: 17px;
-  height: 17px;
-  font-size: 10.5px;
-  padding: 0 5px;
 }
 
 .badge {
@@ -3846,11 +3705,9 @@ input.side-search:focus {
 .tree-target {
   margin-left: auto;
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--faint);
   max-width: 110px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--row-hover);
+  padding: 2px 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4671,7 +4528,7 @@ html[data-density='compact'] .note-stage {
 .tab.on {
   color: var(--text);
   background: var(--panel-strong);
-  border-color: var(--border);
+  border-color: transparent;
   border-bottom-color: transparent;
 }
 

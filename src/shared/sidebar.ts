@@ -2,13 +2,14 @@
  * Core sidebar collapse: persisted flag + the ⌘\ / Ctrl+\ shortcut. Pure, so it is unit tested.
  *
  * Layout (index.css): Obsidian-style collapse.
- *  - Expanded: the toggle is `.titlebar-toggle`, `position: fixed` just right of the inset
- *    traffic lights (window.ts: `trafficLightPosition { x: 16, y: 16 }` → three 12px buttons
- *    ending ≈x68, centred on y≈23). Clicking it collapses the sidebar.
- *  - Collapsed: the fixed toggle hides, and the 48px icon ribbon (`.side-ribbon`) appears. Its
- *    FIRST button is the sidebar toggle (like Obsidian's file-explorer ribbon icon) — click it
- *    to expand. On macOS the ribbon is 72px wide so the inset traffic lights sit entirely
- *    inside it and the content never has to move (no 28px top-strip jump, like Obsidian).
+ *  - The 48px icon ribbon (`.side-ribbon`) is ALWAYS visible. Its FIRST button is the sidebar
+ *    toggle (like Obsidian's file-explorer ribbon icon) — expand while collapsed, collapse while
+ *    open. On macOS the ribbon is 72px wide so the inset traffic lights (window.ts
+ *    `trafficLightPosition { x: 16, y: 16 }` → ending ≈x68) sit entirely inside it and the
+ *    content never has to move (no top-strip jump, like Obsidian).
+ *  - Expanded: the pane (search + tree) opens to the RIGHT of the ribbon — no duplicate toggle.
+ *    All pane navigation (Home/Notes/Inbox, Today, Journal, Meetings, Settings) rides the ribbon,
+ *    so the pane stays just search + tree, Obsidian's Files-explorer shape.
  *  - `.side-rail` (the content's top drag strip) grows to 46px only while the live-recording
  *    chip is visible (`.rail-tall`, added by Center.tsx) — the chip needs vertical room.
  *  - The buttons are `no-drag` so macOS doesn't eat the clicks as window drags.
@@ -16,33 +17,18 @@
 
 export const SIDE_COLLAPSED_KEY = 'inkfish.side.collapsed'
 
-/** Fixed titlebar toggle box, expanded state (px, window coords). Mac: clear of the traffic
- *  lights, vertically centred on them; elsewhere: top-left of the sidebar head strip.
- *  Mirrors index.css (`.titlebar-toggle`). Hidden while collapsed. */
-export const SIDE_TOGGLE_MAC = { left: 80, top: 9, width: 30, height: 28 } as const
-export const SIDE_TOGGLE = { left: 9, top: 6, width: 30, height: 28 } as const
-
-/** Collapsed icon ribbon width (px). Mac is wider: the inset traffic lights span x≈16–68
+/** Icon ribbon width (px). Mac is wider: the inset traffic lights span x≈16–68
  *  (window.ts), and Obsidian keeps them inside the ribbon so the content never moves. */
 export const SIDE_RIBBON_WIDTH = 48
 export const SIDE_RIBBON_WIDTH_MAC = 72
-
-export function sideTogglePos(platform: string | undefined): {
-  left: number
-  top: number
-  width: number
-  height: number
-} {
-  return platform === 'darwin' ? SIDE_TOGGLE_MAC : SIDE_TOGGLE
-}
 
 export function sideRibbonWidth(platform: string | undefined): number {
   return platform === 'darwin' ? SIDE_RIBBON_WIDTH_MAC : SIDE_RIBBON_WIDTH
 }
 
 /** Left padding (px) of the content's top drag strip. The recording chip starts here; the
- *  traffic lights live inside the ribbon (never over the content) and the fixed toggle is
- *  hidden while collapsed, so a single small inset works on every platform. */
+ *  traffic lights live inside the always-present ribbon (never over the content), so a single
+ *  small inset works on every platform. */
 export const SIDE_RAIL_INSET = 16
 
 export function sideRailInset(_platform?: string): number {

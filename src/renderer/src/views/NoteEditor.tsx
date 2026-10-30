@@ -678,7 +678,6 @@ function NoteEditor({
             className="muted small ed-meta"
             title={`Created ${new Date(doc.createdAt).toLocaleString()} · Updated ${new Date(doc.updatedAt).toLocaleString()}`}
           >
-            {doc.path} ·{' '}
             {draft !== undefined
               ? `${fmtChars(text.length)} · `
               : doc.size > 0
@@ -686,10 +685,10 @@ function NoteEditor({
                 : `${fmtChars(doc.markdown.length)} · `}
             edited {timeAgo(doc.updatedAt)} · created{' '}
             {new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-            {!onSetTags && (
+            {!onSetTags && doc.tags.length > 0 && (
               <>
                 {' · '}
-                {doc.tags.map((t) => `#${t}`).join(' ') || 'no tags'}
+                {doc.tags.map((t) => `#${t}`).join(' ')}
               </>
             )}
           </p>
