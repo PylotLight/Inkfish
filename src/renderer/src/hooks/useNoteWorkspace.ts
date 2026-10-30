@@ -166,6 +166,9 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
 
   const openEntry = useCallback(
     (id: string, origin: 'inbox' | 'note') => {
+      // Opening a note or capture anywhere (tree, search, home, journal) takes the stage back
+      // from the full-page settings — no manual “back” click needed.
+      setSettingsOpen(false)
       // Leaving a note (or re-opening one) writes everything pending first — title renames too.
       titleSync.flush()
       void autosave.flushAll()
