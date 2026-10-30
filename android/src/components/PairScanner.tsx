@@ -17,6 +17,12 @@ import { Icon } from './Icon'
 import { decodePairUri, type DiscoveryUpdate } from '../lib/sync'
 import { describeNativeQrScannerError, launchQrScanner } from '../lib/qrScanner'
 
+type CameraViewWithScannerDiagnosticsProps = React.ComponentProps<typeof CameraView> & {
+  onBarcodeScannerError?: (event: { nativeEvent: { message: string } }) => void
+}
+const CameraViewWithScannerDiagnostics =
+  CameraView as unknown as React.ComponentType<CameraViewWithScannerDiagnosticsProps>
+
 /**
  * Full-screen QR scanner for pairing with the Mac (Mac › Settings › Sync ›
  * Show pairing code). Calls `onCode` once per scan; stays open on failure so
@@ -250,7 +256,7 @@ export function PairScanner({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
         {showCamera ? (
-          <CameraView
+          <CameraViewWithScannerDiagnostics
             key={cameraKey}
             style={StyleSheet.absoluteFill}
             facing="back"
@@ -268,6 +274,16 @@ export function PairScanner({
             onMountError={({ message }) => {
               setCameraReady(false)
               setCameraError(message)
+            }}
+            onBarcodeScannerError={({ nativeEvent }) => {
+              const message = nativeEvent.message.replace(/\s+/g, ' ').trim().slice(0, 240)
+              const detail = `Live camera analyzer error: ${message || 'unknown native scanner error'}`
+              setScannerNotice(
+                'The live camera QR analyzer reported an error. See the scan log; retry the system QR scanner or use your phone’s Camera app.'
+              )
+              setScanDetails((current) =>
+                current.some((line) => line.startsWith('Live camera analyzer error:')) ? current : [...current, detail]
+              )
             }}
           />
         ) : visible && !perm?.granted && (!preferNativeScanner || useLiveCamera) && !initialCode && !externalPairing ? (

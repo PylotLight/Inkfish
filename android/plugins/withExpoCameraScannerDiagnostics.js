@@ -1,8 +1,13 @@
 const path = require('node:path')
-const { withDangerousMod } = require('@expo/config-plugins')
+const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins')
 const { patchExpoCameraScanner } = require('./patch-expo-camera-scanner')
+const { ensureGooglePlayServicesQuery } = require('./google-play-services-query')
 
 module.exports = function withExpoCameraScannerDiagnostics(config) {
+  config = withAndroidManifest(config, (modConfig) => {
+    modConfig.modResults = ensureGooglePlayServicesQuery(modConfig.modResults)
+    return modConfig
+  })
   return withDangerousMod(config, [
     'android',
     async (modConfig) => {
