@@ -4578,6 +4578,11 @@ html[data-density='compact'] .note-stage {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Preview (temp) tab: italic, VSCode-style — it's the one that gets replaced on the next open. */
+.tab.preview .tab-label {
+  font-style: italic;
+  opacity: 0.85;
+}
 
 /* Worked-on-this-session marker (kept across restarts; unpinned tabs without it drop out). */
 .tab .tab-dot {

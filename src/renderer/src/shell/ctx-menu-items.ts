@@ -107,7 +107,10 @@ export function buildMenuItems(ctx: CtxMenuContext): (target: MenuTarget) => Men
       ]
       return [
         { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(tab.id) },
-        { label: tab.pinned ? 'Unpin tab' : 'Pin tab', action: () => togglePin(tab.id) },
+        {
+          label: tab.pinned ? 'Unpin tab' : tab.preview ? 'Make permanent' : 'Pin tab',
+          action: () => togglePin(tab.id)
+        },
         { label: 'Close tab', action: () => closeTab(tab.id) },
         { label: 'Close other tabs', action: () => closeOthers(tab.id) },
         { label: 'Close unpinned tabs', action: () => closeUnpinned() },

@@ -35,7 +35,7 @@ export interface FileActionsInput {
   autosave: Autosave
   renameInflightRef: MutableRefObject<Map<string, Promise<string>>>
   openEntry: (id: string, origin: 'inbox' | 'note') => void
-  selectNote: (id: string) => void
+  selectNote: (id: string, preview?: boolean) => void
   setAllNotes: Dispatch<SetStateAction<NoteEntry[]>>
   allNotesRef: MutableRefObject<NoteEntry[]>
   refreshNotes: () => void
@@ -155,7 +155,7 @@ export function useFileActions(input: FileActionsInput) {
             .then((all) => {
               setAllNotes(all)
               const found = all.find((n) => n.path === rel)
-              if (found) selectNote(found.id)
+              if (found) selectNote(found.id, false)
             })
             .catch(console.error)
           refreshInbox()
@@ -630,7 +630,7 @@ export function useFileActions(input: FileActionsInput) {
         notify(`Restored ${back.split('/').pop()?.replace(/\.md$/, '')}`)
         if (u.wasOpen) {
           const found = all.find((n) => n.path === back)
-          if (found) selectNote(found.id)
+          if (found) selectNote(found.id, false)
         }
       } catch (err) {
         notify(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)

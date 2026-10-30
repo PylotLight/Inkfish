@@ -165,7 +165,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   const flushAll = useCallback((): Promise<void> => autosave.flushAll(), [autosave])
 
   const openEntry = useCallback(
-    (id: string, origin: 'inbox' | 'note') => {
+    (id: string, origin: 'inbox' | 'note', preview = true) => {
       // Opening a note or capture anywhere (tree, search, home, journal) takes the stage back
       // from the full-page settings — no manual “back” click needed.
       setSettingsOpen(false)
@@ -194,11 +194,14 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
             if (selRef.current?.id === id) setDoc(fresh)
           })
           .catch(console.error)
-        // Keep the file open as a tab (no duplicates).
+        // Keep the file open as a tab (no duplicates). A tab that's already open keeps its
+        // mode; a new one is a temp preview tab, and the single existing preview tab is
+        // replaced — VSCode-style, so browsing a bunch of notes never clogs the strip.
         setTabs((prev) => {
           if (prev.some((t) => t.id === id)) return prev
-          const path = prev.find((t) => t.id === id)?.path ?? allNotesRef.current.find((n) => n.id === id)?.path ?? id
-          return [...prev, { id, path, pinned: false, edited: false }]
+          const base = prev.filter((t) => !t.preview)
+          const path = allNotesRef.current.find((n) => n.id === id)?.path ?? id
+          return [...base, { id, path, pinned: false, edited: false, preview }]
         })
       } else {
         const item = inbox.find((i) => i.id === id)
@@ -227,10 +230,15 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     [inbox]
   )
 
-  /** Mark a tab's note as worked-on this session (persists it across restarts). */
+  /**
+   * Mark a tab's note as worked-on this session (persists it across restarts). Also promotes a
+   * preview tab to a permanent one — editing is what makes a tab worth keeping.
+   */
   const markEdited = useCallback((id: string) => {
     setTabs((prev) =>
-      prev.some((t) => t.id === id && !t.edited) ? prev.map((t) => (t.id === id ? { ...t, edited: true } : t)) : prev
+      prev.some((t) => t.id === id && (t.edited === false || t.preview === true))
+        ? prev.map((t) => (t.id === id ? { ...t, edited: true, preview: false } : t))
+        : prev
     )
   }, [])
 
@@ -336,9 +344,9 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   const selectInbox = useCallback((id: string) => openEntry(id, 'inbox'), [openEntry])
 
   const selectNote = useCallback(
-    (id: string) => {
+    (id: string, preview = true) => {
       setScope('notes')
-      openEntry(id, 'note')
+      openEntry(id, 'note', preview)
     },
     [openEntry, setScope]
   )
@@ -427,7 +435,10 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   )
 
   const togglePin = useCallback((id: string) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
+    // Pinning a preview tab makes it permanent; unpinning leaves it as a regular tab.
+    setTabs((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned, ...(t.pinned ? {} : { preview: false }) } : t))
+    )
   }, [])
 
   /**
@@ -634,7 +645,8 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
         : tabsRef.current[tabsRef.current.length - 1]?.id
     if (target) {
       setScope('notes')
-      openEntry(target, 'note')
+      // Restored-session tabs are real, not preview.
+      openEntry(target, 'note', false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allNotes, restored])
@@ -697,12 +709,12 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     return () => window.removeEventListener('keydown', onKey)
   }, [activeNoteId, popOut])
 
-  // A mini handed its note back (⌘⇧M / ⤢ in the mini).
+  // A mini handed its note back (⌘⇧M / ⤢ in the mini). It was worked on, so a permanent tab.
   useEffect(
     () =>
       window.api.mini?.onOpenNote((id) => {
         setSettingsOpen(false)
-        selectNote(id)
+        selectNote(id, false)
       }),
     [selectNote, setSettingsOpen]
   )
