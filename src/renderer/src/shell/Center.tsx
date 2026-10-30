@@ -313,8 +313,6 @@ export default function Center({
                     : {})}
                   focusEnd={focusEnd}
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
-                  onPopOut={sel?.origin === 'note' ? () => popOut(sel.id) : undefined}
-                  popOutTitle={popTitle}
                   {...(sel?.origin === 'note' && doc && !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
                     ? {
                         onMoveClick: (x: number, y: number) =>

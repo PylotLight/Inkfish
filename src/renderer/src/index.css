@@ -5934,9 +5934,6 @@ input[type='password'].text-input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ed-pop svg {
-  display: block;
-}
 .mini-hint {
   position: absolute;
   left: 8px;

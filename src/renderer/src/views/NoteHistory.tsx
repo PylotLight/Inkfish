@@ -18,7 +18,7 @@ const W = 360
 
 /**
  * Note history: the content snapshots taken before AI rewrites land (and before each
- * restore, so a restore is itself undoable). Open from the ↺ in the note header.
+ * restore, so a restore is itself undoable). Open from the ⋯ in the note header.
  */
 export default function NoteHistory({
   docId,

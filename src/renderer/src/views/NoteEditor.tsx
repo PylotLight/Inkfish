@@ -4,7 +4,7 @@ import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from 
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands'
 import type { NoteDoc } from '../../../shared/types'
 import { minimalEdit } from '../../../shared/mini-window'
-import PopOutIcon from './PopOutIcon'
+import { NOTE_ACTION_EVENT, type NoteAction } from '../noteAction'
 import { fmtBytes, fmtChars, timeAgo } from '../text'
 import {
   findMatches,
@@ -24,7 +24,6 @@ import NoteHistory from './NoteHistory'
 import type { Anchor } from './DeletePopover'
 import TagChips from './TagChips'
 import { breadcrumb } from '../../../shared/note-move'
-import { sendAiCommand } from '../nativeAi'
 
 /** Marks edits that came from another window (mini window sync) — never re-broadcast. */
 const remoteSync = Annotation.define<boolean>()
@@ -77,10 +76,6 @@ interface Props {
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
   compact?: boolean
-  /** Shows the header's pop-out-to-mini-window button. */
-  onPopOut?: () => void
-  /** Its tooltip (with the user's shortcuts). */
-  popOutTitle?: string
   /** Header breadcrumb click → "Move to…" folder picker anchored at (x, y). Vault notes only. */
   onMoveClick?: (x: number, y: number) => void
   /** Header tag chips → front matter `tags:`. Vault notes only. */
@@ -116,8 +111,6 @@ function NoteEditor({
   notify,
   onMore,
   compact,
-  onPopOut,
-  popOutTitle,
   onMoveClick,
   onSetTags,
   onTagClick,
@@ -182,8 +175,10 @@ function NoteEditor({
   const [findOpts, setFindOpts] = useState<FindOpts>({})
   const [replaceOpen, setReplaceOpen] = useState(false)
   const [replaceText, setReplaceText] = useState('')
-  /** Note-history popover: open anchored to the header button. */
+  /** Note-history popover: open anchored to the header's ⋯ button. */
   const [historyOpen, setHistoryOpen] = useState<Anchor | null>(null)
+  /** The header's ⋯ button — anchors the history popover. */
+  const moreBtnRef = useRef<HTMLButtonElement>(null)
   const findInputRef = useRef<HTMLInputElement>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
   /** Bumped on every explicit navigation so the "move to hit" effect fires even on a same index. */
@@ -520,6 +515,26 @@ function NoteEditor({
     })
   }, [])
 
+  // The note's ⋯ menu routes its Find / History items here (renderer-originated, no IPC).
+  useEffect(() => {
+    const onAction = (e: Event): void => {
+      const a = (e as CustomEvent<NoteAction>).detail
+      const root = rootRef.current
+      if (!root || root.offsetParent === null) return
+      if (a === 'find') {
+        findKeysRef.current.openFind(false)
+        return
+      }
+      const btn = moreBtnRef.current
+      if (!btn) return
+      const r = btn.getBoundingClientRect()
+      const anchor: Anchor = { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
+      setHistoryOpen((cur) => (cur ? null : anchor))
+    }
+    window.addEventListener(NOTE_ACTION_EVENT, onAction)
+    return () => window.removeEventListener(NOTE_ACTION_EVENT, onAction)
+  }, [])
+
   if (!doc) {
     return (
       <div className="editor-empty">
@@ -620,54 +635,12 @@ function NoteEditor({
           </div>
           <div className="row ed-actions">
             <button
-              className={`btn ghost sm icon${findOpen ? ' active-opt' : ''}`}
-              title="Find in note (⌘F)"
-              aria-label="Find in note"
-              aria-expanded={findOpen}
-              onClick={() => (findOpen ? setFindOpen(false) : openFind())}
-            >
-              ⌕
-            </button>
-            <button
+              ref={moreBtnRef}
               className="btn ghost sm icon"
-              title="Raw / Processed view with AI (⇧⌥P)"
-              aria-label="Raw / Processed view"
-              onClick={() => sendAiCommand('toggle-view')}
-            >
-              ✦
-            </button>
-            {onPopOut && (
-              <button
-                className="btn ghost sm icon ed-pop"
-                title={popOutTitle ?? 'Pop out to mini window'}
-                aria-label="Pop out to mini window"
-                onClick={onPopOut}
-              >
-                <PopOutIcon size={13} />
-              </button>
-            )}
-            <button
-              className={`btn ghost sm icon${historyOpen ? ' active-opt' : ''}`}
-              title="History — the note's text before each AI rewrite (restorable)"
-              aria-label="Note history"
-              aria-expanded={historyOpen !== null}
-              onClick={(e) => {
-                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                const a: Anchor = { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
-                setHistoryOpen((cur) => (cur ? null : a))
-              }}
-            >
-              ↺
-            </button>
-            <button className="btn ghost sm" onClick={() => void window.api.notes.reveal(doc.id)}>
-              Reveal
-            </button>
-            <button
-              className="btn ghost sm icon"
-              title="Note actions (reveal, rename, delete)"
+              title="Note actions (find, history, reveal, rename, delete)"
               aria-label="Note actions"
               onClick={(e) => {
-                const r = (e.target as HTMLElement).getBoundingClientRect()
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
                 onMore(r.left, r.bottom + 6)
               }}
             >

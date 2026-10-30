@@ -1,4 +1,5 @@
 import { sendAiCommand } from '../nativeAi'
+import { sendNoteAction } from '../noteAction'
 import type { NoteDoc, NoteEntry } from '../../../shared/types'
 import { dirOf, type MoveItem } from '../../../shared/note-move'
 import type { Anchor } from '../views/DeletePopover'
@@ -136,18 +137,26 @@ export function buildMenuItems(ctx: CtxMenuContext): (target: MenuTarget) => Men
       ]
     }
     if (target.kind === 'open-note') {
-      if (!doc || sel?.origin !== 'note') return []
-      const rel = doc.path
-      const name = titleOf(doc)
-      return [
-        { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(doc.id) },
+      if (!doc) return []
+      // Editor-level actions for any open note; file-level ones for vault notes only.
+      const items: MenuItem[] = [
+        { label: 'Find in note  ⌘F', action: () => sendNoteAction('find') },
+        { label: 'Note history', action: () => sendNoteAction('history') },
         { label: 'Raw / Processed view  ⇧⌥P', action: () => sendAiCommand('toggle-view') },
-        { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') },
-        { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
-        { label: 'Move to…', action: () => openMovePicker([{ rel, kind: 'file' }], name, menu?.x, menu?.y) },
-        { label: 'Rename…', action: () => startNoteRename(doc) },
-        { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
+        { label: 'Process selection…  ⇧⌥S', action: () => sendAiCommand('process-selection') }
       ]
+      if (sel?.origin === 'note') {
+        const rel = doc.path
+        const name = titleOf(doc)
+        items.push(
+          { label: 'Pop out to Mini Window  ⌘⇧M', action: () => popOut(doc.id) },
+          { label: 'Reveal in Finder', action: () => void window.api.files.reveal(rel) },
+          { label: 'Move to…', action: () => openMovePicker([{ rel, kind: 'file' }], name, menu?.x, menu?.y) },
+          { label: 'Rename…', action: () => startNoteRename(doc) },
+          { label: `Delete “${name.slice(0, 32)}”…`, danger: true, action: () => void deleteNote(doc, null, false) }
+        )
+      }
+      return items
     }
     if (target.kind === 'dir') {
       const name = target.name
