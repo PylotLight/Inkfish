@@ -4354,7 +4354,12 @@ html[data-density='compact'] .note-stage {
 }
 .ed-title h2.ed-inline-title:focus {
   background: var(--inset-soft);
-  box-shadow: 0 0 0 1px var(--accent, currentColor);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, currentColor) 55%, transparent);
+}
+/* Selected words inside the title get the editor's soft accent tint — Chromium's
+ * default blue slab reads as a hard block behind big bold glyphs. */
+.ed-title h2.ed-inline-title::selection {
+  background: color-mix(in srgb, var(--accent, currentColor) 32%, transparent);
 }
 
 .ed-fallback {
