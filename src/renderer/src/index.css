@@ -1983,6 +1983,8 @@ select.sm {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px 10px;
+  /* Breathing room below the tab bar — the header was kissing the tabs. */
+  margin-top: 14px;
   margin-bottom: 10px;
 }
 
