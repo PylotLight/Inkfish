@@ -23,10 +23,14 @@ import { decodePairUri, type DiscoveryUpdate } from '../lib/sync'
 export function PairScanner({
   visible,
   onClose,
-  onCode
+  onCode,
+  initialCode,
+  onInitialCodeConsumed
 }: {
   visible: boolean
   onClose: () => void
+  initialCode: string | null
+  onInitialCodeConsumed: () => void
   onCode: (
     data: string,
     onStage: (stage: string) => void,
@@ -42,10 +46,13 @@ export function PairScanner({
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraKey, setCameraKey] = useState(0)
+  const [externalPairing, setExternalPairing] = useState(false)
+  const [scanHint, setScanHint] = useState(false)
   const [qrSummary, setQrSummary] = useState<string | null>(null)
   const [scanDetails, setScanDetails] = useState<string[]>([])
   const lock = useRef(false)
   const logRef = useRef<React.ComponentRef<typeof ScrollView>>(null)
+  const handleRef = useRef<(data: string) => void>(() => undefined)
 
   useEffect(() => {
     if (!visible) return
@@ -57,6 +64,8 @@ export function PairScanner({
     setScanDetails([])
     setCameraReady(false)
     setCameraError(null)
+    setExternalPairing(false)
+    setScanHint(false)
   }, [visible])
 
   const handle = (data: string): void => {
@@ -64,6 +73,7 @@ export function PairScanner({
     lock.current = true
     setBusy(true)
     setMsg(null)
+    const callbackLog = `Barcode callback received (${data.length} characters).`
 
     // Show useful QR metadata, but never show the pairing key or raw QR string.
     const payload = decodePairUri(data)
@@ -73,11 +83,11 @@ export function PairScanner({
       const endpoints = hosts.length ? hosts.map((host) => `${host}:${payload.port}`).join(', ') : 'none'
       const expires = Number.isFinite(payload.exp) ? new Date(payload.exp).toLocaleTimeString() : 'unknown'
       setQrSummary(`Decoded ${name || 'Mac pairing code'} · port ${payload.port} · expires ${expires}`)
-      setScanDetails([`QR decoded: ${name || 'Mac pairing code'}`, `QR addresses: ${endpoints}`])
+      setScanDetails([callbackLog, `QR decoded: ${name || 'Mac pairing code'}`, `QR addresses: ${endpoints}`])
       setStage(`QR decoded. Checking ${hosts.length} address${hosts.length === 1 ? '' : 'es'}…`)
     } else {
       setQrSummary('QR detected, but it is not a valid Inkfish pairing code.')
-      setScanDetails(['QR detected, but it does not match the Inkfish pairing format.'])
+      setScanDetails([callbackLog, 'QR detected, but it does not match the Inkfish pairing format.'])
       setStage('QR decoded. Validating pairing code…')
     }
 
@@ -124,6 +134,23 @@ export function PairScanner({
       })
   }
 
+  handleRef.current = handle
+
+  useEffect(() => {
+    if (!visible || !initialCode) return
+    setExternalPairing(true)
+    handleRef.current(initialCode)
+    onInitialCodeConsumed()
+  }, [visible, initialCode, onInitialCodeConsumed])
+
+  useEffect(() => {
+    if (!visible || !perm?.granted || !cameraReady || busy || qrSummary || initialCode || externalPairing) return
+    const timer = setTimeout(() => setScanHint(true), 8000)
+    return () => clearTimeout(timer)
+  }, [visible, perm?.granted, cameraReady, busy, qrSummary, initialCode, externalPairing])
+
+  const showCamera = visible && !!perm?.granted && !initialCode && !externalPairing
+
   const status = cameraError
     ? 'Camera problem'
     : msg
@@ -146,7 +173,7 @@ export function PairScanner({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
-        {visible && perm?.granted ? (
+        {showCamera ? (
           <CameraView
             key={cameraKey}
             style={StyleSheet.absoluteFill}
@@ -162,14 +189,14 @@ export function PairScanner({
               setCameraError(message)
             }}
           />
-        ) : (
+        ) : visible && !initialCode && !externalPairing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Text style={[ui.title, { color: '#fff', textAlign: 'center' }]}>Camera access to scan the code</Text>
             <Pressable onPress={() => void requestPerm()} style={[ui.quiet, { marginTop: 12 }]}>
               <Text style={ui.quietText}>Allow camera</Text>
             </Pressable>
           </View>
-        )}
+        ) : null}
 
         <View style={{ position: 'absolute', top: 48, left: 12 }}>
           <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Close scanner" style={{ padding: 8 }}>
@@ -177,7 +204,7 @@ export function PairScanner({
           </Pressable>
         </View>
 
-        {visible && perm?.granted && (
+        {showCamera && (
           <View
             pointerEvents="none"
             style={{
@@ -193,7 +220,7 @@ export function PairScanner({
           />
         )}
 
-        {visible && perm?.granted && (
+        {visible && (perm?.granted || initialCode || externalPairing) && (
           <View
             style={{
               position: 'absolute',
@@ -231,6 +258,12 @@ export function PairScanner({
               >
                 {statusMessage}
               </Text>
+              {scanHint && !externalPairing && (
+                <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17, marginTop: 6 }}>
+                  No QR detected yet? Move closer and hold steady, or use your phone’s Camera app and tap its Inkfish
+                  link.
+                </Text>
+              )}
               {qrSummary && (
                 <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17, marginTop: 6 }}>
                   {qrSummary}

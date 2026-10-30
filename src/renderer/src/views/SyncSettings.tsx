@@ -157,8 +157,10 @@ export default function SyncSettings(): React.JSX.Element {
             <div className="sync-pair">
               <div className="sync-qr" dangerouslySetInnerHTML={{ __html: pairing.svg }} />
               <p className="muted small setting-hint">
-                On Android open Inkfish › Settings › Sync › Pair with Mac and scan this. Same Wi-Fi as this Mac. Expires
-                in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}.
+                On Android open Inkfish › Settings › Sync › Pair with Mac and scan this, or use the Camera app and tap
+                its Inkfish link. Same Wi-Fi as this Mac.
+                <br />
+                Expires in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}.
               </p>
               <div className="row" style={{ marginTop: 0 }}>
                 <button className="btn ghost sm" onClick={showPairingCode}>

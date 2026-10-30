@@ -17,7 +17,15 @@ import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/tra
  * Settings — Obsidian-style rows: label left, control right. Theme and accent
  * are colour swatches you can see, not a run of words to read.
  */
-export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.Element {
+export function SettingsScreen({
+  onMenu,
+  pairingUri,
+  onPairingUriConsumed
+}: {
+  onMenu: () => void
+  pairingUri: string | null
+  onPairingUriConsumed: () => void
+}): React.JSX.Element {
   const { ui, c } = useTheme()
   const { prefs, update } = usePrefs()
   const { inbox, notes, projects, refresh, error } = useStore()
@@ -254,14 +262,19 @@ export function SettingsScreen({ onMenu }: { onMenu: () => void }): React.JSX.El
             </Pressable>
           </View>
           <Text style={[ui.meta, { marginTop: 0 }]}>
-            Scan the code from Inkfish on your Mac (Settings › Sync). Notes sync directly over your Wi-Fi, encrypted. No
-            account, no server.
+            Scan the code from Inkfish on your Mac (Settings › Sync), or use your phone’s Camera app and tap its Inkfish
+            link. Notes sync directly over your Wi-Fi, encrypted. No account, no server.
           </Text>
         </>
       )}
       <PairScanner
-        visible={scanning}
-        onClose={() => setScanning(false)}
+        visible={scanning || pairingUri !== null}
+        initialCode={pairingUri}
+        onInitialCodeConsumed={onPairingUriConsumed}
+        onClose={() => {
+          setScanning(false)
+          onPairingUriConsumed()
+        }}
         onCode={async (data, onStage, onDiscovery) => {
           const name = await sync.pair(data, onStage, onDiscovery)
           setScanning(false)

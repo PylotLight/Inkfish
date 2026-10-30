@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { BackHandler, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Linking, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native'
 import { CalendarDays, House, Inbox, Plus, Settings, type LucideIcon } from 'lucide-react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
@@ -21,6 +21,7 @@ import { EditorScreen } from './src/screens/EditorScreen'
 import { DailyScreen } from './src/screens/DailyScreen'
 import { JournalScreen } from './src/screens/JournalScreen'
 import { SettingsScreen } from './src/screens/SettingsScreen'
+import { pairingUriFromLink } from './src/lib/pairingLink'
 
 // `journal` isn't a toolbar tab: it opens from Home › Daily and the drawer.
 type Tab = 'home' | 'inbox' | 'today' | 'settings' | 'journal'
@@ -49,7 +50,9 @@ function Shell(): React.JSX.Element {
   /** Day open in the Journal pager (kept here so editing a day and coming back lands on it). */
   const [journalDay, setJournalDay] = useState<string | null>(null)
   const [shared, setShared] = useState<PendingShare | null>(null)
+  const [pairingUri, setPairingUri] = useState<string | null>(null)
   const shareSeen = useRef(false)
+  const lastPairingLink = useRef<{ uri: string; at: number } | null>(null)
 
   // A fresh share jumps to Capture with the composer prefilled. Consuming
   // (save or dismiss) resets the native module so it isn't offered twice.
@@ -73,6 +76,35 @@ function Shell(): React.JSX.Element {
     setOpenId(null)
     setComposing({ voice: false })
   }, [hasShareIntent, shareIntent, resetShareIntent])
+
+  const receivePairingLink = useCallback((url: string | null | undefined): void => {
+    const uri = pairingUriFromLink(url)
+    if (!uri) return
+    const previous = lastPairingLink.current
+    if (previous?.uri === uri && Date.now() - previous.at < 2000) return
+    lastPairingLink.current = { uri, at: Date.now() }
+    setPairingUri(uri)
+    setDrawer(false)
+    setComposing(null)
+    setOpenId(null)
+    setTab('settings')
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (active) receivePairingLink(url)
+      })
+      .catch(() => undefined)
+    const subscription = Linking.addEventListener('url', ({ url }) => receivePairingLink(url))
+    return () => {
+      active = false
+      subscription.remove()
+    }
+  }, [receivePairingLink])
+
+  const consumePairingUri = useCallback(() => setPairingUri(null), [])
 
   // Android back: drawer → capture sheet → editor → journal day page → Home tab → exit.
   useEffect(() => {
@@ -190,7 +222,11 @@ function Shell(): React.JSX.Element {
           ) : tab === 'today' ? (
             <DailyScreen onMenu={() => setDrawer(true)} />
           ) : (
-            <SettingsScreen onMenu={() => setDrawer(true)} />
+            <SettingsScreen
+              onMenu={() => setDrawer(true)}
+              pairingUri={pairingUri}
+              onPairingUriConsumed={consumePairingUri}
+            />
           )}
         </View>
         {/* Floating glass toolbar (Obsidian-style). Hidden in the editor and the
