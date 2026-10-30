@@ -106,25 +106,15 @@ describe('sidebar toggle + collapsed rail layout', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
     expect(tsx.indexOf('{sideCollapsed && (')).toBe(-1)
   })
-  test('the ribbon has no dedicated toggle — its icons re-open a collapsed pane (Obsidian)', () => {
+  test('the ribbon leads with its toggle button as the pane affordance (Obsidian pattern)', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
     const ribbonStart = tsx.indexOf('side-ribbon')
-    const ribbon = tsx.slice(ribbonStart, tsx.indexOf('</nav>', ribbonStart))
-    // The old boxed first button is gone; unboxing the affordance, not losing it.
-    expect(ribbon).not.toContain('panel-left')
-    expect(ribbon).toContain('uncollapse()')
+    const firstButton = tsx.slice(ribbonStart, tsx.indexOf('</nav>', ribbonStart))
+    expect(firstButton.indexOf('panel-left')).toBeGreaterThanOrEqual(0)
+    expect(firstButton).toContain('setSideCollapsed')
     // Obsidian-sized ribbon icons: 24px, not the old 18px.
-    expect(ribbon).toContain('size={24}')
-    expect(ribbon).not.toContain('size={18}')
-  })
-  test('the pane footer carries the collapse toggle, left of the vault chip', () => {
-    const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
-    const footStart = tsx.indexOf('side-foot')
-    const foot = tsx.slice(footStart, tsx.indexOf('</aside>', footStart))
-    expect(foot).toContain('panel-left')
-    expect(foot).toContain('setSideCollapsed(true)')
-    // Stable spot: the toggle leads the row, the vault chip follows.
-    expect(foot.indexOf('panel-left')).toBeLessThan(foot.indexOf('vault-chip'))
+    expect(firstButton).toContain('size={24}')
+    expect(firstButton).not.toContain('size={18}')
   })
   test('the pane carries no scope/quick-action rows (navigation rides the ribbon)', () => {
     const tsx = readFileSync(join(import.meta.dir, '../renderer/src/shell/Sidebar.tsx'), 'utf8')
@@ -169,7 +159,7 @@ describe('sidebar footer (vault bar)', () => {
     expect(rule('.vault-chip')).toContain('min-width: 0')
     expect(rule('.vault-chip .vault-name')).toContain('text-overflow: ellipsis')
   })
-  test('the footer icon buttons are equal-size (settings stays on the ribbon)', () => {
+  test('settings + quit are equal-size icon buttons', () => {
     const btn = rule('.foot-btn')
     expect(btn).toContain('width: 28px')
     expect(btn).toContain('height: 28px')

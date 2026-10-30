@@ -2663,9 +2663,6 @@ html[data-motion='reduced'] *::after {
   width: 288px;
   gap: 0;
   padding: 0 10px 8px;
-  /* No `rise` entrance of its own: with fill-mode `both` the filled `opacity: 1` end frame
-     outranks the collapse rule's `opacity: 0`, so the pane would never fade out. The ribbon's
-     rise covers the window entrance. */
   transition:
     width 0.18s ease,
     padding 0.18s ease,
@@ -3071,6 +3068,10 @@ input.side-search:focus {
   animation: rise 0.22s ease both;
 }
 
+.sidebar.core {
+  animation: rise 0.22s ease both;
+}
+
 .inboxbar {
   display: flex;
   align-items: center;
@@ -3381,12 +3382,11 @@ input.side-search:focus {
 }
 
 /* ---------- Inkfish: sidebar footer — Obsidian-style bottom vault bar ----------
-   One 38px row (shared/sidebar.ts SIDE_FOOT_HEIGHT): the pane's collapse toggle left, then the
-   vault chip, sync + quit on the right. Settings is the ribbon's alone (see the JSX note).
-   Weights stay regular; tints come from --text/--muted so dark + paper themes both read.
-   Hidden with the sidebar when collapsed — any ribbon icon click (or ⌘\ / Ctrl+\) re-opens
-   the pane (Obsidian behaviour), so the toggle hiding with the pane never strands it
-   (Quit stays in the palette / ⌘Q). */
+   One 38px row (shared/sidebar.ts SIDE_FOOT_HEIGHT): vault chip on the left, equal 28px icon
+   buttons on the right. The chip's folder icon centres on the tree's chevron column (row pad 2px
+   + 18px caret → x≈11) so the footer lines up with the tree above. Weights stay regular; tints
+   come from --text/--muted so dark + paper themes both read. Hidden with the sidebar when
+   collapsed — the ribbon carries Settings there (Quit stays in the palette / ⌘Q). */
 .sidebar.core .side-foot {
   flex: none;
   display: flex;
@@ -3479,6 +3479,17 @@ input.side-search:focus {
 }
 
 /* Update badge: small dot tucked on the gear's corner instead of widening the row. */
+.foot-btn .update-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--accent, #4fd1a5);
+}
+
 /* Sync badge (sidebar footer): sync glyph + state dot, hidden until a phone is paired.
    Solid popover, no backdrop-filter — the window's native vibrancy does the glass. */
 .sync-badge-wrap {
