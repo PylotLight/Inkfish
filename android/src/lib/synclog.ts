@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy'
 import { appendCollapsed, type SyncLogEntry } from './sync'
-import { syncRoots } from './vault'
+import { syncRoots, writeAtomically } from './vault'
 
 export type { SyncLogEntry }
 
@@ -32,7 +32,7 @@ export async function appendSyncLog(e: SyncLogEntry): Promise<void> {
     } catch {
       // fresh log
     }
-    await FileSystem.writeAsStringAsync(uri, JSON.stringify(appendCollapsed(log, e)), UTF8)
+    await writeAtomically(uri, JSON.stringify(appendCollapsed(log, e)), 'utf8')
   } catch {
     // never break sync for logging
   }

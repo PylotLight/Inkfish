@@ -6,7 +6,6 @@ import {
   safeRel,
   sha256,
   toBase64,
-  toHex,
   walkManifest,
   type Base,
   type HashCache,
@@ -17,7 +16,7 @@ import {
   type SyncFs,
   type SyncState
 } from './sync'
-import { syncRoots, mergeCaseDuplicates } from './vault'
+import { syncRoots, mergeCaseDuplicates, writeAtomically } from './vault'
 
 /**
  * Android file system + state for the shared sync engine. Paths use the
@@ -59,9 +58,7 @@ async function readJson<T>(uri: string, fallback: T): Promise<T> {
 
 async function writeJson(uri: string, v: unknown): Promise<void> {
   await mkdirp(parentOf(uri))
-  const tmp = `${uri}.tmp`
-  await FileSystem.writeAsStringAsync(tmp, JSON.stringify(v), UTF8)
-  await FileSystem.moveAsync({ from: tmp, to: uri })
+  await writeAtomically(uri, JSON.stringify(v), 'utf8')
 }
 
 // --- hash cache: path → size/mtime/hash, so unchanged files aren't re-read ---
@@ -129,10 +126,7 @@ export const androidFs: SyncFs = {
     const payload = toBase64(data)
     const attempt = async (): Promise<void> => {
       await mkdirp(parent)
-      const tmp = `${parent}.${toHex(random(4))}.inkfish-sync`
-      await FileSystem.writeAsStringAsync(tmp, payload, B64)
-      await FileSystem.deleteAsync(uri, { idempotent: true })
-      await FileSystem.moveAsync({ from: tmp, to: uri })
+      await writeAtomically(uri, payload, 'base64')
     }
     try {
       await attempt()
@@ -187,10 +181,12 @@ export const androidFs: SyncFs = {
     async append(key, data) {
       const dir = partialUri(key)
       await mkdirp(dir)
-      const n = (await FileSystem.readDirectoryAsync(dir)).filter((x) => /^\d+$/.test(x)).length
-      const tmp = `${dir}.${n}.tmp`
-      await FileSystem.writeAsStringAsync(tmp, toBase64(data), B64)
-      await FileSystem.moveAsync({ from: tmp, to: `${dir}${String(n).padStart(5, '0')}` })
+      const n = (await FileSystem.readDirectoryAsync(dir)).reduce((next, name) => {
+        if (!/^\d+$/.test(name)) return next
+        const index = Number(name)
+        return Number.isSafeInteger(index) ? Math.max(next, index + 1) : next
+      }, 0)
+      await writeAtomically(`${dir}${String(n).padStart(5, '0')}`, toBase64(data), 'base64')
     },
     async read(key) {
       const dir = partialUri(key)
@@ -240,7 +236,7 @@ export function stateFor(macId: string): SyncState {
     },
     async putText(hash, text) {
       await mkdirp(texts)
-      await FileSystem.writeAsStringAsync(`${texts}${hash}`, text, UTF8)
+      await writeAtomically(`${texts}${hash}`, text, 'utf8')
     },
     async pruneTexts(keep) {
       let names: string[]

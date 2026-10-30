@@ -177,7 +177,7 @@ jobs:
           if grep -q 'test/' pack.txt; then echo "::error::tests leaked into the pack"; exit 1; fi
 
   typecheck-android:
-    name: "Inkfish · CI · android typecheck · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
+    name: "Inkfish · CI · android tests + typecheck · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ${{ vars.INKFISH_LINUX_RUNNER || 'ubuntu-latest' }}
@@ -211,6 +211,7 @@ jobs:
       - if: steps.android-nm.outputs.cache-hit != 'true'
         run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: android
+      - run: bun test android/test
       - run: bun run typecheck:android
 
   # Builds the Swift transcription helper (the slow part of a release) only when stt/ changes,

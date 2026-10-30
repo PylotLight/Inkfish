@@ -262,9 +262,7 @@ export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[], d
     ...(days ? { days } : {})
   }
   await mkdir(`${APP}.cache/`)
-  const tmp = `${INDEX_SNAPSHOT}.tmp`
-  await writeText(tmp, JSON.stringify(snap))
-  await FileSystem.moveAsync({ from: tmp, to: INDEX_SNAPSHOT })
+  await writeText(INDEX_SNAPSHOT, JSON.stringify(snap))
 }
 
 // --- every vault file (notes + attachments) ---------------------------------------

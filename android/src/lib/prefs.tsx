@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as FileSystem from 'expo-file-system/legacy'
+import { writeAtomically } from './vault/paths'
 
 /** Appearance prefs — the Android subset of the Mac prefs (theme + accent + text size + glass). */
 export type ThemeId = 'deep' | 'abyss' | 'forest' | 'plum' | 'paper' | 'amoled'
@@ -92,7 +93,7 @@ export function PrefsProvider({ children }: { children: ReactNode }): React.JSX.
   const update = useCallback((patch: Partial<Prefs>) => {
     setPrefs((prev) => {
       const next = { ...prev, ...patch }
-      FileSystem.writeAsStringAsync(FILE, JSON.stringify(next)).catch(() => {})
+      writeAtomically(FILE, JSON.stringify(next), 'utf8').catch(() => {})
       return next
     })
   }, [])

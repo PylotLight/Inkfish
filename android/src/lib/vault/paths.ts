@@ -1,6 +1,25 @@
 import * as FileSystem from 'expo-file-system/legacy'
 import { APP, ASSETS, DAILY, INBOX, STAGING, UNDONE, VAULT } from './state'
 
+let atomicWriteSequence = 0
+
+/** Write into a hidden sibling temp file, then atomically rename it over the target. */
+export async function writeAtomically(uri: string, text: string, encoding: 'utf8' | 'base64'): Promise<void> {
+  const slash = uri.lastIndexOf('/')
+  const parent = uri.slice(0, slash + 1)
+  const name = uri.slice(slash + 1)
+  const tmp = `${parent}.${name}.${Date.now().toString(36)}-${(++atomicWriteSequence).toString(36)}.inkfish-tmp`
+  try {
+    await FileSystem.writeAsStringAsync(tmp, text, { encoding })
+    // Android's file:// move uses File.renameTo within app-private storage. Keep
+    // source and destination together so replacement is one same-filesystem rename.
+    await FileSystem.moveAsync({ from: tmp, to: uri })
+  } catch (error) {
+    await FileSystem.deleteAsync(tmp, { idempotent: true }).catch(() => {})
+    throw error
+  }
+}
+
 export function vaultRootUri(): string {
   return VAULT
 }
@@ -53,9 +72,7 @@ export const SKIP_STAT =
   /\.(png|jpe?g|gif|webp|heic|heif|bmp|svg|avif|tiff?|m4a|mp3|wav|ogg|opus|aac|flac|mp4|mov|webm|pdf|zip|json|txt|csv)$/i
 
 export async function writeText(uri: string, text: string): Promise<void> {
-  await FileSystem.writeAsStringAsync(uri, text, {
-    encoding: FileSystem.EncodingType.UTF8
-  })
+  await writeAtomically(uri, text, 'utf8')
 }
 
 export async function readText(uri: string): Promise<string> {
