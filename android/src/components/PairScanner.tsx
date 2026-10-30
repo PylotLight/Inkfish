@@ -179,8 +179,7 @@ export function PairScanner({
       nativeScannerAttempted.current = false
       return
     }
-    if (!preferNativeScanner || nativeScannerAttempted.current || initialCode || externalPairing)
-      return
+    if (!preferNativeScanner || nativeScannerAttempted.current || initialCode || externalPairing) return
     launchNativeScanner()
   }, [visible, preferNativeScanner, initialCode, externalPairing, launchNativeScanner])
 
@@ -271,12 +270,7 @@ export function PairScanner({
               setCameraError(message)
             }}
           />
-        ) :
-          visible &&
-          !perm?.granted &&
-          (!preferNativeScanner || useLiveCamera) &&
-          !initialCode &&
-          !externalPairing ? (
+        ) : visible && !perm?.granted && (!preferNativeScanner || useLiveCamera) && !initialCode && !externalPairing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
             <Text style={[ui.title, { color: '#fff', textAlign: 'center' }]}>Camera access to scan the code</Text>
             <Pressable onPress={() => void requestPerm()} style={[ui.quiet, { marginTop: 12 }]}>

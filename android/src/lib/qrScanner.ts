@@ -49,7 +49,8 @@ export function describeNativeQrScannerError(error: unknown): NativeQrScannerDia
   if (fingerprint.includes('barcode_scanning_cancelled') || /\b(cancelled|canceled)\b/.test(fingerprint)) {
     return {
       kind: 'cancelled',
-      userMessage: 'The system QR scanner was cancelled. The live camera is ready; scan there, or try the system scanner again.',
+      userMessage:
+        'The system QR scanner was cancelled. The live camera is ready; scan there, or try the system scanner again.',
       logMessage: `System QR scanner cancelled · ${identity}${message ? ` · ${message}` : ''}`
     }
   }
@@ -57,7 +58,8 @@ export function describeNativeQrScannerError(error: unknown): NativeQrScannerDia
   if (fingerprint.includes('google_play_services_unavailable')) {
     return {
       kind: 'unavailable',
-      userMessage: 'Google Play services is missing or unavailable, so the system scanner cannot start. Enable or update Google Play services, then retry; the live camera is ready.',
+      userMessage:
+        'Google Play services is missing or unavailable, so the system scanner cannot start. Enable or update Google Play services, then retry; the live camera is ready.',
       logMessage
     }
   }
@@ -65,7 +67,8 @@ export function describeNativeQrScannerError(error: unknown): NativeQrScannerDia
   if (fingerprint.includes('ml_kit_unavailable')) {
     return {
       kind: 'unavailable',
-      userMessage: 'This app build cannot access the Google Code Scanner module. Use the live camera, or install a build with Expo Camera barcode scanning enabled.',
+      userMessage:
+        'This app build cannot access the Google Code Scanner module. Use the live camera, or install a build with Expo Camera barcode scanning enabled.',
       logMessage
     }
   }

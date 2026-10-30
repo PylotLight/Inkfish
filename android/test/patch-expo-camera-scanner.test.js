@@ -32,10 +32,7 @@ function fixture() {
   )
   writeFileSync(
     path.join(camera, 'CameraExceptions.kt'),
-    [
-      '  class BarcodeScanningFailedException :',
-      '    CodedException("Barcode scanning failed")'
-    ].join('\n')
+    ['  class BarcodeScanningFailedException :', '    CodedException("Barcode scanning failed")'].join('\n')
   )
   return root
 }

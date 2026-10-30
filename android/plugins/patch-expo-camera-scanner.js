@@ -11,20 +11,25 @@ const replacements = [
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraViewModule.kt',
-    before: '          .addOnFailureListener {\n            promise.reject(CameraExceptions.BarcodeScanningFailedException())\n          }',
-    after: '          .addOnFailureListener { error ->\n            promise.reject(CameraExceptions.BarcodeScanningFailedException(error))\n          }'
+    before:
+      '          .addOnFailureListener {\n            promise.reject(CameraExceptions.BarcodeScanningFailedException())\n          }',
+    after:
+      '          .addOnFailureListener { error ->\n            promise.reject(CameraExceptions.BarcodeScanningFailedException(error))\n          }'
   },
   {
     file: 'android/src/main/java/expo/modules/camera/CameraExceptions.kt',
     before: '  class BarcodeScanningFailedException :\n    CodedException("Barcode scanning failed")',
-    after: '  class BarcodeScanningFailedException(cause: Throwable? = null) :\n    CodedException(\n      message = cause?.localizedMessage?.let { "Barcode scanning failed: $it" } ?: "Barcode scanning failed",\n      cause = cause\n    )'
+    after:
+      '  class BarcodeScanningFailedException(cause: Throwable? = null) :\n    CodedException(\n      message = cause?.localizedMessage?.let { "Barcode scanning failed: $it" } ?: "Barcode scanning failed",\n      cause = cause\n    )'
   }
 ]
 
 function replaceRequired(source, before, after, file) {
   if (source.includes(after)) return source
   if (!source.includes(before)) {
-    throw new Error(`Expo Camera scanner diagnostic patch no longer matches ${file}; review the native source before building.`)
+    throw new Error(
+      `Expo Camera scanner diagnostic patch no longer matches ${file}; review the native source before building.`
+    )
   }
   return source.replace(before, after)
 }
