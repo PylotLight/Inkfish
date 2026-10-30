@@ -2253,6 +2253,11 @@ html.mini-window .editor {
 .ed-src .lp-strike {
   text-decoration: line-through;
 }
+/* Completed task: struck-through + dimmed (the checkbox is a widget, stays crisp). */
+.ed-src .lp-task-done {
+  text-decoration: line-through;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
 .ed-src .lp-codespan {
   font-family: var(--mono-font);
   font-size: 0.88em;

@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
-import { buildDecorations, ImageWidget, listEnterUpdate, taskShorthandUpdate, TaskBulletWidget } from './livePreview'
+import {
+  buildDecorations,
+  ImageWidget,
+  listEnterUpdate,
+  taskShorthandUpdate,
+  toggleTaskUpdate,
+  TaskBulletWidget
+} from './livePreview'
 
 const opts = { onToggleTask: () => {}, resolveImage: (src: string) => [`asset://vault/${src}`] }
 
@@ -148,6 +155,76 @@ describe('live preview task checkboxes', () => {
     expect(taskWidgets('- [open] issue')).toHaveLength(0)
     expect(taskWidgets('- []')).toHaveLength(0)
     expect(taskWidgets('[]')).toHaveLength(0) // incomplete: no state char yet
+  })
+
+  test('markerless tasks render a checkbox on every line, not just the first', () => {
+    // Regression: the widget's start position double-counted the line base, so a
+    // markerless task below line 1 kept its literal `[ ]` brackets (bulleted tasks
+    // were fine — their branch never double-counted).
+    expect(taskWidgets('intro\n[ ] todo')).toEqual([{ from: 6, checked: false, bullet: false }])
+    expect(taskWidgets('a\nb\n  [ ] indented')).toEqual([{ from: 6, checked: false, bullet: false }])
+  })
+
+  /** `lp-task-done` strike-through ranges found in the doc. */
+  function doneMarks(doc: string): Array<[number, number]> {
+    const state = EditorState.create({ doc })
+    const out: Array<[number, number]> = []
+    buildDecorations(state, opts).between(0, doc.length, (from, to, deco) => {
+      if (deco.spec.class === 'lp-task-done') out.push([from, to])
+    })
+    return out
+  }
+
+  test('a checked task strikes through its text (Obsidian), an open one does not', () => {
+    expect(doneMarks('[x] done todo')).toEqual([[3, 13]])
+    expect(doneMarks('- [x] done')).toEqual([[5, 10]])
+    expect(doneMarks('  - [x] done')).toEqual([[7, 12]])
+    expect(doneMarks('[ ] open todo')).toEqual([])
+    expect(doneMarks('[x]')).toEqual([]) // nothing after the brackets
+  })
+})
+
+describe('live preview: checkbox click toggles the task + Obsidian-Tasks completion date', () => {
+  /** Dispatch the checkbox toggle at `pos`; null = not a checkbox position. */
+  function toggle(doc: string, pos: number, date: string): string | null {
+    const s = EditorState.create({ doc, selection: EditorSelection.cursor(Math.min(pos, doc.length - 1)) })
+    const u = toggleTaskUpdate(s, pos, date)
+    if (!u) return null
+    return s.update(u).state.doc.toString()
+  }
+
+  test('checking appends a ✅ date at the end of the line', () => {
+    expect(toggle('intro\n[ ] buy milk', 7, '2026-10-30')).toBe('intro\n[x] buy milk ✅ 2026-10-30')
+  })
+
+  test('unchecking removes the date again', () => {
+    expect(toggle('intro\n[x] buy milk ✅ 2026-10-30', 7, '2026-10-31')).toBe('intro\n[ ] buy milk')
+  })
+
+  test('checking a line with a stale date replaces it with the new one', () => {
+    expect(toggle('intro\n[ ] buy milk ✅ 2026-10-01', 7, '2026-10-30')).toBe('intro\n[x] buy milk ✅ 2026-10-30')
+  })
+
+  test('uncheck → check round-trip keeps the latest date, none in between', () => {
+    const checked = toggle('intro\n[ ] buy milk', 7, '2026-10-01')!
+    expect(checked).toBe('intro\n[x] buy milk ✅ 2026-10-01')
+    const open = toggle(checked, 7, '2026-10-31')!
+    expect(open).toBe('intro\n[ ] buy milk')
+    expect(toggle(open, 7, '2026-10-30')).toBe('intro\n[x] buy milk ✅ 2026-10-30')
+  })
+
+  test('a textless task: brackets only, date appears with the check and leaves with it', () => {
+    expect(toggle('[ ]', 1, '2026-10-30')).toBe('[x] ✅ 2026-10-30')
+    expect(toggle('[x] ✅ 2026-10-30', 1, '2026-10-31')).toBe('[ ]')
+  })
+
+  test('bulleted tasks get the same treatment', () => {
+    expect(toggle('- [ ] todo', 3, '2026-10-30')).toBe('- [x] todo ✅ 2026-10-30')
+    expect(toggle('- [x] todo ✅ 2026-10-30', 3, '2026-10-31')).toBe('- [ ] todo')
+  })
+
+  test('a position outside the brackets is left alone', () => {
+    expect(toggle('[ ] todo', 5, '2026-10-30')).toBeNull()
   })
 })
 

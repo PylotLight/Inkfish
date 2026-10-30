@@ -719,21 +719,26 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       const indentLen = tm[1]?.length ?? 0
       const markerLen = tm[2]?.length ?? 0
       const bulleted = markerLen > 0
+      const checked = (tm[3] ?? '').toLowerCase() === 'x'
       if (!quoted) listLine(restBase, tm[1] ?? '', 'lp-li-task')
       const openBracket = restBase + indentLen + markerLen
       const checkPos = openBracket + 1
-      // With a marker the widget takes over the marker too (rendered as `•`);
-      // markerless it replaces only the brackets.
-      const wFrom = restBase + (bulleted ? indentLen : openBracket)
+      // In both cases the widget starts right after the indent: bulleted it also
+      // replaces the marker (rendered as `•`); markerless the brackets sit at the
+      // same spot, so it replaces only those.
+      const wFrom = restBase + indentLen
       const wTo = openBracket + 3
       ops.push({
         from: wFrom,
         to: wTo,
         deco: Decoration.replace({
-          widget: new TaskBulletWidget(tm[3]?.toLowerCase() === 'x', checkPos, opts.onToggleTask, bulleted)
+          widget: new TaskBulletWidget(checked, checkPos, opts.onToggleTask, bulleted)
         })
       })
       claimed.push([wFrom, wTo])
+      // Completed task: strike through the text after the brackets (Obsidian).
+      // A mark over the text only — the checkbox is a widget and stays crisp.
+      if (checked && wTo < l.to) mark(wTo, l.to, 'lp-task-done')
     } else {
       const bm = BULLET_RE.exec(rest)
       if (bm) {
@@ -978,6 +983,28 @@ export function taskShorthandUpdate(state: EditorState): TransactionSpec | null 
     changes: { from: at, to: line.to, insert: '[ ] ' },
     selection: { anchor: at + '[ ] '.length }
   }
+}
+
+/** Completion-date suffix at the end of a task line (Obsidian Tasks syntax). */
+const TASK_DATE_RE = /[ \t]✅[ \t]\d{4}-\d{2}-\d{2}[ \t]*$/
+
+/**
+ * Toggle the task checkbox at `pos` (the ` `/`x` inside the brackets), with the
+ * Obsidian-Tasks completion date: checking appends ` ✅ <date>` at the end of the
+ * line (updating an existing date on re-check); unchecking removes it again.
+ * One whole-line edit, so it is a single undo step. Pure over the state so it is
+ * unit-testable; the checkbox handler only dispatches its result.
+ */
+export function toggleTaskUpdate(state: EditorState, pos: number, date: string): TransactionSpec | null {
+  const ch = state.doc.sliceString(pos, pos + 1)
+  if (ch !== ' ' && ch !== 'x' && ch !== 'X') return null
+  const line = state.doc.lineAt(pos)
+  const at = pos - line.from
+  const checking = ch === ' '
+  let next = line.text.slice(0, at) + (checking ? 'x' : ' ') + line.text.slice(at + 1)
+  if (checking) next = next.replace(TASK_DATE_RE, '').trimEnd() + ` ✅ ${date}`
+  else next = next.replace(TASK_DATE_RE, '')
+  return { changes: { from: line.from, to: line.to, insert: next } }
 }
 
 /**

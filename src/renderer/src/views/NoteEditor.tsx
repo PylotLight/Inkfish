@@ -16,7 +16,7 @@ import {
   type FindMatch,
   type FindOpts
 } from '../find'
-import { listKeys, livePreview } from '../livePreview'
+import { listKeys, livePreview, toggleTaskUpdate } from '../livePreview'
 import { codeHighlight } from '../codeHighlight'
 import { imageCandidates, imageMarkdown } from '../../../shared/images'
 import NoteAi from './NoteAi'
@@ -153,13 +153,19 @@ function NoteEditor({
   const handleTextRef = useRef(handleText)
   handleTextRef.current = handleText
 
-  /** Flip the task checkbox at `pos` (the ` `/`x` inside brackets). */
+  /**
+   * Checkbox click: flip the ` `/`x` inside the brackets, with the Obsidian-Tasks
+   * completion date (checking appends ` ✅ <date>` at the line end, unchecking
+   * removes it) — one undo step (toggleTaskUpdate, livePreview.ts).
+   */
   const toggleTaskRef = useRef((pos: number): void => {
     const v = viewRef.current
     if (!v) return
-    const ch = v.state.doc.sliceString(pos, pos + 1)
-    if (ch !== ' ' && ch !== 'x' && ch !== 'X') return
-    v.dispatch({ changes: { from: pos, to: pos + 1, insert: ch === ' ' ? 'x' : ' ' } })
+    const d = new Date()
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const update = toggleTaskUpdate(v.state, pos, date)
+    if (!update) return
+    v.dispatch(update)
     v.focus()
   })
 
