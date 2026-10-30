@@ -2940,9 +2940,9 @@ html[data-motion='reduced'] *::after {
 }
 
 .brand-logo-frame {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   /* The logo carries its own tile — keep the frame chrome-free. */
   background: transparent;
   border: none;
@@ -2961,7 +2961,7 @@ html[data-motion='reduced'] *::after {
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .btn.icon {
