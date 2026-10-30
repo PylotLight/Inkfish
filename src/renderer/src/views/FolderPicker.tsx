@@ -6,8 +6,8 @@ type Row = { kind: 'root' } | { kind: 'folder'; rel: string } | { kind: 'create'
 
 /**
  * "Move to…" popover: fuzzy search over the vault's folders, the vault root, and "New folder…"
- * (type a path like `Work/Images` — it's created on move). ↑↓ / ↵ / Esc. Used by the note header
- * breadcrumb, the ⌘K palette and the tree's right-click menu.
+ * (type a path like `Work/Images` — it's created on move). ↑↓ / ↵ / Esc. Used by the note's ⋯
+ * menu, the ⌘K palette and the tree's right-click menu.
  */
 export default function FolderPicker({
   title,

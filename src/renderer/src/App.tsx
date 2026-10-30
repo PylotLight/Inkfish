@@ -497,7 +497,6 @@ function Main(): React.JSX.Element {
         onEditorBlur={() => titleSync.flush()}
         dayNav={dayNav}
         focusEnd={focusEnd}
-        openMovePicker={openMovePicker}
         setNoteTags={(t) => void setNoteTags(t)}
         setSideCollapsed={setSideCollapsed}
         setQuery={setQuery}

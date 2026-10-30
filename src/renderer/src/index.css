@@ -6059,57 +6059,7 @@ input[type='password'].text-input {
   color: var(--text);
 }
 
-/* ---------- Inkfish: note header breadcrumb + tags ---------- */
-
-.ed-crumbs-row {
-  flex: 1 0 100%;
-  display: flex;
-  margin: -2px 0 -4px;
-}
-.ed-crumbs {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  max-width: 100%;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  padding: 2px 6px;
-  margin-left: -6px;
-  border-radius: 6px;
-  cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.ed-crumbs:hover {
-  color: var(--text);
-  background: var(--row-hover);
-}
-.ed-crumbs .crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ed-crumbs .crumb-sep {
-  opacity: 0.55;
-  padding: 0 3px;
-}
-.ed-crumbs .crumb-caret {
-  font-size: 9px;
-  opacity: 0;
-  margin-left: 4px;
-  transition: opacity 0.12s ease;
-}
-.ed-crumbs:hover .crumb-caret,
-.ed-crumbs:focus-visible .crumb-caret {
-  opacity: 0.8;
-}
+/* ---------- Inkfish: note header tags ---------- */
 
 .ed-tags {
   flex: 1 0 100%;

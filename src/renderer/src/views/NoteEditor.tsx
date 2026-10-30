@@ -23,7 +23,6 @@ import NoteAi from './NoteAi'
 import NoteHistory from './NoteHistory'
 import type { Anchor } from './DeletePopover'
 import TagChips from './TagChips'
-import { breadcrumb } from '../../../shared/note-move'
 
 /** Marks edits that came from another window (mini window sync) — never re-broadcast. */
 const remoteSync = Annotation.define<boolean>()
@@ -76,8 +75,6 @@ interface Props {
   onMore: (x: number, y: number) => void
   /** Mini window: no title/path header, just the note. */
   compact?: boolean
-  /** Header breadcrumb click → "Move to…" folder picker anchored at (x, y). Vault notes only. */
-  onMoveClick?: (x: number, y: number) => void
   /** Header tag chips → front matter `tags:`. Vault notes only. */
   onSetTags?: (tags: string[]) => void
   onTagClick?: (tag: string) => void
@@ -111,7 +108,6 @@ function NoteEditor({
   notify,
   onMore,
   compact,
-  onMoveClick,
   onSetTags,
   onTagClick,
   allTags,
@@ -552,8 +548,14 @@ function NoteEditor({
     )
   }
 
-  // Header metadata (size · dates): shown in the breadcrumb tooltip, not as a visible row —
-  // Obsidian's header is just path + title, and the row made the top area busy.
+  // Header metadata (location · size · dates): lives in the ⋯ button's tooltip. Obsidian's
+  // header is just title + actions — the path row was the noisiest bit of that corner.
+  const inLabel =
+    !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
+      ? doc.path.includes('/')
+        ? `In ${doc.path.slice(0, doc.path.lastIndexOf('/'))}`
+        : 'In the vault root'
+      : ''
   const metaSize =
     draft !== undefined
       ? `${fmtChars(text.length)} chars`
@@ -561,6 +563,7 @@ function NoteEditor({
         ? fmtBytes(doc.size)
         : `${fmtChars(doc.markdown.length)} chars`
   const metaDates = `edited ${timeAgo(doc.updatedAt)} · created ${new Date(doc.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const moreTitle = [inLabel, metaSize, metaDates, 'note actions'].filter(Boolean).join(' · ')
 
   return (
     <div
@@ -582,37 +585,6 @@ function NoteEditor({
     >
       {!compact && (
         <div className="ed-head">
-          {onMoveClick && (
-            <div className="ed-crumbs-row">
-              <button
-                className="ed-crumbs"
-                title={`In ${doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : 'the vault root'} · ${metaSize} · ${metaDates} — click to move`}
-                aria-label="Note folder — move to another folder"
-                onClick={(e) => {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                  onMoveClick(r.left, r.bottom + 6)
-                }}
-              >
-                {breadcrumb(doc.path).length === 0 ? (
-                  <span className="crumb root">Vault root</span>
-                ) : (
-                  breadcrumb(doc.path).map((c, i) => (
-                    <span key={c.rel} className="crumb">
-                      {i > 0 && (
-                        <span className="crumb-sep" aria-hidden>
-                          ›
-                        </span>
-                      )}
-                      {c.name}
-                    </span>
-                  ))
-                )}
-                <span className="crumb-caret" aria-hidden>
-                  ▾
-                </span>
-              </button>
-            </div>
-          )}
           <div className={`ed-title${dayNav ? ' ed-title-day' : ''}`}>
             {dayNav && (
               <button
@@ -647,7 +619,7 @@ function NoteEditor({
             <button
               ref={moreBtnRef}
               className="btn ghost sm icon"
-              title="Note actions (find, history, reveal, rename, delete)"
+              title={moreTitle}
               aria-label="Note actions"
               onClick={(e) => {
                 const r = (e.currentTarget as HTMLElement).getBoundingClientRect()

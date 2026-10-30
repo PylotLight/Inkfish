@@ -1,5 +1,4 @@
 import type { InboxItem, NoteDoc, NoteEntry, Project, SysInfo, VaultInfo } from '../../../shared/types'
-import type { MoveItem } from '../../../shared/note-move'
 import type { DayRef } from '../../../shared/journal'
 import { draftForEditor } from '../../../shared/autosave'
 import { isTitleSyncPath } from '../../../shared/title-sync'
@@ -79,7 +78,6 @@ interface Props {
   onEditorBlur: () => void
   dayNav: { onPrev: (() => void) | null; onNext: (() => void) | null; prevLabel?: string; nextLabel?: string } | null
   focusEnd: { id: string; token: number } | null
-  openMovePicker: (items: MoveItem[], name: string, x: number, y: number) => void
   setNoteTags: (tags: string[]) => void
   setSideCollapsed: (update: boolean | ((v: boolean) => boolean)) => void
   setQuery: (q: string) => void
@@ -150,7 +148,6 @@ export default function Center({
   onEditorBlur,
   dayNav,
   focusEnd,
-  openMovePicker,
   setNoteTags,
   setSideCollapsed,
   setQuery,
@@ -315,8 +312,6 @@ export default function Center({
                   onMore={(x, y) => setMenu({ x, y, target: { kind: 'open-note' } })}
                   {...(sel?.origin === 'note' && doc && !doc.path.startsWith('inbox/') && !doc.path.startsWith('daily/')
                     ? {
-                        onMoveClick: (x: number, y: number) =>
-                          openMovePicker([{ rel: doc.path, kind: 'file' }], titleOf(doc), x, y),
                         onSetTags: (t: string[]) => void setNoteTags(t),
                         onTagClick: (t: string) => {
                           setSideCollapsed(false)
