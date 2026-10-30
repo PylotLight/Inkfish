@@ -194,16 +194,18 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
             if (selRef.current?.id === id) setDoc(fresh)
           })
           .catch(console.error)
-        // Keep the file open as a tab (no duplicates). A tab that's already open keeps its
-        // mode; a new one is a temp preview tab, and the single existing preview tab is
-        // replaced — VSCode-style, so browsing a bunch of notes never clogs the strip.
+        // A preview tab lives only while it's the one being looked at: any other selection —
+        // an already-open tab, a new note — drops it, so a "temp" tab is temp in the truest
+        // sense. An already-open tab keeps its mode; a new one takes the preview slot.
         setTabs((prev) => {
-          if (prev.some((t) => t.id === id)) return prev
-          const base = prev.filter((t) => !t.preview)
+          const base = prev.some((t) => t.preview && t.id !== id) ? prev.filter((t) => !t.preview || t.id === id) : prev
+          if (base.some((t) => t.id === id)) return base
           const path = allNotesRef.current.find((n) => n.id === id)?.path ?? id
           return [...base, { id, path, pinned: false, edited: false, preview }]
         })
       } else {
+        // Looking at a capture takes the stage from any lingering temp preview tab.
+        setTabs((prev) => (prev.some((t) => t.preview) ? prev.filter((t) => !t.preview) : prev))
         const item = inbox.find((i) => i.id === id)
         setDoc(
           item

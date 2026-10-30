@@ -11,9 +11,10 @@ export interface Tab {
   /** Changed this session (text or title). Unedited, unpinned tabs drop out on restart. */
   edited: boolean
   /**
-   * Preview tab (opened by a plain selection, VSCode-style): the next selected note replaces it
-   * until it's edited or pinned, so browsing doesn't clog the strip. Never persisted — loadTabs
-   * only restores pinned/edited tabs, and promotion drops this flag.
+   * Preview tab (opened by a plain selection, VSCode-style): it lives only while it's the one
+   * being looked at — the next selection (another note, an open tab, a capture) drops it, so
+   * browsing doesn't clog the strip. Editing or pinning promotes it to a permanent tab. Never
+   * persisted — loadTabs only restores pinned/edited tabs.
    */
   preview?: boolean
   /** Group this tab belongs to (a pinned tab renders in the pinned section regardless). */

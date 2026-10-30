@@ -130,7 +130,7 @@ export default function TabBar({
         className={`tab${isActive ? ' on' : ''}${t.pinned ? ' pinned' : ''}${t.preview ? ' preview' : ''}${tearing?.id === t.id ? ' tearing' : ''}${
           reordering === t.id ? ' reordering' : ''
         }`}
-        title={`${t.preview ? 'Temp tab — replaced by the next note you open; editing or pinning keeps it\n' : ''}${entry?.path ?? t.path}\nDrag sideways to reorder · drag out of the tab bar to pop into a mini window`}
+        title={`${t.preview ? 'Temp tab — closes when you open anything else; editing or pinning keeps it\n' : ''}${entry?.path ?? t.path}\nDrag sideways to reorder · drag out of the tab bar to pop into a mini window`}
         onClick={() => {
           if (suppressClick.current) {
             suppressClick.current = false
