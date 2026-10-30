@@ -1,7 +1,7 @@
 const { execFileSync } = require('node:child_process')
 
 const REQUIRED_DEX_MARKERS = Object.freeze([
-  'ModuleInstallRequest',
+  'Google Code Scanner module installation failed',
   'onBarcodeScannerError',
   'Barcode analyzer failed:',
   'Barcode analyzer failed to initialize:'
@@ -13,7 +13,7 @@ function verifyScannerDex(dexFiles) {
   if (missing.length) {
     throw new Error(
       `Android APK is missing required native scanner code markers: ${missing.join(', ')}. ` +
-        'The Google Code Scanner module-install and live-analyzer diagnostic patches were not packaged.'
+        'Could not verify the Google Code Scanner module-install and live-analyzer diagnostic code in the optimized DEX.'
     )
   }
   return REQUIRED_DEX_MARKERS
