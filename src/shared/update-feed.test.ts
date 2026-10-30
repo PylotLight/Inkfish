@@ -195,13 +195,15 @@ describe('pre-releases (release.ts --pre test builds)', () => {
     expect(decideUpdate(best.version, '0.2.15-beta.2', prefs(), NOW).updateAvailable).toBe(true)
     expect(pickLatestRelease(shipped, { includePrereleases: true })!.version).toBe('0.2.15')
   })
-  test('android test-build tags in the feed are not Mac releases', () => {
-    const xml = `<feed>${['android-v0.2.8-beta.1', 'v0.2.15-beta.1', 'v0.2.14']
+  test('Android tags cannot displace the desktop stable latest release', () => {
+    const xml = `<feed>${['android-v9.9.9', 'android-v0.2.8-beta.1', 'v0.2.15-beta.1', 'v0.2.14']
       .map(
         (t) =>
           `<entry><id>tag:github.com,2008:Repository/1/${t}</id><link rel="alternate" href="https://github.com/PylotLight/Inkfish/releases/tag/${t}"/><title>${t}</title></entry>`
       )
       .join('')}</feed>`
-    expect(parseReleaseFeed(xml).map((e) => e.tag)).toEqual(['v0.2.15-beta.1', 'v0.2.14'])
+    const desktopReleases = parseReleaseFeed(xml)
+    expect(desktopReleases.map((e) => e.tag)).toEqual(['v0.2.15-beta.1', 'v0.2.14'])
+    expect(pickLatestRelease(desktopReleases, { includePrereleases: false })?.version).toBe('0.2.14')
   })
 })

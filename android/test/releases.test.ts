@@ -46,13 +46,20 @@ describe('which release a phone is offered', () => {
     expect(updateFor(feed, '0.2.6', stable)?.version).toBe('0.2.7')
     expect(updateFor(feed, '0.2.7', stable)).toBeNull()
   })
-  test('a test build is skipped if either GitHub or the version says pre-release', () => {
-    const sneaky = [
-      rel('android-v0.2.9-beta.1', { prerelease: false }),
-      rel('android-v0.2.9', { prerelease: true }),
-      ...feed
-    ]
-    expect(pickRelease(sneaky, stable)?.version).toBe('0.2.7')
+  test('stable Android releases remain eligible when GitHub marks them as pre-releases', () => {
+    const r = pickRelease([rel('android-v0.2.9', { prerelease: true }), ...feed], stable)!
+    expect(r.version).toBe('0.2.9')
+    expect(r.prerelease).toBe(false)
+  })
+  test('Android beta version suffixes stay hidden by default even if GitHub marks them stable', () => {
+    const betaRelease = rel('android-v0.2.9-beta.1', { prerelease: false })
+    expect(pickRelease([betaRelease], stable)).toBeNull()
+  })
+  test('Android beta version suffixes are offered when Beta updates are enabled', () => {
+    const betaRelease = rel('android-v0.2.9-beta.1', { prerelease: false })
+    const r = pickRelease([betaRelease], beta)!
+    expect(r.version).toBe('0.2.9-beta.1')
+    expect(r.prerelease).toBe(true)
   })
   test('beta updates on: newest including test builds', () => {
     const r = updateFor(feed, '0.2.7', beta)!

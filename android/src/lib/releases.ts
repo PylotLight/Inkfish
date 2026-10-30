@@ -5,9 +5,10 @@ import { compareSemver, isPrereleaseVersion, parseSemver } from '../../../src/sh
  * android/test/releases.test.ts. Uses the same SemVer 2.0 ordering as the Mac
  * (src/shared/update-feed.ts): 0.2.8-beta.1 < 0.2.8-beta.2 < 0.2.8 < 0.2.9.
  *
- * Test builds (`release.ts --pre` → android-vX.Y.Z-beta.N, a GitHub pre-release) are only
- * considered with "Beta updates" on. A release counts as a test build if GitHub flags it
- * as a pre-release OR its version has a pre-release tail, so neither slip alone leaks one.
+ * Android beta builds (`release.ts --pre` → android-vX.Y.Z-beta.N) are only considered
+ * with "Beta updates" on. The Android workflow marks every Android release as a GitHub
+ * pre-release to protect the desktop `/releases/latest`; the SemVer suffix alone selects
+ * Android's beta channel.
  */
 
 export const TAG_PREFIX = 'android-v'
@@ -33,7 +34,7 @@ export interface Release {
   apkUrl: string
   apkSize: number
   publishedAt: string
-  /** A test build (GitHub pre-release / X.Y.Z-beta.N). */
+  /** An Android test build with a SemVer prerelease suffix, such as X.Y.Z-beta.N. */
   prerelease: boolean
 }
 
@@ -54,7 +55,7 @@ export function pickRelease(list: readonly GhRelease[], opts: PickOptions): Rele
     if (r.draft || !r.tag_name.startsWith(TAG_PREFIX)) continue
     const version = r.tag_name.slice(TAG_PREFIX.length)
     if (!parseSemver(version)) continue
-    const pre = r.prerelease || isPrereleaseVersion(version)
+    const pre = isPrereleaseVersion(version)
     if (pre && !opts.includePrereleases) continue
     const apk = r.assets.find((a) => a.name.endsWith('.apk'))
     if (!apk) continue
