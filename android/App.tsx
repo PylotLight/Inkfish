@@ -46,6 +46,10 @@ function Shell(): React.JSX.Element {
   const [composing, setComposing] = useState<{ voice: boolean } | null>(null)
   // Selected doc id: a routed note id OR an inbox item id (editor handles both).
   const [openId, setOpenId] = useState<string | null>(null)
+  const editorCloseRef = useRef<(() => void) | null>(null)
+  const registerEditorClose = useCallback((close: (() => void) | null) => {
+    editorCloseRef.current = close
+  }, [])
   const [drawer, setDrawer] = useState(false)
   /** Day open in the Journal pager (kept here so editing a day and coming back lands on it). */
   const [journalDay, setJournalDay] = useState<string | null>(null)
@@ -111,8 +115,10 @@ function Shell(): React.JSX.Element {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (drawer) setDrawer(false)
       else if (composing) setComposing(null)
-      else if (openId) setOpenId(null)
-      else if (tab === 'journal' && journalDay) setJournalDay(null)
+      else if (openId) {
+        if (editorCloseRef.current) editorCloseRef.current()
+        else setOpenId(null)
+      } else if (tab === 'journal' && journalDay) setJournalDay(null)
       else if (tab !== 'home') setTab('home')
       else return false
       return true
@@ -196,7 +202,7 @@ function Shell(): React.JSX.Element {
               onSharedConsumed={consumeShared}
             />
           ) : openId ? (
-            <EditorScreen noteId={openId} onClose={() => setOpenId(null)} />
+            <EditorScreen noteId={openId} onClose={() => setOpenId(null)} onRegisterClose={registerEditorClose} />
           ) : tab === 'home' ? (
             <HomeScreen
               onMenu={() => setDrawer(true)}

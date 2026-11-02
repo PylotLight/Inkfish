@@ -1,27 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
-  View,
-  type TextInputInstance
+  View
 } from 'react-native'
-import { BookOpen, ChevronLeft, ImagePlus, Pencil } from 'lucide-react-native'
+import { ChevronLeft, ImagePlus } from 'lucide-react-native'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '../theme'
 import { useStore } from '../lib/store'
 import type { NoteDoc } from '../lib/format'
-import { Markdown } from '../components/Markdown'
+import MarkdownEditor, { type MarkdownEditorHandle } from '../components/MarkdownEditor'
 import { Icon } from '../components/Icon'
 import { folderOf } from '../lib/when'
-import { followMoves, invalidateAttachments, saveAssetBase64 } from '../lib/vault'
+import { followMoves, invalidateAttachments, listAttachments, saveAssetBase64, vaultRootUri } from '../lib/vault'
 import { parseMarkdown } from '../lib/markdown'
-import { insertImageReference, toggleTaskLine } from '../lib/editorText'
 
 /** Avoid repeating a leading H1 when the same title is already shown as the page heading. */
 function bodyWithoutTitleHeading(title: string, body: string): string {
@@ -33,19 +30,30 @@ function bodyWithoutTitleHeading(title: string, body: string): string {
 
 const AUTOSAVE_MS = 700
 
+type RegisterClose = (close: (() => void) | null) => void
+
 /**
- * Note editor, Obsidian-style: back · folder breadcrumb · read/edit toggle,
- * then the page. Edits autosave (debounced, and on leave) — no Save button.
+ * A single, always-mounted Markdown surface: untouched source remains editable
+ * in CodeMirror while its syntax is rendered inline. No edit/read-mode switch.
  */
-export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () => void }): React.JSX.Element {
+export function EditorScreen({
+  noteId,
+  onClose,
+  onRegisterClose
+}: {
+  noteId: string
+  onClose: () => void
+  onRegisterClose?: RegisterClose
+}): React.JSX.Element {
   const { ui, c } = useTheme()
   const { openNote, saveNote, notes } = useStore()
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
-  const [selection, setSelection] = useState({ start: 0, end: 0 })
+  /** Changes only for a newly opened note or an external merge, never per keystroke. */
+  const [editorMarkdown, setEditorMarkdown] = useState('')
+  const [attachments, setAttachments] = useState<string[]>([])
   const [hideCompletedTasks, setHideCompletedTasks] = useState(false)
-  const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [loading, setLoading] = useState(true)
   const [state, setState] = useState<'clean' | 'dirty' | 'saving' | 'error'>('clean')
   /** Body as last read from / written to disk: the merge base for the next save. */
@@ -54,13 +62,11 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   const docRef = useRef<NoteDoc | null>(null)
   const textRef = useRef('')
   const titleRef = useRef('')
-  const selectionRef = useRef(selection)
-  const inputRef = useRef<TextInputInstance>(null)
+  const editorRef = useRef<MarkdownEditorHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   docRef.current = doc
   textRef.current = text
   titleRef.current = title
-  selectionRef.current = selection
 
   useEffect(() => {
     let live = true
@@ -72,13 +78,10 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       titleRef.current = d?.title ?? ''
       savedTitle.current = d?.title ?? ''
       setText(d?.markdown ?? '')
+      textRef.current = d?.markdown ?? ''
+      setEditorMarkdown(d?.markdown ?? '')
       saved.current = d?.markdown ?? ''
-      const initialSelection = { start: d?.markdown.length ?? 0, end: d?.markdown.length ?? 0 }
-      setSelection(initialSelection)
-      selectionRef.current = initialSelection
       setHideCompletedTasks(false)
-      // Inbox raws and empty notes open straight into edit; others in reading view.
-      setMode(d && (d.path.startsWith('inbox/') || !d.markdown.trim()) ? 'edit' : 'view')
       setLoading(false)
     })
     return () => {
@@ -87,23 +90,23 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   }, [noteId, openNote])
 
   useEffect(() => {
-    if (loading || mode !== 'edit') return
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [loading, mode])
+    let live = true
+    setAttachments([])
+    void listAttachments()
+      .then((files) => {
+        if (live) setAttachments(files)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [noteId])
 
-  // Reading view follows the file: when sync (or anything else) changes or
-  // moves the open note, reload it so the page never shows a stale copy.
+  // Reading content follows sync when the user has no unsaved local edits.
   useEffect(() => {
     const d = docRef.current
-    if (
-      !d ||
-      mode !== 'view' ||
-      timer.current ||
-      textRef.current !== saved.current ||
-      titleRef.current.trim() !== savedTitle.current
-    )
+    if (!d || timer.current || textRef.current !== saved.current || titleRef.current.trim() !== savedTitle.current)
       return
-    // Path-id notes lose their id when sync renames them: follow the recorded move.
     const e =
       notes.find((n) => n.id === d.id) ??
       notes.find((n) => n.path === followMoves(d.path)) ??
@@ -116,13 +119,15 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       setTitle(fresh.title)
       titleRef.current = fresh.title
       savedTitle.current = fresh.title
+      textRef.current = fresh.markdown
       setText(fresh.markdown)
+      setEditorMarkdown(fresh.markdown)
       saved.current = fresh.markdown
     })
     return () => {
       live = false
     }
-  }, [notes, mode, openNote])
+  }, [notes, openNote])
 
   async function flush(next = textRef.current): Promise<void> {
     const d = docRef.current
@@ -148,9 +153,13 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
         titleRef.current = r.title
       }
       if (r.markdown.replace(/\s+$/, '') !== next.replace(/\s+$/, '')) {
-        // Merged with a change sync brought in while the note was open.
+        // A sync conflict was merged into the Markdown source; update the live document in place.
         saved.current = r.markdown
-        if (textRef.current === next) setText(r.markdown)
+        if (textRef.current === next) {
+          textRef.current = r.markdown
+          setText(r.markdown)
+          setEditorMarkdown(r.markdown)
+        }
       } else saved.current = next
       setState(textRef.current === next && titleRef.current.trim() === r.title ? 'clean' : 'dirty')
     } catch {
@@ -158,11 +167,45 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     }
   }
 
+  function scheduleFlush(next = textRef.current): void {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      void flush(next)
+    }, AUTOSAVE_MS)
+  }
+
   function onChange(next: string): void {
+    textRef.current = next
     setText(next)
     setState('dirty')
     scheduleFlush(next)
   }
+
+  const editorChangeRef = useRef(onChange)
+  editorChangeRef.current = onChange
+  const handleEditorChange = useCallback((next: string) => editorChangeRef.current(next), [])
+
+  function finishClose(next: string): void {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    textRef.current = next
+    setText(next)
+    void flush(next).finally(onClose)
+  }
+  const finishCloseRef = useRef(finishClose)
+  finishCloseRef.current = finishClose
+  const handleEditorFlush = useCallback((next: string) => finishCloseRef.current(next), [])
+  const closeRef = useRef<() => void>(() => undefined)
+  closeRef.current = () => {
+    if (editorRef.current) editorRef.current.flush()
+    else finishClose(textRef.current)
+  }
+  const closeEditor = useCallback(() => closeRef.current(), [])
+  useEffect(() => {
+    onRegisterClose?.(closeEditor)
+    return () => onRegisterClose?.(null)
+  }, [closeEditor, onRegisterClose])
 
   async function pasteImage(): Promise<void> {
     try {
@@ -174,22 +217,11 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       const base64 = image.data.replace(/^data:image\/png;base64,/i, '')
       const rel = await saveAssetBase64(base64, '.png')
       invalidateAttachments()
-      const inserted = insertImageReference(textRef.current, selectionRef.current, rel)
-      onChange(inserted.text)
-      setSelection(inserted.selection)
-      selectionRef.current = inserted.selection
-      requestAnimationFrame(() => inputRef.current?.focus())
+      setAttachments((files) => (files.includes(rel) ? files : [...files, rel]))
+      editorRef.current?.insertImageReference(rel)
     } catch (e) {
       Alert.alert("Couldn't paste image", e instanceof Error ? e.message : String(e))
     }
-  }
-
-  function scheduleFlush(next = textRef.current): void {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      timer.current = null
-      void flush(next)
-    }, AUTOSAVE_MS)
   }
 
   function onTitleChange(next: string): void {
@@ -211,15 +243,7 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     void flush()
   }
 
-  async function close(): Promise<void> {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = null
-    await flush()
-    onClose()
-  }
-
   if (loading) {
-    // Show the page frame + title from the index right away; the body fills in.
     const known = notes.find((n) => n.id === noteId)
     return (
       <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -241,21 +265,9 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
 
   const status = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Edited' : state === 'error' ? 'Not saved' : ''
   const renderedBody = doc ? bodyWithoutTitleHeading(doc.title, text) : ''
-  const renderedPrefixLength = text.length - renderedBody.length
-  const renderedLineOffset = (text.slice(0, renderedPrefixLength).match(/\n/g) ?? []).length
   const completedTaskCount = parseMarkdown(renderedBody).filter((block) => block.t === 'task' && block.done).length
-
-  function toggleTask(line: number): void {
-    const lines = textRef.current.split('\n')
-    const index = line + renderedLineOffset
-    if (index < 0 || index >= lines.length) return
-    const now = new Date()
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    const updated = toggleTaskLine(lines[index] ?? '', date)
-    if (updated === null) return
-    lines[index] = updated
-    onChange(lines.join('\n'))
-  }
+  const fontSize = Number(ui.composer.fontSize ?? 17)
+  const lineHeight = Number(ui.composer.lineHeight ?? 26)
 
   return (
     <KeyboardAvoidingView
@@ -263,37 +275,32 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[ui.topBar, { marginHorizontal: 10 }]}>
-        <Pressable onPress={() => void close()} style={ui.iconBtn} accessibilityLabel="Back">
+        <Pressable
+          onPress={closeEditor}
+          style={ui.iconBtn}
+          accessibilityLabel="Back"
+          accessibilityHint="Saves the note and returns"
+        >
           <Icon as={ChevronLeft} />
         </Pressable>
-        <Text style={[ui.meta, { flex: 1, marginTop: 0 }]} numberOfLines={1}>
+        <Text style={[ui.meta, { flex: 1, marginTop: 0 }]} numberOfLines={1} accessibilityLiveRegion="polite">
           {doc ? folderOf(doc.path) : ''}
           {status ? `  ·  ${status}` : ''}
         </Text>
-        {doc && (
-          mode === 'edit' && (
-            <Pressable onPress={() => void pasteImage()} style={ui.iconBtn} accessibilityLabel="Paste image from clipboard">
-              <Icon as={ImagePlus} size={20} />
-            </Pressable>
-          )
-        )}
-        {doc && (
+        {doc ? (
           <Pressable
-            onPress={() => {
-              if (mode === 'edit') void flush()
-              setMode(mode === 'edit' ? 'view' : 'edit')
-            }}
+            onPress={() => void pasteImage()}
             style={ui.iconBtn}
-            accessibilityLabel={mode === 'edit' ? 'Reading view' : 'Edit'}
+            accessibilityLabel="Paste image from clipboard"
           >
-            <Icon as={mode === 'edit' ? BookOpen : Pencil} size={20} />
+            <Icon as={ImagePlus} size={20} />
           </Pressable>
-        )}
+        ) : null}
       </View>
 
       {!doc ? (
         <Text style={[ui.meta, { paddingHorizontal: 20 }]}>Note not found.</Text>
-      ) : mode === 'edit' ? (
+      ) : (
         <View style={{ flex: 1 }}>
           <TextInput
             style={[ui.display, { marginHorizontal: 20, marginTop: 8, marginBottom: 8, padding: 0 }]}
@@ -305,46 +312,53 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
             placeholder="Note title"
             placeholderTextColor={c.faint}
           />
-          <TextInput
-            ref={inputRef}
-            style={[ui.composer, { flex: 1, paddingHorizontal: 20, paddingBottom: 40 }]}
-            value={text}
-            onChangeText={onChange}
-            selection={selection}
-            onSelectionChange={(event) => {
-              const next = event.nativeEvent.selection
-              selectionRef.current = next
-              setSelection(next)
-            }}
-            multiline
-            placeholder="Start writing…"
-            placeholderTextColor={c.faint}
-          />
-        </View>
-      ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60 }}>
-          <Pressable onPress={() => setMode('edit')}>
-            <Text style={[ui.display, { marginBottom: 8 }]}>{doc.title}</Text>
-          </Pressable>
-          {completedTaskCount > 0 && (
-            <Pressable onPress={() => setHideCompletedTasks((v) => !v)} style={[ui.quiet, { alignSelf: 'flex-start', marginBottom: 6 }]}>
+          {completedTaskCount > 0 ? (
+            <Pressable
+              onPress={() => setHideCompletedTasks((value) => !value)}
+              style={[ui.quiet, { alignSelf: 'flex-start', marginHorizontal: 20, marginBottom: 4 }]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hideCompletedTasks
+                  ? `Show ${completedTaskCount} completed tasks`
+                  : `Hide ${completedTaskCount} completed tasks`
+              }
+            >
               <Text style={ui.quietText}>
                 {hideCompletedTasks ? `Show ${completedTaskCount} completed` : `Hide ${completedTaskCount} completed`}
               </Text>
             </Pressable>
-          )}
-          <Markdown
-            text={renderedBody || '_Empty note — tap Edit to write._'}
+          ) : null}
+          <MarkdownEditor
+            ref={editorRef}
+            dom={{ scrollEnabled: false, style: { flex: 1 } }}
+            markdown={editorMarkdown}
+            title={title}
             notePath={doc.path}
-            onToggleTask={toggleTask}
+            files={attachments}
+            vaultRoot={vaultRootUri()}
             hideCompletedTasks={hideCompletedTasks}
+            background={c.bg}
+            textColor={c.text}
+            mutedColor={c.muted}
+            faintColor={c.faint}
+            accentColor={c.accent}
+            insetColor={c.inset}
+            borderColor={c.border}
+            selectionColor={c.accent}
+            fontSize={fontSize}
+            lineHeight={lineHeight}
+            onChange={handleEditorChange}
+            onFlush={handleEditorFlush}
           />
-          {doc.tags.length > 0 && (
-            <Text style={[ui.meta, { marginTop: 20, color: c.accent }]}>
-              {doc.tags.map((t) => `#${t}`).join('  ')}
+          {doc.tags.length > 0 ? (
+            <Text
+              style={[ui.meta, { marginHorizontal: 20, marginBottom: 10, color: c.accent }]}
+              accessibilityLabel={`Tags: ${doc.tags.join(', ')}`}
+            >
+              {doc.tags.map((tag) => `#${tag}`).join('  ')}
             </Text>
-          )}
-        </ScrollView>
+          ) : null}
+        </View>
       )}
     </KeyboardAvoidingView>
   )
