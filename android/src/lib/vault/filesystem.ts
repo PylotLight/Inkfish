@@ -20,7 +20,7 @@ export function isSharedVaultPath(uri: string): boolean {
 export async function resolveSharedContentUri(uri: string): Promise<string | null> {
   if (!isSharedVaultPath(uri)) return uri
   const stat = await (await native()).stat(treeUri(), relativePath(uri))
-  return stat.exists && !stat.isDirectory ? stat.uri ?? null : null
+  return stat.exists && !stat.isDirectory ? (stat.uri ?? null) : null
 }
 
 function relativePath(uri: string): string {
@@ -34,7 +34,8 @@ function treeUri(): string {
 }
 
 function assertNotMigrationSource(uri: string): void {
-  if (isMigrationSourcePath(uri)) throw new Error('Vault changes are paused while the shared-folder copy is being verified.')
+  if (isMigrationSourcePath(uri))
+    throw new Error('Vault changes are paused while the shared-folder copy is being verified.')
 }
 
 async function native(): Promise<(typeof import('../../../modules/inkfish-saf-vault'))['default']> {
@@ -55,7 +56,8 @@ async function copySafToLocal(sourceRel: string, destination: string): Promise<v
   const tree = treeUri()
   const stat = await fs.stat(tree, sourceRel)
   if (!stat.exists) throw new Error(`Shared document is missing: ${sourceRel}`)
-  if ((await Legacy.getInfoAsync(destination)).exists) throw new Error(`Local move destination already exists: ${destination}`)
+  if ((await Legacy.getInfoAsync(destination)).exists)
+    throw new Error(`Local move destination already exists: ${destination}`)
   if (stat.isDirectory) {
     await Legacy.makeDirectoryAsync(destination, { intermediates: true })
     const destPrefix = destination.endsWith('/') ? destination : `${destination}/`
@@ -69,7 +71,8 @@ async function copySafToLocal(sourceRel: string, destination: string): Promise<v
   const bytes = await fs.read(tree, sourceRel, 'base64')
   await Legacy.writeAsStringAsync(destination, bytes, { encoding: B64 })
   const verify = await Legacy.readAsStringAsync(destination, { encoding: B64 })
-  if (normalizeBase64(verify) !== normalizeBase64(bytes)) throw new Error(`Local trash copy verification failed: ${sourceRel}`)
+  if (normalizeBase64(verify) !== normalizeBase64(bytes))
+    throw new Error(`Local trash copy verification failed: ${sourceRel}`)
 }
 
 async function copyLocalToSaf(source: string, destinationRel: string): Promise<void> {

@@ -79,8 +79,10 @@ class MemoryVault implements MigrationIo {
 
   async writeDestination(path: string, bytes: Uint8Array): Promise<void> {
     this.checkPermission()
-    if (this.destinationFiles.has(path) || this.destinationDirs.has(path)) throw new Error(`destination exists: ${path}`)
-    if (this.failAfterWrites !== null && this.writeCount >= this.failAfterWrites) throw new Error('simulated partial copy failure')
+    if (this.destinationFiles.has(path) || this.destinationDirs.has(path))
+      throw new Error(`destination exists: ${path}`)
+    if (this.failAfterWrites !== null && this.writeCount >= this.failAfterWrites)
+      throw new Error('simulated partial copy failure')
     this.addParents(path, this.destinationDirs)
     this.destinationFiles.set(path, bytes.slice())
     this.writeCount++
@@ -194,9 +196,15 @@ describe('shared-vault migration', () => {
     streaming.hashSource = async (path) => new TextDecoder().decode(await sourceRead(path))
     streaming.hashDestination = async (path) => new TextDecoder().decode(await destinationRead(path))
     streaming.copySourceToDestination = async (source, destination) => write(destination, await sourceRead(source))
-    streaming.readSource = async () => { throw new Error('byte-array source read should not be used') }
-    streaming.readDestination = async () => { throw new Error('byte-array destination read should not be used') }
-    streaming.writeDestination = async () => { throw new Error('byte-array write should not be used') }
+    streaming.readSource = async () => {
+      throw new Error('byte-array source read should not be used')
+    }
+    streaming.readDestination = async () => {
+      throw new Error('byte-array destination read should not be used')
+    }
+    streaming.writeDestination = async () => {
+      throw new Error('byte-array write should not be used')
+    }
 
     const result = await migrateVault(streaming)
 

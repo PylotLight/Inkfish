@@ -146,16 +146,19 @@ function MdImage({ img, inline, md }: { img: ImageToken; inline?: boolean; md: A
     }
     let live = true
     setContentUri(null)
-    void resolveSharedContentUri(fileUri).then((uri) => {
-      if (live) setContentUri(uri)
-    }).catch(() => {
-      if (live) setContentUri(null)
-    })
+    void resolveSharedContentUri(fileUri)
+      .then((uri) => {
+        if (live) setContentUri(uri)
+      })
+      .catch(() => {
+        if (live) setContentUri(null)
+      })
     return () => {
       live = false
     }
   }, [fileUri])
-  const uri = target?.kind === 'remote' ? target.uri : fileUri?.startsWith('inkfish-saf://active/') ? contentUri : fileUri
+  const uri =
+    target?.kind === 'remote' ? target.uri : fileUri?.startsWith('inkfish-saf://active/') ? contentUri : fileUri
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(() =>
     uri ? (sizeCache.get(uri) ?? null) : null
   )
@@ -237,7 +240,12 @@ function Block({
       return <MdImage img={block.img} md={md} />
     case 'task':
       return (
-        <View style={[{ flexDirection: 'row', alignItems: 'flex-start' }, block.depth ? { marginLeft: block.depth * 16 } : null]}>
+        <View
+          style={[
+            { flexDirection: 'row', alignItems: 'flex-start' },
+            block.depth ? { marginLeft: block.depth * 16 } : null
+          ]}
+        >
           <Pressable
             onPress={() => onToggleTask?.(block.line)}
             disabled={!onToggleTask}

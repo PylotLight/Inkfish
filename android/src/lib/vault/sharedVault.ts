@@ -64,16 +64,19 @@ async function loadState(): Promise<StoredState> {
     try {
       value = JSON.parse(await Legacy.readAsStringAsync(STATE_FILE)) as Partial<StoredState>
     } catch (error) {
-      throw new Error(`The saved vault location could not be read; no location was changed. ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(
+        `The saved vault location could not be read; no location was changed. ${error instanceof Error ? error.message : String(error)}`
+      )
     }
-    if (value.version !== 1) throw new Error('The saved vault location has an unsupported version; no location was changed.')
+    if (value.version !== 1)
+      throw new Error('The saved vault location has an unsupported version; no location was changed.')
     state = {
       ...emptyState(),
       activeTreeUri: typeof value.activeTreeUri === 'string' ? value.activeTreeUri : null,
       activeName: typeof value.activeName === 'string' ? value.activeName : null,
       pendingTreeUri: typeof value.pendingTreeUri === 'string' ? value.pendingTreeUri : null,
       pendingName: typeof value.pendingName === 'string' ? value.pendingName : null,
-      migration: value.migration && typeof value.migration === 'object' ? value.migration as MigrationProgress : null
+      migration: value.migration && typeof value.migration === 'object' ? (value.migration as MigrationProgress) : null
     }
     return state
   })()
@@ -92,7 +95,9 @@ export async function initializeSharedVault(): Promise<void> {
   if (current.activeTreeUri && !activeTreeRecovered) {
     const saf = await native()
     if (!(await saf.isAvailable(current.activeTreeUri))) {
-      throw new Error('Shared-folder access was revoked. Reconnect the selected folder in Settings; the private original is unchanged.')
+      throw new Error(
+        'Shared-folder access was revoked. Reconnect the selected folder in Settings; the private original is unchanged.'
+      )
     }
     await saf.recover(current.activeTreeUri)
     activeTreeRecovered = true
@@ -145,7 +150,11 @@ function treeIdentity(uri: string): string {
   const match = /^content:\/\/([^/]+)\/tree\/([^/]+)/.exec(uri)
   if (!match) return uri
   let docId = match[2]!
-  try { docId = decodeURIComponent(docId) } catch { /* keep the provider's encoded id */ }
+  try {
+    docId = decodeURIComponent(docId)
+  } catch {
+    /* keep the provider's encoded id */
+  }
   return `${match[1]}:${docId}`
 }
 
@@ -194,7 +203,10 @@ async function buildMigrationIo(treeUri: string, sourceTreeUri: string | null): 
   return {
     async listSource(path) {
       if (!sourceTreeUri) return listLocal(path)
-      return (await saf.list(sourceTreeUri, path)).map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory }))
+      return (await saf.list(sourceTreeUri, path)).map((entry) => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory
+      }))
     },
     async readSource(path) {
       if (sourceTreeUri) return fromBase64(await saf.read(sourceTreeUri, path, 'base64'))
@@ -223,7 +235,8 @@ async function buildMigrationIo(treeUri: string, sourceTreeUri: string | null): 
       let sourceUri = `${PRIVATE_VAULT}${sourcePath}`
       if (sourceTreeUri) {
         const info = await saf.stat(sourceTreeUri, sourcePath)
-        if (!info.exists || info.isDirectory || !info.uri) throw new Error(`Shared source file is unavailable: ${sourcePath}`)
+        if (!info.exists || info.isDirectory || !info.uri)
+          throw new Error(`Shared source file is unavailable: ${sourcePath}`)
         sourceUri = info.uri
       }
       await saf.copyFromUri(sourceUri, treeUri, destinationPath)
@@ -236,7 +249,9 @@ async function buildMigrationIo(treeUri: string, sourceTreeUri: string | null): 
 }
 
 /** Copy/merge the current vault into the selected folder; the source is never moved or deleted. */
-export async function copyVaultToSelectedShared(onProgress?: (progress: MigrationProgress) => void): Promise<MigrationResult> {
+export async function copyVaultToSelectedShared(
+  onProgress?: (progress: MigrationProgress) => void
+): Promise<MigrationResult> {
   const current = await loadState()
   const tree = current.pendingTreeUri
   if (!tree) throw new Error('Choose a shared folder first.')
@@ -248,12 +263,16 @@ export async function copyVaultToSelectedShared(onProgress?: (progress: Migratio
     // Probe again at the moment of copying: permissions/providers can change after selection.
     await saf.probe(tree)
     if (sourceTree) {
-      if (!(await saf.isAvailable(sourceTree))) throw new Error('Current shared-folder access was revoked. Reconnect it before switching; its contents are unchanged.')
+      if (!(await saf.isAvailable(sourceTree)))
+        throw new Error(
+          'Current shared-folder access was revoked. Reconnect it before switching; its contents are unchanged.'
+        )
     } else if (!(await Legacy.getInfoAsync(PRIVATE_VAULT)).exists) {
       await Legacy.makeDirectoryAsync(PRIVATE_VAULT, { intermediates: true })
     }
     const result = await migrateVault(await buildMigrationIo(tree, sourceTree), onProgress)
-    if (!result.verified) throw new Error('Shared copy did not pass final verification; the current vault remains active.')
+    if (!result.verified)
+      throw new Error('Shared copy did not pass final verification; the current vault remains active.')
     await saf.recover(tree)
     // Persist the destination choice only after every source file has been re-read and verified.
     await commitState({

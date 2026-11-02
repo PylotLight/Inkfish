@@ -7,7 +7,9 @@ let atomicWriteSequence = 0
 /** Write into a hidden sibling temp file, then atomically rename it over the target. */
 export async function writeAtomically(uri: string, text: string, encoding: 'utf8' | 'base64'): Promise<void> {
   if (FileSystem.isSharedVaultPath(uri)) {
-    await FileSystem.writeAsStringAsync(uri, text, { encoding: encoding === 'base64' ? FileSystem.EncodingType.Base64 : FileSystem.EncodingType.UTF8 })
+    await FileSystem.writeAsStringAsync(uri, text, {
+      encoding: encoding === 'base64' ? FileSystem.EncodingType.Base64 : FileSystem.EncodingType.UTF8
+    })
     return
   }
   const slash = uri.lastIndexOf('/')

@@ -60,7 +60,8 @@ function conflictName(name: string, number: number): string {
 
 function oneMatch(entries: MigrationChild[], name: string): MigrationChild | undefined {
   const matches = entries.filter((entry) => fold(entry.name) === fold(name))
-  if (matches.length > 1) throw new Error(`The selected folder has ambiguous duplicate names for “${name}”. Nothing was overwritten.`)
+  if (matches.length > 1)
+    throw new Error(`The selected folder has ambiguous duplicate names for “${name}”. Nothing was overwritten.`)
   return matches[0]
 }
 
@@ -69,7 +70,13 @@ async function collect(io: MigrationIo, parent: string): Promise<SourceNode[]> {
   const seen = new Set<string>()
   const nodes: SourceNode[] = []
   for (const entry of entries) {
-    if (!entry.name || entry.name === '.' || entry.name === '..' || entry.name.includes('/') || entry.name.includes('\\')) {
+    if (
+      !entry.name ||
+      entry.name === '.' ||
+      entry.name === '..' ||
+      entry.name.includes('/') ||
+      entry.name.includes('\\')
+    ) {
       throw new Error(`Unsafe path in the source vault: ${entry.name}`)
     }
     const key = entry.name
@@ -97,7 +104,10 @@ function sourceManifest(nodes: SourceNode[]): string[] {
   return paths.sort()
 }
 
-export async function migrateVault(io: MigrationIo, onProgress?: (progress: MigrationProgress) => void): Promise<MigrationResult> {
+export async function migrateVault(
+  io: MigrationIo,
+  onProgress?: (progress: MigrationProgress) => void
+): Promise<MigrationResult> {
   // Inventory first so a revoked grant or unreadable source fails before any destination writes.
   const tree = await collect(io, '')
   const total = countFiles(tree)
@@ -170,7 +180,10 @@ export async function migrateVault(io: MigrationIo, onProgress?: (progress: Migr
       }
 
       let conflictTarget = false
-      if (match || (await io.listDestination(destinationParent)).some((entry) => fold(entry.name) === fold(node.name))) {
+      if (
+        match ||
+        (await io.listDestination(destinationParent)).some((entry) => fold(entry.name) === fold(node.name))
+      ) {
         conflictTarget = true
         let suffix = 1
         while (true) {
@@ -202,7 +215,8 @@ export async function migrateVault(io: MigrationIo, onProgress?: (progress: Migr
       const verified = streaming
         ? (await io.hashDestination!(destinationPath)) === sourceDigest
         : equalBytes(await io.readDestination(destinationPath), sourceBytes!)
-      if (!verified) throw new Error(`Verification failed while copying “${node.path}”. The source original is still intact.`)
+      if (!verified)
+        throw new Error(`Verification failed while copying “${node.path}”. The source original is still intact.`)
       result.copied++
       if (conflictTarget) result.conflicts++
       result.completed++
@@ -216,16 +230,26 @@ export async function migrateVault(io: MigrationIo, onProgress?: (progress: Migr
   // A second complete verification pass is required before a caller may activate the shared vault.
   for (const file of verifiedFiles) {
     if (streaming) {
-      const [source, destination] = await Promise.all([io.hashSource!(file.source), io.hashDestination!(file.destination)])
-      if (source !== destination) throw new Error(`Final verification failed for “${file.source}”. The source original is still intact.`)
+      const [source, destination] = await Promise.all([
+        io.hashSource!(file.source),
+        io.hashDestination!(file.destination)
+      ])
+      if (source !== destination)
+        throw new Error(`Final verification failed for “${file.source}”. The source original is still intact.`)
     } else {
-      const [source, destination] = await Promise.all([io.readSource(file.source), io.readDestination(file.destination)])
-      if (!equalBytes(source, destination)) throw new Error(`Final verification failed for “${file.source}”. The source original is still intact.`)
+      const [source, destination] = await Promise.all([
+        io.readSource(file.source),
+        io.readDestination(file.destination)
+      ])
+      if (!equalBytes(source, destination))
+        throw new Error(`Final verification failed for “${file.source}”. The source original is still intact.`)
     }
   }
   const finalManifest = sourceManifest(await collect(io, ''))
   if (JSON.stringify(finalManifest) !== JSON.stringify(sourceManifest(tree))) {
-    throw new Error('The source vault changed while it was being copied. Retry after edits finish; the source remains intact.')
+    throw new Error(
+      'The source vault changed while it was being copied. Retry after edits finish; the source remains intact.'
+    )
   }
 
   const final = { ...result, verified: true as const }

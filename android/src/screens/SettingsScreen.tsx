@@ -60,13 +60,15 @@ export function SettingsScreen({
 
   useEffect(() => {
     let live = true
-    void loadSharedVaultStatus().then((location) => {
-      if (!live) return
-      setVaultLocation(location)
-      setVaultProgress(location.migration)
-    }).catch((e) => {
-      if (live) Alert.alert('Storage location unavailable', e instanceof Error ? e.message : String(e))
-    })
+    void loadSharedVaultStatus()
+      .then((location) => {
+        if (!live) return
+        setVaultLocation(location)
+        setVaultProgress(location.migration)
+      })
+      .catch((e) => {
+        if (live) Alert.alert('Storage location unavailable', e instanceof Error ? e.message : String(e))
+      })
     return () => {
       live = false
     }
@@ -86,7 +88,10 @@ export function SettingsScreen({
       await reloadVaultLocation()
       if (selected.alreadyActive) {
         await refresh()
-        Alert.alert('Shared folder reconnected', `${selected.name} is still the active vault. Your files were not moved.`)
+        Alert.alert(
+          'Shared folder reconnected',
+          `${selected.name} is still the active vault. Your files were not moved.`
+        )
       } else {
         Alert.alert(
           'Folder selected',
@@ -273,7 +278,8 @@ export function SettingsScreen({
           </Text>
           {vaultProgress && vaultProgress.total > 0 ? (
             <Text style={[ui.meta, { marginTop: 4 }]}>
-              {vaultProgress.completed}/{vaultProgress.total} files checked · {vaultProgress.copied} copied · {vaultProgress.conflicts} conflict copies
+              {vaultProgress.completed}/{vaultProgress.total} files checked · {vaultProgress.copied} copied ·{' '}
+              {vaultProgress.conflicts} conflict copies
             </Text>
           ) : null}
           <Pressable
@@ -282,7 +288,11 @@ export function SettingsScreen({
             style={[ui.quiet, { marginTop: 6, opacity: vaultBusy ? 0.5 : 1 }]}
           >
             <Text style={ui.quietText}>
-              {vaultBusy ? 'Copying and verifying…' : vaultProgress?.completed ? 'Resume / retry copy' : 'Copy notes and attachments'}
+              {vaultBusy
+                ? 'Copying and verifying…'
+                : vaultProgress?.completed
+                  ? 'Resume / retry copy'
+                  : 'Copy notes and attachments'}
             </Text>
           </Pressable>
           <Pressable onPress={forgetPendingFolder} disabled={vaultBusy} style={[ui.quiet, { marginTop: 2 }]}>
@@ -290,7 +300,8 @@ export function SettingsScreen({
           </Pressable>
           {vaultLocation.active ? (
             <Text style={[ui.meta, { marginTop: 4 }]}>
-              The current folder remains active until verification succeeds. After switching, the old folder is left untouched and no longer receives app changes.
+              The current folder remains active until verification succeeds. After switching, the old folder is left
+              untouched and no longer receives app changes.
             </Text>
           ) : null}
         </>
@@ -301,7 +312,11 @@ export function SettingsScreen({
         style={[ui.quiet, { marginTop: 6, opacity: vaultBusy ? 0.5 : 1 }]}
       >
         <Text style={ui.quietText}>
-          {vaultBusy ? 'Working…' : vaultLocation.active ? 'Choose / reconnect shared folder' : 'Choose shared Documents folder'}
+          {vaultBusy
+            ? 'Working…'
+            : vaultLocation.active
+              ? 'Choose / reconnect shared folder'
+              : 'Choose shared Documents folder'}
         </Text>
       </Pressable>
       {!vaultLocation.active ? (
