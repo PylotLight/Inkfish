@@ -36,6 +36,7 @@ import { androidFs, forgetMac, loadIdentity, random, saveIdentity, stateFor } fr
 import { appendSyncLog, readSyncLog, type SyncLogEntry } from './synclog'
 import { monotonicNow, SyncStageTimer } from './synctimings'
 import { shortError } from './sync'
+import { hasLoggedOfflineFailure, isOfflineFailure, offlineRetryDelay, shouldSkipAutomaticCheck } from './syncschedule'
 import { recordMoves } from './vault'
 import { afterSync } from './syncafter'
 import { progressWorthRender } from './syncstatus'
@@ -152,6 +153,9 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   /** Note changes before this time come from a sync's own refresh: don't nudge another sync. */
   const quietUntil = useRef(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const offlineFailures = useRef(0)
+  const nextAutomaticCheckAt = useRef(0)
+  const logRef = useRef<SyncLogEntry[]>([])
   const macRef = useRef<MacPeer | null>(null)
   macRef.current = mac
 
@@ -162,7 +166,10 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       setPhase(v.mac ? 'idle' : 'unpaired')
     })
     void readSyncLog()
-      .then(setLog)
+      .then((entries) => {
+        logRef.current = entries
+        setLog(entries)
+      })
       .catch(() => undefined)
   }, [])
 
@@ -176,9 +183,10 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   )
 
   const run = useCallback(
-    async (opts: { repair?: boolean } = {}) => {
+    async (opts: { repair?: boolean; automatic?: boolean } = {}) => {
       const peer = macRef.current
       if (!peer || !id) return
+      if (shouldSkipAutomaticCheck(Boolean(opts.automatic), nextAutomaticCheckAt.current)) return
       if (opts.repair) repairNext.current = true
       if (running.current) {
         again.current = true
@@ -189,10 +197,11 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       setError(null)
       let stageTimer: SyncStageTimer | null = null
       const done = async (e: SyncLogEntry): Promise<void> => {
+        if (isOfflineFailure(e) && hasLoggedOfflineFailure(logRef.current, e.peer)) return
         await appendSyncLog(e)
-        readSyncLog()
-          .then(setLog)
-          .catch(() => undefined)
+        const entries = await readSyncLog()
+        logRef.current = entries
+        setLog(entries)
       }
       try {
         do {
@@ -205,6 +214,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
           setProgress({ stage: 'finding', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, startedAt: t1, stageAt: t1 })
           const found = await findMacHello(fetchFn, peer)
           if (!found) {
+            offlineFailures.current += 1
+            nextAutomaticCheckAt.current = Date.now() + offlineRetryDelay(offlineFailures.current)
             setPhase('offline')
             await done({
               at: Date.now(),
@@ -215,6 +226,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
             })
             return
           }
+          offlineFailures.current = 0
+          nextAutomaticCheckAt.current = 0
           // Handshake: an older/newer Mac we can't talk to → "update Mac" / "update phone", not a silent failure.
           assertCompatible(found.hello)
           setOutdated(null)
@@ -321,6 +334,8 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
         // Lost the Mac mid-run (Wi-Fi dropped, Mac asleep, app backgrounded): that's "offline",
         // not an error. What landed stays; the next run picks up from there.
         if (lostConnection(e)) {
+          offlineFailures.current += 1
+          nextAutomaticCheckAt.current = Date.now() + offlineRetryDelay(offlineFailures.current)
           setPhase('offline')
           await done({
             at: Date.now(),
@@ -345,12 +360,13 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const syncNow = useCallback(() => run(), [run])
   const repair = useCallback(() => run({ repair: true }), [run])
+  const automaticSync = useCallback(() => run({ automatic: true }), [run])
 
   const nudge = useCallback(() => {
     if (!macRef.current) return
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => void syncNow(), 4000)
-  }, [syncNow])
+    timer.current = setTimeout(() => void automaticSync(), 4000)
+  }, [automaticSync])
 
   // Local edits (captures, saves, routing) → sync a few seconds later.
   // Launch fills the lists twice (saved index, then the fresh scan): neither is an edit.
@@ -369,20 +385,20 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
   // sync walk never competes with the drawer for the file-system bridge.
   useEffect(() => {
     if (!id || !mac || !indexed) return
-    const t = setTimeout(() => void syncNow(), 1500)
+    const t = setTimeout(() => void automaticSync(), 1500)
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
         void refresh() // files may have changed out from under us (sync, restore)
-        void syncNow()
+        void automaticSync()
       } else if (s === 'background' && timer.current) {
         clearTimeout(timer.current)
-        void syncNow() // flush pending edits before Android freezes us
+        void automaticSync() // flush pending edits before Android freezes us
       }
     })
     // While the app sits open, poll the Mac so its edits appear without
     // forcing the user to background/foreground. Manifest-only when idle.
     const iv = setInterval(() => {
-      if (AppState.currentState === 'active') void syncNow()
+      if (AppState.currentState === 'active') void automaticSync()
     }, 90_000)
     return () => {
       clearTimeout(t)
@@ -390,7 +406,7 @@ export function SyncProvider({ children }: { children: ReactNode }): React.JSX.E
       sub.remove()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, mac?.id, indexed])
+  }, [id, mac?.id, indexed, automaticSync])
 
   const pair = useCallback(
     async (qr: string, onStage?: (stage: string) => void, onDiscovery?: DiscoveryObserver) => {
