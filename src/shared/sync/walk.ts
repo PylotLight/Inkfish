@@ -49,7 +49,8 @@ export async function walkManifest(
   io: WalkIo,
   roots: WalkRoot[],
   cache: HashCache,
-  concurrency = 8
+  concurrency = 8,
+  forceHash: (rel: string) => boolean = () => false
 ): Promise<WalkResult> {
   const manifest: Manifest = {}
   const next: HashCache = {}
@@ -107,7 +108,7 @@ export async function walkManifest(
   await mapLimit(files, Math.max(2, concurrency >> 1), async (f) => {
     const c = cache[f.rel]
     let hash: string
-    if (c && c.size === f.size && c.mtime === f.mtime) hash = c.hash
+    if (c && !forceHash(f.rel) && c.size === f.size && c.mtime === f.mtime) hash = c.hash
     else {
       try {
         hash = await io.hash(f.uri)

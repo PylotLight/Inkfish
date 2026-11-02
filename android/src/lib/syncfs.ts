@@ -103,13 +103,16 @@ export const androidFs: SyncFs = {
   async list(opts): Promise<Manifest> {
     const cache = opts?.fresh ? {} : { ...(await readJson<HashCache>(CACHE_URI, {})), ...known }
     known = {}
-    let r = await walkManifest(phoneIo, ROOTS, cache)
+    // Re-hash notes even when size/mtime match: Android timestamps can be coarse,
+    // and stale note hashes can mislead sync after a same-size replacement.
+    const forceNoteHash = (rel: string): boolean => rel.toLowerCase().endsWith('.md')
+    let r = await walkManifest(phoneIo, ROOTS, cache, 8, forceNoteHash)
     // Heal only when the walk saw case-duplicate names (the heal is a full
     // extra tree walk). Same rule as the Mac: a duplicate is never advertised.
     if (r.caseDupes) {
       try {
         await mergeCaseDuplicates()
-        r = await walkManifest(phoneIo, ROOTS, r.cache)
+        r = await walkManifest(phoneIo, ROOTS, r.cache, 8, forceNoteHash)
       } catch {
         // best-effort; the manifest we have still works
       }

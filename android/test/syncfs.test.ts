@@ -39,6 +39,16 @@ beforeEach(() => {
 })
 
 describe('Android atomic filesystem writes', () => {
+  test('manifest listing rehashes a note when its size and mtime match stale cache metadata', async () => {
+    const cache = `${fs.root}inkfish/.sync/hashes.json`
+    fs.put(target, 'bmV3', 3, 12) // base64 for "new"; metadata intentionally matches the stale cache.
+    fs.put(cache, JSON.stringify({ 'note.md': { size: 3, mtime: 12, hash: 'stale-note-hash' } }))
+
+    const manifest = await androidFs.list()
+
+    expect(manifest['note.md']?.hash).not.toBe('stale-note-hash')
+  })
+
   test('sync replacement keeps the previous file until the atomic rename', async () => {
     fs.put(target, 'previous note')
 
