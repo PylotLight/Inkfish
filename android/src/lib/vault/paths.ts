@@ -1,10 +1,15 @@
-import * as FileSystem from 'expo-file-system/legacy'
+import * as FileSystem from './filesystem'
 import { APP, ASSETS, DAILY, INBOX, STAGING, UNDONE, VAULT } from './state'
+import { initializeSharedVault, resetSharedVaultStateForTests } from './sharedVault'
 
 let atomicWriteSequence = 0
 
 /** Write into a hidden sibling temp file, then atomically rename it over the target. */
 export async function writeAtomically(uri: string, text: string, encoding: 'utf8' | 'base64'): Promise<void> {
+  if (FileSystem.isSharedVaultPath(uri)) {
+    await FileSystem.writeAsStringAsync(uri, text, { encoding: encoding === 'base64' ? FileSystem.EncodingType.Base64 : FileSystem.EncodingType.UTF8 })
+    return
+  }
   const slash = uri.lastIndexOf('/')
   const parent = uri.slice(0, slash + 1)
   const name = uri.slice(slash + 1)
@@ -52,6 +57,7 @@ export function ensureTree(): Promise<void> {
   if (treeMade) return Promise.resolve()
   if (ensureTreeTask) return ensureTreeTask
   const task = (async () => {
+    await initializeSharedVault()
     await Promise.all([VAULT, INBOX, DAILY, ASSETS, UNDONE].map((d) => mkdir(d)))
     treeMade = true
   })()
@@ -83,4 +89,5 @@ export async function readText(uri: string): Promise<string> {
 export function resetTreeForTests(): void {
   treeMade = false
   ensureTreeTask = null
+  resetSharedVaultStateForTests()
 }

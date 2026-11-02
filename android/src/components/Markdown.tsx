@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { Dimensions, Image, Pressable, Text, View, type LayoutChangeEvent } from 'react-native'
 import { useTheme, type AppTheme } from '../theme'
 import { fitImage, isAudio, resolveImage, splitImages, vaultFileUri, type ImageToken } from '../lib/mdimages'
-import { listAttachments, vaultRootUri } from '../lib/vault'
+import { listAttachments, resolveSharedContentUri, vaultRootUri } from '../lib/vault'
 import { parseMarkdown, type Block } from '../lib/markdown'
 
 /**
@@ -137,7 +137,25 @@ function MdImage({ img, inline, md }: { img: ImageToken; inline?: boolean; md: A
   const { notePath, files, width: column } = useContext(ImageContext)
   const { c } = useTheme()
   const target = useMemo(() => resolveImage(img, notePath, files), [img, notePath, files])
-  const uri = target ? (target.kind === 'remote' ? target.uri : vaultFileUri(vaultRootUri(), target.rel)) : null
+  const fileUri = target?.kind === 'vault' ? vaultFileUri(vaultRootUri(), target.rel) : null
+  const [contentUri, setContentUri] = useState<string | null>(null)
+  useEffect(() => {
+    if (!fileUri?.startsWith('inkfish-saf://active/')) {
+      setContentUri(null)
+      return
+    }
+    let live = true
+    setContentUri(null)
+    void resolveSharedContentUri(fileUri).then((uri) => {
+      if (live) setContentUri(uri)
+    }).catch(() => {
+      if (live) setContentUri(null)
+    })
+    return () => {
+      live = false
+    }
+  }, [fileUri])
+  const uri = target?.kind === 'remote' ? target.uri : fileUri?.startsWith('inkfish-saf://active/') ? contentUri : fileUri
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(() =>
     uri ? (sizeCache.get(uri) ?? null) : null
   )

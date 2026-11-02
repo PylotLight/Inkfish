@@ -3,12 +3,25 @@ import type { NoteEntry } from '../format'
 
 export const DOC = FileSystem.documentDirectory ?? ''
 export const APP = `${DOC}inkfish/`
-export const VAULT = `${APP}vault/`
+export const SHARED_VAULT_ROOT = 'inkfish-saf://active/'
+export let VAULT = `${APP}vault/`
 export const STAGING = `${APP}staging/`
 export const INBOX = `${STAGING}inbox/`
 export const DAILY = `${STAGING}daily/`
-export const ASSETS = `${VAULT}assets/`
+export let ASSETS = `${VAULT}assets/`
 export const UNDONE = `${STAGING}undone/`
+
+/** Called only after the selected provider passes the SAF capability check. */
+export function setSharedVaultActive(active: boolean): boolean {
+  const next = active ? SHARED_VAULT_ROOT : `${APP}vault/`
+  if (next === VAULT) return false
+  VAULT = next
+  ASSETS = `${VAULT}assets/`
+  noteEntryCache.clear()
+  idToRel.clear()
+  moved.clear()
+  return true
+}
 
 export const noteEntryCache = new Map<string, { size: number; mtime: number; entry: NoteEntry }>()
 /** Note id → vault rel from the latest index, so opening a note is one file, not a vault scan. */

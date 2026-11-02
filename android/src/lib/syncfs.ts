@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy'
+import * as FileSystem from './vault/filesystem'
 import { getRandomBytes } from 'expo-crypto'
 import {
   fromBase64,
@@ -24,9 +24,9 @@ import { syncRoots, mergeCaseDuplicates, writeAtomically } from './vault'
  * Deletes from sync go to `inkfish/trash/` (never hard-deleted).
  */
 
-const R = syncRoots()
-const SYNC_DIR = `${R.app}.sync/`
-export const TRASH = `${R.app}trash/`
+const APP_ROOT = syncRoots().app
+const SYNC_DIR = `${APP_ROOT}.sync/`
+export const TRASH = `${APP_ROOT}trash/`
 const B64 = { encoding: FileSystem.EncodingType.Base64 }
 const UTF8 = { encoding: FileSystem.EncodingType.UTF8 }
 
@@ -34,6 +34,7 @@ export const random = (n: number): Uint8Array => getRandomBytes(n)
 
 export function uriFor(rel: string): string {
   if (!safeRel(rel) || ignored(rel)) throw new Error(`refused path ${rel}`)
+  const R = syncRoots()
   if (rel.startsWith('inbox/')) return `${R.inbox}${rel.slice(6)}`
   if (rel.startsWith('daily/')) return `${R.daily}${rel.slice(6)}`
   return `${R.vault}${rel}`
@@ -67,6 +68,12 @@ const partialUri = (key: string): string => `${SYNC_DIR}partial/${key.replace(/[
 /** Hashes of files sync just wrote (the engine knows them): folded into the cache on the next walk. */
 let known: HashCache = {}
 
+/** Hash metadata is a cache, not vault content; discard it when the active root changes. */
+export async function resetVaultHashCache(): Promise<void> {
+  known = {}
+  await FileSystem.deleteAsync(CACHE_URI, { idempotent: true })
+}
+
 const phoneIo: WalkIo = {
   readDir: (uri) => FileSystem.readDirectoryAsync(uri),
   async stat(uri) {
@@ -77,15 +84,19 @@ const phoneIo: WalkIo = {
   hash: async (uri) => sha256(fromBase64(await FileSystem.readAsStringAsync(uri, B64)))
 }
 
-const ROOTS: WalkRoot[] = [
-  { uri: R.vault, prefix: '', deep: true, skip: ['inbox', 'daily'] }, // staging lives elsewhere
-  { uri: R.inbox, prefix: 'inbox', deep: false },
-  { uri: R.daily, prefix: 'daily', deep: false }
-]
+function rootsForWalk(): WalkRoot[] {
+  const R = syncRoots()
+  return [
+    { uri: R.vault, prefix: '', deep: true, skip: ['inbox', 'daily'] }, // staging lives elsewhere
+    { uri: R.inbox, prefix: 'inbox', deep: false },
+    { uri: R.daily, prefix: 'daily', deep: false }
+  ]
+}
 
 /** Remove now-empty folders from `uri`'s parent up to (not including) its sync root. */
 async function pruneEmptyParents(uri: string): Promise<void> {
-  const root = [R.vault, R.inbox, R.daily].find((r) => uri.startsWith(r))
+  const roots = syncRoots()
+  const root = [roots.vault, roots.inbox, roots.daily].find((r) => uri.startsWith(r))
   if (!root) return
   let dir = parentOf(uri)
   while (dir.length > root.length && dir.startsWith(root)) {
@@ -106,13 +117,13 @@ export const androidFs: SyncFs = {
     // Re-hash notes even when size/mtime match: Android timestamps can be coarse,
     // and stale note hashes can mislead sync after a same-size replacement.
     const forceNoteHash = (rel: string): boolean => rel.toLowerCase().endsWith('.md')
-    let r = await walkManifest(phoneIo, ROOTS, cache, 8, forceNoteHash)
+    let r = await walkManifest(phoneIo, rootsForWalk(), cache, 8, forceNoteHash)
     // Heal only when the walk saw case-duplicate names (the heal is a full
     // extra tree walk). Same rule as the Mac: a duplicate is never advertised.
     if (r.caseDupes) {
       try {
         await mergeCaseDuplicates()
-        r = await walkManifest(phoneIo, ROOTS, r.cache, 8, forceNoteHash)
+        r = await walkManifest(phoneIo, rootsForWalk(), r.cache, 8, forceNoteHash)
       } catch {
         // best-effort; the manifest we have still works
       }

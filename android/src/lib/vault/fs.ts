@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy'
+import * as FileSystem from './filesystem'
 import { slugToId, type Project } from '../format'
 import { VAULT } from './state'
 import { readText, RESERVED, SKIP_STAT } from './paths'

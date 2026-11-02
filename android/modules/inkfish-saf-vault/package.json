@@ -1,0 +1,7 @@
+{
+  "name": "expo-inkfish-saf-vault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tree-aware Android SAF operations for Inkfish vault storage",
+  "main": "index.ts"
+}

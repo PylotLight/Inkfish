@@ -10,7 +10,14 @@ import { SyncDetails } from '../components/SyncDetails'
 import { PairScanner } from '../components/PairScanner'
 import { when } from '../lib/when'
 import { summarize } from '../lib/sync'
-import { vaultRootUri } from '../lib/vault'
+import {
+  chooseSharedVaultFolder,
+  copyVaultToSelectedShared,
+  discardPendingSharedFolder,
+  getSharedVaultStatus,
+  loadSharedVaultStatus,
+  vaultRootUri
+} from '../lib/vault'
 import { deleteTrash, listTrash, restoreTrash, type TrashItem } from '../lib/trash'
 
 /**
@@ -37,6 +44,9 @@ export function SettingsScreen({
   const [trash, setTrash] = useState<TrashItem[]>([])
   const [showAllTrash, setShowAllTrash] = useState(false)
   const [trashBusy, setTrashBusy] = useState(false)
+  const [vaultLocation, setVaultLocation] = useState(() => getSharedVaultStatus())
+  const [vaultBusy, setVaultBusy] = useState(false)
+  const [vaultProgress, setVaultProgress] = useState(vaultLocation.migration)
 
   const loadTrash = useCallback(
     () =>
@@ -47,6 +57,101 @@ export function SettingsScreen({
   )
   // Reload when sync finishes (it may have trashed something).
   useEffect(loadTrash, [loadTrash, sync.lastSync])
+
+  useEffect(() => {
+    let live = true
+    void loadSharedVaultStatus().then((location) => {
+      if (!live) return
+      setVaultLocation(location)
+      setVaultProgress(location.migration)
+    }).catch((e) => {
+      if (live) Alert.alert('Storage location unavailable', e instanceof Error ? e.message : String(e))
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const reloadVaultLocation = async (): Promise<void> => {
+    const location = await loadSharedVaultStatus()
+    setVaultLocation(location)
+    setVaultProgress(location.migration)
+  }
+
+  const pickSharedFolder = async (): Promise<void> => {
+    if (vaultBusy) return
+    setVaultBusy(true)
+    try {
+      const selected = await chooseSharedVaultFolder()
+      await reloadVaultLocation()
+      if (selected.alreadyActive) {
+        await refresh()
+        Alert.alert('Shared folder reconnected', `${selected.name} is still the active vault. Your files were not moved.`)
+      } else {
+        Alert.alert(
+          'Folder selected',
+          `${selected.name} is only a pending destination. The current vault stays active until you explicitly copy and verify it.`
+        )
+      }
+    } catch (e) {
+      Alert.alert('Could not select folder', e instanceof Error ? e.message : String(e))
+    } finally {
+      setVaultBusy(false)
+    }
+  }
+
+  const runSharedCopy = async (): Promise<void> => {
+    setVaultBusy(true)
+    setVaultProgress({ total: 0, completed: 0, copied: 0, unchanged: 0, conflicts: 0 })
+    let lastPaint = 0
+    try {
+      const result = await copyVaultToSelectedShared((progress) => {
+        const now = Date.now()
+        if (now - lastPaint >= 150 || progress.completed === progress.total) {
+          lastPaint = now
+          setVaultProgress(progress)
+        }
+      })
+      await reloadVaultLocation()
+      await refresh()
+      Alert.alert(
+        'Shared vault ready',
+        `${result.copied} copied, ${result.unchanged} already matched, ${result.conflicts} conflict copies kept. The source folder was left intact.`
+      )
+    } catch (e) {
+      await reloadVaultLocation()
+      Alert.alert('Copy stopped; current vault remains active', e instanceof Error ? e.message : String(e))
+    } finally {
+      setVaultBusy(false)
+    }
+  }
+
+  const confirmSharedCopy = (): void => {
+    Alert.alert(
+      'Copy and verify vault?',
+      'This copies the current notes and attachments into the selected folder. Existing destination files are never overwritten; differing names become “(Inkfish copy)” files. The app pauses its own vault changes during the copy; pause Obsidian or other apps editing the current folder too. The current vault remains active until a complete read-back verification succeeds, and the source is not deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Copy and verify', onPress: () => void runSharedCopy() }
+      ]
+    )
+  }
+
+  const forgetPendingFolder = (): void => {
+    Alert.alert(
+      'Forget selected folder?',
+      'This only clears the pending selection. Any partial copies already in that folder are left untouched, and the current vault stays active.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Forget selection',
+          onPress: () => {
+            void discardPendingSharedFolder().then(reloadVaultLocation)
+          }
+        }
+      ]
+    )
+  }
 
   const restore = async (items: TrashItem[]): Promise<void> => {
     setTrashBusy(true)
@@ -154,8 +259,56 @@ export function SettingsScreen({
         {notes.length} notes · {inbox.length} inbox · {projects.length} folders
       </Text>
       <Text style={[ui.meta, { marginTop: 4 }]} selectable numberOfLines={1} ellipsizeMode="middle">
-        {vaultRootUri().replace(/^file:\/\//, '')}
+        {vaultLocation.active
+          ? `Shared Documents folder · ${vaultLocation.activeName ?? 'selected folder'}`
+          : `Private app storage (default) · ${vaultRootUri().replace(/^file:\/\//, '')}`}
       </Text>
+      <Text style={[ui.meta, { marginTop: 4 }]}>
+        Notes and attachments use this location. Inbox, daily notes, trash and caches remain private to the app.
+      </Text>
+      {vaultLocation.pendingTreeUri ? (
+        <>
+          <Text style={[ui.meta, { marginTop: 6 }]} selectable>
+            Pending destination · {vaultLocation.pendingName ?? 'selected folder'} · not active yet
+          </Text>
+          {vaultProgress && vaultProgress.total > 0 ? (
+            <Text style={[ui.meta, { marginTop: 4 }]}>
+              {vaultProgress.completed}/{vaultProgress.total} files checked · {vaultProgress.copied} copied · {vaultProgress.conflicts} conflict copies
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={confirmSharedCopy}
+            disabled={vaultBusy}
+            style={[ui.quiet, { marginTop: 6, opacity: vaultBusy ? 0.5 : 1 }]}
+          >
+            <Text style={ui.quietText}>
+              {vaultBusy ? 'Copying and verifying…' : vaultProgress?.completed ? 'Resume / retry copy' : 'Copy notes and attachments'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={forgetPendingFolder} disabled={vaultBusy} style={[ui.quiet, { marginTop: 2 }]}>
+            <Text style={ui.quietText}>Forget pending selection</Text>
+          </Pressable>
+          {vaultLocation.active ? (
+            <Text style={[ui.meta, { marginTop: 4 }]}>
+              The current folder remains active until verification succeeds. After switching, the old folder is left untouched and no longer receives app changes.
+            </Text>
+          ) : null}
+        </>
+      ) : null}
+      <Pressable
+        onPress={() => void pickSharedFolder()}
+        disabled={vaultBusy}
+        style={[ui.quiet, { marginTop: 6, opacity: vaultBusy ? 0.5 : 1 }]}
+      >
+        <Text style={ui.quietText}>
+          {vaultBusy ? 'Working…' : vaultLocation.active ? 'Choose / reconnect shared folder' : 'Choose shared Documents folder'}
+        </Text>
+      </Pressable>
+      {!vaultLocation.active ? (
+        <Text style={[ui.meta, { marginTop: 4 }]}>
+          Selecting a folder does not move anything. Copying is a separate step; the private original is retained.
+        </Text>
+      ) : null}
       <Pressable onPress={() => void refresh().then(() => setScanned(true))} style={[ui.quiet, { marginTop: 4 }]}>
         <Text style={ui.quietText}>{scanned ? 'Re-scanned' : 'Re-scan files'}</Text>
       </Pressable>

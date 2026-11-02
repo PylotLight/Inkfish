@@ -1,9 +1,10 @@
-import * as FileSystem from 'expo-file-system/legacy'
+import * as FileSystem from './filesystem'
 import { entryFromFile, type InboxItem, type NoteEntry, type Project } from '../format'
 import { APP, VAULT, idToRel, noteEntryCache, rememberIds } from './state'
 import { ensureTree, mkdir, readText, RESERVED, SKIP_STAT, writeText } from './paths'
 import { fileLabel, foldName, hasCaseDupes, mapLimit, mergeCaseDuplicates, projectsFromNames } from './fs'
 import { dayCache, type DayInfo } from './daily'
+import { initializeSharedVault } from './sharedVault'
 
 interface ScannedFile {
   rel: string
@@ -210,6 +211,7 @@ const INDEX_SNAPSHOT = `${APP}.cache/index-v1.json`
 export interface IndexSnapshot {
   v: 1
   savedAt: number
+  vaultRoot?: string
   notes: NoteEntry[]
   dirs: string[]
   projects: Project[]
@@ -233,6 +235,7 @@ function seedFromSnapshot(snap: IndexSnapshot): void {
 /** Last launch's index (one file read), or null. Seeds the per-file cache so the next scan only reads changes. */
 export async function loadIndexSnapshot(): Promise<IndexSnapshot | null> {
   try {
+    await initializeSharedVault()
     const raw = JSON.parse(await readText(INDEX_SNAPSHOT)) as Partial<IndexSnapshot>
     if (
       raw.v !== 1 ||
@@ -242,6 +245,7 @@ export async function loadIndexSnapshot(): Promise<IndexSnapshot | null> {
       !Array.isArray(raw.inbox)
     )
       return null
+    if (raw.vaultRoot ? raw.vaultRoot !== VAULT : VAULT !== `${APP}vault/`) return null
     const snap = raw as IndexSnapshot
     seedFromSnapshot(snap)
     return snap
@@ -254,6 +258,7 @@ export async function saveIndexSnapshot(index: VaultIndex, inbox: InboxItem[], d
   const snap: IndexSnapshot = {
     v: 1,
     savedAt: Date.now(),
+    vaultRoot: VAULT,
     notes: index.notes,
     dirs: index.dirs,
     projects: index.projects,
@@ -319,4 +324,12 @@ export function invalidateAttachments(): void {
 export function resetScanForTests(): void {
   attachmentsTask = null
   indexTask = null
+}
+
+/** Drop vault-derived caches after the user deliberately changes the active root. */
+export function invalidateScanForVaultChange(): void {
+  attachmentsTask = null
+  indexTask = null
+  noteEntryCache.clear()
+  idToRel.clear()
 }

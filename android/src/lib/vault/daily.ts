@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy'
+import * as FileSystem from './filesystem'
 import { stringifyFrontmatter, type NoteKind } from '../format'
 import {
   appendToDailyFile,

@@ -177,6 +177,7 @@ export function resolveImage(
 
 /** `file://` URI for a vault-relative file under `vaultRoot` (expo's `…/inkfish/vault/`). */
 export function vaultFileUri(vaultRoot: string, rel: string): string {
+  if (vaultRoot.startsWith('inkfish-saf://active/')) return `${vaultRoot}${rel}`
   return `${vaultRoot}${rel.split('/').map(encodeURIComponent).join('/')}`
 }
 
