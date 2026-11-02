@@ -15,8 +15,17 @@ describe('Markdown list indentation', () => {
     expect(parseMarkdown('1. first\n    2. second\n- [ ] todo\n\t- [x] done')).toEqual([
       { t: 'li', text: 'first', depth: 0 },
       { t: 'li', text: 'second', depth: 2 },
-      { t: 'task', done: false, text: 'todo', depth: 0 },
-      { t: 'task', done: true, text: 'done', depth: 1 }
+      { t: 'task', done: false, text: 'todo', depth: 0, line: 2 },
+      { t: 'task', done: true, text: 'done', depth: 1, line: 3 }
+    ])
+  })
+
+  test('recognizes markerless and bare-bracket tasks, including empty task text', () => {
+    expect(parseMarkdown('[]\n- [] next\n[x] done\n  [X] nested')).toEqual([
+      { t: 'task', done: false, text: '', depth: 0, line: 0 },
+      { t: 'task', done: false, text: 'next', depth: 0, line: 1 },
+      { t: 'task', done: true, text: 'done', depth: 0, line: 2 },
+      { t: 'task', done: true, text: 'nested', depth: 1, line: 3 }
     ])
   })
 

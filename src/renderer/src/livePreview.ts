@@ -60,10 +60,11 @@ const HEADING_RE = /^(#{1,4})\s+/
 const HR_RE = /^\s{0,3}(---|\*\*\*|___)\s*$/
 const QUOTE_PREFIX_RE = /^(?:\s{0,3}>\s?)+/
 // Tasks: the marker (`-` / `*` / `+`, any depth of indent — Obsidian renders `+` as a
-// bullet) is optional. Obsidian renders markerless `[ ]` / `[x]` lines as tasks too, so
-// bare brackets get a checkbox as well. The indent and marker are captured separately so
+// bullet) is optional. Obsidian renders markerless `[ ]` / `[x]` lines as tasks too.
+// An empty `[]` is accepted as an unchecked shorthand, so creating a task needs no
+// whitespace between the brackets. The indent and marker are captured separately so
 // the replaced range (marker, or just the brackets) is re-derived from the match.
-const TASK_RE = /^(\s*)([-*+]\s+)?\[([ xX])\](?=\s|$)/
+const TASK_RE = /^(\s*)([-*+]\s+)?\[([ xX]?)\](?=\s|$)/
 const BULLET_RE = /^(\s*)([-*+])(\s+)/
 const ORDERED_RE = /^(\s*)(\d+[.)])(\s+)/
 const CODE_SPAN_RE = /`([^`\n]+?)`/g
@@ -727,7 +728,7 @@ export function buildDecorations(state: EditorState, opts: LivePreviewOptions): 
       // replaces the marker (rendered as `•`); markerless the brackets sit at the
       // same spot, so it replaces only those.
       const wFrom = restBase + indentLen
-      const wTo = openBracket + 3
+      const wTo = openBracket + 2 + ((tm[3] ?? '').length ? 1 : 0)
       ops.push({
         from: wFrom,
         to: wTo,
@@ -943,7 +944,7 @@ export function listEnterUpdate(state: EditorState): TransactionSpec | null {
   if (sel.head !== line.to) return null
   const m = /^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line.text)
   // Markerless task; the lookahead mirrors TASK_RE so `[x]!`-style text is left alone.
-  const t = m ? null : /^(\s*)\[[ xX]\](?=\s|$)(.*)$/.exec(line.text)
+  const t = m ? null : /^(\s*)\[[ xX]?\](?=\s|$)(.*)$/.exec(line.text)
   if (!m && !t) return null
   const indent = (m ?? t)![1] ?? ''
   const rest = m ? (m[4] ?? '') : (t![2] ?? '')
@@ -997,11 +998,14 @@ const TASK_DATE_RE = /[ \t]✅[ \t]\d{4}-\d{2}-\d{2}[ \t]*$/
  */
 export function toggleTaskUpdate(state: EditorState, pos: number, date: string): TransactionSpec | null {
   const ch = state.doc.sliceString(pos, pos + 1)
-  if (ch !== ' ' && ch !== 'x' && ch !== 'X') return null
   const line = state.doc.lineAt(pos)
   const at = pos - line.from
-  const checking = ch === ' '
-  let next = line.text.slice(0, at) + (checking ? 'x' : ' ') + line.text.slice(at + 1)
+  const empty = ch === ']' && line.text[at - 1] === '['
+  if (ch !== ' ' && ch !== 'x' && ch !== 'X' && !empty) return null
+  const checking = empty || ch === ' '
+  let next = empty
+    ? line.text.slice(0, at) + 'x' + line.text.slice(at)
+    : line.text.slice(0, at) + (checking ? 'x' : ' ') + line.text.slice(at + 1)
   if (checking) next = next.replace(TASK_DATE_RE, '').trimEnd() + ` ✅ ${date}`
   else next = next.replace(TASK_DATE_RE, '')
   return { changes: { from: line.from, to: line.to, insert: next } }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { Dimensions, Image, Text, View, type LayoutChangeEvent } from 'react-native'
+import { Dimensions, Image, Pressable, Text, View, type LayoutChangeEvent } from 'react-native'
 import { useTheme, type AppTheme } from '../theme'
 import { fitImage, isAudio, resolveImage, splitImages, vaultFileUri, type ImageToken } from '../lib/mdimages'
 import { listAttachments, vaultRootUri } from '../lib/vault'
@@ -10,8 +10,22 @@ import { parseMarkdown, type Block } from '../lib/markdown'
  * Images (`![alt|300](src)`, `![[x.png]]`) render as real images, block or
  * inline, resolved against the vault the same way the Mac does.
  */
-export function Markdown({ text, notePath }: { text: string; notePath?: string | null }): React.JSX.Element {
+export function Markdown({
+  text,
+  notePath,
+  onToggleTask,
+  hideCompletedTasks = false
+}: {
+  text: string
+  notePath?: string | null
+  onToggleTask?: (line: number) => void
+  hideCompletedTasks?: boolean
+}): React.JSX.Element {
   const blocks = useMemo(() => parseMarkdown(text), [text])
+  const visibleBlocks = useMemo(
+    () => (hideCompletedTasks ? blocks.filter((block) => block.t !== 'task' || !block.done) : blocks),
+    [blocks, hideCompletedTasks]
+  )
   const t = useTheme()
   const hasImages = useMemo(() => /!\[/.test(text), [text])
   const [files, setFiles] = useState<readonly string[]>([])
@@ -34,8 +48,8 @@ export function Markdown({ text, notePath }: { text: string; notePath?: string |
   return (
     <ImageContext.Provider value={ctx}>
       <View onLayout={onLayout}>
-        {blocks.map((b, i) => (
-          <Block key={i} block={b} md={t.md} />
+        {visibleBlocks.map((b, i) => (
+          <Block key={`${b.t}-${b.t === 'task' ? b.line : i}`} block={b} md={t.md} onToggleTask={onToggleTask} />
         ))}
       </View>
     </ImageContext.Provider>
@@ -170,7 +184,15 @@ function MdImage({ img, inline, md }: { img: ImageToken; inline?: boolean; md: A
   return inline ? image : <View style={{ marginVertical: 6 }}>{image}</View>
 }
 
-function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.Element | null {
+function Block({
+  block,
+  md,
+  onToggleTask
+}: {
+  block: Block
+  md: AppTheme['md']
+  onToggleTask?: (line: number) => void
+}): React.JSX.Element | null {
   switch (block.t) {
     case 'gap':
       return <View style={{ height: 8 }} />
@@ -197,10 +219,20 @@ function Block({ block, md }: { block: Block; md: AppTheme['md'] }): React.JSX.E
       return <MdImage img={block.img} md={md} />
     case 'task':
       return (
-        <Text style={block.depth ? [md.p, { marginLeft: block.depth * 16 }] : md.p}>
-          <Text style={md.check}>{block.done ? '☑  ' : '☐  '}</Text>
-          <Text style={block.done ? md.strike : undefined}>{runs(block.text, {}, md)}</Text>
-        </Text>
+        <View style={[{ flexDirection: 'row', alignItems: 'flex-start' }, block.depth ? { marginLeft: block.depth * 16 } : null]}>
+          <Pressable
+            onPress={() => onToggleTask?.(block.line)}
+            disabled={!onToggleTask}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: block.done }}
+            accessibilityLabel={block.done ? 'Uncheck task' : 'Check task'}
+            hitSlop={8}
+            style={{ minWidth: 32, paddingTop: 2 }}
+          >
+            <Text style={[md.check, md.p, { marginVertical: 0 }]}>{block.done ? '☑' : '☐'}</Text>
+          </Pressable>
+          <Text style={[md.p, { flex: 1 }, block.done ? md.strike : undefined]}>{runs(block.text, {}, md)}</Text>
+        </View>
       )
     case 'quote':
       return (

@@ -16,7 +16,7 @@
       "versionCode": 1,
       "permissions": ["RECORD_AUDIO", "REQUEST_INSTALL_PACKAGES", "CAMERA"],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-foreground.png",
+        "foregroundImage": "./assets/adaptive-foreground-safe.png",
         "backgroundColor": "#121621"
       }
     },

@@ -6,7 +6,7 @@ export type Block =
   | { t: 'li'; text: string; depth: number }
   | { t: 'code'; text: string }
   | { t: 'img'; img: ImageToken }
-  | { t: 'task'; done: boolean; text: string; depth: number }
+  | { t: 'task'; done: boolean; text: string; depth: number; line: number }
   | { t: 'quote'; text: string }
   | { t: 'hr' }
   | { t: 'gap' }
@@ -21,7 +21,7 @@ export function parseMarkdown(text: string): Block[] {
   const out: Block[] = []
   const lines = text.split('\n')
   let code: string[] | null = null
-  for (const line of lines) {
+  for (const [lineNumber, line] of lines.entries()) {
     if (line.trim().startsWith('```')) {
       if (code) {
         out.push({ t: 'code', text: code.join('\n') })
@@ -37,13 +37,14 @@ export function parseMarkdown(text: string): Block[] {
       out.push({ t: 'hr' })
       continue
     }
-    const task = /^([ \t]*)[-*+]\s+\[( |x|X)\]\s+(.*)$/.exec(line)
+    const task = /^([ \t]*)(?:[-*+]\s+)?\[([ xX]?)\](?=\s|$)\s*(.*)$/.exec(line)
     if (task) {
       out.push({
         t: 'task',
-        done: task[2] !== ' ',
+        done: (task[2] ?? '') !== '' && task[2] !== ' ',
         text: task[3] ?? '',
-        depth: listDepth(task[1] ?? '')
+        depth: listDepth(task[1] ?? ''),
+        line: lineNumber
       })
       continue
     }

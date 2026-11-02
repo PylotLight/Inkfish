@@ -144,6 +144,8 @@ describe('live preview task checkboxes', () => {
     expect(taskWidgets('[ ] todo')).toEqual([{ from: 0, checked: false, bullet: false }])
     expect(taskWidgets('[x] done')).toEqual([{ from: 0, checked: true, bullet: false }])
     expect(taskWidgets('  [ ] indented')).toHaveLength(1)
+    expect(taskWidgets('[]')).toEqual([{ from: 0, checked: false, bullet: false }])
+    expect(taskWidgets('- [] todo')).toEqual([{ from: 0, checked: false, bullet: true }])
   })
 
   test('deeply nested tasks keep their checkbox (no indent cap)', () => {
@@ -153,8 +155,7 @@ describe('live preview task checkboxes', () => {
 
   test('bracket text that is not a task stays literal', () => {
     expect(taskWidgets('- [open] issue')).toHaveLength(0)
-    expect(taskWidgets('- []')).toHaveLength(0)
-    expect(taskWidgets('[]')).toHaveLength(0) // incomplete: no state char yet
+    expect(taskWidgets('[]x')).toHaveLength(0)
   })
 
   test('markerless tasks render a checkbox on every line, not just the first', () => {
@@ -216,6 +217,11 @@ describe('live preview: checkbox click toggles the task + Obsidian-Tasks complet
   test('a textless task: brackets only, date appears with the check and leaves with it', () => {
     expect(toggle('[ ]', 1, '2026-10-30')).toBe('[x] ✅ 2026-10-30')
     expect(toggle('[x] ✅ 2026-10-30', 1, '2026-10-31')).toBe('[ ]')
+  })
+
+  test('bare [] toggles directly to a dated checked task without inserting the middle space first', () => {
+    expect(toggle('[]', 1, '2026-10-30')).toBe('[x] ✅ 2026-10-30')
+    expect(toggle('- [] todo', 3, '2026-10-30')).toBe('- [x] todo ✅ 2026-10-30')
   })
 
   test('bulleted tasks get the same treatment', () => {

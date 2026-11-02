@@ -1,22 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
-  View
+  View,
+  type TextInputInstance
 } from 'react-native'
-import { BookOpen, ChevronLeft, Pencil } from 'lucide-react-native'
+import { BookOpen, ChevronLeft, ImagePlus, Pencil } from 'lucide-react-native'
+import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '../theme'
 import { useStore } from '../lib/store'
 import type { NoteDoc } from '../lib/format'
 import { Markdown } from '../components/Markdown'
 import { Icon } from '../components/Icon'
 import { folderOf } from '../lib/when'
-import { followMoves } from '../lib/vault'
+import { followMoves, invalidateAttachments, saveAssetBase64 } from '../lib/vault'
+import { parseMarkdown } from '../lib/markdown'
+import { insertImageReference, toggleTaskLine } from '../lib/editorText'
 
 /** Avoid repeating a leading H1 when the same title is already shown as the page heading. */
 function bodyWithoutTitleHeading(title: string, body: string): string {
@@ -38,6 +43,8 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   const [doc, setDoc] = useState<NoteDoc | null>(null)
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
+  const [selection, setSelection] = useState({ start: 0, end: 0 })
+  const [hideCompletedTasks, setHideCompletedTasks] = useState(false)
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [loading, setLoading] = useState(true)
   const [state, setState] = useState<'clean' | 'dirty' | 'saving' | 'error'>('clean')
@@ -47,10 +54,13 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   const docRef = useRef<NoteDoc | null>(null)
   const textRef = useRef('')
   const titleRef = useRef('')
+  const selectionRef = useRef(selection)
+  const inputRef = useRef<TextInputInstance>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   docRef.current = doc
   textRef.current = text
   titleRef.current = title
+  selectionRef.current = selection
 
   useEffect(() => {
     let live = true
@@ -63,6 +73,10 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       savedTitle.current = d?.title ?? ''
       setText(d?.markdown ?? '')
       saved.current = d?.markdown ?? ''
+      const initialSelection = { start: d?.markdown.length ?? 0, end: d?.markdown.length ?? 0 }
+      setSelection(initialSelection)
+      selectionRef.current = initialSelection
+      setHideCompletedTasks(false)
       // Inbox raws and empty notes open straight into edit; others in reading view.
       setMode(d && (d.path.startsWith('inbox/') || !d.markdown.trim()) ? 'edit' : 'view')
       setLoading(false)
@@ -71,6 +85,11 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
       live = false
     }
   }, [noteId, openNote])
+
+  useEffect(() => {
+    if (loading || mode !== 'edit') return
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [loading, mode])
 
   // Reading view follows the file: when sync (or anything else) changes or
   // moves the open note, reload it so the page never shows a stale copy.
@@ -145,6 +164,26 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
     scheduleFlush(next)
   }
 
+  async function pasteImage(): Promise<void> {
+    try {
+      const image = await Clipboard.getImageAsync({ format: 'png' })
+      if (!image?.data) {
+        Alert.alert('No image in clipboard', 'Copy an image, then tap Paste image again.')
+        return
+      }
+      const base64 = image.data.replace(/^data:image\/png;base64,/i, '')
+      const rel = await saveAssetBase64(base64, '.png')
+      invalidateAttachments()
+      const inserted = insertImageReference(textRef.current, selectionRef.current, rel)
+      onChange(inserted.text)
+      setSelection(inserted.selection)
+      selectionRef.current = inserted.selection
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } catch (e) {
+      Alert.alert("Couldn't paste image", e instanceof Error ? e.message : String(e))
+    }
+  }
+
   function scheduleFlush(next = textRef.current): void {
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
@@ -201,6 +240,22 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
   }
 
   const status = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Edited' : state === 'error' ? 'Not saved' : ''
+  const renderedBody = doc ? bodyWithoutTitleHeading(doc.title, text) : ''
+  const renderedPrefixLength = text.length - renderedBody.length
+  const renderedLineOffset = (text.slice(0, renderedPrefixLength).match(/\n/g) ?? []).length
+  const completedTaskCount = parseMarkdown(renderedBody).filter((block) => block.t === 'task' && block.done).length
+
+  function toggleTask(line: number): void {
+    const lines = textRef.current.split('\n')
+    const index = line + renderedLineOffset
+    if (index < 0 || index >= lines.length) return
+    const now = new Date()
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const updated = toggleTaskLine(lines[index] ?? '', date)
+    if (updated === null) return
+    lines[index] = updated
+    onChange(lines.join('\n'))
+  }
 
   return (
     <KeyboardAvoidingView
@@ -215,6 +270,13 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
           {doc ? folderOf(doc.path) : ''}
           {status ? `  ·  ${status}` : ''}
         </Text>
+        {doc && (
+          mode === 'edit' && (
+            <Pressable onPress={() => void pasteImage()} style={ui.iconBtn} accessibilityLabel="Paste image from clipboard">
+              <Icon as={ImagePlus} size={20} />
+            </Pressable>
+          )
+        )}
         {doc && (
           <Pressable
             onPress={() => {
@@ -244,11 +306,17 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
             placeholderTextColor={c.faint}
           />
           <TextInput
+            ref={inputRef}
             style={[ui.composer, { flex: 1, paddingHorizontal: 20, paddingBottom: 40 }]}
             value={text}
             onChangeText={onChange}
+            selection={selection}
+            onSelectionChange={(event) => {
+              const next = event.nativeEvent.selection
+              selectionRef.current = next
+              setSelection(next)
+            }}
             multiline
-            autoFocus
             placeholder="Start writing…"
             placeholderTextColor={c.faint}
           />
@@ -257,16 +325,25 @@ export function EditorScreen({ noteId, onClose }: { noteId: string; onClose: () 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60 }}>
           <Pressable onPress={() => setMode('edit')}>
             <Text style={[ui.display, { marginBottom: 8 }]}>{doc.title}</Text>
-            <Markdown
-              text={bodyWithoutTitleHeading(doc.title, text) || '_Empty note — tap to write._'}
-              notePath={doc.path}
-            />
-            {doc.tags.length > 0 && (
-              <Text style={[ui.meta, { marginTop: 20, color: c.accent }]}>
-                {doc.tags.map((t) => `#${t}`).join('  ')}
-              </Text>
-            )}
           </Pressable>
+          {completedTaskCount > 0 && (
+            <Pressable onPress={() => setHideCompletedTasks((v) => !v)} style={[ui.quiet, { alignSelf: 'flex-start', marginBottom: 6 }]}>
+              <Text style={ui.quietText}>
+                {hideCompletedTasks ? `Show ${completedTaskCount} completed` : `Hide ${completedTaskCount} completed`}
+              </Text>
+            </Pressable>
+          )}
+          <Markdown
+            text={renderedBody || '_Empty note — tap Edit to write._'}
+            notePath={doc.path}
+            onToggleTask={toggleTask}
+            hideCompletedTasks={hideCompletedTasks}
+          />
+          {doc.tags.length > 0 && (
+            <Text style={[ui.meta, { marginTop: 20, color: c.accent }]}>
+              {doc.tags.map((t) => `#${t}`).join('  ')}
+            </Text>
+          )}
         </ScrollView>
       )}
     </KeyboardAvoidingView>
