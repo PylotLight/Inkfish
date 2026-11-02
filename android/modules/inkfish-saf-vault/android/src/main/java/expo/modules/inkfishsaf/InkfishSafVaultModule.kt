@@ -51,9 +51,9 @@ class InkfishSafVaultModule : Module() {
       copyFromUri(Uri.parse(source), treeUri(tree), rel)
     }
     AsyncFunction("mkdir") { tree: String, rel: String -> mkdir(treeUri(tree), rel) }
-    AsyncFunction("move") { tree: String, from: String, to: String -> move(treeUri(tree), from, to) }
-    AsyncFunction("delete") { tree: String, rel: String -> delete(treeUri(tree), rel) }
-    AsyncFunction("recover") { tree: String -> recover(treeUri(tree)) }
+    AsyncFunction("move") { tree: String, from: String, to: String -> move(tree, from, to) }
+    AsyncFunction("delete") { tree: String, rel: String -> delete(tree, rel) }
+    AsyncFunction("recover") { tree: String -> recover(tree) }
   }
 
   private fun treeUri(raw: String): Uri = requireTree(raw)
