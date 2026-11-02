@@ -17,7 +17,11 @@ const EMBED_RE = /!\[\[([^\]\n]+)\]\]/g
 type Range = {
   from: number
   to: number
-  value: ReturnType<typeof Decoration.mark> | ReturnType<typeof Decoration.replace> | ReturnType<typeof Decoration.line>
+  value:
+    | ReturnType<typeof Decoration.mark>
+    | ReturnType<typeof Decoration.replace>
+    | ReturnType<typeof Decoration.line>
+    | ReturnType<typeof Decoration.widget>
 }
 export interface LiveMarkdownOptions {
   notePath: string | null
@@ -25,8 +29,14 @@ export interface LiveMarkdownOptions {
   vaultRoot: string
   title: string
   hideCompletedTasks: boolean
+  collapsedHeadings?: readonly string[]
 }
 type ToggleTask = (lineFrom: number) => void
+type ToggleHeading = (key: string) => void
+
+export function headingCollapseKey(sourceLine: string, occurrence: number): string {
+  return `${sourceLine}\u0000${occurrence}`
+}
 
 function addMark(ranges: Range[], from: number, to: number, className: string): void {
   if (to > from) ranges.push({ from, to, value: Decoration.mark({ class: className }) })
@@ -78,6 +88,45 @@ export class TaskBoxWidget extends WidgetType {
     })
     wrap.appendChild(box)
     return wrap
+  }
+  override ignoreEvent(): boolean {
+    return false
+  }
+}
+
+class HeadingFoldWidget extends WidgetType {
+  constructor(
+    readonly key: string,
+    readonly label: string,
+    readonly collapsed: boolean,
+    readonly toggle: ToggleHeading
+  ) {
+    super()
+  }
+  override eq(other: HeadingFoldWidget): boolean {
+    return (
+      other instanceof HeadingFoldWidget &&
+      other.key === this.key &&
+      other.collapsed === this.collapsed &&
+      other.label === this.label
+    )
+  }
+  override toDOM(view: EditorView): HTMLElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'cm-md-heading-fold'
+    button.textContent = this.collapsed ? '›' : '⌄'
+    button.setAttribute('aria-expanded', String(!this.collapsed))
+    button.setAttribute('aria-label', `${this.collapsed ? 'Expand' : 'Collapse'} section: ${this.label}`)
+    button.title = `${this.collapsed ? 'Expand' : 'Collapse'} section`
+    button.addEventListener('mousedown', (event) => event.preventDefault())
+    button.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      this.toggle(this.key)
+      view.focus()
+    })
+    return button
   }
   override ignoreEvent(): boolean {
     return false
@@ -274,21 +323,59 @@ export function buildLiveMarkdownDecorations(
   state: EditorState,
   options: LiveMarkdownOptions,
   activeLine: number,
-  toggle: ToggleTask
+  toggle: ToggleTask,
+  toggleHeading: ToggleHeading = () => undefined
 ): DecorationSet {
   const ranges: Range[] = []
   const titleRange = titleHeadingRange(state, options.title)
+  const collapsedHeadings = options.collapsedHeadings ?? []
+  const headingOccurrences = new Map<string, number>()
   let inFence = false
+  let collapsedLevel: number | null = null
+  let completedTaskIndent: number | null = null
   for (let number = 1; number <= state.doc.lines; number++) {
     const line = state.doc.line(number)
     const text = line.text
     const revealSyntax = number === activeLine
     const fence = FENCE_RE.exec(text)
+    const heading = !inFence && !fence ? HEADING_RE.exec(text) : null
+    let headingKey: string | null = null
+    if (heading) {
+      const sourceLine = text
+      const occurrence = (headingOccurrences.get(sourceLine) ?? 0) + 1
+      headingOccurrences.set(sourceLine, occurrence)
+      headingKey = headingCollapseKey(sourceLine, occurrence)
+      const level = heading[1]?.length ?? 1
+      if (collapsedLevel !== null && level <= collapsedLevel) collapsedLevel = null
+    }
+    const hiddenByHeading = collapsedLevel !== null
+
+    let hiddenByCompletedTask = false
+    if (completedTaskIndent !== null) {
+      if (!text.trim()) hiddenByCompletedTask = true
+      else {
+        const indentLength = /^[ \t]*/.exec(text)?.[0].length ?? 0
+        if (indentLength > completedTaskIndent) hiddenByCompletedTask = true
+        else completedTaskIndent = null
+      }
+    }
+    if (hiddenByCompletedTask) {
+      ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-hidden-completed' }) })
+      if (fence) inFence = !inFence
+      continue
+    }
+
     if (inFence) {
       if (fence) {
-        addMark(ranges, line.from, line.to, 'cm-md-code-fence')
-        if (!revealSyntax) hide(ranges, line.from, line.to)
+        if (hiddenByHeading) {
+          ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-folded-line' }) })
+        } else {
+          addMark(ranges, line.from, line.to, 'cm-md-code-fence')
+          if (!revealSyntax) hide(ranges, line.from, line.to)
+        }
         inFence = false
+      } else if (hiddenByHeading) {
+        ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-folded-line' }) })
       } else {
         ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-code-block' }) })
         addMark(ranges, line.from, line.to, 'cm-md-code-block-text')
@@ -297,10 +384,19 @@ export function buildLiveMarkdownDecorations(
     }
     if (fence) {
       inFence = true
-      addMark(ranges, line.from, line.to, 'cm-md-code-fence')
-      if (!revealSyntax) hide(ranges, line.from, line.to)
+      if (hiddenByHeading)
+        ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-folded-line' }) })
+      else {
+        addMark(ranges, line.from, line.to, 'cm-md-code-fence')
+        if (!revealSyntax) hide(ranges, line.from, line.to)
+      }
       continue
     }
+    if (hiddenByHeading) {
+      ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-folded-line' }) })
+      continue
+    }
+
     const task = TASK_RE.exec(text)
     if (task) {
       const indent = task[1] ?? ''
@@ -310,7 +406,7 @@ export function buildLiveMarkdownDecorations(
       const checked = (task[4] ?? '') !== '' && task[4] !== ' '
       if (options.hideCompletedTasks && checked) {
         ranges.push({ from: line.from, to: line.from, value: Decoration.line({ class: 'cm-md-hidden-completed' }) })
-        hide(ranges, line.from, line.to)
+        completedTaskIndent = indent.length
         continue
       }
       ranges.push({
@@ -356,11 +452,22 @@ export function buildLiveMarkdownDecorations(
         })
       continue
     }
-    const heading = HEADING_RE.exec(text)
     if (heading) {
+      const level = heading[1]?.length ?? 1
+      const collapsed = headingKey !== null && collapsedHeadings.includes(headingKey)
+      const label = (heading[3] ?? '').trim() || 'Untitled section'
+      ranges.push({
+        from: line.from,
+        to: line.from,
+        value: Decoration.widget({
+          widget: new HeadingFoldWidget(headingKey ?? '', label, collapsed, toggleHeading),
+          side: -1
+        })
+      })
       const markerEnd = line.from + (heading[1]?.length ?? 0) + (heading[2]?.length ?? 0)
-      addMark(ranges, markerEnd, line.to, `cm-md-h${Math.min(heading[1]?.length ?? 1, 3)}`)
+      addMark(ranges, markerEnd, line.to, `cm-md-h${Math.min(level, 3)}`)
       if (!revealSyntax) hide(ranges, line.from, markerEnd)
+      if (collapsed) collapsedLevel = level
     }
     const quote = QUOTE_RE.exec(text)
     if (quote) {
@@ -416,19 +523,29 @@ function documentWidgetBullet(): WidgetType {
   return new BulletWidget()
 }
 
-export function liveMarkdownExtension(options: () => LiveMarkdownOptions, toggle: ToggleTask): Extension {
+export function liveMarkdownExtension(
+  options: () => LiveMarkdownOptions,
+  toggle: ToggleTask,
+  toggleHeading: ToggleHeading = () => undefined
+): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet
       constructor(readonly view: EditorView) {
-        this.decorations = buildLiveMarkdownDecorations(view.state, options(), this.activeLine(), toggle)
+        this.decorations = buildLiveMarkdownDecorations(view.state, options(), this.activeLine(), toggle, toggleHeading)
       }
       activeLine(): number {
         return this.view.hasFocus ? this.view.state.doc.lineAt(this.view.state.selection.main.head).number : -1
       }
       update(update: { view: EditorView; docChanged: boolean; selectionSet: boolean; focusChanged: boolean }): void {
         if (update.docChanged || update.selectionSet || update.focusChanged) {
-          this.decorations = buildLiveMarkdownDecorations(update.view.state, options(), this.activeLine(), toggle)
+          this.decorations = buildLiveMarkdownDecorations(
+            update.view.state,
+            options(),
+            this.activeLine(),
+            toggle,
+            toggleHeading
+          )
         }
       }
     },
@@ -470,6 +587,19 @@ export function liveMarkdownExtension(options: () => LiveMarkdownOptions, toggle
         '.cm-md-h1': { fontSize: '1.55em', fontWeight: '700', lineHeight: '1.3' },
         '.cm-md-h2': { fontSize: '1.35em', fontWeight: '700', lineHeight: '1.3' },
         '.cm-md-h3': { fontSize: '1.2em', fontWeight: '700', lineHeight: '1.35' },
+        '.cm-md-heading-fold': {
+          display: 'inline-block',
+          width: '22px',
+          margin: '0 5px 0 0',
+          padding: '0',
+          border: '0',
+          background: 'transparent',
+          color: 'var(--md-muted)',
+          fontSize: '16px',
+          lineHeight: '1',
+          verticalAlign: 'middle',
+          cursor: 'pointer'
+        },
         '.cm-md-quote': { color: 'var(--md-muted)', fontStyle: 'italic' },
         '.cm-md-link': { color: 'var(--md-accent)', textDecoration: 'underline' },
         '.cm-md-image-source': { color: 'var(--md-muted)' },
@@ -501,6 +631,7 @@ export function liveMarkdownExtension(options: () => LiveMarkdownOptions, toggle
           verticalAlign: 'middle'
         },
         '.cm-md-hidden-completed': { display: 'none' },
+        '.cm-md-folded-line': { display: 'none' },
         '.cm-md-duplicate-title': { opacity: '0', pointerEvents: 'none' }
       },
       { dark: true }

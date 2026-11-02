@@ -497,12 +497,16 @@ export function SettingsScreen({
       <Text style={ui.label}>Updates</Text>
       <View style={[ui.row, { justifyContent: 'space-between' }]}>
         <Text style={ui.title}>Version {upd.version}</Text>
-        {upd.status === 'available' || upd.status === 'ready' ? (
+        {upd.status === 'available' || upd.status === 'ready' || (upd.status === 'error' && upd.release) ? (
           <Pressable onPress={() => void upd.update()} style={ui.quiet}>
             <Text style={ui.quietText}>
               {upd.status === 'ready'
                 ? 'Install'
-                : `Update to ${upd.release?.version}${upd.release?.prerelease ? ' (beta)' : ''}`}
+                : upd.status === 'error'
+                  ? upd.error?.includes('remain saved to resume')
+                    ? 'Resume download'
+                    : 'Retry update'
+                  : `Update to ${upd.release?.version}${upd.release?.prerelease ? ' (beta)' : ''}`}
             </Text>
           </Pressable>
         ) : upd.status === 'downloading' ? (

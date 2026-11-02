@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorState } from '@codemirror/state'
-import { buildLiveMarkdownDecorations, ImageWidget, TaskBoxWidget } from '../src/lib/liveMarkdown'
+import { buildLiveMarkdownDecorations, headingCollapseKey, ImageWidget, TaskBoxWidget } from '../src/lib/liveMarkdown'
 import type { LiveMarkdownOptions } from '../src/lib/liveMarkdown'
 
 const options: LiveMarkdownOptions = {
@@ -78,6 +78,42 @@ describe('Android live Markdown source and task preview', () => {
     const state = EditorState.create({ doc: source })
     const found = widgets(source, -1, { hideCompletedTasks: true })
     expect(found.some((range) => range.className === 'cm-md-hidden-completed')).toBe(true)
+    expect(state.doc.toString()).toBe(source)
+  })
+
+  test('hiding a completed task also hides its indented image and continuation lines', () => {
+    const source = '- [x] completed\n  ![[assets/task.png]]\n  details\n- [ ] open\n  ![[assets/task.png]]'
+    const state = EditorState.create({ doc: source })
+    const found = widgets(source, -1, { hideCompletedTasks: true })
+    const lineStarts = source
+      .split('\n')
+      .map((line, index, lines) => lines.slice(0, index).join('\n').length + (index ? 1 : 0))
+    const images = found.filter((range) => range.widget instanceof ImageWidget)
+
+    expect(found.some((range) => range.className === 'cm-md-hidden-completed' && range.from === lineStarts[1])).toBe(
+      true
+    )
+    expect(found.some((range) => range.className === 'cm-md-hidden-completed' && range.from === lineStarts[2])).toBe(
+      true
+    )
+    expect(images).toHaveLength(1)
+    expect(images[0]?.from).toBeGreaterThan(lineStarts[3])
+    expect(state.doc.toString()).toBe(source)
+  })
+
+  test('a collapsed heading hides its nested content through the next same-or-higher heading only', () => {
+    const source = '# Group\nintro\n![[assets/task.png]]\n## Child\nchild text\n# Next\nvisible\n![[assets/task.png]]'
+    const state = EditorState.create({ doc: source })
+    const key = headingCollapseKey('# Group', 1)
+    const found = widgets(source, -1, { collapsedHeadings: [key] })
+    const lines = source.split('\n')
+    const starts = lines.map((_, index) => lines.slice(0, index).join('\n').length + (index ? 1 : 0))
+    const images = found.filter((range) => range.widget instanceof ImageWidget)
+    const foldedRows = found.filter((range) => range.className === 'cm-md-folded-line').map((range) => range.from)
+
+    expect(foldedRows).toEqual([starts[1], starts[2], starts[3], starts[4]])
+    expect(images).toHaveLength(1)
+    expect(images[0]?.from).toBeGreaterThan(starts[5])
     expect(state.doc.toString()).toBe(source)
   })
 })

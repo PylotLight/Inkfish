@@ -1,11 +1,12 @@
 'use dom'
 
-import React, { useEffect, useRef, type CSSProperties, type Ref } from 'react'
+import React, { useEffect, useRef, useState, type CSSProperties, type Ref } from 'react'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { useDOMImperativeHandle, type DOMImperativeFactory, type DOMProps } from 'expo/dom'
 import { insertImageReference, toggleTaskLine } from '../lib/editorText'
 import { liveMarkdownExtension, type LiveMarkdownOptions } from '../lib/liveMarkdown'
+import { editorPropsEqual } from '../lib/editorHostProps'
 
 type JSONValue = boolean | number | string | null | JSONValue[] | { [key: string]: JSONValue | undefined }
 
@@ -60,9 +61,10 @@ function applyMarkdown(view: EditorView, next: string, selection?: { start: numb
   })
 }
 
-export default function MarkdownEditor(props: Props): React.JSX.Element {
+function MarkdownEditor(props: Props): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const [collapsedHeadings, setCollapsedHeadings] = useState<string[]>([])
   const initialMarkdown = useRef(props.markdown)
   const previousExternalMarkdown = useRef(props.markdown)
   const liveCompartment = useRef(new Compartment())
@@ -73,14 +75,16 @@ export default function MarkdownEditor(props: Props): React.JSX.Element {
     files: props.files,
     vaultRoot: props.vaultRoot,
     title: props.title,
-    hideCompletedTasks: props.hideCompletedTasks
+    hideCompletedTasks: props.hideCompletedTasks,
+    collapsedHeadings
   })
   options.current = {
     notePath: props.notePath,
     files: props.files,
     vaultRoot: props.vaultRoot,
     title: props.title,
-    hideCompletedTasks: props.hideCompletedTasks
+    hideCompletedTasks: props.hideCompletedTasks,
+    collapsedHeadings
   }
   const toggleTask = useRef<(lineFrom: number) => void>(() => undefined)
   toggleTask.current = (lineFrom) => {
@@ -92,6 +96,12 @@ export default function MarkdownEditor(props: Props): React.JSX.Element {
     const next = toggleTaskLine(line.text, date)
     if (next !== null) view.dispatch({ changes: { from: line.from, to: line.to, insert: next } })
   }
+  const toggleHeading = useRef<(key: string) => void>(() => undefined)
+  toggleHeading.current = (key) => {
+    setCollapsedHeadings((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    )
+  }
 
   useEffect(() => {
     if (!host.current) return
@@ -102,7 +112,8 @@ export default function MarkdownEditor(props: Props): React.JSX.Element {
           liveCompartment.current.of(
             liveMarkdownExtension(
               () => options.current,
-              (from) => toggleTask.current(from)
+              (from) => toggleTask.current(from),
+              (key) => toggleHeading.current(key)
             )
           ),
           EditorView.updateListener.of((update) => {
@@ -126,11 +137,12 @@ export default function MarkdownEditor(props: Props): React.JSX.Element {
       effects: liveCompartment.current.reconfigure(
         liveMarkdownExtension(
           () => options.current,
-          (from) => toggleTask.current(from)
+          (from) => toggleTask.current(from),
+          (key) => toggleHeading.current(key)
         )
       )
     })
-  }, [props.notePath, props.files, props.vaultRoot, props.title, props.hideCompletedTasks])
+  }, [props.notePath, props.files, props.vaultRoot, props.title, props.hideCompletedTasks, collapsedHeadings])
 
   useEffect(() => {
     if (props.markdown === previousExternalMarkdown.current) return
@@ -189,3 +201,5 @@ export default function MarkdownEditor(props: Props): React.JSX.Element {
 
   return <div ref={host} className="inkfish-markdown-editor" style={rootStyle} aria-label="Markdown note editor" />
 }
+
+export default React.memo(MarkdownEditor, editorPropsEqual)

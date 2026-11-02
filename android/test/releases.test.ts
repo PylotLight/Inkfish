@@ -86,4 +86,35 @@ describe('which release a phone is offered', () => {
     ]
     expect(pickRelease(noisy, beta)?.version).toBe('0.2.8-beta.2')
   })
+
+  test('a valid GitHub APK SHA-256 digest is carried into the offered release', () => {
+    const release = rel('android-v0.3.2-beta.1', {
+      assets: [
+        {
+          name: 'Inkfish-android-0.3.2-beta.1.apk',
+          browser_download_url: 'https://example.test/app.apk',
+          size: 42,
+          digest: `sha256:${'A'.repeat(64)}`
+        }
+      ]
+    })
+
+    expect(pickRelease([release], beta)?.apkSha256).toBe('a'.repeat(64))
+  })
+
+  test('malformed or absent GitHub digests remain optional instead of being trusted', () => {
+    const malformed = rel('android-v0.3.2-beta.1', {
+      assets: [
+        {
+          name: 'Inkfish-android-0.3.2-beta.1.apk',
+          browser_download_url: 'https://example.test/app.apk',
+          size: 42,
+          digest: 'sha256:not-a-digest'
+        }
+      ]
+    })
+
+    expect(pickRelease([malformed], beta)).not.toHaveProperty('apkSha256')
+    expect(pickRelease([rel('android-v0.3.2-beta.1')], beta)).not.toHaveProperty('apkSha256')
+  })
 })

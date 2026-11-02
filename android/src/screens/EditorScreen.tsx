@@ -15,10 +15,13 @@ import { useTheme } from '../theme'
 import { useStore } from '../lib/store'
 import type { NoteDoc } from '../lib/format'
 import MarkdownEditor, { type MarkdownEditorHandle } from '../components/MarkdownEditor'
+import { editorPropsEqual, MARKDOWN_EDITOR_DOM_PROPS } from '../lib/editorHostProps'
 import { Icon } from '../components/Icon'
 import { folderOf } from '../lib/when'
 import { followMoves, invalidateAttachments, listAttachments, saveAssetBase64, vaultRootUri } from '../lib/vault'
 import { parseMarkdown } from '../lib/markdown'
+
+const StableMarkdownEditor = React.memo(MarkdownEditor, editorPropsEqual)
 
 /** Avoid repeating a leading H1 when the same title is already shown as the page heading. */
 function bodyWithoutTitleHeading(title: string, body: string): string {
@@ -328,9 +331,9 @@ export function EditorScreen({
               </Text>
             </Pressable>
           ) : null}
-          <MarkdownEditor
+          <StableMarkdownEditor
             ref={editorRef}
-            dom={{ scrollEnabled: false, style: { flex: 1 } }}
+            dom={MARKDOWN_EDITOR_DOM_PROPS}
             markdown={editorMarkdown}
             title={title}
             notePath={doc.path}

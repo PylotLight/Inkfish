@@ -17,6 +17,7 @@ export interface GhAsset {
   name: string
   browser_download_url: string
   size: number
+  digest?: string | null
 }
 export interface GhRelease {
   tag_name: string
@@ -33,6 +34,7 @@ export interface Release {
   notes: string
   apkUrl: string
   apkSize: number
+  apkSha256?: string
   publishedAt: string
   /** An Android test build with a SemVer prerelease suffix, such as X.Y.Z-beta.N. */
   prerelease: boolean
@@ -62,12 +64,14 @@ export function pickRelease(list: readonly GhRelease[], opts: PickOptions): Rele
     if (!best || compareSemver(version, best.version) > 0) best = { r, apk, version, pre }
   }
   if (!best) return null
+  const digest = /^sha256:([\da-f]{64})$/i.exec(best.apk.digest ?? '')?.[1]?.toLowerCase()
   return {
     version: best.version,
     tag: best.r.tag_name,
     notes: (best.r.body ?? '').trim(),
     apkUrl: best.apk.browser_download_url,
     apkSize: best.apk.size,
+    ...(digest ? { apkSha256: digest } : {}),
     publishedAt: best.r.published_at,
     prerelease: best.pre
   }

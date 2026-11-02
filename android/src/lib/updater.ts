@@ -1,6 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy'
+import { File, FileMode } from 'expo-file-system'
 import * as Application from 'expo-application'
 import * as IntentLauncher from 'expo-intent-launcher'
+import { downloadApk, sha256Chunks } from './apkDownload'
 import { compareVersions, pickRelease, updateFor, type GhRelease, type PickOptions, type Release } from './releases'
 
 /**
@@ -43,21 +45,46 @@ export async function checkForUpdate(opts: PickOptions = { includePrereleases: f
   return updateFor(await fetchReleases(), currentVersion(), opts)
 }
 
-/** Download the APK (resumable, with progress 0–1). Returns the local file URI. */
+/** Download the APK with bounded byte-range retries, integrity checks, and safe promotion. */
 export async function downloadUpdate(r: Release, onProgress: (p: number) => void): Promise<string> {
-  const dest = `${FileSystem.cacheDirectory ?? ''}Inkfish-${r.version}.apk`
-  const have = await FileSystem.getInfoAsync(dest)
-  if (have.exists && !have.isDirectory && have.size === r.apkSize) {
-    onProgress(1)
-    return dest
-  }
-  const dl = FileSystem.createDownloadResumable(r.apkUrl, dest, {}, (p) => {
-    const total = p.totalBytesExpectedToWrite > 0 ? p.totalBytesExpectedToWrite : r.apkSize
-    if (total > 0) onProgress(Math.min(1, p.totalBytesWritten / total))
-  })
-  const out = await dl.downloadAsync()
-  if (!out || out.status !== 200) throw new Error(`Download failed (${out?.status ?? 'no response'})`)
-  return out.uri
+  const cache = FileSystem.cacheDirectory
+  if (!cache) throw new Error('Android cache directory is unavailable')
+  const dest = `${cache}Inkfish-${r.version}.apk`
+  const partial = `${dest}.part`
+
+  return downloadApk(
+    r,
+    partial,
+    dest,
+    {
+      getInfo: (uri) => FileSystem.getInfoAsync(uri),
+      delete: (uri) => FileSystem.deleteAsync(uri, { idempotent: true }),
+      move: (from, to) => FileSystem.moveAsync({ from, to }),
+      sha256: async (uri) => {
+        const handle = new File(uri).open(FileMode.ReadOnly)
+        try {
+          return await sha256Chunks(() => handle.readBytes(1024 * 1024))
+        } finally {
+          handle.close()
+        }
+      },
+      download: async (url, destination, resumeData, progress) => {
+        const task = FileSystem.createDownloadResumable(
+          url,
+          destination,
+          {},
+          (p) => {
+            const total = p.totalBytesExpectedToWrite > 0 ? p.totalBytesExpectedToWrite : r.apkSize
+            if (total > 0) progress(Math.max(0, Math.min(1, p.totalBytesWritten / total)))
+          },
+          resumeData
+        )
+        const result = await task.downloadAsync()
+        return result ? { uri: result.uri, status: result.status, headers: result.headers } : undefined
+      }
+    },
+    onProgress
+  )
 }
 
 /** Open Android's installer on the downloaded APK. */
@@ -70,13 +97,13 @@ export async function installUpdate(fileUri: string): Promise<void> {
   })
 }
 
-/** Remove downloaded APKs older than (or equal to) the running version. */
+/** Remove downloaded APKs and partials older than (or equal to) the running version. */
 export async function cleanOldDownloads(): Promise<void> {
   const dir = FileSystem.cacheDirectory
   if (!dir) return
   try {
     for (const f of await FileSystem.readDirectoryAsync(dir)) {
-      const m = /^Inkfish-(.+)\.apk$/.exec(f)
+      const m = /^Inkfish-(.+)\.apk(?:\.part)?$/.exec(f)
       if (m?.[1] && compareVersions(m[1], currentVersion()) <= 0)
         await FileSystem.deleteAsync(`${dir}${f}`, { idempotent: true })
     }
