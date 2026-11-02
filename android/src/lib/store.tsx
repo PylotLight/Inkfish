@@ -283,6 +283,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
     [refresh]
   )
 
+  // Autosave updates `notes`, recreating the context value. Keep this callback
+  // stable so EditorScreen's load effect doesn't unmount its focused DOM editor.
+  const openNote = useCallback((id: string) => vault.getNote(id), [])
+
   const value = useMemo<Store>(
     () => ({
       ready,
@@ -299,7 +303,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       captureDaily,
       routeInbox,
       undoInbox,
-      openNote: (id) => vault.getNote(id),
+      openNote,
       saveNote: async (id, md, ctx) => {
         const d = await vault.saveNote(id, md, ctx)
         // Autosave fires every ~700 ms of typing: patch the one row instead of
@@ -348,6 +352,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }): Reac
       projects,
       dirs,
       days,
+      openNote,
       refresh,
       patchEntry,
       capture,
