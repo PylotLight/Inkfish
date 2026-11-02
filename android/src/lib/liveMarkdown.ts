@@ -6,7 +6,6 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { keymap } from '@codemirror/view'
 import { findImages } from '../../../src/shared/images'
 import { resolveImage, vaultFileUri, isAudio, type ImageToken } from './mdimages'
-import { toggleTaskLine } from './editorText'
 
 const TASK_RE = /^([ \t]*)(?:([-*+])([ \t]+))?\[([ xX]?)\](?=\s|$)/
 const FENCE_RE = /^\s*(`{3,}|~{3,})/
