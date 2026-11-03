@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorSelection, EditorState } from '@codemirror/state'
+import type { TransactionSpec } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import {
   buildLiveMarkdownDecorations,
   headingCollapseKey,
   ImageWidget,
+  liveMarkdownExtension,
   listEnterUpdate,
   TaskBoxWidget
 } from '../src/lib/liveMarkdown'
@@ -23,6 +26,24 @@ function pressEnter(doc: string, cursor = doc.length): { doc: string | null; hea
   if (!update) return { doc: null, head: -1 }
   const next = state.update(update).state
   return { doc: next.doc.toString(), head: next.selection.main.head }
+}
+
+function pressImeEnter(doc: string, cursor = doc.length): { doc: string; handled: boolean } {
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(cursor),
+    extensions: liveMarkdownExtension(
+      () => options,
+      () => undefined
+    )
+  })
+  let transaction: TransactionSpec | null = null
+  const view = { state, dispatch: (spec: TransactionSpec) => (transaction = spec) } as unknown as EditorView
+  const insert = () =>
+    state.update({ changes: { from: cursor, to: cursor, insert: '\n' }, selection: { anchor: cursor + 1 } })
+  const handled = state.facet(EditorView.inputHandler).some((handler) => handler(view, cursor, cursor, '\n', insert))
+  const next = state.update(handled ? transaction! : insert()).state
+  return { doc: next.doc.toString(), handled }
 }
 
 function widgets(doc: string, activeLine = -1, extra: Partial<LiveMarkdownOptions> = {}) {
@@ -50,6 +71,20 @@ describe('Android live Markdown source and task preview', () => {
 
   test('markerless tasks continue without a bullet and preserve indentation', () => {
     expect(pressEnter('  [ ] todo')).toEqual({ doc: '  [ ] todo\n  [ ] ', head: '  [ ] todo\n  [ ] '.length })
+  })
+
+  test('Android IME newline input creates a checkbox sibling without a keydown event', () => {
+    expect(pressImeEnter('- [ ] buy milk')).toEqual({ doc: '- [ ] buy milk\n- [ ] ', handled: true })
+    expect(pressImeEnter('  * [x] done')).toEqual({ doc: '  * [x] done\n  * [ ] ', handled: true })
+  })
+
+  test('IME newlines in ordinary text and mid-task still use normal insertion', () => {
+    expect(pressImeEnter('plain text')).toEqual({ doc: 'plain text\n', handled: false })
+    expect(pressImeEnter('- [ ] task', 7)).toEqual({ doc: '- [ ] t\nask', handled: false })
+  })
+
+  test('Enter on an empty checkbox item exits the list', () => {
+    expect(pressEnter('- [ ] ')).toEqual({ doc: '', head: 0 })
   })
 
   test('Enter on ordinary text or in the middle of a task is left to CodeMirror', () => {

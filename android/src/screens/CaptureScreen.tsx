@@ -11,11 +11,14 @@ import {
   View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Check, Folder, Mic, Square, X } from 'lucide-react-native'
+import { Check, Folder, ImagePlus, Mic, Square, X } from 'lucide-react-native'
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio'
 import { useTheme } from '../theme'
 import { useStore } from '../lib/store'
 import { saveAssetCopy } from '../lib/vault'
+import { imageExtension } from '../lib/imageAttachments'
+import { pickImageAttachments } from '../lib/imagePicker'
+import type { PendingImageAttachment } from '../lib/imageAttachments'
 import type { PendingShare } from '../lib/share'
 import type { NoteKind } from '../lib/format'
 import { Icon } from '../components/Icon'
@@ -47,7 +50,7 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
   const [dest, setDest] = useState<'inbox' | 'today'>('inbox')
   const [hint, setHint] = useState('auto')
   const [assets, setAssets] = useState<string[]>([])
-  const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [pendingImages, setPendingImages] = useState<PendingImageAttachment[]>([])
   const [saving, setSaving] = useState(false)
   const [recording, setRecording] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -66,7 +69,10 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
       if (!shared.text) return prev
       return prev.includes(shared.text) ? prev : `${prev.replace(/\s+$/, '')}\n\n${shared.text}`
     })
-    setPendingImages((prev) => [...prev, ...shared.imageUris.filter((u) => !prev.includes(u))])
+    setPendingImages((prev) => [
+      ...prev,
+      ...shared.imageUris.filter((uri) => !prev.some((image) => image.uri === uri)).map((uri) => ({ uri }))
+    ])
   }, [shared])
 
   const kind: NoteKind = assets.some((a) => /\.(m4a|wav|mp3|ogg)$/i.test(a))
@@ -79,10 +85,9 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
   async function ingestPendingImages(): Promise<{ rels: string[]; failed: number }> {
     const rels: string[] = []
     let failed = 0
-    for (const uri of pendingImages) {
+    for (const image of pendingImages) {
       try {
-        const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(uri)?.[1] ?? 'jpg'
-        rels.push(await saveAssetCopy(uri, `.${ext.toLowerCase()}`))
+        rels.push(await saveAssetCopy(image.uri, imageExtension(image)))
       } catch {
         failed++
       }
@@ -104,7 +109,7 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
         const withImgs = imgRefs && !raw.includes(imgRefs) ? `${raw.trim()}\n${imgRefs}`.trim() : raw.trim()
         await capture(withImgs, kind, hint, allAssets)
       }
-      if (failed > 0) setMsg(`Saved ✓ (${failed} shared image${failed > 1 ? 's' : ''} couldn't be copied)`)
+      if (failed > 0) setMsg(`Saved ✓ (${failed} image${failed > 1 ? 's' : ''} couldn't be copied)`)
       else setMsg(null)
       setRaw('')
       setAssets([])
@@ -143,6 +148,21 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
     } catch (e) {
       setMsg(`Recording failed: ${e instanceof Error ? e.message : String(e)}`)
       setRecording(false)
+    }
+  }
+
+  async function addImages(): Promise<void> {
+    try {
+      const selected = await pickImageAttachments()
+      if (selected.length) {
+        setPendingImages((previous) => [
+          ...previous,
+          ...selected.filter((image) => !previous.some((pending) => pending.uri === image.uri))
+        ])
+        setMsg(null)
+      }
+    } catch (e) {
+      setMsg(`Image selection failed: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -254,6 +274,14 @@ export function CaptureScreen({ onSaved, onClose, startVoice, shared, onSharedCo
         >
           <Icon as={recording ? Square : Mic} size={20} color={recording ? dark.danger : undefined} />
           {recording && <Text style={{ color: dark.danger, fontWeight: '600' }}>Recording</Text>}
+        </Pressable>
+        <Pressable
+          onPress={() => void addImages()}
+          style={[ui.row, { paddingHorizontal: 10, height: 44, gap: 8 }]}
+          accessibilityLabel={pendingImages.length ? `Add images, ${pendingImages.length} selected` : 'Add images'}
+        >
+          <Icon as={ImagePlus} size={20} color={pendingImages.length ? dark.accent : undefined} />
+          {pendingImages.length > 0 && <Text style={ui.quietMuted}>{pendingImages.length}</Text>}
         </Pressable>
         {dest === 'inbox' && (
           <Pressable

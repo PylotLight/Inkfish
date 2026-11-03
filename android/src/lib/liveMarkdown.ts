@@ -669,14 +669,16 @@ export function listEnterUpdate(state: EditorState): TransactionSpec | null {
   if (!bullet && !task) return null
   const indent = (bullet ?? task)![1] ?? ''
   const rest = bullet ? (bullet[4] ?? '') : (task![2] ?? '')
-  if (!rest.trim()) {
+  const bulletTask = bullet ? /^(\[[ xX]?\])(?:[ \t]+|$)(.*)$/.exec(rest) : null
+  const itemText = bulletTask ? (bulletTask[2] ?? '') : rest
+  if (!itemText.trim()) {
     return { changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } }
   }
   let continuation: string
   if (bullet) {
     const marker = bullet[2] ?? '-'
     const nextMarker = /^\d/.test(marker) ? `${Number.parseInt(marker, 10) + 1}.` : marker
-    const hasTask = /^\[[ xX]\]\s*/.test(rest)
+    const hasTask = Boolean(bulletTask)
     continuation = `${indent}${nextMarker} ${hasTask ? '[ ] ' : ''}`
   } else {
     continuation = `${indent}[ ] `
@@ -695,6 +697,15 @@ const listEnterKey: KeyBinding = {
     view.dispatch(update)
     return true
   }
+}
+
+function listEnterInput(view: EditorView, from: number, to: number, text: string): boolean {
+  const selection = view.state.selection.main
+  if (text !== '\n' || from !== to || selection.head !== from || !selection.empty) return false
+  const update = listEnterUpdate(view.state)
+  if (!update) return false
+  view.dispatch(update)
+  return true
 }
 
 export function liveMarkdownExtension(
@@ -729,6 +740,7 @@ export function liveMarkdownExtension(
     markdown(),
     history(),
     keymap.of([listEnterKey, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    EditorView.inputHandler.of((view, from, to, text) => listEnterInput(view, from, to, text)),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({
