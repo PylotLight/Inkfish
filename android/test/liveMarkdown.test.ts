@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { EditorState } from '@codemirror/state'
-import { buildLiveMarkdownDecorations, headingCollapseKey, ImageWidget, TaskBoxWidget } from '../src/lib/liveMarkdown'
+import { EditorSelection, EditorState } from '@codemirror/state'
+import {
+  buildLiveMarkdownDecorations,
+  headingCollapseKey,
+  ImageWidget,
+  listEnterUpdate,
+  TaskBoxWidget
+} from '../src/lib/liveMarkdown'
 import type { LiveMarkdownOptions } from '../src/lib/liveMarkdown'
 
 const options: LiveMarkdownOptions = {
@@ -9,6 +15,14 @@ const options: LiveMarkdownOptions = {
   vaultRoot: 'file:///vault/',
   title: 'A note',
   hideCompletedTasks: false
+}
+
+function pressEnter(doc: string, cursor = doc.length): { doc: string | null; head: number } {
+  const state = EditorState.create({ doc, selection: EditorSelection.cursor(cursor) })
+  const update = listEnterUpdate(state)
+  if (!update) return { doc: null, head: -1 }
+  const next = state.update(update).state
+  return { doc: next.doc.toString(), head: next.selection.main.head }
 }
 
 function widgets(doc: string, activeLine = -1, extra: Partial<LiveMarkdownOptions> = {}) {
@@ -25,6 +39,24 @@ function widgets(doc: string, activeLine = -1, extra: Partial<LiveMarkdownOption
 }
 
 describe('Android live Markdown source and task preview', () => {
+  test('Enter on a bulleted task creates a new unchecked checkbox item', () => {
+    const doc = '- [ ] buy milk'
+    expect(pressEnter(doc)).toEqual({ doc: '- [ ] buy milk\n- [ ] ', head: '- [ ] buy milk\n- [ ] '.length })
+  })
+
+  test('Enter on a checked task creates an unchecked sibling', () => {
+    expect(pressEnter('  * [x] done')).toEqual({ doc: '  * [x] done\n  * [ ] ', head: '  * [x] done\n  * [ ] '.length })
+  })
+
+  test('markerless tasks continue without a bullet and preserve indentation', () => {
+    expect(pressEnter('  [ ] todo')).toEqual({ doc: '  [ ] todo\n  [ ] ', head: '  [ ] todo\n  [ ] '.length })
+  })
+
+  test('Enter on ordinary text or in the middle of a task is left to CodeMirror', () => {
+    expect(pressEnter('plain text').doc).toBeNull()
+    expect(pressEnter('- [ ] task', 7).doc).toBeNull()
+  })
+
   test('bare [] and - [] become accessible task widgets without inserting a source space', () => {
     const source = '[] bare\n- [] bulleted\n[x] done'
     const state = EditorState.create({ doc: source })

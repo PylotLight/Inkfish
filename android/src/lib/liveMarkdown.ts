@@ -1,7 +1,7 @@
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorState, type Extension, type TransactionSpec } from '@codemirror/state'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } from '@codemirror/view'
+import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type KeyBinding } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { keymap } from '@codemirror/view'
 import { findImages } from '../../../src/shared/images'
@@ -523,6 +523,45 @@ function documentWidgetBullet(): WidgetType {
   return new BulletWidget()
 }
 
+/** Continue a list item on Enter, reopening tasks as unchecked. */
+export function listEnterUpdate(state: EditorState): TransactionSpec | null {
+  const sel = state.selection.main
+  if (!sel.empty) return null
+  const line = state.doc.lineAt(sel.head)
+  if (sel.head !== line.to) return null
+  const bullet = /^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line.text)
+  const task = bullet ? null : /^(\s*)\[[ xX]?\](?=\s|$)(.*)$/.exec(line.text)
+  if (!bullet && !task) return null
+  const indent = (bullet ?? task)![1] ?? ''
+  const rest = bullet ? (bullet[4] ?? '') : (task![2] ?? '')
+  if (!rest.trim()) {
+    return { changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } }
+  }
+  let continuation: string
+  if (bullet) {
+    const marker = bullet[2] ?? '-'
+    const nextMarker = /^\d/.test(marker) ? `${Number.parseInt(marker, 10) + 1}.` : marker
+    const hasTask = /^\[[ xX]\]\s*/.test(rest)
+    continuation = `${indent}${nextMarker} ${hasTask ? '[ ] ' : ''}`
+  } else {
+    continuation = `${indent}[ ] `
+  }
+  return {
+    changes: { from: sel.head, insert: `\n${continuation}` },
+    selection: { anchor: sel.head + 1 + continuation.length }
+  }
+}
+
+const listEnterKey: KeyBinding = {
+  key: 'Enter',
+  run: (view) => {
+    const update = listEnterUpdate(view.state)
+    if (!update) return false
+    view.dispatch(update)
+    return true
+  }
+}
+
 export function liveMarkdownExtension(
   options: () => LiveMarkdownOptions,
   toggle: ToggleTask,
@@ -554,7 +593,7 @@ export function liveMarkdownExtension(
   return [
     markdown(),
     history(),
-    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([listEnterKey, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({
