@@ -7,10 +7,12 @@ import {
   Pressable,
   Text,
   TextInput,
+  ToastAndroid,
   View
 } from 'react-native'
-import { ChevronLeft, ImagePlus } from 'lucide-react-native'
+import { ChevronLeft } from 'lucide-react-native'
 import * as Clipboard from 'expo-clipboard'
+import * as LegacyFileSystem from 'expo-file-system/legacy'
 import { useTheme } from '../theme'
 import { useStore } from '../lib/store'
 import type { NoteDoc } from '../lib/format'
@@ -18,7 +20,8 @@ import MarkdownEditor, { type MarkdownEditorHandle } from '../components/Markdow
 import { editorPropsEqual, MARKDOWN_EDITOR_DOM_PROPS } from '../lib/editorHostProps'
 import { Icon } from '../components/Icon'
 import { folderOf } from '../lib/when'
-import { followMoves, invalidateAttachments, listAttachments, saveAssetBase64, vaultRootUri } from '../lib/vault'
+import { followMoves, listAttachments, vaultRootUri } from '../lib/vault'
+import * as VaultFileSystem from '../lib/vault/filesystem'
 import { parseMarkdown } from '../lib/markdown'
 
 const StableMarkdownEditor = React.memo(MarkdownEditor, editorPropsEqual)
@@ -32,6 +35,30 @@ function bodyWithoutTitleHeading(title: string, body: string): string {
 }
 
 const AUTOSAVE_MS = 700
+
+async function imageBase64(uri: string): Promise<string> {
+  if (/^data:image\/[^;]+;base64,/i.test(uri)) return uri.replace(/^data:image\/[^;]+;base64,/i, '')
+  if (/^https?:\/\//i.test(uri)) {
+    const cache = LegacyFileSystem.cacheDirectory
+    if (!cache) throw new Error('Image cache is unavailable.')
+    const destination = `${cache}inkfish-image-${Date.now()}-${Math.random().toString(36).slice(2)}.img`
+    try {
+      await LegacyFileSystem.downloadAsync(uri, destination)
+      return await LegacyFileSystem.readAsStringAsync(destination, {
+        encoding: LegacyFileSystem.EncodingType.Base64
+      })
+    } finally {
+      await LegacyFileSystem.deleteAsync(destination, { idempotent: true }).catch(() => undefined)
+    }
+  }
+  return VaultFileSystem.readAsStringAsync(uri, { encoding: VaultFileSystem.EncodingType.Base64 })
+}
+
+async function copyImageToClipboard(uri: string): Promise<void> {
+  const base64 = await imageBase64(uri)
+  await Clipboard.setImageAsync(base64.replace(/^data:image\/[^;]+;base64,/i, ''))
+  ToastAndroid.show('Image copied', ToastAndroid.SHORT)
+}
 
 type RegisterClose = (close: (() => void) | null) => void
 
@@ -210,22 +237,11 @@ export function EditorScreen({
     return () => onRegisterClose?.(null)
   }, [closeEditor, onRegisterClose])
 
-  async function pasteImage(): Promise<void> {
-    try {
-      const image = await Clipboard.getImageAsync({ format: 'png' })
-      if (!image?.data) {
-        Alert.alert('No image in clipboard', 'Copy an image, then tap Paste image again.')
-        return
-      }
-      const base64 = image.data.replace(/^data:image\/png;base64,/i, '')
-      const rel = await saveAssetBase64(base64, '.png')
-      invalidateAttachments()
-      setAttachments((files) => (files.includes(rel) ? files : [...files, rel]))
-      editorRef.current?.insertImageReference(rel)
-    } catch (e) {
-      Alert.alert("Couldn't paste image", e instanceof Error ? e.message : String(e))
-    }
-  }
+  const handleCopyImage = useCallback((uri: string) => {
+    void copyImageToClipboard(uri).catch((e: unknown) =>
+      Alert.alert("Couldn't copy image", e instanceof Error ? e.message : String(e))
+    )
+  }, [])
 
   function onTitleChange(next: string): void {
     setTitle(next)
@@ -290,15 +306,6 @@ export function EditorScreen({
           {doc ? folderOf(doc.path) : ''}
           {status ? `  ·  ${status}` : ''}
         </Text>
-        {doc ? (
-          <Pressable
-            onPress={() => void pasteImage()}
-            style={ui.iconBtn}
-            accessibilityLabel="Paste image from clipboard"
-          >
-            <Icon as={ImagePlus} size={20} />
-          </Pressable>
-        ) : null}
       </View>
 
       {!doc ? (
@@ -350,6 +357,7 @@ export function EditorScreen({
             selectionColor={c.accent}
             fontSize={fontSize}
             lineHeight={lineHeight}
+            onCopyImage={handleCopyImage}
             onChange={handleEditorChange}
             onFlush={handleEditorFlush}
           />

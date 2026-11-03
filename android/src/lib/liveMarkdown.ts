@@ -6,6 +6,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { keymap } from '@codemirror/view'
 import { findImages } from '../../../src/shared/images'
 import { resolveImage, vaultFileUri, isAudio, type ImageToken } from './mdimages'
+import { IMAGE_LONG_PRESS_MS, imageGestureActions, resizeImageEditAt } from './imageGestures'
 
 const TASK_RE = /^([ \t]*)(?:([-*+])([ \t]+))?\[([ xX]?)\](?=\s|$)/
 const FENCE_RE = /^\s*(`{3,}|~{3,})/
@@ -30,6 +31,7 @@ export interface LiveMarkdownOptions {
   title: string
   hideCompletedTasks: boolean
   collapsedHeadings?: readonly string[]
+  onCopyImage?: (uri: string) => void
 }
 type ToggleTask = (lineFrom: number) => void
 type ToggleHeading = (key: string) => void
@@ -137,7 +139,9 @@ export class ImageWidget extends WidgetType {
   constructor(
     readonly token: ImageToken,
     readonly uri: string | null,
-    readonly block: boolean
+    readonly block: boolean,
+    readonly from: number,
+    readonly onCopyImage?: (uri: string) => void
   ) {
     super()
   }
@@ -148,11 +152,13 @@ export class ImageWidget extends WidgetType {
       other.token.alt === this.token.alt &&
       other.uri === this.uri &&
       other.block === this.block &&
+      other.from === this.from &&
+      other.onCopyImage === this.onCopyImage &&
       other.token.width === this.token.width &&
       other.token.height === this.token.height
     )
   }
-  override toDOM(): HTMLElement {
+  override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span')
     wrap.className = this.block ? 'cm-md-image cm-md-image-block' : 'cm-md-image'
     const label = this.token.alt || this.token.src.split('/').pop() || 'image'
@@ -177,8 +183,49 @@ export class ImageWidget extends WidgetType {
     image.style.maxWidth = '100%'
     image.style.maxHeight = '280px'
     image.style.objectFit = 'contain'
+    image.style.userSelect = 'none'
+    image.style.setProperty('-webkit-user-select', 'none')
+    image.style.setProperty('-webkit-touch-callout', 'none')
     if (this.token.width) image.style.width = `${this.token.width}px`
     if (this.token.height) image.style.height = `${this.token.height}px`
+    const openMenu = (x: number, y: number): void => {
+      openImageGestureMenu(view, this, x, y)
+    }
+    let pressTimer: number | null = null
+    let pressAt: { x: number; y: number } | null = null
+    const cancelLongPress = (): void => {
+      if (pressTimer !== null) window.clearTimeout(pressTimer)
+      pressTimer = null
+      pressAt = null
+    }
+    image.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      cancelLongPress()
+      pressAt = { x: event.clientX, y: event.clientY }
+      pressTimer = window.setTimeout(() => {
+        pressTimer = null
+        pressAt = null
+        openMenu(event.clientX, event.clientY)
+      }, IMAGE_LONG_PRESS_MS)
+    })
+    image.addEventListener('pointermove', (event) => {
+      if (pressAt && Math.hypot(event.clientX - pressAt.x, event.clientY - pressAt.y) > 12) cancelLongPress()
+    })
+    image.addEventListener('pointerup', cancelLongPress)
+    image.addEventListener('pointercancel', cancelLongPress)
+    image.addEventListener('contextmenu', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      cancelLongPress()
+      openMenu(event.clientX, event.clientY)
+    })
+    image.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    })
+    image.addEventListener('dragstart', (event) => event.preventDefault())
     image.addEventListener('error', () => {
       wrap.replaceChildren(document.createTextNode(`Image · ${label}`))
       wrap.setAttribute('role', 'img')
@@ -188,8 +235,90 @@ export class ImageWidget extends WidgetType {
     return wrap
   }
   override ignoreEvent(): boolean {
-    return false
+    return true
   }
+}
+
+function openImageGestureMenu(view: EditorView, image: ImageWidget, x: number, y: number): void {
+  const actions = imageGestureActions(image.token.width).filter(
+    (action) => action.type !== 'copy' || (image.uri !== null && image.onCopyImage !== undefined)
+  )
+  if (actions.length === 0) return
+
+  const scrim = document.createElement('div')
+  scrim.setAttribute('aria-hidden', 'true')
+  Object.assign(scrim.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '2147483646',
+    background: 'transparent'
+  })
+  const menu = document.createElement('div')
+  menu.setAttribute('role', 'menu')
+  menu.setAttribute('aria-label', `Image actions: ${image.token.alt || 'image'}`)
+  const host = view.dom.parentElement ?? view.dom
+  const colors = getComputedStyle(host)
+  Object.assign(menu.style, {
+    position: 'fixed',
+    zIndex: '2147483647',
+    minWidth: '190px',
+    maxWidth: 'calc(100vw - 24px)',
+    padding: '6px',
+    border: `1px solid ${colors.getPropertyValue('--md-border').trim() || '#888'}`,
+    borderRadius: '12px',
+    background: colors.getPropertyValue('--md-bg').trim() || '#fff',
+    color: colors.getPropertyValue('--md-text').trim() || '#111',
+    boxShadow: '0 6px 24px rgba(0,0,0,.24)',
+    font: '14px system-ui, sans-serif'
+  })
+  menu.style.left = `${x}px`
+  menu.style.top = `${y}px`
+
+  const close = (): void => {
+    scrim.remove()
+    menu.remove()
+    window.removeEventListener('keydown', onKey, true)
+  }
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') close()
+  }
+  for (const action of actions) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.setAttribute('role', 'menuitem')
+    button.textContent = action.label
+    Object.assign(button.style, {
+      display: 'block',
+      width: '100%',
+      padding: '10px 12px',
+      border: '0',
+      borderRadius: '8px',
+      background: 'transparent',
+      color: 'inherit',
+      textAlign: 'left',
+      font: 'inherit'
+    })
+    button.addEventListener('click', () => {
+      close()
+      if (action.type === 'copy') {
+        if (image.uri) image.onCopyImage?.(image.uri)
+        return
+      }
+      const edit = resizeImageEditAt(view.state.doc.toString(), image.from, action.width)
+      if (edit) view.dispatch({ changes: edit })
+    })
+    menu.appendChild(button)
+  }
+  scrim.addEventListener('click', close)
+  scrim.addEventListener('contextmenu', (event) => {
+    event.preventDefault()
+    close()
+  })
+  document.body.append(scrim, menu)
+  const bounds = menu.getBoundingClientRect()
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8))}px`
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8))}px`
+  window.addEventListener('keydown', onKey, true)
 }
 
 class RuleWidget extends WidgetType {
@@ -429,7 +558,10 @@ export function buildLiveMarkdownDecorations(
           ranges.push({
             from: image.from,
             to: image.to,
-            value: Decoration.replace({ widget: new ImageWidget(image.token, uri, false), inclusive: false })
+            value: Decoration.replace({
+              widget: new ImageWidget(image.token, uri, false, image.from, options.onCopyImage),
+              inclusive: false
+            })
           })
         }
       }
@@ -498,7 +630,10 @@ export function buildLiveMarkdownDecorations(
         ranges.push({
           from: image.from,
           to: image.to,
-          value: Decoration.replace({ widget: new ImageWidget(image.token, uri, block), inclusive: false })
+          value: Decoration.replace({
+            widget: new ImageWidget(image.token, uri, block, image.from, options.onCopyImage),
+            inclusive: false
+          })
         })
       }
     }

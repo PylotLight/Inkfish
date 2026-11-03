@@ -36,6 +36,7 @@ interface Props {
   selectionColor: string
   fontSize: number
   lineHeight: number
+  onCopyImage: (uri: string) => void
   onChange: (markdown: string) => void
   onFlush: (markdown: string) => void
 }
@@ -76,7 +77,8 @@ function MarkdownEditor(props: Props): React.JSX.Element {
     vaultRoot: props.vaultRoot,
     title: props.title,
     hideCompletedTasks: props.hideCompletedTasks,
-    collapsedHeadings
+    collapsedHeadings,
+    onCopyImage: props.onCopyImage
   })
   options.current = {
     notePath: props.notePath,
@@ -84,7 +86,8 @@ function MarkdownEditor(props: Props): React.JSX.Element {
     vaultRoot: props.vaultRoot,
     title: props.title,
     hideCompletedTasks: props.hideCompletedTasks,
-    collapsedHeadings
+    collapsedHeadings,
+    onCopyImage: props.onCopyImage
   }
   const toggleTask = useRef<(lineFrom: number) => void>(() => undefined)
   toggleTask.current = (lineFrom) => {
@@ -142,7 +145,15 @@ function MarkdownEditor(props: Props): React.JSX.Element {
         )
       )
     })
-  }, [props.notePath, props.files, props.vaultRoot, props.title, props.hideCompletedTasks, collapsedHeadings])
+  }, [
+    props.notePath,
+    props.files,
+    props.vaultRoot,
+    props.title,
+    props.hideCompletedTasks,
+    props.onCopyImage,
+    collapsedHeadings
+  ])
 
   useEffect(() => {
     if (props.markdown === previousExternalMarkdown.current) return
