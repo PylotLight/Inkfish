@@ -183,5 +183,35 @@ export function mergeText(
   theirs: string
 ): { clean: boolean; text: string; conflicts: number } {
   const r = merge3(base.split('\n'), ours.split('\n'), theirs.split('\n'))
-  return { clean: r.clean, text: r.lines.join('\n'), conflicts: r.conflicts }
+  if (r.clean) return { clean: true, text: r.lines.join('\n'), conflicts: 0 }
+
+  // A line can contain independent edits (for example, two different words in
+  // a sentence). Retry only small conflict cases at whitespace-token granularity
+  // so unrelated substitutions on that line can still merge without risking a
+  // large quadratic diff. Insertions/deletions stay conservative because an
+  // insertion beside a replacement can depend on the replaced text. Whitespace
+  // and line endings are tokens too, preserving formatting byte-for-byte.
+  const tokens = (text: string): string[] => text.match(/\r\n|\n|\r|[ \t]+|[^ \t\r\n]+/g) ?? []
+  const b = tokens(base)
+  const o = tokens(ours)
+  const t = tokens(theirs)
+  const maxCells = 1_000_000
+  if (
+    b.length > 2048 ||
+    o.length > 2048 ||
+    t.length > 2048 ||
+    (b.length + 1) * (o.length + 1) > maxCells ||
+    (b.length + 1) * (t.length + 1) > maxCells
+  )
+    return { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
+
+  const onlySubstitutions = (edits: Edit[]): boolean =>
+    edits.every((edit) => edit.start < edit.end && edit.lines.length === edit.end - edit.start)
+  if (!onlySubstitutions(editsFrom(b, o)) || !onlySubstitutions(editsFrom(b, t)))
+    return { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
+
+  const inline = merge3(b, o, t)
+  return inline.clean
+    ? { clean: true, text: inline.lines.join(''), conflicts: 0 }
+    : { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
 }

@@ -95,6 +95,8 @@ export interface SyncState {
   saveBase(base: Base): Promise<void>
   /** Cached text of a base version (for three-way merges of notes). */
   getText(hash: string): Promise<string | null>
+  /** Optional cheap existence check, used to repair base text lost by older/interrupted syncs. */
+  hasText?(hash: string): Promise<boolean>
   putText(hash: string, text: string): Promise<void>
   /** Drop cached texts not in `keep`. */
   pruneTexts(keep: Set<string>): Promise<void>
@@ -539,7 +541,18 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
   // Checkpoint: what landed is agreed now, so an interrupted run doesn't redo it.
   if (written.size) {
     const cp: Base = { ...base }
-    for (const p of written) cp[p] = remoteMan[p]!.hash
+    for (const p of written) {
+      const h = remoteMan[p]!.hash
+      if (isText(p)) {
+        try {
+          const data = bytesOf.get(p) ?? (await fs.read(p))
+          await state.putText(h, utf8Decode(data))
+          cp[p] = h
+        } catch {
+          // Do not advance a note's base unless its merge ancestor is durable.
+        }
+      } else cp[p] = h
+    }
     await state.saveBase(cp).catch(() => undefined)
   }
   cancelled()
@@ -779,19 +792,31 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
   const toCache: Array<[string, string]> = []
   for (const [p, h] of Object.entries(next)) {
     if (!isText(p)) continue
-    keep.add(h)
-    if (base[p] === h) continue
-    toCache.push([p, h])
+    let cached = base[p] === h
+    if (cached && state.hasText) cached = await state.hasText(h).catch(() => false)
+    if (cached) keep.add(h)
+    else toCache.push([p, h])
   }
+  const cacheFailed = new Set<string>()
   await mapLimit(toCache, READ_CONCURRENCY, async ([p, h]) => {
     try {
       const data = bytesOf.get(p) ?? (await fs.read(p))
+      if (sha256(data) !== h) throw new Error(`base text changed while caching: ${p}`)
       await state.putText(h, utf8Decode(data))
+      keep.add(h)
     } catch {
-      // unreadable now; the merge will fall back to a conflict copy
+      cacheFailed.add(p)
     }
   })
-  await state.saveBase(next)
+  const committed: Base = { ...next }
+  for (const p of cacheFailed) {
+    const previous = base[p]
+    if (previous && previous !== next[p]) {
+      committed[p] = previous
+      keep.add(previous)
+    } else delete committed[p]
+  }
+  await state.saveBase(committed)
   await state.pruneTexts(keep)
   return report
 }

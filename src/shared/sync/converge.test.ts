@@ -117,6 +117,59 @@ describe('sync converges (Mac case-insensitive, phone case-sensitive)', () => {
     await expectConverged(phone, mac)
   })
 
+  test('independent same-line edits merge into the same note without a conflict copy', async () => {
+    const path = 'Work/a.md'
+    const original = 'Send it to Alice before Friday.\n'
+    const mac = new CiFs({ [path]: original })
+    const phone = new MemFs()
+    const state = new MemState()
+    const { remote } = wired(mac)
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+
+    await mac.write(path, utf8Encode('Send it to Alex before Friday.\n'))
+    await phone.write(path, utf8Encode('Send it to Alice before Monday.\n'))
+    const report = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+
+    expect(report.conflicts).toEqual([])
+    expect(report.merged).toBe(1)
+    expect(mac.text(path)).toBe('Send it to Alex before Monday.\n')
+    expect(phone.text(path)).toBe(mac.text(path))
+    expect(mac.paths().filter((p) => p.includes('(conflict')).length).toBe(0)
+    await expectConverged(phone, mac)
+  })
+
+  test('a missing base-text cache is rebuilt before later edits need it', async () => {
+    const path = 'Work/a.md'
+    const original = 'Send it to Alice before Friday.\n'
+    const mac = new CiFs({ [path]: original })
+    const phone = new MemFs()
+    const state = new MemState()
+    const { remote } = wired(mac)
+    const saveBase = state.saveBase.bind(state)
+    let checkedCheckpoint = false
+    state.saveBase = async (base) => {
+      if (!checkedCheckpoint && base[path]) {
+        checkedCheckpoint = true
+        expect(state.texts.get(base[path]!)).toBe(original)
+      }
+      await saveBase(base)
+    }
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    expect(checkedCheckpoint).toBe(true)
+
+    const baseHash = state.base[path]!
+    state.texts.clear()
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    expect(state.texts.get(baseHash)).toBe(original)
+
+    await mac.write(path, utf8Encode('Send it to Alex before Friday.\n'))
+    await phone.write(path, utf8Encode('Send it to Alice before Monday.\n'))
+    const report = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    expect(report.conflicts).toEqual([])
+    expect(mac.text(path)).toBe('Send it to Alex before Monday.\n')
+    await expectConverged(phone, mac)
+  })
+
   test('a phone already stuck in the loop (old base, lowercase copies) recovers without deleting', async () => {
     const mac = new CiFs({ 'Work/a.md': 'a\n', 'Work/b.md': 'b\n' })
     const phone = new MemFs({ 'work/a.md': 'a\n', 'work/b.md': 'b\n' })
@@ -271,12 +324,12 @@ describe('conflict copies', () => {
     await phone.write(path, utf8Encode('Phone edit one\n'))
     const first = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
     expect(first.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801).md'])
-    await mac.write(path, utf8Encode('Mac edit two\n'))
+    await mac.write(path, utf8Encode('Mac edit three\n'))
     await phone.write(path, utf8Encode('Phone edit two\n'))
     const second = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
     expect(second.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801 #2).md'])
     expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801).md')).toBe('Mac edit one\n')
-    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801 #2).md')).toBe('Mac edit two\n')
+    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801 #2).md')).toBe('Mac edit three\n')
     expect(mac.text(path)).toBe('Phone edit two\n')
     await expectConverged(phone, mac)
   })

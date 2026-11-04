@@ -69,6 +69,16 @@ describe('planSave: sync changed the note while the editor had it open', () => {
     expect(p.file).toBe('# T\nline 1 (mac)\nline 2\nline 3\nphone line\n')
   })
 
+  test('independent edits to different words on one line merge in place', () => {
+    const base = '# T\nSend it to Alice before Friday.\n'
+    const disk = '# T\nSend it to Alex before Friday.\n'
+    const next = '# T\nSend it to Alice before Monday.\n'
+    const p = planSave({ path: 'work/T.md', disk, base, next, at })
+    expect(p.merged).toBe(true)
+    expect(p.conflict).toBeUndefined()
+    expect(p.file).toBe('# T\nSend it to Alex before Monday.\n')
+  })
+
   test('overlapping edits keep the phone text and save the disk copy beside it', () => {
     const base = '# T\nsame line\n'
     const disk = '---\nid: a\n---\n# T\nmac wording\n'

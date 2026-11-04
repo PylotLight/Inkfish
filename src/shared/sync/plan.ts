@@ -121,11 +121,14 @@ export function resolveMerge(
   preferred: 'local' | 'remote' = 'local'
 ): Write[] {
   if (op.kind === 'daily') return [{ path: op.path, text: mergeDaily(text.local, text.remote) }]
-  if (op.kind === 'note') {
+  // Without the cached common ancestor, a three-way merge cannot distinguish
+  // independent edits from replacements of the whole note. Preserve both
+  // versions rather than pretending an unknown base was an empty document.
+  if (op.kind === 'note' && text.base !== undefined) {
     const r =
       preferred === 'local'
-        ? mergeNote(text.base ?? '', text.local, text.remote)
-        : mergeNote(text.base ?? '', text.remote, text.local)
+        ? mergeNote(text.base, text.local, text.remote)
+        : mergeNote(text.base, text.remote, text.local)
     if (r.clean) return [{ path: op.path, text: r.text }]
   }
   const loser = preferred === 'local' ? 'remote' : 'local'

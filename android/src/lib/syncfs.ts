@@ -248,6 +248,14 @@ export function stateFor(macId: string): SyncState {
         return null
       }
     },
+    async hasText(hash) {
+      try {
+        const info = await FileSystem.getInfoAsync(`${texts}${hash}`)
+        return info.exists && !info.isDirectory
+      } catch {
+        return false
+      }
+    },
     async putText(hash, text) {
       await mkdirp(texts)
       await writeAtomically(`${texts}${hash}`, text, 'utf8')

@@ -22,6 +22,14 @@ describe('diff3', () => {
     const r = mergeText('x\ny\n', 'X\ny\n', 'x\nY\n')
     expect(r).toEqual({ clean: true, text: 'X\nY\n', conflicts: 0 })
   })
+  test('independent word edits on the same line merge', () => {
+    const r = mergeText(
+      'Send it to Alice before Friday.\n',
+      'Send it to Alex before Friday.\n',
+      'Send it to Alice before Monday.\n'
+    )
+    expect(r).toEqual({ clean: true, text: 'Send it to Alex before Monday.\n', conflicts: 0 })
+  })
   test('same edit both sides', () => {
     expect(mergeText(base, 'a\nB\nc\nd\ne', 'a\nB\nc\nd\ne').text).toBe('a\nB\nc\nd\ne')
   })
@@ -132,6 +140,18 @@ describe('plan', () => {
     expect(w).toEqual([
       { path: 'a.md', from: 'remote' },
       { path: 'a (conflict · Mac · 2026-10-08 0102).md', from: 'local' }
+    ])
+  })
+  test('missing note base preserves both versions instead of assuming an empty base', () => {
+    const w = resolveMerge(
+      { op: 'merge', path: 'a.md', kind: 'note', local: 'phone', remote: 'mac', base: 'missing' },
+      { local: 'Call Alice on Tuesday.\n', remote: 'Email Alice on Tuesday.\n' },
+      'Mac',
+      new Date(2026, 9, 8, 1, 2)
+    )
+    expect(w).toEqual([
+      { path: 'a.md', from: 'local' },
+      { path: 'a (conflict · Mac · 2026-10-08 0102).md', from: 'remote' }
     ])
   })
 })

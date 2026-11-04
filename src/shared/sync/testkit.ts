@@ -189,6 +189,9 @@ export class MemState implements SyncState {
   async getText(h: string): Promise<string | null> {
     return this.texts.get(h) ?? null
   }
+  async hasText(h: string): Promise<boolean> {
+    return this.texts.has(h)
+  }
   async putText(h: string, t: string): Promise<void> {
     this.texts.set(h, t)
   }
