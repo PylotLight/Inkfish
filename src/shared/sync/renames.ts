@@ -13,7 +13,7 @@ import { mergeKind, type Base, type Manifest, type Op } from './plan'
  * Paired ops become a move plus a pull/push/merge, so the phone keeps one
  * note (open editor, trash, links) instead of trashing X and adding Y. When
  * the side that kept X also edited it, the edit is three-way merged into Y
- * (or saved as a conflict copy), never dropped and never duplicated.
+ * (with inline markers for an overlap), never dropped or duplicated.
  *
  * The Mac server only sees ordinary `moves` + `writes` it already supports,
  * so this works against any Mac build, and the Mac never runs the planner.

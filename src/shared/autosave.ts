@@ -8,16 +8,18 @@
  *  - saves for one note never overlap — a save that lands while another is in flight waits and
  *    then writes the NEWEST text, so an older write can never land after a newer one;
  *  - text already known to be on disk is skipped (no churn on no-op edits);
+ *  - each queued edit carries the text it was based on, so a save can merge with a newer disk copy;
  *  - a failed save keeps its text pending (unless newer text arrived) so the next flush retries.
  */
+import { conflictText, mergeText } from './sync/diff3'
 
 export const AUTOSAVE_DEBOUNCE_MS = 400
 
 export type Timer = unknown
 
 export interface AutosaveOptions<R> {
-  /** Write `markdown` for note `id`. Resolves to what the backend returned (null = not saved). */
-  save: (id: string, markdown: string) => Promise<R | null>
+  /** Write `markdown` against the editor's `base`; resolves to backend data (null = not saved). */
+  save: (id: string, markdown: string, base?: string) => Promise<R | null>
   /** A save landed. `id` is the id the text was queued under. */
   onSaved?: (id: string, markdown: string, result: R) => void
   onError?: (id: string, error: unknown) => void
@@ -48,7 +50,7 @@ export interface Autosave {
   /** Anything queued or in flight? */
   busy: () => boolean
   /** Snapshot of every pending note — for a synchronous last-chance save (beforeunload). */
-  drain: () => Array<{ id: string; markdown: string }>
+  drain: () => Array<{ id: string; markdown: string; base?: string }>
 }
 
 export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
@@ -56,8 +58,10 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
   const clearTimer = opts.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>))
   const pendingText = new Map<string, string>()
+  const pendingBase = new Map<string, string | undefined>()
   const timers = new Map<string, Timer>()
   const inflight = new Map<string, Promise<void>>()
+  const inflightText = new Map<string, string>()
   const onDisk = new Map<string, string>()
 
   const stopTimer = (id: string): void => {
@@ -69,21 +73,32 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
   const runOne = async (id: string): Promise<void> => {
     const text = pendingText.get(id)
     if (text === undefined) return
+    const base = pendingBase.has(id) ? pendingBase.get(id) : onDisk.get(id)
     pendingText.delete(id)
+    pendingBase.delete(id)
     if (onDisk.get(id) === text) return
+    inflightText.set(id, text)
     try {
-      const result = await opts.save(id, text)
+      const result = await opts.save(id, text, base)
       if (result === null) {
         // Backend refused (note gone / not a file) — keep the text so it's never silently lost.
-        if (!pendingText.has(id)) pendingText.set(id, text)
+        if (!pendingText.has(id)) {
+          pendingText.set(id, text)
+          pendingBase.set(id, base)
+        }
         opts.onError?.(id, new Error('note could not be saved'))
         return
       }
       onDisk.set(id, text)
       opts.onSaved?.(id, text, result)
     } catch (err) {
-      if (!pendingText.has(id)) pendingText.set(id, text)
+      if (!pendingText.has(id)) {
+        pendingText.set(id, text)
+        pendingBase.set(id, base)
+      }
       opts.onError?.(id, err)
+    } finally {
+      if (inflightText.get(id) === text) inflightText.delete(id)
     }
   }
 
@@ -103,6 +118,7 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
   }
 
   const schedule = (id: string, markdown: string): void => {
+    if (!pendingText.has(id) && !pendingBase.has(id)) pendingBase.set(id, inflightText.get(id) ?? onDisk.get(id))
     pendingText.set(id, markdown)
     stopTimer(id)
     timers.set(
@@ -116,6 +132,7 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
   const cancel = (id: string): void => {
     stopTimer(id)
     pendingText.delete(id)
+    pendingBase.delete(id)
   }
 
   return {
@@ -132,18 +149,28 @@ export function createAutosave<R>(opts: AutosaveOptions<R>): Autosave {
     rename(from, to) {
       if (from === to) return
       const text = pendingText.get(from)
+      const hasBase = pendingBase.has(from)
+      const base = pendingBase.get(from)
       cancel(from)
       const disk = onDisk.get(from)
       if (disk !== undefined) onDisk.set(to, disk)
       onDisk.delete(from)
-      if (text !== undefined) schedule(to, text)
+      if (text !== undefined) {
+        if (hasBase) pendingBase.set(to, base)
+        schedule(to, text)
+      }
     },
     pending: (id) => pendingText.get(id),
     busy: () => pendingText.size > 0 || inflight.size > 0,
     drain() {
-      const out = [...pendingText.entries()].map(([id, markdown]) => ({ id, markdown }))
+      const out = [...pendingText.entries()].map(([id, markdown]) => ({
+        id,
+        markdown,
+        base: pendingBase.has(id) ? pendingBase.get(id) : onDisk.get(id)
+      }))
       for (const id of [...timers.keys()]) stopTimer(id)
       pendingText.clear()
+      pendingBase.clear()
       return out
     }
   }
@@ -244,4 +271,37 @@ export function keepFrontmatter(existingFile: string, body: string): string {
   const end = existingFile.indexOf('\n---', 3)
   if (end === -1) return body
   return `${existingFile.slice(0, end + 4)}\n${body}`
+}
+
+function editorBody(file: string): string {
+  if (!file.startsWith('---')) return file
+  const end = file.indexOf('\n---', 3)
+  if (end === -1) return file
+  return file.slice(end + 4).replace(/^\n/, '')
+}
+
+export interface EditorSavePlan {
+  file: string
+  body: string
+  merged: boolean
+  conflicted: boolean
+}
+
+/** Merge a desktop editor save against the note body it was based on. */
+export function planEditorSave(existingFile: string, baseBody: string | undefined, nextBody: string): EditorSavePlan {
+  const currentBody = editorBody(existingFile)
+  if (currentBody === nextBody) return { file: existingFile, body: currentBody, merged: false, conflicted: false }
+  if (baseBody === undefined) {
+    const body = conflictText(nextBody, currentBody)
+    return { file: keepFrontmatter(existingFile, body), body, merged: true, conflicted: true }
+  }
+  if (currentBody === baseBody)
+    return { file: keepFrontmatter(existingFile, nextBody), body: nextBody, merged: false, conflicted: false }
+  const merged = mergeText(baseBody, nextBody, currentBody)
+  return {
+    file: keepFrontmatter(existingFile, merged.text),
+    body: merged.text,
+    merged: true,
+    conflicted: !merged.clean
+  }
 }

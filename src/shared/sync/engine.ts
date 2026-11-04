@@ -618,8 +618,8 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
         const ours = await fs.read(o.path)
         const localTime = local[o.localFrom ?? o.path]?.mtime
         const remoteTime = remoteMan[o.remoteFrom ?? o.path]?.mtime
-        // Filesystem mtimes are the best shared edit-time hint available, not proof of causality.
-        // On ties or unavailable timestamps keep the stable historical local-wins behavior.
+        // Filesystem mtimes are only a best-effort hint when a conflict still needs a primary
+        // copy (for example, arbitrary binary data); text conflicts keep both sides inline.
         const preferred =
           typeof localTime === 'number' &&
           Number.isFinite(localTime) &&
@@ -640,7 +640,7 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
               }
         const conflictAt = opts.now ?? new Date()
         let result = resolveMerge(o, text, opts.remoteName, conflictAt, preferred)
-        if (result.length > 1) {
+        if (o.kind === 'binary' && result.length > 1) {
           const losingHash = result[1]!.from === 'local' ? o.local : o.remote
           // Never mint a conflict copy the vault already holds (same bytes).
           if (copyExists(o.path, losingHash, local, remoteMan)) result = [result[0]!]
@@ -673,6 +673,7 @@ async function runSyncInner(opts: Parameters<typeof runSync>[0], progress: Progr
           writes.push({ path: w.path, data })
         }
         if (result.length > 1) report.conflicts.push(result[1]!.path)
+        else if (result[0]!.conflict) report.conflicts.push(o.path)
         else report.merged++
         break
       }

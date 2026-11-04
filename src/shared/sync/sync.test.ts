@@ -33,10 +33,22 @@ describe('diff3', () => {
   test('same edit both sides', () => {
     expect(mergeText(base, 'a\nB\nc\nd\ne', 'a\nB\nc\nd\ne').text).toBe('a\nB\nc\nd\ne')
   })
-  test('overlapping edits conflict, keep ours', () => {
+  test('overlapping edits preserve both alternatives inline', () => {
     const r = mergeText(base, 'a\nX\nc\nd\ne', 'a\nY\nc\nd\ne')
     expect(r.clean).toBe(false)
-    expect(r.text).toBe('a\nX\nc\nd\ne')
+    expect(r.text).toBe('a\n<<<<<<< Inkfish alternative A\nX\n=======\nY\n>>>>>>> Inkfish alternative B\nc\nd\ne')
+  })
+  test('conflict markers are byte-identical when local and remote sides are reversed', () => {
+    const b = 'prefix\nctx1\nbase\nctx2\nend\nctx3\n'
+    const local = 'PREFIX\nctx1\nz local\nctx2\nend\nctx3\n'
+    const remote = 'prefix\nctx1\na remote\nctx2\nEND\nctx3\n'
+    const lr = mergeText(b, local, remote)
+    const rl = mergeText(b, remote, local)
+    expect(lr.clean).toBe(false)
+    expect(lr.text).toBe(rl.text)
+    expect(lr.text).toBe(
+      'PREFIX\nctx1\n<<<<<<< Inkfish alternative A\na remote\n=======\nz local\n>>>>>>> Inkfish alternative B\nctx2\nEND\nctx3\n'
+    )
   })
   test('both append at end keeps both', () => {
     const r = mergeText(base, `${base}\nours`, `${base}\ntheirs`)
@@ -61,6 +73,16 @@ describe('notes', () => {
     const r = mergeNote(base, ours, theirs)
     expect(r.clean).toBe(true)
     expect(r.text).toBe(`---\nid: n1\nstatus: archived\ntags:\n  - a\n  - b\n  - c\n---\n# T\n\nONE\nmid\nTWO\n`)
+  })
+  test('conflicting frontmatter scalars are visible inline and symmetric', () => {
+    const base = '---\nid: n1\nstatus: ready\n---\nbody\n'
+    const ours = '---\nid: n1\nstatus: open\n---\nbody\n'
+    const theirs = '---\nid: n1\nstatus: archived\n---\nbody\n'
+    const lr = mergeNote(base, ours, theirs)
+    const rl = mergeNote(base, theirs, ours)
+    expect(lr.clean).toBe(false)
+    expect(lr.text).toBe(rl.text)
+    expect(lr.text).toContain('<<<<<<< Inkfish alternative A\nstatus: archived\n=======\nstatus: open\n')
   })
   test('independent adjacent-line edits merge in a note', () => {
     expect(mergeNote('x\ny\n', 'X\ny\n', 'x\nY\n')).toEqual({ clean: true, text: 'X\nY\n' })
@@ -129,7 +151,7 @@ describe('plan', () => {
       { path: 'assets/x (conflict · Mac · 2026-10-08 0102).png', from: 'remote' }
     ])
   })
-  test('preferred newer side stays primary while the other edit is preserved', () => {
+  test('overlapping note edits stay in the original path as canonical conflict markers', () => {
     const w = resolveMerge(
       { op: 'merge', path: 'a.md', kind: 'note', local: 'phone', remote: 'mac', base: 'base' },
       { base: '# T\n\nbefore\n', local: '# T\n\nphone edit\n', remote: '# T\n\nMac edit\n' },
@@ -138,11 +160,14 @@ describe('plan', () => {
       'remote'
     )
     expect(w).toEqual([
-      { path: 'a.md', from: 'remote' },
-      { path: 'a (conflict · Mac · 2026-10-08 0102).md', from: 'local' }
+      {
+        path: 'a.md',
+        text: '# T\n\n<<<<<<< Inkfish alternative A\nMac edit\n=======\nphone edit\n>>>>>>> Inkfish alternative B\n',
+        conflict: true
+      }
     ])
   })
-  test('missing note base preserves both versions instead of assuming an empty base', () => {
+  test('missing note base preserves both versions inline instead of assuming an empty base', () => {
     const w = resolveMerge(
       { op: 'merge', path: 'a.md', kind: 'note', local: 'phone', remote: 'mac', base: 'missing' },
       { local: 'Call Alice on Tuesday.\n', remote: 'Email Alice on Tuesday.\n' },
@@ -150,8 +175,11 @@ describe('plan', () => {
       new Date(2026, 9, 8, 1, 2)
     )
     expect(w).toEqual([
-      { path: 'a.md', from: 'local' },
-      { path: 'a (conflict · Mac · 2026-10-08 0102).md', from: 'remote' }
+      {
+        path: 'a.md',
+        text: '<<<<<<< Inkfish alternative A\nCall Alice on Tuesday.\n=======\nEmail Alice on Tuesday.\n>>>>>>> Inkfish alternative B\n',
+        conflict: true
+      }
     ])
   })
 })

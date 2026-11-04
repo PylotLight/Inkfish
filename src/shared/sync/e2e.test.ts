@@ -170,14 +170,15 @@ describe('pair + sync over the wire', () => {
     expect(mac.text('work/p1.md')).toBe('captured on phone\n')
     expect(phone.files.has('assets/x.bin')).toBe(false)
 
-    // Same line edited on both: conflict copy, nothing lost.
+    // Same line edited on both: the original document carries both alternatives.
     await mac.write('work/a.md', utf8Encode('# A\n\nmac wins?\n\nTWO (phone)\n'))
     await phone.write('work/a.md', utf8Encode('# A\n\nphone wins?\n\nTWO (phone)\n'))
     const r3 = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
-    expect(r3.conflicts.length).toBe(1)
+    expect(r3.conflicts).toEqual(['work/a.md'])
+    expect(mac.text('work/a.md')).toBe(phone.text('work/a.md'))
+    expect(mac.text('work/a.md')).toContain('mac wins?')
     expect(mac.text('work/a.md')).toContain('phone wins?')
-    expect(mac.text(r3.conflicts[0]!)).toContain('mac wins?')
-    expect(phone.text(r3.conflicts[0]!)).toContain('mac wins?')
+    expect([...mac.files.keys()].filter((p) => p.includes('(conflict'))).toEqual([])
 
     // Nothing to do → no-op.
     const r4 = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })

@@ -51,11 +51,9 @@ describe('withTitle updates display-title metadata without changing the body', (
 })
 
 describe('planSave: sync changed the note while the editor had it open', () => {
-  const at = new Date(2026, 9, 19, 14, 30)
-
   test('unchanged on disk → plain save', () => {
     const disk = '---\nid: a\n---\n# T\none\n'
-    const p = planSave({ path: 'work/T.md', disk, base: '# T\none\n', next: '# T\none\ntwo', at })
+    const p = planSave({ path: 'work/T.md', disk, base: '# T\none\n', next: '# T\none\ntwo' })
     expect(p).toEqual({ file: '---\nid: a\n---\n# T\none\ntwo\n', body: '# T\none\ntwo', merged: false })
   })
 
@@ -63,9 +61,9 @@ describe('planSave: sync changed the note while the editor had it open', () => {
     const base = '# T\nline 1\nline 2\nline 3\n'
     const disk = '# T\nline 1 (mac)\nline 2\nline 3\n' // Mac changed line 1, sync pulled it
     const next = '# T\nline 1\nline 2\nline 3\nphone line\n' // phone appended
-    const p = planSave({ path: 'work/T.md', disk, base, next, at })
+    const p = planSave({ path: 'work/T.md', disk, base, next })
     expect(p.merged).toBe(true)
-    expect(p.conflict).toBeUndefined()
+    expect(p.conflicted).toBeUndefined()
     expect(p.file).toBe('# T\nline 1 (mac)\nline 2\nline 3\nphone line\n')
   })
 
@@ -73,23 +71,26 @@ describe('planSave: sync changed the note while the editor had it open', () => {
     const base = '# T\nSend it to Alice before Friday.\n'
     const disk = '# T\nSend it to Alex before Friday.\n'
     const next = '# T\nSend it to Alice before Monday.\n'
-    const p = planSave({ path: 'work/T.md', disk, base, next, at })
+    const p = planSave({ path: 'work/T.md', disk, base, next })
     expect(p.merged).toBe(true)
-    expect(p.conflict).toBeUndefined()
+    expect(p.conflicted).toBeUndefined()
     expect(p.file).toBe('# T\nSend it to Alex before Monday.\n')
   })
 
-  test('overlapping edits keep the phone text and save the disk copy beside it', () => {
+  test('overlapping edits preserve both versions inline in the original file', () => {
     const base = '# T\nsame line\n'
     const disk = '---\nid: a\n---\n# T\nmac wording\n'
     const next = '# T\nphone wording\n'
-    const p = planSave({ path: 'work/T.md', disk, base, next, at })
-    expect(p.file).toBe('---\nid: a\n---\n# T\nphone wording\n')
-    expect(p.conflict).toEqual({ path: 'work/T (conflict · synced copy · 2026-10-19 1430).md', text: disk })
+    const p = planSave({ path: 'work/T.md', disk, base, next })
+    expect(p.merged).toBe(true)
+    expect(p.conflicted).toBe(true)
+    expect(p.file).toBe(
+      '---\nid: a\n---\n# T\n<<<<<<< Inkfish alternative A\nmac wording\n=======\nphone wording\n>>>>>>> Inkfish alternative B\n'
+    )
   })
 
   test('disk already equals the edit → no merge', () => {
-    const p = planSave({ path: 'a.md', disk: '# x\nb\n', base: '# x\na\n', next: '# x\nb', at })
+    const p = planSave({ path: 'a.md', disk: '# x\nb\n', base: '# x\na\n', next: '# x\nb' })
     expect(p.merged).toBe(false)
     expect(p.file).toBe('# x\nb\n')
   })

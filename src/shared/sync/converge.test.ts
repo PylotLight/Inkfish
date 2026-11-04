@@ -263,7 +263,7 @@ describe('conflict copies', () => {
     expect(work(await runSync({ fs: phone, remote, state, remoteName: 'Mac' }))).toBe(0)
   })
 
-  test('never mints a conflict copy the vault already holds', async () => {
+  test('overlapping note edits stay inline in one file and converge on both devices', async () => {
     const mac = new CiFs({ 'Work/a.md': 'line\n' })
     const phone = new MemFs()
     const state = new MemState()
@@ -272,18 +272,24 @@ describe('conflict copies', () => {
     await mac.write('Work/a.md', utf8Encode('mac\n'))
     await phone.write('Work/a.md', utf8Encode('phone\n'))
     const r1 = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 1) })
-    expect(r1.conflicts.length).toBe(1)
-    // Same divergence comes back (Mac back on its version, phone edits again): a copy with "mac" already exists.
+    expect(r1.conflicts).toEqual(['Work/a.md'])
+    expect(mac.paths()).toEqual(['Work/a.md'])
+    expect(mac.text('Work/a.md')).toBe(phone.text('Work/a.md'))
+    expect(mac.text('Work/a.md')).toContain('mac')
+    expect(mac.text('Work/a.md')).toContain('phone')
+    // Another incompatible edit replaces the earlier marker block in place; it never creates a sibling.
     await mac.write('Work/a.md', utf8Encode('mac\n'))
     await phone.write('Work/a.md', utf8Encode('phone again\n'))
     const r2 = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 2) })
-    expect(r2.conflicts.length).toBe(0)
-    expect(mac.paths().filter((p) => p.includes('conflict')).length).toBe(1)
-    expect(mac.text('Work/a.md')).toBe('phone again\n')
+    expect(r2.conflicts).toEqual(['Work/a.md'])
+    expect(mac.paths()).toEqual(['Work/a.md'])
+    expect(mac.text('Work/a.md')).toBe(phone.text('Work/a.md'))
+    expect(mac.text('Work/a.md')).toContain('mac')
+    expect(mac.text('Work/a.md')).toContain('phone again')
     await expectConverged(phone, mac)
   })
 
-  test('newer remote mtime becomes primary and the local edit remains recoverable', async () => {
+  test('conflict alternatives remain recoverable in one file regardless of mtime preference', async () => {
     const path = 'Work/a.md'
     const mac = new CiFs({ [path]: 'before\n' })
     const phone = new MemFs()
@@ -305,32 +311,35 @@ describe('conflict copies', () => {
     await mac.write(path, utf8Encode('Mac edit\n'))
     await phone.write(path, utf8Encode('Phone edit\n'))
     const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: new Date(2026, 9, 19, 18, 1) })
-    expect(r.conflicts).toHaveLength(1)
-    expect(mac.text(path)).toBe('Mac edit\n')
-    expect(phone.text(path)).toBe('Mac edit\n')
-    expect(mac.text(r.conflicts[0]!)).toBe('Phone edit\n')
+    expect(r.conflicts).toEqual([path])
+    expect(mac.text(path)).toBe(phone.text(path))
+    expect(mac.text(path)).toContain('Mac edit')
+    expect(mac.text(path)).toContain('Phone edit')
+    expect(mac.paths()).toEqual([path])
     await expectConverged(phone, mac)
   })
 
-  test('a distinct conflict in the same minute never overwrites the earlier copy', async () => {
-    const path = 'Work/a.md'
-    const mac = new CiFs({ [path]: 'before\n' })
+  test('distinct conflicts in one sync are marked in their originals without sibling files', async () => {
+    const paths = ['Work/a.md', 'Work/b.md']
+    const mac = new CiFs({ 'Work/a.md': 'before a\n', 'Work/b.md': 'before b\n' })
     const phone = new MemFs()
     const state = new MemState()
     const { remote } = wired(mac)
-    const at = new Date(2026, 9, 19, 18, 1)
     await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
-    await mac.write(path, utf8Encode('Mac edit one\n'))
-    await phone.write(path, utf8Encode('Phone edit one\n'))
-    const first = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
-    expect(first.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801).md'])
-    await mac.write(path, utf8Encode('Mac edit three\n'))
-    await phone.write(path, utf8Encode('Phone edit two\n'))
-    const second = await runSync({ fs: phone, remote, state, remoteName: 'Mac', now: at })
-    expect(second.conflicts).toEqual(['Work/a (conflict · Mac · 2026-10-19 1801 #2).md'])
-    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801).md')).toBe('Mac edit one\n')
-    expect(mac.text('Work/a (conflict · Mac · 2026-10-19 1801 #2).md')).toBe('Mac edit three\n')
-    expect(mac.text(path)).toBe('Phone edit two\n')
+    await mac.write(paths[0]!, utf8Encode('Mac edit a\n'))
+    await phone.write(paths[0]!, utf8Encode('Phone edit a\n'))
+    await mac.write(paths[1]!, utf8Encode('Mac edit b\n'))
+    await phone.write(paths[1]!, utf8Encode('Phone edit b\n'))
+    const r = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+    expect(r.conflicts).toEqual(paths)
+    expect(mac.paths()).toEqual(paths)
+    expect([...phone.files.keys()].sort()).toEqual(paths)
+    for (const path of paths) {
+      const label = path === paths[0] ? 'a' : 'b'
+      expect(mac.text(path)).toBe(phone.text(path))
+      expect(mac.text(path)).toContain(`Mac edit ${label}`)
+      expect(mac.text(path)).toContain(`Phone edit ${label}`)
+    }
     await expectConverged(phone, mac)
   })
 })

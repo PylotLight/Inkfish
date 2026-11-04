@@ -365,7 +365,7 @@ export function SettingsScreen({
                   : sync.lastSync
                     ? `Synced ${when(sync.lastSync)}${
                         sync.lastReport?.conflicts.length
-                          ? ` · ${sync.lastReport.conflicts.length} conflict copy saved`
+                          ? ` · ${sync.lastReport.conflicts.length} conflict${sync.lastReport.conflicts.length === 1 ? '' : 's'} preserved`
                           : ''
                       }`
                     : 'Paired · not synced yet'}

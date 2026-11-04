@@ -61,8 +61,9 @@ export default function MiniNote(): React.JSX.Element {
   const autosaveRef = useRef<Autosave | null>(null)
   if (!autosaveRef.current) {
     autosaveRef.current = createAutosave<NoteDoc>({
-      save: (id, markdown) => window.api.notes.save(id, markdown),
+      save: (id, markdown, base) => window.api.notes.save(id, markdown, base),
       onSaved: (_id, markdown, saved) => {
+        autosaveRef.current?.noteSaved(saved.id, saved.markdown)
         setDoc(saved)
         if (draftRef.current === markdown) setDraft(undefined)
       },

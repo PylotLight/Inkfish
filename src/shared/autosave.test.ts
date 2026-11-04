@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createAutosave, createQuitFlush, draftForEditor, keepFrontmatter } from './autosave'
+import { createAutosave, createQuitFlush, draftForEditor, keepFrontmatter, planEditorSave } from './autosave'
 
 /** Manual clock: timers only fire when the test says so. */
 function fakeTimers(): {
@@ -180,6 +180,53 @@ describe('autosave', () => {
     expect(order).toEqual(['start:v1', 'end:v1', 'start:v2', 'end:v2'])
   })
 
+  test('each save keeps the baseline from when its edit was queued', async () => {
+    const calls: Array<[string, string | undefined]> = []
+    const s = createAutosave({
+      save: async (_id, md, base) => {
+        calls.push([md, base])
+        return md
+      }
+    })
+    s.noteSaved('a', 'opened')
+    s.schedule('a', 'local edit')
+    // A sync notification must not rewrite the base of an edit already in progress.
+    s.noteSaved('a', 'newer disk text')
+    await s.flush('a')
+    expect(calls).toEqual([['local edit', 'opened']])
+  })
+
+  test('a newer edit typed during an in-flight save is based on that in-flight text', async () => {
+    const calls: Array<[string, string | undefined]> = []
+    let release: (() => void) | null = null
+    const s = createAutosave({
+      save: async (_id, md, base) => {
+        calls.push([md, base])
+        if (md === 'v1') await new Promise<void>((r) => (release = r))
+        return md
+      }
+    })
+    s.noteSaved('a', 'initial')
+    s.schedule('a', 'v1')
+    const first = s.flush('a')
+    await tick()
+    s.schedule('a', 'v2')
+    const second = s.flush('a')
+    ;(release as unknown as () => void)()
+    await Promise.all([first, second])
+    expect(calls).toEqual([
+      ['v1', 'initial'],
+      ['v2', 'v1']
+    ])
+  })
+
+  test('beforeunload drain includes the baseline needed for a safe synchronous save', () => {
+    const s = createAutosave({ save: async (_id, text) => text })
+    s.noteSaved('a', 'opened')
+    s.schedule('a', 'typed')
+    expect(s.drain()).toEqual([{ id: 'a', markdown: 'typed', base: 'opened' }])
+  })
+
   test('skips text already on disk; keeps text when a save fails', async () => {
     let fail = true
     const writes: string[] = []
@@ -321,5 +368,34 @@ describe('keepFrontmatter', () => {
     expect(keepFrontmatter('plain', 'next')).toBe('next')
     expect(keepFrontmatter('---\nid: a\n---\nx', '---\nid: b\n---\ny')).toBe('---\nid: b\n---\ny')
     expect(keepFrontmatter('---\nbroken', 'y')).toBe('y')
+  })
+})
+
+describe('planEditorSave', () => {
+  test('combines a desktop edit with an independent newer disk edit', () => {
+    const current = '---\nid: a\n---\n# T\nMac edit\nlast line\n'
+    const p = planEditorSave(current, '# T\nbase line\nlast line\n', '# T\nbase line\nPhone edit\n')
+    expect(p).toEqual({
+      file: '---\nid: a\n---\n# T\nMac edit\nPhone edit\n',
+      body: '# T\nMac edit\nPhone edit\n',
+      merged: true,
+      conflicted: false
+    })
+  })
+
+  test('keeps a true editor overlap in the original file as a marker block', () => {
+    const current = '---\nid: a\n---\n# T\nMac wording\n'
+    const p = planEditorSave(current, '# T\nsame line\n', '# T\nPhone wording\n')
+    expect(p.conflicted).toBe(true)
+    expect(p.file).toBe(
+      '---\nid: a\n---\n# T\n<<<<<<< Inkfish alternative A\nMac wording\n=======\nPhone wording\n>>>>>>> Inkfish alternative B\n'
+    )
+  })
+
+  test('without a known baseline, preserves both full body versions inline', () => {
+    const p = planEditorSave('current\n', undefined, 'edited\n')
+    expect(p.conflicted).toBe(true)
+    expect(p.file).toContain('current')
+    expect(p.file).toContain('edited')
   })
 })

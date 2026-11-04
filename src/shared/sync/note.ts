@@ -55,36 +55,64 @@ function listItems(lines: string[]): string[] | null {
   return null
 }
 
-function mergeFm(base: Fm | null, ours: Fm | null, theirs: Fm | null): Fm | null {
-  if (!ours && !theirs) return null
-  if (!ours) return theirs
-  if (!theirs) return ours
-  const out: Fm = { keys: [...ours.keys], raw: new Map(ours.raw) }
-  for (const k of theirs.keys) if (!out.keys.includes(k)) out.keys.push(k)
-  const same = (a?: string[], b?: string[]): boolean => (a ?? []).join('\n') === (b ?? []).join('\n')
-  for (const k of out.keys) {
-    const b = base?.raw.get(k),
-      o = ours.raw.get(k),
-      t = theirs.raw.get(k)
-    if (same(o, t)) continue
-    if (same(b, o)) {
-      if (t) out.raw.set(k, t)
-      else {
-        out.raw.delete(k)
-        out.keys = out.keys.filter((x) => x !== k)
-      }
-      continue
-    }
-    if (same(b, t)) continue // only ours changed
-    // Both changed: lists union, scalars keep ours (deterministic: caller picks "ours" = newer).
-    const lo = o && listItems(o),
-      lt = t && listItems(t)
-    if (lo && lt) {
-      const items = [...new Set([...lo, ...lt])]
-      out.raw.set(k, [`${k}:`, ...items.map((i) => `  - ${i}`)])
-    }
+function rawFm(fm: Fm | null): string {
+  return fm ? fm.keys.flatMap((k) => fm.raw.get(k) ?? []).join('\n') : ''
+}
+
+function fullFm(fm: Fm | null): string {
+  return fm ? `---\n${rawFm(fm)}\n---\n` : ''
+}
+
+function mergeFm(
+  base: Fm | null,
+  ours: Fm | null,
+  theirs: Fm | null
+): { fm: Fm | null; clean: boolean; whole?: string } {
+  if (!ours && !theirs) return { fm: null, clean: true }
+  // Adding/removing the entire header on one side while the other edits it is
+  // a real conflict; merge the complete header block so both versions survive.
+  if (!ours || !theirs) {
+    const merged = mergeText(fullFm(base), fullFm(ours), fullFm(theirs))
+    return { fm: null, clean: merged.clean, whole: merged.text }
   }
-  return out
+
+  const baseKeys = base?.keys ?? []
+  const keys = baseKeys.filter((k) => ours.raw.has(k) || theirs.raw.has(k))
+  const additions = [...new Set([...ours.keys, ...theirs.keys])].filter((k) => !keys.includes(k)).sort()
+  keys.push(...additions)
+  const out: Fm = { keys, raw: new Map() }
+  const value = (lines?: string[]): string => lines?.join('\n') ?? ''
+  const same = (a?: string[], b?: string[]): boolean => value(a) === value(b)
+  let clean = true
+
+  for (const k of keys) {
+    const b = base?.raw.get(k)
+    const o = ours.raw.get(k)
+    const t = theirs.raw.get(k)
+    let lines: string[] | undefined
+    if (same(o, t)) lines = o
+    else if (same(b, o)) lines = t
+    else if (same(b, t)) lines = o
+    else {
+      const lo = o && listItems(o)
+      const lt = t && listItems(t)
+      if (lo && lt) {
+        const baseItems = b ? (listItems(b) ?? []) : []
+        const all = new Set([...baseItems, ...lo, ...lt])
+        const additions = [...all].filter((item) => !baseItems.includes(item)).sort()
+        lines = [`${k}:`, ...baseItems.filter((item) => all.has(item)), ...additions].map((line, i) =>
+          i === 0 ? line : `  - ${line}`
+        )
+      } else {
+        const merged = mergeText(value(b), value(o), value(t))
+        clean &&= merged.clean
+        if (merged.text !== '') lines = merged.text.split('\n')
+      }
+    }
+    if (lines) out.raw.set(k, lines)
+  }
+  out.keys = out.keys.filter((k) => out.raw.has(k))
+  return { fm: out.keys.length ? out : null, clean }
 }
 
 export interface NoteMergeResult {
@@ -99,7 +127,10 @@ export function mergeNote(base: string, ours: string, theirs: string): NoteMerge
     t = splitFrontmatter(theirs)
   const fm = mergeFm(b.fm, o.fm, t.fm)
   const body = mergeText(b.body, o.body, t.body)
-  return { clean: body.clean, text: joinFrontmatter(fm, body.text) }
+  return {
+    clean: fm.clean && body.clean,
+    text: fm.whole !== undefined ? fm.whole + body.text : joinFrontmatter(fm.fm, body.text)
+  }
 }
 
 /** Day log: union of plain/timestamped bullets and legacy `## HH:MM` sections, deduped.

@@ -208,16 +208,17 @@ describe('runSync: renames arrive as moves (against an unchanged protocol-v1 Mac
     expect(mac.text('work/Groceries.md')).toBe(phone.text('work/Groceries.md'))
   })
 
-  test('overlapping edit during a rename → conflict copy beside the renamed note, nothing lost', async () => {
+  test('overlapping edit during a rename → both alternatives stay in the renamed note', async () => {
     const { mac, phone, sync } = await synced({ 'work/Untitled.md': body })
     mac.rename('work/Untitled.md', 'work/Groceries.md', titled.replace('- eggs', '- 12 eggs'))
     phone.set('work/Untitled.md', body.replace('- eggs', '- 6 eggs'))
     const r = await sync()
-    expect(r.conflicts).toHaveLength(1)
+    expect(r.conflicts).toEqual(['work/Groceries.md'])
     expect(phone.text('work/Groceries.md')).toContain('6 eggs')
-    expect(phone.text(r.conflicts[0]!)).toContain('12 eggs')
+    expect(phone.text('work/Groceries.md')).toContain('12 eggs')
     expect(mac.paths()).toEqual(phone.paths())
     expect(phone.paths().filter((p) => p.includes('Untitled'))).toEqual([])
+    expect(phone.paths().filter((p) => p.includes('(conflict'))).toEqual([])
   })
 
   test('phone renames (with a title edit) → Mac gets one move + write, never delete + add', async () => {

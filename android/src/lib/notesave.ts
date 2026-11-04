@@ -11,10 +11,9 @@
  * 2. The editor saves against the text it opened (`base`). If sync changed the
  *    file underneath (a Mac edit pulled while the note was open), the edit is
  *    three-way merged instead of overwriting the Mac's change; a real overlap
- *    keeps the phone's text at the path and the disk version as a conflict
- *    copy, so nothing is lost either way.
+ *    keeps both alternatives as Git-style markers in the original file.
  */
-import { conflictPath, mergeText } from './sync'
+import { mergeText } from './sync'
 
 /** Raw front matter block of a file (`---\n…\n---`), '' when it has none. Same detection as `parseFrontmatter`. */
 export function frontmatterHead(file: string): string {
@@ -70,29 +69,28 @@ export interface SavePlan {
   file: string
   /** The body now in the file (differs from `next` after a merge). */
   body: string
-  /** Sync changed the note while it was open and the edits merged cleanly. */
+  /** Sync changed the note while it was open and the edits were combined. */
   merged: boolean
-  /** Overlapping edits: write `conflict.text` (the disk version) at `conflict.path`. */
-  conflict?: { path: string; text: string }
+  /** Unresolved overlap is represented by Git-style markers in `file`. */
+  conflicted?: boolean
 }
 
 /**
  * Plan an editor save. `disk` = the file as it is now, `base` = the body the
  * editor opened (or last saved), `next` = the editor's body.
  */
-export function planSave(opts: { path: string; disk: string; base: string; next: string; at?: Date }): SavePlan {
-  const { path, disk, base, next } = opts
+export function planSave(opts: { path: string; disk: string; base: string; next: string }): SavePlan {
+  const { disk, base, next } = opts
   const theirs = bodyOf(disk)
   if (same(theirs, base) || same(theirs, next)) {
     return { file: withBody(disk, next), body: next, merged: false }
   }
   const m = mergeText(base, next, theirs)
-  if (m.clean) return { file: withBody(disk, m.text), body: m.text, merged: true }
   return {
-    file: withBody(disk, next),
-    body: next,
-    merged: false,
-    conflict: { path: conflictPath(path, 'synced copy', opts.at), text: disk }
+    file: withBody(disk, m.text),
+    body: m.text,
+    merged: true,
+    ...(m.clean ? {} : { conflicted: true })
   }
 }
 

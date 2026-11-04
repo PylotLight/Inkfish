@@ -23,7 +23,7 @@ import {
 } from './sync'
 import type { SyncBadge } from '../shared/sync-badge'
 import type { SyncLogEntry } from '../shared/sync'
-import { keepFrontmatter } from '../shared/autosave'
+import { planEditorSave } from '../shared/autosave'
 import { rescanVaultFromDisk, startVaultWatch } from './watch'
 import { moveEntry, renameEntry, renameToTitle, type MoveEntryResult, type TitleRenameResult } from './move'
 import { isTitleSyncPath, sanitizeFileTitle } from '../shared/title-sync'
@@ -545,7 +545,7 @@ export function registerIpc(): void {
     return relatedNotes(id)
   })
   // Autosave writes land here (debounced in the renderer, flushed on switch/blur/quit).
-  const saveNoteText = (sender: WebContents, id: unknown, markdown: unknown): NoteDoc | null => {
+  const saveNoteText = (sender: WebContents, id: unknown, markdown: unknown, base: unknown): NoteDoc | null => {
     if (typeof id !== 'string' || typeof markdown !== 'string' || !vaultConfigured()) return null
     const paths = requireNotes()
     const doc = getNote(id, paths.root)
@@ -560,14 +560,16 @@ export function registerIpc(): void {
     }
     // Identical text: no write, no reindex, no watcher churn — just confirm.
     if (doc.markdown === text) return doc
-    // The editor edits the body; keep the file's front matter (see keepFrontmatter).
+    // The editor edits the body; merge it against the version it opened so a
+    // sync or another window cannot be silently overwritten while it is open.
     let existing = ''
     try {
       existing = readFileSync(abs, 'utf8')
     } catch {
       // unreadable → write the body as-is
     }
-    writeFileSync(abs, keepFrontmatter(existing, text), 'utf8')
+    const save = planEditorSave(existing, typeof base === 'string' ? base : undefined, text)
+    writeFileSync(abs, save.file, 'utf8')
     removeNote(id)
     indexFile(abs, doc.path)
     const saved = getNote(id, paths.root)
@@ -605,8 +607,8 @@ export function registerIpc(): void {
     }
     return saved
   })
-  ipcMain.handle('notes:save', (e: IpcMainInvokeEvent, id: string, markdown: string): NoteDoc | null =>
-    saveNoteText(e.sender, id, markdown)
+  ipcMain.handle('notes:save', (e: IpcMainInvokeEvent, id: string, markdown: string, base?: string): NoteDoc | null =>
+    saveNoteText(e.sender, id, markdown, base)
   )
   // Last-chance synchronous save from `beforeunload` (window closing / reloading), where an
   // async invoke may never get its reply.
@@ -614,8 +616,8 @@ export function registerIpc(): void {
     let ok = 0
     try {
       if (Array.isArray(items)) {
-        for (const it of items as Array<{ id?: unknown; markdown?: unknown }>) {
-          if (saveNoteText(e.sender, it?.id, it?.markdown)) ok++
+        for (const it of items as Array<{ id?: unknown; markdown?: unknown; base?: unknown }>) {
+          if (saveNoteText(e.sender, it?.id, it?.markdown, it?.base)) ok++
         }
       }
     } catch (err) {

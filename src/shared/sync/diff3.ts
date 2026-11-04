@@ -86,10 +86,34 @@ function applyEdits(base: string[], start: number, end: number, edits: Edit[]): 
   return out
 }
 
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+function orderedVariants(a: string[], b: string[]): [string[], string[]] {
+  return compareText(a.join('\n'), b.join('\n')) <= 0 ? [a, b] : [b, a]
+}
+
+function conflictBlock(a: string[], b: string[]): string[] {
+  const [first, second] = orderedVariants(a, b)
+  return ['<<<<<<< Inkfish alternative A', ...first, '=======', ...second, '>>>>>>> Inkfish alternative B']
+}
+
+/** Preserve two versions in one document when no common base is available. */
+export function conflictText(ours: string, theirs: string): string {
+  const a = ours.split('\n')
+  const b = theirs.split('\n')
+  if (a[a.length - 1] === '') a.pop()
+  if (b[b.length - 1] === '') b.pop()
+  return conflictBlock(a, b).join('\n') + (ours.endsWith('\n') || theirs.endsWith('\n') ? '\n' : '')
+}
+
 export interface Merge3Result {
   clean: boolean
   /** Merged lines; on conflict, conflicting hunks take `ours`. */
   lines: string[]
+  /** Same merge, with unresolved hunks rendered as deterministic Git-style markers. */
+  markedLines: string[]
   conflicts: number
 }
 
@@ -97,6 +121,7 @@ export function merge3(base: string[], ours: string[], theirs: string[]): Merge3
   const oursEdits = editsFrom(base, ours)
   const theirsEdits = editsFrom(base, theirs)
   const out: string[] = []
+  const marked: string[] = []
   let conflicts = 0
   let oi = 0,
     ti = 0,
@@ -107,9 +132,12 @@ export function merge3(base: string[], ours: string[], theirs: string[]): Merge3
     const o = oursEdits[oi]
     const t = theirsEdits[ti]
 
-    // Concurrent inserts at the exact same point retain both, in stable order.
+    // Concurrent inserts at the exact same point retain both in canonical order.
     if (o && t && o.start === o.end && t.start === t.end && o.start === t.start) {
-      out.push(...base.slice(cursor, o.start), ...o.lines, ...(equal(o.lines, t.lines) ? [] : t.lines))
+      const prefix = base.slice(cursor, o.start)
+      const [first, second] = orderedVariants(o.lines, t.lines)
+      out.push(...prefix, ...first, ...(equal(o.lines, t.lines) ? [] : second))
+      marked.push(...prefix, ...first, ...(equal(o.lines, t.lines) ? [] : second))
       cursor = o.start
       oi++
       ti++
@@ -143,16 +171,25 @@ export function merge3(base: string[], ours: string[], theirs: string[]): Merge3
           grew = true
         }
       }
-      out.push(...base.slice(cursor, start))
+      const prefix = base.slice(cursor, start)
+      out.push(...prefix)
+      marked.push(...prefix)
       const basePart = base.slice(start, end)
       const oursPart = applyEdits(base, start, end, groupO)
       const theirsPart = applyEdits(base, start, end, groupT)
-      if (equal(oursPart, theirsPart)) out.push(...oursPart)
-      else if (equal(oursPart, basePart)) out.push(...theirsPart)
-      else if (equal(theirsPart, basePart)) out.push(...oursPart)
-      else {
+      if (equal(oursPart, theirsPart)) {
+        out.push(...oursPart)
+        marked.push(...oursPart)
+      } else if (equal(oursPart, basePart)) {
+        out.push(...theirsPart)
+        marked.push(...theirsPart)
+      } else if (equal(theirsPart, basePart)) {
+        out.push(...oursPart)
+        marked.push(...oursPart)
+      } else {
         conflicts++
         out.push(...oursPart)
+        marked.push(...conflictBlock(oursPart, theirsPart))
       }
       cursor = end
       continue
@@ -167,14 +204,18 @@ export function merge3(base: string[], ours: string[], theirs: string[]): Merge3
         (o.start === t.start && o.start === o.end && t.start !== t.end) ||
         (o.start === t.start && o.end < t.end))
     const edit = takeOurs ? o! : t!
-    out.push(...base.slice(cursor, edit.start), ...edit.lines)
+    const prefix = base.slice(cursor, edit.start)
+    out.push(...prefix, ...edit.lines)
+    marked.push(...prefix, ...edit.lines)
     cursor = edit.end
     if (takeOurs) oi++
     else ti++
   }
 
-  out.push(...base.slice(cursor))
-  return { clean: conflicts === 0, lines: out, conflicts }
+  const suffix = base.slice(cursor)
+  out.push(...suffix)
+  marked.push(...suffix)
+  return { clean: conflicts === 0, lines: out, markedLines: marked, conflicts }
 }
 
 export function mergeText(
@@ -203,15 +244,15 @@ export function mergeText(
     (b.length + 1) * (o.length + 1) > maxCells ||
     (b.length + 1) * (t.length + 1) > maxCells
   )
-    return { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
+    return { clean: false, text: r.markedLines.join('\n'), conflicts: r.conflicts }
 
   const onlySubstitutions = (edits: Edit[]): boolean =>
     edits.every((edit) => edit.start < edit.end && edit.lines.length === edit.end - edit.start)
   if (!onlySubstitutions(editsFrom(b, o)) || !onlySubstitutions(editsFrom(b, t)))
-    return { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
+    return { clean: false, text: r.markedLines.join('\n'), conflicts: r.conflicts }
 
   const inline = merge3(b, o, t)
   return inline.clean
     ? { clean: true, text: inline.lines.join(''), conflicts: 0 }
-    : { clean: false, text: r.lines.join('\n'), conflicts: r.conflicts }
+    : { clean: false, text: r.markedLines.join('\n'), conflicts: r.conflicts }
 }

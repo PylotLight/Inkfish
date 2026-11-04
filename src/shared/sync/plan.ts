@@ -1,4 +1,5 @@
 import { conflictPath, mergeDaily, mergeNote } from './note'
+import { conflictText } from './diff3'
 
 /**
  * Sync planning: compare the local and remote manifests against the last
@@ -106,12 +107,14 @@ export interface Write {
   text?: string
   /** Or: copy this side's content to the conflict path on both sides. */
   from?: 'local' | 'remote'
+  /** The text at `path` contains unresolved inline merge markers. */
+  conflict?: boolean
 }
 
 /**
- * Resolve one `merge` op. Clean merges write one text to both sides; a real
- * conflict keeps the preferred side at the path and saves the other beside it,
- * so timestamp hints never discard the losing content.
+ * Resolve one `merge` op. Text merges write one common text to the original
+ * path, using inline markers for irreconcilable hunks. Binary conflicts keep
+ * both files because arbitrary bytes cannot carry a readable diff.
  */
 export function resolveMerge(
   op: Extract<Op, { op: 'merge' }>,
@@ -121,15 +124,15 @@ export function resolveMerge(
   preferred: 'local' | 'remote' = 'local'
 ): Write[] {
   if (op.kind === 'daily') return [{ path: op.path, text: mergeDaily(text.local, text.remote) }]
-  // Without the cached common ancestor, a three-way merge cannot distinguish
-  // independent edits from replacements of the whole note. Preserve both
-  // versions rather than pretending an unknown base was an empty document.
-  if (op.kind === 'note' && text.base !== undefined) {
+  if (op.kind === 'note') {
+    // With a base, clean hunks merge and overlapping hunks become markers. If
+    // the cached base is missing, keep both whole-file versions inline rather
+    // than inventing an empty ancestor or creating a sibling conflict copy.
     const r =
-      preferred === 'local'
-        ? mergeNote(text.base, text.local, text.remote)
-        : mergeNote(text.base, text.remote, text.local)
-    if (r.clean) return [{ path: op.path, text: r.text }]
+      text.base === undefined
+        ? { clean: false, text: conflictText(text.local, text.remote) }
+        : mergeNote(text.base, text.local, text.remote)
+    return [{ path: op.path, text: r.text, ...(r.clean ? {} : { conflict: true }) }]
   }
   const loser = preferred === 'local' ? 'remote' : 'local'
   return [

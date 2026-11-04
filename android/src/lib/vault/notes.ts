@@ -162,7 +162,7 @@ export interface SaveContext {
  */
 let rescanWanted = false
 
-/** True once after a save wrote more than the note itself (a conflict copy): the index needs a full rescan. */
+/** True once after an operation creates sidecar files that need a full index rescan. */
 export function takeRescan(): boolean {
   const r = rescanWanted
   rescanWanted = false
@@ -221,12 +221,6 @@ export async function saveNote(id: string, markdown: string, ctx: SaveContext = 
     : original
   const plan = planSave({ path: doc.path, disk, base: ctx.base ?? bodyOf(disk), next: markdown })
   await writeText(abs, plan.file)
-  if (plan.conflict) {
-    const cAbs = absForRel(plan.conflict.path)
-    await mkdir(cAbs.slice(0, cAbs.lastIndexOf('/') + 1))
-    await writeText(cAbs, plan.conflict.text)
-    rescanWanted = true
-  }
   doc = await getNote(doc.id)
   return doc
 }

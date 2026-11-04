@@ -312,11 +312,12 @@ const api = {
     get: (id: string): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:get', id),
     search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('notes:search', query),
     related: (id: string): Promise<NoteEntry[]> => ipcRenderer.invoke('notes:related', id),
-    save: (id: string, markdown: string): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:save', id, markdown),
+    save: (id: string, markdown: string, base?: string): Promise<NoteDoc | null> =>
+      ipcRenderer.invoke('notes:save', id, markdown, base),
     /** Replace the note's front matter `tags:` (body untouched). */
     setTags: (id: string, tags: string[]): Promise<NoteDoc | null> => ipcRenderer.invoke('notes:set-tags', id, tags),
     /** Synchronous last-chance save (beforeunload only — blocks the renderer until written). */
-    saveSync: (items: Array<{ id: string; markdown: string }>): number =>
+    saveSync: (items: Array<{ id: string; markdown: string; base?: string }>): number =>
       ipcRenderer.sendSync('notes:save-sync', items) as number,
     reveal: (id: string): Promise<boolean> => ipcRenderer.invoke('notes:reveal', id),
     titles: (): Promise<Record<string, string>> => ipcRenderer.invoke('notes:titles'),

@@ -134,12 +134,12 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
   const autosaveRef = useRef<Autosave | null>(null)
   if (!autosaveRef.current) {
     autosaveRef.current = createAutosave<NoteDoc>({
-      save: async (id, markdown) => {
+      save: async (id, markdown, base) => {
         // Typed while this note's file is being renamed: write to where it lands, not the old
         // path (which is gone — that save would fail and the text would wait for the next blur).
         const moving = renameInflightRef.current.get(id)
         const target = moving ? await moving.catch(() => id) : id
-        return window.api.notes.save(target, markdown)
+        return window.api.notes.save(target, markdown, base)
       },
       onSaved: (id, markdown, saved) => savedHandlerRef.current(id, markdown, saved),
       onError: (id, err) => saveErrorRef.current(id, err)
@@ -249,6 +249,7 @@ export function useNoteWorkspace(input: NoteWorkspaceInput) {
     // A draft pending for this id means its text changed since the last save. (Keyed by the
     // id the tab still carries — a rename-in-flight maps it to `saved.id` below.)
     if (draftsRef.current[id] !== undefined) markEdited(id)
+    autosave.noteSaved(id, saved.markdown)
     setDocsCache((prev) => ({ ...prev, [saved.id]: saved }))
     const dropCovered = (prev: Record<string, string>): Record<string, string> => {
       const cur = prev[id]

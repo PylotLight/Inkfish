@@ -341,11 +341,11 @@ describe('edits racing the sync', () => {
     const r = await sync(phone, s.remote(racing), state)
     expect(r.deferred).toBe(1)
     expect(phone.text('Work/a.md')).toBe('phone v2\n')
-    // Next run sees both edits: merge or conflict copy, never a silent loss.
+    // Next run sees both edits: combine them or mark the overlapping hunk in-place.
     await sync(phone, s.remote(), state)
-    const all = [...phone.files.keys()].map((p) => phone.text(p)).join('|')
-    expect(all).toContain('phone v2')
-    expect(all).toContain('mac v2')
+    expect(phone.text('Work/a.md')).toContain('phone v2')
+    expect(phone.text('Work/a.md')).toContain('mac v2')
+    expect([...phone.files.keys()]).toEqual(['Work/a.md'])
     await converged(phone, mac, s, state)
   })
 
