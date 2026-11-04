@@ -96,6 +96,27 @@ describe('sync converges (Mac case-insensitive, phone case-sensitive)', () => {
     await expectConverged(phone, mac)
   })
 
+  test('independent adjacent-line edits merge into the same note on both devices', async () => {
+    const path = 'Work/a.md'
+    const original = 'first\nsecond\nthird\n'
+    const mac = new CiFs({ [path]: original })
+    const phone = new MemFs()
+    const state = new MemState()
+    const { remote } = wired(mac)
+    await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+
+    await mac.write(path, utf8Encode('first\nSECOND\nthird\n'))
+    await phone.write(path, utf8Encode('FIRST\nsecond\nthird\n'))
+    const report = await runSync({ fs: phone, remote, state, remoteName: 'Mac' })
+
+    expect(report.conflicts).toEqual([])
+    expect(report.merged).toBe(1)
+    expect(mac.text(path)).toBe('FIRST\nSECOND\nthird\n')
+    expect(phone.text(path)).toBe('FIRST\nSECOND\nthird\n')
+    expect(mac.paths().filter((p) => p.includes('(conflict')).length).toBe(0)
+    await expectConverged(phone, mac)
+  })
+
   test('a phone already stuck in the loop (old base, lowercase copies) recovers without deleting', async () => {
     const mac = new CiFs({ 'Work/a.md': 'a\n', 'Work/b.md': 'b\n' })
     const phone = new MemFs({ 'work/a.md': 'a\n', 'work/b.md': 'b\n' })

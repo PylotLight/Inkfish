@@ -18,6 +18,10 @@ describe('diff3', () => {
     const r = mergeText(base, 'A\nb\nc\nd\ne', 'a\nb\nc\nd\nE')
     expect(r).toEqual({ clean: true, text: 'A\nb\nc\nd\nE', conflicts: 0 })
   })
+  test('independent edits on adjacent lines merge', () => {
+    const r = mergeText('x\ny\n', 'X\ny\n', 'x\nY\n')
+    expect(r).toEqual({ clean: true, text: 'X\nY\n', conflicts: 0 })
+  })
   test('same edit both sides', () => {
     expect(mergeText(base, 'a\nB\nc\nd\ne', 'a\nB\nc\nd\ne').text).toBe('a\nB\nc\nd\ne')
   })
@@ -29,6 +33,10 @@ describe('diff3', () => {
   test('both append at end keeps both', () => {
     const r = mergeText(base, `${base}\nours`, `${base}\ntheirs`)
     expect(r).toEqual({ clean: true, text: `${base}\nours\ntheirs`, conflicts: 0 })
+  })
+  test('same-point insertions are retained once when identical', () => {
+    const r = mergeText('a\nb', 'a\nours\nb', 'a\nours\nb')
+    expect(r).toEqual({ clean: true, text: 'a\nours\nb', conflicts: 0 })
   })
   test('delete on one side, edit elsewhere on other', () => {
     expect(mergeText(base, 'a\nc\nd\ne', 'a\nb\nc\nd\nE').text).toBe('a\nc\nd\nE')
@@ -46,8 +54,8 @@ describe('notes', () => {
     expect(r.clean).toBe(true)
     expect(r.text).toBe(`---\nid: n1\nstatus: archived\ntags:\n  - a\n  - b\n  - c\n---\n# T\n\nONE\nmid\nTWO\n`)
   })
-  test('adjacent-line edits are a conflict (like git)', () => {
-    expect(mergeNote('x\ny\n', 'X\ny\n', 'x\nY\n').clean).toBe(false)
+  test('independent adjacent-line edits merge in a note', () => {
+    expect(mergeNote('x\ny\n', 'X\ny\n', 'x\nY\n')).toEqual({ clean: true, text: 'X\nY\n' })
   })
   test('daily union, deduped, time-sorted', () => {
     const head = '---\nkind: daily\n---\n# 2026-10-08\n\n'

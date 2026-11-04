@@ -1,7 +1,8 @@
 /**
- * Line-based three-way merge (diff3). LCS of base↔ours and base↔theirs gives
- * stable anchors; between anchors, a hunk changed on one side takes that
- * side, identical changes merge, and different changes are a conflict.
+ * Line-based three-way merge (diff3). Each side is reduced to edit hunks against
+ * the base, then the hunks are reconciled by their base-line ranges. Comparing
+ * the edits themselves (rather than only lines kept by both sides) lets
+ * independent changes on adjacent lines merge without manufacturing a conflict.
  */
 
 /** Index pairs [baseIdx, otherIdx] of a longest common subsequence. */
@@ -39,6 +40,52 @@ export function lcsPairs(a: string[], b: string[]): Array<[number, number]> {
   return pairs
 }
 
+interface Edit {
+  /** Inclusive start, exclusive end in the base; start === end means insertion. */
+  start: number
+  end: number
+  lines: string[]
+}
+
+function editsFrom(base: string[], other: string[]): Edit[] {
+  const matches: Array<[number, number]> = [[-1, -1], ...lcsPairs(base, other), [base.length, other.length]]
+  const edits: Edit[] = []
+  for (let i = 1; i < matches.length; i++) {
+    const [prevBase, prevOther] = matches[i - 1]!
+    const [nextBase, nextOther] = matches[i]!
+    const start = prevBase + 1
+    const end = nextBase
+    const lines = other.slice(prevOther + 1, nextOther)
+    if (start !== end || lines.length) edits.push({ start, end, lines })
+  }
+  return edits
+}
+
+function overlaps(a: Edit, b: Edit): boolean {
+  const aInsert = a.start === a.end
+  const bInsert = b.start === b.end
+  if (aInsert && bInsert) return a.start === b.start
+  if (aInsert) return b.start < a.start && a.start < b.end
+  if (bInsert) return a.start < b.start && b.start < a.end
+  return a.start < b.end && b.start < a.end
+}
+
+function touchesRegion(edit: Edit, start: number, end: number): boolean {
+  if (edit.start === edit.end) return start < edit.start && edit.start < end
+  return edit.start < end && start < edit.end
+}
+
+function applyEdits(base: string[], start: number, end: number, edits: Edit[]): string[] {
+  const out: string[] = []
+  let cursor = start
+  for (const edit of edits) {
+    out.push(...base.slice(cursor, edit.start), ...edit.lines)
+    cursor = edit.end
+  }
+  out.push(...base.slice(cursor, end))
+  return out
+}
+
 export interface Merge3Result {
   clean: boolean
   /** Merged lines; on conflict, conflicting hunks take `ours`. */
@@ -47,41 +94,86 @@ export interface Merge3Result {
 }
 
 export function merge3(base: string[], ours: string[], theirs: string[]): Merge3Result {
-  const mo = new Map(lcsPairs(base, ours))
-  const mt = new Map(lcsPairs(base, theirs))
-  // Anchors: base lines kept, in order, by both sides.
-  const anchors: Array<[number, number, number]> = []
-  for (let i = 0; i < base.length; i++) {
-    const o = mo.get(i),
-      t = mt.get(i)
-    if (o !== undefined && t !== undefined) anchors.push([i, o, t])
-  }
-  anchors.push([base.length, ours.length, theirs.length])
+  const oursEdits = editsFrom(base, ours)
+  const theirsEdits = editsFrom(base, theirs)
   const out: string[] = []
   let conflicts = 0
-  let pb = 0,
-    po = 0,
-    pt = 0
-  const eq = (x: string[], y: string[]): boolean => x.length === y.length && x.every((v, k) => v === y[k])
-  for (const [ab, ao, at] of anchors) {
-    const b = base.slice(pb, ab),
-      o = ours.slice(po, ao),
-      t = theirs.slice(pt, at)
-    if (eq(o, t)) out.push(...o)
-    else if (eq(b, o)) out.push(...t)
-    else if (eq(b, t)) out.push(...o)
-    // Both sides only inserted at the same spot: keep both (ours first).
-    // In notes this is the common "added a line on each device" case.
-    else if (b.length === 0) out.push(...o, ...t)
-    else {
-      conflicts++
-      out.push(...o)
+  let oi = 0,
+    ti = 0,
+    cursor = 0
+  const equal = (a: string[], b: string[]): boolean => a.length === b.length && a.every((line, i) => line === b[i])
+
+  while (oi < oursEdits.length || ti < theirsEdits.length) {
+    const o = oursEdits[oi]
+    const t = theirsEdits[ti]
+
+    // Concurrent inserts at the exact same point retain both, in stable order.
+    if (o && t && o.start === o.end && t.start === t.end && o.start === t.start) {
+      out.push(...base.slice(cursor, o.start), ...o.lines, ...(equal(o.lines, t.lines) ? [] : t.lines))
+      cursor = o.start
+      oi++
+      ti++
+      continue
     }
-    if (ab < base.length) out.push(base[ab]!)
-    pb = ab + 1
-    po = ao + 1
-    pt = at + 1
+
+    if (o && t && overlaps(o, t)) {
+      // Grow a connected overlap cluster. This also handles one broad edit
+      // colliding with multiple narrower edits from the other side.
+      let start = Math.min(o.start, t.start)
+      let end = Math.max(o.end, t.end)
+      const groupO = [o]
+      const groupT = [t]
+      oi++
+      ti++
+      let grew = true
+      while (grew) {
+        grew = false
+        while (oursEdits[oi] && touchesRegion(oursEdits[oi]!, start, end)) {
+          const edit = oursEdits[oi++]!
+          groupO.push(edit)
+          start = Math.min(start, edit.start)
+          end = Math.max(end, edit.end)
+          grew = true
+        }
+        while (theirsEdits[ti] && touchesRegion(theirsEdits[ti]!, start, end)) {
+          const edit = theirsEdits[ti++]!
+          groupT.push(edit)
+          start = Math.min(start, edit.start)
+          end = Math.max(end, edit.end)
+          grew = true
+        }
+      }
+      out.push(...base.slice(cursor, start))
+      const basePart = base.slice(start, end)
+      const oursPart = applyEdits(base, start, end, groupO)
+      const theirsPart = applyEdits(base, start, end, groupT)
+      if (equal(oursPart, theirsPart)) out.push(...oursPart)
+      else if (equal(oursPart, basePart)) out.push(...theirsPart)
+      else if (equal(theirsPart, basePart)) out.push(...oursPart)
+      else {
+        conflicts++
+        out.push(...oursPart)
+      }
+      cursor = end
+      continue
+    }
+
+    // No overlap: apply the earlier hunk. At the same start, an insertion is
+    // before a replacement of that line, so both independent edits survive.
+    const takeOurs =
+      !!o &&
+      (!t ||
+        o.start < t.start ||
+        (o.start === t.start && o.start === o.end && t.start !== t.end) ||
+        (o.start === t.start && o.end < t.end))
+    const edit = takeOurs ? o! : t!
+    out.push(...base.slice(cursor, edit.start), ...edit.lines)
+    cursor = edit.end
+    if (takeOurs) oi++
+    else ti++
   }
+
+  out.push(...base.slice(cursor))
   return { clean: conflicts === 0, lines: out, conflicts }
 }
 
