@@ -124,11 +124,11 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "codemirror": "^6.0.2",
-    "electron": "46.0.0-alpha.5",
+    "electron": "46.0.0-alpha.6",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "qrcode": "^1.5.4",
-    "vite": "^8.3.5"
+    "vite": "^8.3.6"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
